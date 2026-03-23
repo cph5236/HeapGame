@@ -12,7 +12,7 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     name: 'Extra Air Jump',
     description: (l) => `${1 + l} air jump${1 + l > 1 ? 's' : ''}`,
     maxLevel: 3,
-    cost: (l) => 50 * l,
+    cost: (l) => 150 * l,
   },
   {
     id: 'wall_jump',
@@ -26,13 +26,13 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     name: 'Dash',
     description: () => 'SHIFT to dash',
     maxLevel: 1,
-    cost: () => 150,
+    cost: () => 300,
   },
   {
     id: 'money_mult',
     name: 'Coin Multiplier',
     description: (l) => `${(1 + l * 0.1).toFixed(1)}\u00d7 coins`,
     maxLevel: 5,
-    cost: (l) => 75 * l,
+    cost: (l) => 25 * l,
   },
 ];

@@ -34,5 +34,6 @@ export const MAX_AIR_JUMPS = 1;
 export const SCORE_TO_COINS_DIVISOR = 100;
 export const PLAYER_DASH_VELOCITY   = 500; // px/sec horizontal burst
 export const DASH_COOLDOWN_MS       = 800; // ms between dashes
+export const DASH_DURATION_MS       = 200; // ms the dash velocity is protected from movement override
 export const PLAYER_MAX_FALL_SPEED  = 1200; // px/s; reached after ~1.5 s at gravity 800
 export const WALL_SLIDE_SPEED       = 80;  // px/s downward cap while touching a wall

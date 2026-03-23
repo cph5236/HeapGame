@@ -5,6 +5,9 @@ import { findSurfaceY } from '../systems/HeapSurface';
 import { DEV_HEAP } from '../data/devHeap';
 import { OBJECT_DEFS } from '../data/heapObjectDefs';
 import { getPlayerConfig } from '../systems/SaveData';
+import { loadHeapAdditions, persistHeapEntry } from '../systems/HeapPersistence';
+import { HeapEntry } from '../data/heapTypes';
+import { HUD } from '../ui/HUD';
 import {
   GAME_WIDTH,
   WORLD_WIDTH,
@@ -16,6 +19,7 @@ import {
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
+  private hud!: HUD;
   private platforms!: Phaser.Physics.Arcade.StaticGroup;
   private heapGenerator!: HeapGenerator;
   private placeKey!: Phaser.Input.Keyboard.Key;
@@ -38,7 +42,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX);
 
     this.platforms = this.physics.add.staticGroup();
-    this.heapGenerator = new HeapGenerator(this, this.platforms, DEV_HEAP);
+    this.heapGenerator = new HeapGenerator(this, this.platforms, [...DEV_HEAP, ...loadHeapAdditions()]);
 
     // Spawn player at world floor (left clear zone) — player climbs up through the heap
     this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
@@ -68,10 +72,14 @@ export class GameScene extends Phaser.Scene {
     this.topZoneText = this.add.text(GAME_WIDTH / 2, 80, 'SPACE \u2014 add to heap', {
       fontSize: '18px', color: '#ffdd44', stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
+
+    // HUD: ability indicators (dash bar, air jumps, wall jump)
+    this.hud = new HUD(this, this.player);
   }
 
   update(_time: number, delta: number): void {
     this.player.update(delta);
+    this.hud.update();
 
     // Stream-generate platforms as player climbs upward
     const camTop = this.cameras.main.worldView.top;
@@ -109,7 +117,9 @@ export class GameScene extends Phaser.Scene {
     const px    = this.player.sprite.x;
     const surfaceY = findSurfaceY(px, def.width, this.heapGenerator.entries);
     const y = surfaceY - def.height / 2; // no gap — matches STACK_GAP=0 in devHeap
-    this.heapGenerator.addEntry({ x: px, y, keyid });
+    const entry: HeapEntry = { x: px, y, keyid };
+    this.heapGenerator.addEntry(entry);
+    persistHeapEntry(entry);
 
     const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
     this.time.delayedCall(2000, () => {
