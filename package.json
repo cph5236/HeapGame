@@ -1,0 +1,23 @@
+{
+  "name": "heap-game",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "cap:sync": "cap sync",
+    "cap:android": "cap open android"
+  },
+  "dependencies": {
+    "phaser": "3.90.0",
+    "@capacitor/core": "8.2.0",
+    "@capacitor/android": "8.2.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vite": "^6.3.0",
+    "@capacitor/cli": "8.2.0",
+    "@types/node": "25.5.0"
+  }
+}

@@ -1,0 +1,65 @@
+import Phaser from 'phaser';
+import { GAME_WIDTH, GAME_HEIGHT, SCORE_TO_COINS_DIVISOR } from '../constants';
+import { addBalance, getBalance, getPlayerConfig } from '../systems/SaveData';
+
+export class ScoreScene extends Phaser.Scene {
+  private score: number = 0;
+
+  constructor() {
+    super({ key: 'ScoreScene' });
+  }
+
+  init(data: { score: number }): void {
+    this.score = data.score ?? 0;
+  }
+
+  create(): void {
+    const mult  = getPlayerConfig().moneyMultiplier;
+    const coins = Math.floor(this.score / SCORE_TO_COINS_DIVISOR * mult);
+    addBalance(coins);
+    const balance = getBalance();
+
+    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.6);
+
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 150, 'RUN COMPLETE', {
+      fontSize: '40px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 4,
+    }).setOrigin(0.5);
+
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60, `Score: ${this.score}`, {
+      fontSize: '48px',
+      color: '#ffdd44',
+      stroke: '#000000',
+      strokeThickness: 4,
+    }).setOrigin(0.5);
+
+    const multLabel = mult !== 1 ? `  (${mult.toFixed(1)}\u00d7)` : '';
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20, `+${coins} coins${multLabel}`, {
+      fontSize: '26px',
+      color: '#44ff88',
+      stroke: '#000000',
+      strokeThickness: 3,
+    }).setOrigin(0.5);
+
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 65, `Balance: ${balance} coins`, {
+      fontSize: '20px',
+      color: '#aaddff',
+      stroke: '#000000',
+      strokeThickness: 2,
+    }).setOrigin(0.5);
+
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 130, 'Press any key for menu', {
+      fontSize: '20px',
+      color: '#aaaaaa',
+    }).setOrigin(0.5);
+
+    this.time.delayedCall(300, () => {
+      this.input.keyboard!.once('keydown', () => {
+        this.scene.stop('GameScene');
+        this.scene.start('MenuScene');
+      });
+    });
+  }
+}
