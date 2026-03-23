@@ -8,6 +8,7 @@ import { getPlayerConfig } from '../systems/SaveData';
 import { loadHeapAdditions, persistHeapEntry } from '../systems/HeapPersistence';
 import { HeapEntry } from '../data/heapTypes';
 import { HUD } from '../ui/HUD';
+import { InputManager } from '../systems/InputManager';
 import {
   GAME_WIDTH,
   WORLD_WIDTH,
@@ -69,7 +70,8 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
 
     // HUD: placement prompt (hidden until player reaches top zone)
-    this.topZoneText = this.add.text(GAME_WIDTH / 2, 80, 'SPACE \u2014 add to heap', {
+    const placeHint = InputManager.getInstance().isMobile ? 'TAP \u2014 add to heap' : 'SPACE \u2014 add to heap';
+    this.topZoneText = this.add.text(GAME_WIDTH / 2, 80, placeHint, {
       fontSize: '18px', color: '#ffdd44', stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
 
@@ -78,6 +80,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    const im = InputManager.getInstance();
+    const inTopZone = this.player.sprite.y < this.heapGenerator.topY + HEAP_TOP_ZONE_PX;
+    im.update(delta, inTopZone);
+
     this.player.update(delta);
     this.hud.update();
 
@@ -92,10 +98,10 @@ export class GameScene extends Phaser.Scene {
     this.scoreText.setText(`Score: ${score}`);
 
     // Top-zone: show prompt and handle placement
-    const inTopZone = this.player.sprite.y < this.heapGenerator.topY + HEAP_TOP_ZONE_PX;
     this.topZoneText.setVisible(inTopZone);
 
-    if (!this.blockPlaced && inTopZone && Phaser.Input.Keyboard.JustDown(this.placeKey)) {
+    if (!this.blockPlaced && inTopZone &&
+        (Phaser.Input.Keyboard.JustDown(this.placeKey) || im.placeJustPressed)) {
       this.placeBlock();
     }
   }

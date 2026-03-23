@@ -37,3 +37,10 @@ export const DASH_COOLDOWN_MS       = 800; // ms between dashes
 export const DASH_DURATION_MS       = 200; // ms the dash velocity is protected from movement override
 export const PLAYER_MAX_FALL_SPEED  = 1200; // px/s; reached after ~1.5 s at gravity 800
 export const WALL_SLIDE_SPEED       = 80;  // px/s downward cap while touching a wall
+
+// Mobile controls tuning
+export const TILT_DEAD_ZONE_DEG    = 5;   // gamma degrees to ignore near center
+export const TILT_MAX_DEG          = 25;  // gamma at which full speed is applied
+export const SWIPE_MIN_DISTANCE_PX = 60;  // min horizontal travel to register a dash swipe
+export const SWIPE_MAX_TIME_MS     = 350; // swipes faster than this trigger a dash
+export const SWIPE_DIRECTION_RATIO = 2.0; // |dx|/|dy| must exceed this to be a horizontal swipe

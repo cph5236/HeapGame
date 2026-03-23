@@ -12,6 +12,7 @@ import {
   WALL_SLIDE_SPEED,
 } from '../constants';
 import { PlayerConfig } from '../systems/SaveData';
+import { InputManager } from '../systems/InputManager';
 
 const { KeyCodes } = Phaser.Input.Keyboard;
 
@@ -70,8 +71,9 @@ export class Player {
     }
 
     // Horizontal movement — either scheme (skipped during active dash)
-    const goLeft  = this.leftKeys.some(k => k.isDown);
-    const goRight = this.rightKeys.some(k => k.isDown);
+    const im = InputManager.getInstance();
+    const goLeft  = this.leftKeys.some(k => k.isDown)  || im.goLeft;
+    const goRight = this.rightKeys.some(k => k.isDown) || im.goRight;
     this.dashActive = Math.max(0, this.dashActive - delta);
     if (this.dashActive === 0) {
       if (goLeft) {
@@ -85,11 +87,12 @@ export class Player {
       }
     }
 
-    // Dash — horizontal burst with cooldown; direction from pressed keys
+    // Dash — horizontal burst with cooldown; direction from pressed keys or swipe
     if (this.dashEnabled) {
       this.dashCooldown = Math.max(0, this.dashCooldown - delta);
-      if (Phaser.Input.Keyboard.JustDown(this.dashKey) && this.dashCooldown === 0) {
-        const dir = goLeft ? -1 : goRight ? 1 : (this.sprite.flipX ? -1 : 1);
+      const dashTriggered = Phaser.Input.Keyboard.JustDown(this.dashKey) || im.dashJustFired;
+      if (dashTriggered && this.dashCooldown === 0) {
+        const dir = im.dashJustFired ? im.dashDir : (goLeft ? -1 : goRight ? 1 : (this.sprite.flipX ? -1 : 1));
         this.sprite.setVelocityX(dir * PLAYER_DASH_VELOCITY);
         this.dashCooldown = DASH_COOLDOWN_MS;
         this.dashActive   = DASH_DURATION_MS;
@@ -97,7 +100,7 @@ export class Player {
     }
 
     // Jump — JustDown prevents hold-spam
-    const jumpPressed = this.jumpKeys.some(k => Phaser.Input.Keyboard.JustDown(k));
+    const jumpPressed = this.jumpKeys.some(k => Phaser.Input.Keyboard.JustDown(k)) || im.jumpJustPressed;
     if (jumpPressed) {
       const onWallForJump = this.wallJumpEnabled && (body.blocked.left || body.blocked.right);
       if (onGround) {

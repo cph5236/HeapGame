@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, SCORE_TO_COINS_DIVISOR } from '../constants';
 import { addBalance, getBalance, getPlayerConfig } from '../systems/SaveData';
+import { InputManager } from '../systems/InputManager';
 
 export class ScoreScene extends Phaser.Scene {
   private score: number = 0;
@@ -50,16 +51,20 @@ export class ScoreScene extends Phaser.Scene {
       strokeThickness: 2,
     }).setOrigin(0.5);
 
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 130, 'Press any key for menu', {
+    const im = InputManager.getInstance();
+    const continueLabel = im.isMobile ? 'Tap for menu' : 'Press any key for menu';
+    const continueText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 130, continueLabel, {
       fontSize: '20px',
       color: '#aaaaaa',
     }).setOrigin(0.5);
 
     this.time.delayedCall(300, () => {
-      this.input.keyboard!.once('keydown', () => {
-        this.scene.stop('GameScene');
-        this.scene.start('MenuScene');
-      });
+      const goMenu = () => { this.scene.stop('GameScene'); this.scene.start('MenuScene'); };
+      this.input.keyboard!.once('keydown', goMenu);
+      if (im.isMobile) {
+        continueText.setInteractive({ useHandCursor: true });
+        continueText.once('pointerup', goMenu);
+      }
     });
   }
 }

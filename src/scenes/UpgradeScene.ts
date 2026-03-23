@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
 import { UPGRADE_DEFS } from '../data/upgradeDefs';
 import { getBalance, getUpgradeLevel, purchaseUpgrade } from '../systems/SaveData';
+import { InputManager } from '../systems/InputManager';
 
 const ROW_START_Y  = 230;
 const ROW_SPACING  = 140;
@@ -34,20 +35,43 @@ export class UpgradeScene extends Phaser.Scene {
       return new UpgradeRow(this, def.id, def.name, y);
     });
 
-    // Footer hint
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 40, '\u2191\u2193 navigate    ENTER buy    ESC menu', {
-      fontSize: '16px', color: '#666666',
-    }).setOrigin(0.5);
-
     this.refreshAll();
 
-    // Input
-    const kb = this.input.keyboard!;
-    kb.on('keydown-UP',    () => this.move(-1));
-    kb.on('keydown-DOWN',  () => this.move(1));
-    kb.on('keydown-ENTER', () => this.buy());
-    kb.on('keydown-SPACE', () => this.buy());
-    kb.on('keydown-ESC',   () => this.scene.start('MenuScene'));
+    const im = InputManager.getInstance();
+
+    if (im.isMobile) {
+      // Touch: tap a row to select and buy
+      this.rows.forEach((row, i) => {
+        row.enableTouch(() => {
+          this.selectedIndex = i;
+          this.buy();
+        });
+      });
+
+      this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 60, 'Tap row to buy', {
+        fontSize: '16px', color: '#666666',
+      }).setOrigin(0.5);
+
+      const backBtn = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 30, 'Back to Menu', {
+        fontSize: '16px', color: '#aaaaaa',
+      }).setOrigin(0.5).setInteractive(
+        new Phaser.Geom.Rectangle(-200, -25, 400, 50),
+        Phaser.Geom.Rectangle.Contains
+      );
+      backBtn.on('pointerup', () => this.scene.start('MenuScene'));
+    } else {
+      // Keyboard navigation footer
+      this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 40, '\u2191\u2193 navigate    ENTER buy    ESC menu', {
+        fontSize: '16px', color: '#666666',
+      }).setOrigin(0.5);
+
+      const kb = this.input.keyboard!;
+      kb.on('keydown-UP',    () => this.move(-1));
+      kb.on('keydown-DOWN',  () => this.move(1));
+      kb.on('keydown-ENTER', () => this.buy());
+      kb.on('keydown-SPACE', () => this.buy());
+      kb.on('keydown-ESC',   () => this.scene.start('MenuScene'));
+    }
   }
 
   private move(dir: number): void {
@@ -97,6 +121,11 @@ class UpgradeRow {
       { fontSize: '17px', color: '#ffdd44' });
     this.descText  = scene.add.text(COL_LEFT, y + 75, '',
       { fontSize: '15px', color: '#888888' });
+  }
+
+  enableTouch(onTap: () => void): void {
+    this.bg.setInteractive({ useHandCursor: true });
+    this.bg.on('pointerup', onTap);
   }
 
   refresh(
