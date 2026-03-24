@@ -8,6 +8,8 @@ export class HeapGenerator {
   private readonly scene: Phaser.Scene;
   private readonly group: Phaser.Physics.Arcade.StaticGroup;
 
+  onPlatformSpawned?: (entry: HeapEntry, platformTopY: number) => void;
+
   // Data sorted by Y descending (highest Y = bottom of heap = index 0).
   // This matches the order the player encounters them: bottom first, summit last.
   private readonly data: HeapEntry[];
@@ -72,5 +74,7 @@ export class HeapGenerator {
   private spawnEntry(entry: HeapEntry): void {
     const def = OBJECT_DEFS[entry.keyid] ?? OBJECT_DEFS[0];
     new Platform(this.scene, this.group, entry.x, entry.y, def.width, def.height);
+    const platformTopY = entry.y - def.height / 2;
+    this.onPlatformSpawned?.(entry, platformTopY);
   }
 }

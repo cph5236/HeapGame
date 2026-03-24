@@ -1,22 +1,25 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, SCORE_TO_COINS_DIVISOR } from '../constants';
+import { GAME_WIDTH, GAME_HEIGHT, SCORE_TO_COINS_DIVISOR, PEAK_COIN_MULTIPLIER } from '../constants';
 import { addBalance, getBalance, getPlayerConfig } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 
 export class ScoreScene extends Phaser.Scene {
-  private score: number = 0;
+  private score:   number  = 0;
+  private isPeak:  boolean = false;
 
   constructor() {
     super({ key: 'ScoreScene' });
   }
 
-  init(data: { score: number }): void {
-    this.score = data.score ?? 0;
+  init(data: { score: number; isPeak?: boolean }): void {
+    this.score  = data.score  ?? 0;
+    this.isPeak = data.isPeak ?? false;
   }
 
   create(): void {
-    const mult  = getPlayerConfig().moneyMultiplier;
-    const coins = Math.floor(this.score / SCORE_TO_COINS_DIVISOR * mult);
+    const mult      = getPlayerConfig().moneyMultiplier;
+    const baseCoins = Math.floor(this.score / SCORE_TO_COINS_DIVISOR * mult);
+    const coins     = this.isPeak ? Math.floor(baseCoins * PEAK_COIN_MULTIPLIER) : baseCoins;
     addBalance(coins);
     const balance = getBalance();
 
@@ -44,7 +47,17 @@ export class ScoreScene extends Phaser.Scene {
       strokeThickness: 3,
     }).setOrigin(0.5);
 
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 65, `Balance: ${balance} coins`, {
+    if (this.isPeak) {
+      this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 55, 'PEAK BONUS \u00d71.25!', {
+        fontSize: '20px',
+        color: '#ffdd44',
+        stroke: '#000000',
+        strokeThickness: 3,
+      }).setOrigin(0.5);
+    }
+
+    const balanceY = this.isPeak ? GAME_HEIGHT / 2 + 90 : GAME_HEIGHT / 2 + 65;
+    this.add.text(GAME_WIDTH / 2, balanceY, `Balance: ${balance} coins`, {
       fontSize: '20px',
       color: '#aaddff',
       stroke: '#000000',

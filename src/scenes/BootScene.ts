@@ -10,6 +10,8 @@ export class BootScene extends Phaser.Scene {
     this.createPlatformTexture();
     this.createCloudTexture();
     this.createWallJumpTexture();
+    this.createEnemyPercherTexture();
+    this.createEnemyGhostTexture();
     this.scene.start('MenuScene');
   }
 
@@ -39,6 +41,24 @@ export class BootScene extends Phaser.Scene {
     g.fillCircle(26, 14, 8);
     g.fillRect(2, 14, 28, 8);
     g.generateTexture('cloud', 32, 22);
+    g.destroy();
+  }
+
+  private createEnemyPercherTexture(): void {
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0xff3333, 1);
+    g.fillRect(0, 0, 24, 24);
+    g.lineStyle(2, 0xff8888, 1);
+    g.strokeRect(0, 0, 24, 24);
+    g.generateTexture('enemy-percher', 24, 24);
+    g.destroy();
+  }
+
+  private createEnemyGhostTexture(): void {
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0xcc44ff, 0.95);
+    g.fillCircle(18, 18, 18);
+    g.generateTexture('enemy-ghost', 36, 36);
     g.destroy();
   }
 

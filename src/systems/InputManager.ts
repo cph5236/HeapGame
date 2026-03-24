@@ -77,6 +77,11 @@ export class InputManager {
     }
   }
 
+  /** Called by the on-screen placement button to trigger a block placement. */
+  triggerPlace(): void {
+    this.pendingPlace = true;
+  }
+
   /** Requests DeviceOrientation permission (iOS 13+). No-op on Android. */
   async requestTiltPermission(): Promise<void> {
     if (!this.requiresPermissionGesture) return;
@@ -139,8 +144,6 @@ export class InputManager {
     if (isSwipe) {
       this.pendingDash    = true;
       this.pendingDashDir = dx > 0 ? 1 : -1;
-    } else if (this.inTopZone) {
-      this.pendingPlace = true;
     } else {
       this.pendingJump = true;
     }

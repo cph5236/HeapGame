@@ -63,6 +63,11 @@ export function purchaseUpgrade(id: string): boolean {
   return true;
 }
 
+/** Wipe all saved progress — balance, upgrades. */
+export function resetAllData(): void {
+  localStorage.removeItem(SAVE_KEY);
+}
+
 export function getPlayerConfig(): PlayerConfig {
   return {
     maxAirJumps:     1 + getUpgradeLevel('air_jump'),

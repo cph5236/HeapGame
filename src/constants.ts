@@ -38,9 +38,24 @@ export const DASH_DURATION_MS       = 200; // ms the dash velocity is protected 
 export const PLAYER_MAX_FALL_SPEED  = 1200; // px/s; reached after ~1.5 s at gravity 800
 export const WALL_SLIDE_SPEED       = 80;  // px/s downward cap while touching a wall
 
+// Placement rules
+export const PEAK_BONUS_ZONE_PX   = 80;   // px above heap topY that qualifies for peak bonus
+export const PEAK_COIN_MULTIPLIER = 1.25; // coin multiplier for placing at the peak
+
 // Mobile controls tuning
 export const TILT_DEAD_ZONE_DEG    = 5;   // gamma degrees to ignore near center
 export const TILT_MAX_DEG          = 25;  // gamma at which full speed is applied
 export const SWIPE_MIN_DISTANCE_PX = 60;  // min horizontal travel to register a dash swipe
 export const SWIPE_MAX_TIME_MS     = 350; // swipes faster than this trigger a dash
 export const SWIPE_DIRECTION_RATIO = 2.0; // |dx|/|dy| must exceed this to be a horizontal swipe
+
+// Enemies
+export const ENEMY_PERCHER_WIDTH        = 24;
+export const ENEMY_PERCHER_HEIGHT       = 24;
+export const ENEMY_GHOST_SIZE           = 36;
+export const ENEMY_GHOST_SPEED          = 240; // px/sec horizontal patrol speed
+export const ENEMY_PERCHER_CLEARANCE    = 80;   // min vertical space above block for spawn
+export const ENEMY_PERCHER_SPAWN_CHANCE = 0.25; // per-platform probability
+export const ENEMY_GHOST_SPAWN_CHANCE   = 0.05;  // per-platform probability
+export const ENEMY_CULL_DISTANCE        = 2000; // px below camera before destroy
+export const PLAYER_INVINCIBLE_MS       = 400;  // post-stomp / post-spawn invincibility
