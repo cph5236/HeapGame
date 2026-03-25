@@ -10,11 +10,13 @@ export class Platform {
     y: number,
     width: number,
     height: number,
+    textureKey: string,
+    visible = true,
   ) {
     this.sprite = group.create(
       x,
       y,
-      'platform',
+      textureKey,
     ) as Phaser.Types.Physics.Arcade.SpriteWithStaticBody;
 
     // Scale texture to desired dimensions
@@ -26,5 +28,6 @@ export class Platform {
     this.sprite.refreshBody();
 
     this.sprite.setDepth(5);
+    if (!visible) this.sprite.setAlpha(0);
   }
 }

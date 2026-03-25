@@ -4,7 +4,14 @@ export interface HeapEntry {
   keyid: number; // index into OBJECT_DEFS
 }
 
+export interface HeapChunk {
+  bandTop: number;
+  entries: HeapEntry[];
+}
+
 export interface ObjectDef {
-  width: number;
-  height: number;
+  textureKey: string; // Phaser texture key (used when loading and rendering)
+  filename: string;   // original SVG filename in src/svgs/
+  width: number;      // scaled game width in px (preserves aspect ratio)
+  height: number;     // scaled game height in px
 }

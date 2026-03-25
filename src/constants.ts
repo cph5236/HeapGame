@@ -49,6 +49,10 @@ export const SWIPE_MIN_DISTANCE_PX = 60;  // min horizontal travel to register a
 export const SWIPE_MAX_TIME_MS     = 350; // swipes faster than this trigger a dash
 export const SWIPE_DIRECTION_RATIO = 2.0; // |dx|/|dy| must exceed this to be a horizontal swipe
 
+// Heap visual chunking
+export const CHUNK_BAND_HEIGHT = 500; // px per visual silhouette band
+export const HEAP_FILL_TEXTURE = 'composite-heap';
+
 // Enemies
 export const ENEMY_PERCHER_WIDTH        = 24;
 export const ENEMY_PERCHER_HEIGHT       = 24;

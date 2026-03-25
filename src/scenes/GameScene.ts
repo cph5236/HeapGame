@@ -3,7 +3,7 @@ import { Player } from '../entities/Player';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import { findSurfaceY } from '../systems/HeapSurface';
 import { DEV_HEAP } from '../data/devHeap';
-import { OBJECT_DEFS } from '../data/heapObjectDefs';
+import { OBJECT_DEFS, HEAP_ITEM_COUNT } from '../data/heapObjectDefs';
 import { getPlayerConfig } from '../systems/SaveData';
 import { loadHeapAdditions, persistHeapEntry } from '../systems/HeapPersistence';
 import { HeapEntry } from '../data/heapTypes';
@@ -23,6 +23,7 @@ import {
 } from '../constants';
 import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
+import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -42,7 +43,10 @@ export class GameScene extends Phaser.Scene {
   private highestGeneratedY: number = 0;
   private spawnY: number = 0;
   private enemyManager!: EnemyManager;
+  private chunkRenderer!: HeapChunkRenderer;
   private invincible = false;
+  private debugMode = false;
+  private debugText?: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -57,7 +61,8 @@ export class GameScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX);
 
     this.platforms = this.physics.add.staticGroup();
-    this.heapGenerator = new HeapGenerator(this, this.platforms, [...DEV_HEAP, ...loadHeapAdditions()]);
+    this.chunkRenderer = new HeapChunkRenderer(this);
+    this.heapGenerator = new HeapGenerator(this, this.platforms, [...DEV_HEAP, ...loadHeapAdditions()], this.chunkRenderer);
 
     // Spawn player at world floor (left clear zone) — player climbs up through the heap
     this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
@@ -94,6 +99,15 @@ export class GameScene extends Phaser.Scene {
     // Camera: follow player, clamped to world bounds
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX);
     this.cameras.main.startFollow(this.player.sprite, true, 1, 0.1);
+    // Snap camera to player immediately so the first-frame cull threshold
+    // is correct (otherwise camBottom ≈ 0 and all bottom-world chunks get culled).
+    this.cameras.main.centerOn(this.player.sprite.x, this.player.sprite.y);
+
+    // Debug overlay (F2 to toggle)
+    this.debugText = this.add.text(8, 8, '', {
+      fontSize: '13px', color: '#00ff88', stroke: '#000000', strokeThickness: 2,
+    }).setScrollFactor(0).setDepth(20).setVisible(false);
+    this.input.keyboard!.on('keydown-F2', () => this.toggleDebugMode());
 
     // SPACE — place block when in top zone (desktop)
     this.placeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
@@ -153,14 +167,25 @@ export class GameScene extends Phaser.Scene {
     this.player.update(delta);
     this.hud.update();
 
-    const camTop    = this.cameras.main.worldView.top;
-    const camBottom = this.cameras.main.worldView.bottom;
+    const cam       = this.cameras.main;
+    const camTop    = cam.scrollY;
+    const camBottom = cam.scrollY + cam.height;
 
     this.enemyManager.update(camTop, camBottom);
+    this.chunkRenderer.cullChunks(camBottom);
 
     // Stream-generate platforms as player climbs upward
     if (camTop < this.highestGeneratedY + GEN_LOOKAHEAD) {
       this.generateUpTo(camTop - GEN_LOOKAHEAD);
+    }
+
+    // Debug coord overlay
+    if (this.debugMode && this.debugText) {
+      const px = Math.round(this.player.sprite.x);
+      const py = Math.round(this.player.sprite.y);
+      this.debugText.setText(
+        `Player: (${px}, ${py})\nCam scroll: (${Math.round(cam.scrollX)}, ${Math.round(cam.scrollY)})`,
+      );
     }
 
     // Live score: pixels climbed from spawn
@@ -187,6 +212,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ── Private ─────────────────────────────────────────────────────────────────
+
+  private toggleDebugMode(): void {
+    this.debugMode = !this.debugMode;
+    this.debugText?.setVisible(this.debugMode);
+    if (this.debugMode) {
+      this.physics.world.createDebugGraphic();
+      this.physics.world.drawDebug = true;
+    } else {
+      this.physics.world.debugGraphic?.destroy();
+      this.physics.world.drawDebug = false;
+    }
+  }
 
   private generateUpTo(targetY: number): void {
     this.heapGenerator.generateUpTo(targetY);
@@ -222,7 +259,7 @@ export class GameScene extends Phaser.Scene {
   private placeBlock(): void {
     this.blockPlaced = true;
 
-    const keyid    = 0; // standard crate
+    const keyid    = Phaser.Math.Between(0, HEAP_ITEM_COUNT - 1);
     const def      = OBJECT_DEFS[keyid];
     const px       = this.player.sprite.x;
     const surfaceY = findSurfaceY(px, def.width, this.heapGenerator.entries);

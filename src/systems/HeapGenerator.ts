@@ -3,10 +3,12 @@ import { Platform } from '../entities/Platform';
 import { HeapEntry } from '../data/heapTypes';
 import { OBJECT_DEFS } from '../data/heapObjectDefs';
 import { MOCK_HEAP_HEIGHT_PX } from '../constants';
+import { HeapChunkRenderer } from './HeapChunkRenderer';
 
 export class HeapGenerator {
   private readonly scene: Phaser.Scene;
   private readonly group: Phaser.Physics.Arcade.StaticGroup;
+  private readonly chunkRenderer?: HeapChunkRenderer;
 
   onPlatformSpawned?: (entry: HeapEntry, platformTopY: number) => void;
 
@@ -21,9 +23,11 @@ export class HeapGenerator {
     scene: Phaser.Scene,
     group: Phaser.Physics.Arcade.StaticGroup,
     data: HeapEntry[],
+    chunkRenderer?: HeapChunkRenderer,
   ) {
     this.scene = scene;
     this.group = group;
+    this.chunkRenderer = chunkRenderer;
     // Sort defensively in case caller passes unsorted data
     this.data = [...data].sort((a, b) => b.y - a.y);
   }
@@ -73,7 +77,8 @@ export class HeapGenerator {
 
   private spawnEntry(entry: HeapEntry): void {
     const def = OBJECT_DEFS[entry.keyid] ?? OBJECT_DEFS[0];
-    new Platform(this.scene, this.group, entry.x, entry.y, def.width, def.height);
+    new Platform(this.scene, this.group, entry.x, entry.y, def.width, def.height, def.textureKey, false);
+    this.chunkRenderer?.addEntry(entry);
     const platformTopY = entry.y - def.height / 2;
     this.onPlatformSpawned?.(entry, platformTopY);
   }

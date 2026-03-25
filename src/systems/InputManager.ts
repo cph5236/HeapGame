@@ -31,7 +31,6 @@ export class InputManager {
   private touchStartX    = 0;
   private touchStartY    = 0;
   private touchStartTime = 0;
-  private inTopZone      = false;
 
   // Pending impulse flags — set by touch handlers, consumed each frame
   private pendingJump     = false;
@@ -57,7 +56,7 @@ export class InputManager {
   }
 
   /** Called once per frame from GameScene before player.update(). */
-  update(_delta: number, inTopZone: boolean): void {
+  update(_delta: number, _inTopZone: boolean): void {
     // Transfer pending touch impulses from last frame into active flags
     this.jumpJustPressed  = this.pendingJump;
     this.dashJustFired    = this.pendingDash;
@@ -66,9 +65,6 @@ export class InputManager {
     this.pendingJump  = false;
     this.pendingDash  = false;
     this.pendingPlace = false;
-
-    // Store for touch handlers
-    this.inTopZone = inTopZone;
 
     // Update directional state from tilt
     if (this.tiltListenerAttached) {

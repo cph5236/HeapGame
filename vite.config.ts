@@ -5,6 +5,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
+    assetsInlineLimit: 0,
     rollupOptions: {
       output: {
         manualChunks: {
