@@ -62,7 +62,8 @@ export class Player {
 
   update(delta: number): void {
     const body     = this.sprite.body;
-    const onGround = body.blocked.down;
+    const floorY   = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2;
+    const onGround = body.blocked.down || this.sprite.y >= floorY;
 
     // Landing resets air jump and wall jump counters
     if (onGround) {
@@ -136,7 +137,6 @@ export class Player {
     }
 
     // Y clamp — prevent falling through the world floor; treat floor as ground
-    const floorY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2;
     if (this.sprite.y >= floorY) {
       this.sprite.y = floorY;
       if (this.sprite.body.velocity.y >= 0) {

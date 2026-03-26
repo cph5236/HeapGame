@@ -1,9 +1,9 @@
 /**
  * gen-heap-texture.mjs
  *
- * Generates public/composite-heap.png — a 960×1024 tiling texture made by
- * randomly stamping all 25 heap SVGs onto a dark background.
- * Each of the STAMP_COUNT stamps picks a random SVG, position, and rotation.
+ * Generates src/assets/composite-heap.png — a 960×1024 tiling texture made by
+ * randomly stamping all sprite PNGs onto a dark background.
+ * Each of the STAMP_COUNT stamps picks a random sprite, position, and rotation.
  * Later stamps render on top of earlier ones, creating natural layering depth.
  *
  * Run: node scripts/gen-heap-texture.mjs
@@ -11,20 +11,17 @@
  */
 
 import sharp from 'sharp';
-import { readFileSync, writeFileSync, readdirSync, mkdirSync } from 'fs';
-import { join, basename, extname, dirname } from 'path';
+import { writeFileSync, readdirSync, mkdirSync } from 'fs';
+import { join, extname, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const SVG_DIR   = join(__dirname, '..', 'src', 'svgs');
-const OUT_FILE  = join(__dirname, '..', 'src', 'assets', 'composite-heap.png');
+const __dirname   = dirname(fileURLToPath(import.meta.url));
+const SPRITES_DIR = join(__dirname, '..', 'src', 'sprites');
+const OUT_FILE    = join(__dirname, '..', 'src', 'assets', 'composite-heap.png');
 
 /** Canvas dimensions — full world width, power-of-two height for seamless tiling */
 const CANVAS_W = 960;
 const CANVAS_H = 1024;
-
-/** Longest side target for each stamped SVG (same as game TARGET_PX) */
-const TARGET_PX = 96;
 
 /** How many random stamps to composite onto the canvas */
 const STAMP_COUNT = 1000;
@@ -44,58 +41,21 @@ function makePrng(seed) {
 const rand = makePrng(0xdeadbeef);
 
 // ---------------------------------------------------------------------------
-// Dimension parsing (mirrors gen-heap-defs.mjs)
+// Load all sprite PNGs
 // ---------------------------------------------------------------------------
 
-function parseDimensions(svgText) {
-  const vb = svgText.match(/viewBox\s*=\s*["']([^"']+)["']/i);
-  if (vb) {
-    const parts = vb[1].trim().split(/[\s,]+/);
-    if (parts.length >= 4) {
-      const w = parseFloat(parts[2]);
-      const h = parseFloat(parts[3]);
-      if (w > 0 && h > 0) return { w, h };
-    }
-  }
-  const wAttr = svgText.match(/\bwidth\s*=\s*["']([0-9.]+)/i);
-  const hAttr = svgText.match(/\bheight\s*=\s*["']([0-9.]+)/i);
-  if (wAttr && hAttr) {
-    const w = parseFloat(wAttr[1]);
-    const h = parseFloat(hAttr[1]);
-    if (w > 0 && h > 0) return { w, h };
-  }
-  return { w: 100, h: 100 };
-}
-
-function scaleTo(w, h, target) {
-  const scale = target / Math.max(w, h);
-  return {
-    width:  Math.max(1, Math.round(w * scale)),
-    height: Math.max(1, Math.round(h * scale)),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Load and rasterise all SVGs
-// ---------------------------------------------------------------------------
-
-const svgFiles = readdirSync(SVG_DIR)
-  .filter(f => extname(f).toLowerCase() === '.svg')
+const pngFiles = readdirSync(SPRITES_DIR)
+  .filter(f => extname(f).toLowerCase() === '.png')
   .sort();
 
-console.log(`Found ${svgFiles.length} SVGs — rasterising…`);
+console.log(`Found ${pngFiles.length} sprites — loading…`);
 
-const items = await Promise.all(svgFiles.map(async filename => {
-  const svgPath = join(SVG_DIR, filename);
-  const svgText = readFileSync(svgPath, 'utf8');
-  const { w, h } = parseDimensions(svgText);
-  const { width, height } = scaleTo(w, h, TARGET_PX);
-  const pngBuffer = await sharp(Buffer.from(svgText))
-    .resize(width, height)
-    .png()
-    .toBuffer();
-  console.log(`  ✓ ${basename(filename)} → ${width}×${height}px`);
-  return { filename, pngBuffer, width, height };
+const items = await Promise.all(pngFiles.map(async filename => {
+  const pngPath = join(SPRITES_DIR, filename);
+  const meta = await sharp(pngPath).metadata();
+  const pngBuffer = await sharp(pngPath).png().toBuffer();
+  console.log(`  ✓ ${filename}  (${meta.width}×${meta.height}px)`);
+  return { filename, pngBuffer, width: meta.width, height: meta.height };
 }));
 
 // ---------------------------------------------------------------------------
@@ -148,8 +108,7 @@ for (let i = 0; i < STAMP_COUNT; i++) {
     blend: 'over',
   });
 
-  // sharp supports up to ~1000 composites per call but we'll batch in groups
-  // to avoid memory pressure
+  // Batch in groups to avoid memory pressure
   if (composites.length === 100 || i === STAMP_COUNT - 1) {
     canvas = await sharp(canvas).composite(composites).png().toBuffer();
     composites.length = 0;
@@ -161,8 +120,7 @@ for (let i = 0; i < STAMP_COUNT; i++) {
 // Write output
 // ---------------------------------------------------------------------------
 
-mkdirSync(join(__dirname, '..', 'public'), { recursive: true });
-// Compress with pngquant-style quantisation via sharp
+mkdirSync(join(__dirname, '..', 'src', 'assets'), { recursive: true });
 const compressed = await sharp(canvas)
   .png({ compressionLevel: 9, palette: false })
   .toBuffer();

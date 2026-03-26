@@ -11,7 +11,7 @@ export interface HeapChunk {
 
 export interface ObjectDef {
   textureKey: string; // Phaser texture key (used when loading and rendering)
-  filename: string;   // original SVG filename in src/svgs/
+  filename: string;   // PNG filename in src/sprites/
   width: number;      // scaled game width in px (preserves aspect ratio)
   height: number;     // scaled game height in px
 }
