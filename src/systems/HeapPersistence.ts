@@ -1,4 +1,5 @@
 import { HeapEntry } from '../data/heapTypes';
+import { ChunkPolygon, VertexDelta } from '../data/heapPolygonTypes';
 
 const LOCAL_KEY = 'heap_additions';
 const API_URL   = import.meta.env.VITE_HEAP_API_URL as string | undefined;
@@ -46,4 +47,47 @@ export function persistHeapEntry(entry: HeapEntry): void {
 export function clearHeapAdditions(): void {
   if (API_URL) { _serverCache = []; return; }
   localStorage.removeItem(LOCAL_KEY);
+}
+
+// ── Polygon streaming (server-connected mode only) ────────────────────────────
+
+/**
+ * Fetch pre-computed band polygons for a Y range from the server.
+ * Returns empty array if no API is configured or the request fails.
+ */
+export async function fetchBandPolygons(fromY: number, toY: number): Promise<ChunkPolygon[]> {
+  if (!API_URL) return [];
+  try {
+    const r = await fetch(`${API_URL}/heap/polygons?from=${fromY}&to=${toY}`);
+    return (await r.json()) as ChunkPolygon[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Push a vertex delta to the server (fire-and-forget).
+ * Called when the client recomputes a band polygon after a local block placement.
+ */
+export function pushVertexDelta(delta: VertexDelta): void {
+  if (!API_URL) return;
+  fetch(`${API_URL}/heap/polygon`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(delta),
+  }).catch(() => {});
+}
+
+/**
+ * Poll for polygon updates from other players since a given timestamp.
+ * Returns empty array if no API is configured or the request fails.
+ */
+export async function pollPolygonUpdates(sinceMs: number): Promise<VertexDelta[]> {
+  if (!API_URL) return [];
+  try {
+    const r = await fetch(`${API_URL}/heap/updates?since=${sinceMs}`);
+    return (await r.json()) as VertexDelta[];
+  } catch {
+    return [];
+  }
 }
