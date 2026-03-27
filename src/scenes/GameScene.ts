@@ -24,6 +24,7 @@ import {
 import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
+import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -44,6 +45,7 @@ export class GameScene extends Phaser.Scene {
   private spawnY: number = 0;
   private enemyManager!: EnemyManager;
   private chunkRenderer!: HeapChunkRenderer;
+  private edgeCollider!: HeapEdgeCollider;
   private invincible = false;
   private debugMode = false;
   private debugText?: Phaser.GameObjects.Text;
@@ -62,7 +64,8 @@ export class GameScene extends Phaser.Scene {
 
     this.platforms = this.physics.add.staticGroup();
     this.chunkRenderer = new HeapChunkRenderer(this);
-    this.heapGenerator = new HeapGenerator(this, this.platforms, [...DEV_HEAP, ...loadHeapAdditions()], this.chunkRenderer);
+    this.edgeCollider = new HeapEdgeCollider(this);
+    this.heapGenerator = new HeapGenerator(this, this.platforms, [...DEV_HEAP, ...loadHeapAdditions()], this.chunkRenderer, this.edgeCollider);
 
     // Spawn player at world floor (left clear zone) — player climbs up through the heap
     this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
@@ -173,6 +176,7 @@ export class GameScene extends Phaser.Scene {
 
     this.enemyManager.update(camTop, camBottom);
     this.chunkRenderer.cullChunks(camBottom);
+    this.edgeCollider.cullBands(camBottom, 2000);
 
     // Stream-generate platforms as player climbs upward
     if (camTop < this.highestGeneratedY + GEN_LOOKAHEAD) {

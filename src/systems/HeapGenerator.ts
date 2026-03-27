@@ -1,14 +1,15 @@
 import Phaser from 'phaser';
-import { Platform } from '../entities/Platform';
 import { HeapEntry } from '../data/heapTypes';
 import { OBJECT_DEFS } from '../data/heapObjectDefs';
-import { MOCK_HEAP_HEIGHT_PX } from '../constants';
+import { CHUNK_BAND_HEIGHT, MOCK_HEAP_HEIGHT_PX } from '../constants';
 import { HeapChunkRenderer } from './HeapChunkRenderer';
+import { HeapEdgeCollider } from './HeapEdgeCollider';
+import { Vertex } from './HeapPolygon';
 
 export class HeapGenerator {
-  private readonly scene: Phaser.Scene;
   private readonly group: Phaser.Physics.Arcade.StaticGroup;
   private readonly chunkRenderer?: HeapChunkRenderer;
+  private readonly edgeCollider?: HeapEdgeCollider;
 
   onPlatformSpawned?: (entry: HeapEntry, platformTopY: number) => void;
 
@@ -19,15 +20,22 @@ export class HeapGenerator {
   // Pointer into data[]. Everything before this index has already been spawned.
   private nextLoadIndex: number = 0;
 
+  // Track which bands need edge collider rebuilds during batch streaming
+  private readonly dirtyBands: Set<number> = new Set();
+
+  // Entry buckets mirroring HeapChunkRenderer's, used for edge collider rebuilds
+  private readonly entryBuckets: Map<number, HeapEntry[]> = new Map();
+
   constructor(
-    scene: Phaser.Scene,
+    _scene: Phaser.Scene,
     group: Phaser.Physics.Arcade.StaticGroup,
     data: HeapEntry[],
     chunkRenderer?: HeapChunkRenderer,
+    edgeCollider?: HeapEdgeCollider,
   ) {
-    this.scene = scene;
     this.group = group;
     this.chunkRenderer = chunkRenderer;
+    this.edgeCollider = edgeCollider;
     // Sort defensively in case caller passes unsorted data
     this.data = [...data].sort((a, b) => b.y - a.y);
   }
@@ -54,8 +62,12 @@ export class HeapGenerator {
   /**
    * Instantiate all heap objects whose center Y is >= toY that haven't been
    * spawned yet. Call this as the player climbs (toY decreases over time).
+   * Edge collider rebuilds are batched — all affected bands are rebuilt once
+   * after the streaming loop, not per-entry.
    */
   generateUpTo(toY: number): void {
+    this.dirtyBands.clear();
+
     while (
       this.nextLoadIndex < this.data.length &&
       this.data[this.nextLoadIndex].y >= toY
@@ -63,22 +75,73 @@ export class HeapGenerator {
       this.spawnEntry(this.data[this.nextLoadIndex]);
       this.nextLoadIndex++;
     }
+
+    // Batch-rebuild edge colliders for all bands that received new entries
+    if (this.edgeCollider && this.dirtyBands.size > 0) {
+      for (const bandTop of this.dirtyBands) {
+        const bucket = this.entryBuckets.get(bandTop);
+        if (bucket) {
+          this.edgeCollider.rebuildBand(bandTop, bucket, this.group);
+        }
+      }
+      this.dirtyBands.clear();
+    }
   }
 
   /**
    * Add a new block to the heap at runtime and spawn it immediately.
    * Used when the player places a block at the summit.
-   * Bypasses the streaming pointer — entry is spawned directly.
+   * Bypasses the streaming pointer — entry is spawned directly,
+   * and affected bands are rebuilt immediately.
    */
   addEntry(entry: HeapEntry): void {
     this.data.push(entry);
+    this.dirtyBands.clear();
     this.spawnEntry(entry);
+
+    // Immediately rebuild affected bands (not deferred like generateUpTo)
+    if (this.edgeCollider) {
+      for (const bandTop of this.dirtyBands) {
+        const bucket = this.entryBuckets.get(bandTop);
+        if (bucket) {
+          this.edgeCollider.rebuildBand(bandTop, bucket, this.group);
+        }
+      }
+      this.dirtyBands.clear();
+    }
+  }
+
+  /**
+   * Server path: apply a pre-computed polygon for a band directly.
+   * Builds edge colliders and visuals without needing raw entries.
+   */
+  applyBandPolygon(bandTop: number, vertices: Vertex[]): void {
+    this.edgeCollider?.buildFromVertices(bandTop, vertices, this.group);
+    this.chunkRenderer?.renderFromPolygon(bandTop, vertices);
   }
 
   private spawnEntry(entry: HeapEntry): void {
     const def = OBJECT_DEFS[entry.keyid] ?? OBJECT_DEFS[0];
-    new Platform(this.scene, this.group, entry.x, entry.y, def.width, def.height, def.textureKey, false);
+
+    // Bucket the entry for edge collider rebuilds
+    const entryTop    = entry.y - def.height / 2;
+    const entryBottom = entry.y + def.height / 2;
+    const firstBand = Math.floor(entryTop    / CHUNK_BAND_HEIGHT) * CHUNK_BAND_HEIGHT;
+    const lastBand  = Math.floor(entryBottom / CHUNK_BAND_HEIGHT) * CHUNK_BAND_HEIGHT;
+
+    for (let band = firstBand; band <= lastBand; band += CHUNK_BAND_HEIGHT) {
+      let bucket = this.entryBuckets.get(band);
+      if (!bucket) {
+        bucket = [];
+        this.entryBuckets.set(band, bucket);
+      }
+      bucket.push(entry);
+      this.dirtyBands.add(band);
+    }
+
+    // Visuals (chunk renderer handles its own bucketing)
     this.chunkRenderer?.addEntry(entry);
+
     const platformTopY = entry.y - def.height / 2;
     this.onPlatformSpawned?.(entry, platformTopY);
   }
