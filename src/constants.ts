@@ -2,8 +2,8 @@ export const GAME_WIDTH = 480;
 export const GAME_HEIGHT = 854;
 export const WORLD_WIDTH = 960;           // wider than the 480px canvas
 
-export const PLAYER_WIDTH = 32;
-export const PLAYER_HEIGHT = 48;
+export const PLAYER_WIDTH = 40;
+export const PLAYER_HEIGHT = 46;
 export const PLAYER_SPEED = 200;          // px/sec horizontal
 export const PLAYER_JUMP_VELOCITY = -550; // px/sec vertical (negative = up)
 

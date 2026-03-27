@@ -50,6 +50,7 @@ export class MenuScene extends Phaser.Scene {
       });
     }
 
+    this.createResetButton();
     this.createSettingsButton();
 
     // Wait one frame before listening so the input that launched this scene
@@ -70,6 +71,32 @@ export class MenuScene extends Phaser.Scene {
           Phaser.Geom.Rectangle.Contains
         );
         upgradeText.once('pointerup', () => this.scene.start('UpgradeScene'));
+      }
+    });
+  }
+
+  private createResetButton(): void {
+    let confirmed = false;
+
+    const btn = this.add.text(16, GAME_HEIGHT - 16, 'Reset Save', {
+      fontSize: '13px',
+      color: '#ff6666',
+      stroke: '#000000',
+      strokeThickness: 2,
+    }).setOrigin(0, 1).setInteractive({ useHandCursor: true });
+
+    btn.on('pointerup', () => {
+      if (confirmed) {
+        resetAllData();
+        clearHeapAdditions();
+        this.scene.restart();
+      } else {
+        confirmed = true;
+        btn.setText('Confirm Reset?').setColor('#ff2222');
+        this.time.delayedCall(3000, () => {
+          confirmed = false;
+          btn.setText('Reset Save').setColor('#ff6666');
+        });
       }
     });
   }
