@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import {
   PLAYER_SPEED,
   PLAYER_JUMP_VELOCITY,
+  PLAYER_WIDTH,
   PLAYER_HEIGHT,
   WORLD_WIDTH,
   MOCK_HEAP_HEIGHT_PX,
@@ -32,6 +33,7 @@ export class Player {
   private wallJumpsRemaining: number = 0;
   private dashCooldown:       number = 0; // ms remaining
   private dashActive:         number = 0; // ms remaining of active dash
+  private coyoteTimer:        number = 0; // ms remaining of coyote-time grace
 
   // ── HUD accessors ──────────────────────────────────────────────────────────
   get dashCooldownFraction(): number  { return this.dashCooldown / DASH_COOLDOWN_MS; }
@@ -42,9 +44,11 @@ export class Player {
   get hasDash():              boolean { return this.dashEnabled; }
 
   constructor(scene: Phaser.Scene, x: number, y: number, config: PlayerConfig) {
-    this.sprite = scene.physics.add.sprite(x, y, 'player');
+    this.sprite = scene.physics.add.sprite(x, y, 'trashbag');
+    this.sprite.setDisplaySize(PLAYER_WIDTH, PLAYER_HEIGHT);
     // World bounds handled manually (X wrap + Y clamp) — do NOT setCollideWorldBounds
     this.sprite.body.setMaxVelocityY(PLAYER_MAX_FALL_SPEED);
+    this.sprite.body.setSize(PLAYER_WIDTH / this.sprite.scaleX, PLAYER_HEIGHT / this.sprite.scaleY);
     this.sprite.setDepth(10);
 
     this.maxAirJumps        = config.maxAirJumps;
@@ -63,12 +67,19 @@ export class Player {
   update(delta: number): void {
     const body     = this.sprite.body;
     const floorY   = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2;
-    const onGround = body.blocked.down || this.sprite.y >= floorY;
+    const onWall   = body.blocked.left || body.blocked.right;
+    // Filter spurious blocked.down from wall bodies: while sliding (velocity.y > 10)
+    // and touching a wall, a wall-face body can register as ground — ignore it.
+    const onGround = (body.blocked.down && !(onWall && body.velocity.y > 10))
+                   || this.sprite.y >= floorY;
 
-    // Landing resets air jump and wall jump counters
+    // Landing resets air jump and wall jump counters, and refreshes coyote window
     if (onGround) {
+      this.coyoteTimer        = 120;
       this.airJumpsRemaining  = this.maxAirJumps;
       this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
+    } else {
+      this.coyoteTimer = Math.max(0, this.coyoteTimer - delta);
     }
 
     // Horizontal movement — either scheme (skipped during active dash)
@@ -101,11 +112,13 @@ export class Player {
     }
 
     // Jump — JustDown prevents hold-spam
-    const jumpPressed = this.jumpKeys.some(k => Phaser.Input.Keyboard.JustDown(k)) || im.jumpJustPressed;
+    const jumpPressed    = this.jumpKeys.some(k => Phaser.Input.Keyboard.JustDown(k)) || im.jumpJustPressed;
+    const canGroundJump  = this.coyoteTimer > 0;
     if (jumpPressed) {
       const onWallForJump = this.wallJumpEnabled && (body.blocked.left || body.blocked.right);
-      if (onGround) {
+      if (canGroundJump) {
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
+        this.coyoteTimer = 0; // consume coyote window so it can't be reused
       } else if (!onWallForJump && this.airJumpsRemaining > 0) {
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
         this.airJumpsRemaining--;
@@ -114,7 +127,6 @@ export class Player {
 
     // Wall jump — jump off a wall surface (only when airborne, one charge per landing)
     if (this.wallJumpEnabled && !onGround && jumpPressed && this.wallJumpsRemaining > 0) {
-      const onWall = body.blocked.left || body.blocked.right;
       if (onWall) {
         const dir = body.blocked.left ? 1 : -1; // jump away from wall
         this.sprite.setVelocityX(dir * PLAYER_SPEED * 1.5);
@@ -124,7 +136,6 @@ export class Player {
     }
 
     // Wall slide — cap downward velocity when touching a wall while falling
-    const onWall = body.blocked.left || body.blocked.right;
     if (!onGround && onWall && body.velocity.y > WALL_SLIDE_SPEED) {
       this.sprite.setVelocityY(WALL_SLIDE_SPEED);
     }

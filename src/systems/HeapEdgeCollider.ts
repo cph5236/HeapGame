@@ -87,6 +87,9 @@ export class HeapEdgeCollider {
       const a = vertices[i];
       const b = vertices[(i + 1) % n];
 
+      // Cover the corner vertex itself — midpoint bodies leave an ~8px gap at each corner
+      bodies.push(this.createBody(group, a.x, a.y));
+
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const len = Math.sqrt(dx * dx + dy * dy);

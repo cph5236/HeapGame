@@ -66,18 +66,6 @@ export function computeBandScanlines(
 
   if (rows.length < 2) return [];
 
-  // Backward-fill: if the first entry doesn't start at bandTop, extend the
-  // silhouette up to bandTop using the first row's values.
-  if (rows[0].y > bandTop) {
-    const firstLeft  = rows[0].leftX;
-    const firstRight = rows[0].rightX;
-    const backfill: ScanlineRow[] = [];
-    for (let y = bandTop; y < rows[0].y; y += SCAN_STEP) {
-      backfill.push({ y, leftX: firstLeft, rightX: firstRight });
-    }
-    rows.unshift(...backfill);
-  }
-
   // Smooth left and right edges with a sliding-window average
   const smooth = (vals: number[]): number[] => {
     const half = Math.floor(SMOOTH_WINDOW / 2);

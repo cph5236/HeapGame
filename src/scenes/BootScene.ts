@@ -3,6 +3,7 @@ import { OBJECT_DEF_LIST } from '../data/heapObjectDefs';
 import { HEAP_PNG_URLS } from '../data/heapPngUrls';
 import { HEAP_FILL_TEXTURE } from '../constants';
 import compositeHeapUrl from '../assets/composite-heap.png?url';
+import trashbagUrl from '../sprites/player/trashbag.png?url';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -11,6 +12,7 @@ export class BootScene extends Phaser.Scene {
 
   preload(): void {
     this.load.image(HEAP_FILL_TEXTURE, compositeHeapUrl);
+    this.load.image('trashbag', trashbagUrl);
 
     for (const def of OBJECT_DEF_LIST) {
       this.load.image(def.textureKey, HEAP_PNG_URLS[def.textureKey]);
@@ -18,21 +20,12 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.createPlayerTexture();
     this.createPlatformTexture();
     this.createCloudTexture();
     this.createWallJumpTexture();
     this.createEnemyPercherTexture();
     this.createEnemyGhostTexture();
     this.scene.start('MenuScene');
-  }
-
-  private createPlayerTexture(): void {
-    const g = this.make.graphics({ x: 0, y: 0 }, false);
-    g.fillStyle(0x00ff88, 1);
-    g.fillRect(0, 0, 32, 48);
-    g.generateTexture('player', 32, 48);
-    g.destroy();
   }
 
   private createPlatformTexture(): void {
