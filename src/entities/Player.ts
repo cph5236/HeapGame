@@ -28,6 +28,7 @@ export class Player {
   private readonly maxAirJumps:      number;
   private readonly wallJumpEnabled:  boolean;
   private readonly dashEnabled:      boolean;
+  private readonly jumpBoost:        number;
 
   private airJumpsRemaining:  number = 0;
   private wallJumpsRemaining: number = 0;
@@ -54,6 +55,7 @@ export class Player {
     this.maxAirJumps        = config.maxAirJumps;
     this.wallJumpEnabled    = config.wallJump;
     this.dashEnabled        = config.dash;
+    this.jumpBoost          = config.jumpBoost;
     this.airJumpsRemaining  = this.maxAirJumps;
     this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
 
@@ -117,10 +119,10 @@ export class Player {
     if (jumpPressed) {
       const onWallForJump = this.wallJumpEnabled && (body.blocked.left || body.blocked.right);
       if (canGroundJump) {
-        this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
+        this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.coyoteTimer = 0; // consume coyote window so it can't be reused
       } else if (!onWallForJump && this.airJumpsRemaining > 0) {
-        this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
+        this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.airJumpsRemaining--;
       }
     }
@@ -130,7 +132,7 @@ export class Player {
       if (onWall) {
         const dir = body.blocked.left ? 1 : -1; // jump away from wall
         this.sprite.setVelocityX(dir * PLAYER_SPEED * 1.5);
-        this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
+        this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.wallJumpsRemaining--;
       }
     }

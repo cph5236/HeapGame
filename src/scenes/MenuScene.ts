@@ -5,167 +5,448 @@ import { clearHeapAdditions } from '../systems/HeapPersistence';
 import { InputManager } from '../systems/InputManager';
 
 export class MenuScene extends Phaser.Scene {
+  private farSilhouette!: Phaser.GameObjects.Graphics;
+  private nearSilhouette!: Phaser.GameObjects.Graphics;
+  private horizonGlow!: Phaser.GameObjects.Graphics;
+  private playerFigure!: Phaser.GameObjects.Image;
+  private titleShadow!: Phaser.GameObjects.Text;
+  private titleText!: Phaser.GameObjects.Text;
+  private taglineText!: Phaser.GameObjects.Text;
+  private balanceText!: Phaser.GameObjects.Text;
+  private startText!: Phaser.GameObjects.Text;
+  private upgradeText!: Phaser.GameObjects.Text;
+  private twinkleStars: Phaser.GameObjects.Graphics[] = [];
+  private resetConfirmed = false;
+
   constructor() {
     super({ key: 'MenuScene' });
   }
 
   create(): void {
+    this.twinkleStars = [];
+    this.resetConfirmed = false;
+
     const im = InputManager.getInstance();
 
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 120, 'HEAP', {
-      fontSize: '72px',
+    this.createSkyGradient();
+    this.createStarField();
+    this.createFarSilhouette();
+    this.createHorizonGlow();
+    this.createNearSilhouette();
+    this.createPlayerFigure();
+    this.createTitle();
+    this.createTagline();
+    this.createFloatingClouds();
+    this.createBalanceText();
+    this.createPrompts(im);
+    this.createSettingsButton();
+    this.runEntranceSequence();
+    this.registerInput(im);
+  }
+
+  // ── Sky ──────────────────────────────────────────────────────────────────────
+
+  private createSkyGradient(): void {
+    const bands: [number, number, number][] = [
+      [0,   47,  0x0a0818],
+      [47,  47,  0x0e0d24],
+      [94,  47,  0x121530],
+      [141, 47,  0x161c3a],
+      [188, 47,  0x1a2244],
+      [235, 47,  0x1e284e],
+      [282, 47,  0x222d55],
+      [329, 47,  0x2a3460],
+      [376, 47,  0x2e3860],
+      [423, 47,  0x37415e],
+      [470, 47,  0x4a4455],
+      [517, 47,  0x5c4840],
+      [564, 47,  0x6e4e30],
+      [611, 47,  0x7d5228],
+      [658, 47,  0x8a5520],
+      [705, 47,  0x7a4a1a],
+      [752, 47,  0x5e3a14],
+      [799, 55,  0x3e280e],
+    ];
+    const g = this.add.graphics().setDepth(0);
+    for (const [y, h, color] of bands) {
+      g.fillStyle(color, 1);
+      g.fillRect(0, y, GAME_WIDTH, h);
+    }
+  }
+
+  // ── Stars ────────────────────────────────────────────────────────────────────
+
+  private createStarField(): void {
+    const staticG = this.add.graphics().setDepth(1);
+
+    for (let i = 0; i < 68; i++) {
+      const x = Phaser.Math.Between(0, GAME_WIDTH);
+      const y = Phaser.Math.Between(0, 514);
+      const roll = Phaser.Math.Between(0, 9);
+      const r = roll < 6 ? 0.7 : roll < 9 ? 1.2 : 2.0;
+      const a = roll < 6 ? 0.9 : roll < 9 ? 0.55 : 0.25;
+      staticG.fillStyle(0xffffff, a);
+      staticG.fillCircle(x, y, r);
+    }
+
+    for (let i = 0; i < 12; i++) {
+      const g = this.add.graphics().setDepth(1);
+      const x = Phaser.Math.Between(0, GAME_WIDTH);
+      const y = Phaser.Math.Between(0, 514);
+      g.fillStyle(0xffffff, 1);
+      g.fillCircle(x, y, 1.2);
+      this.twinkleStars.push(g);
+    }
+  }
+
+  // ── Heap silhouettes ─────────────────────────────────────────────────────────
+
+  private createFarSilhouette(): void {
+    const points = [
+      { x: -20, y: 854 }, { x: -20, y: 700 }, { x: 10,  y: 660 }, { x: 40,  y: 680 },
+      { x: 60,  y: 620 }, { x: 90,  y: 590 }, { x: 115, y: 610 }, { x: 140, y: 570 },
+      { x: 170, y: 540 }, { x: 195, y: 560 }, { x: 220, y: 510 }, { x: 240, y: 440 },
+      { x: 265, y: 480 }, { x: 290, y: 455 }, { x: 320, y: 490 }, { x: 345, y: 520 },
+      { x: 370, y: 500 }, { x: 395, y: 540 }, { x: 420, y: 580 }, { x: 440, y: 555 },
+      { x: 460, y: 610 }, { x: 490, y: 640 }, { x: 500, y: 700 }, { x: 500, y: 854 },
+    ];
+    this.farSilhouette = this.add.graphics().setDepth(2).setAlpha(0);
+    this.farSilhouette.fillStyle(0x1a1225, 1);
+    this.farSilhouette.fillPoints(points, true);
+  }
+
+  private createNearSilhouette(): void {
+    const points = [
+      { x: 0,   y: 854 }, { x: 0,   y: 720 }, { x: 18,  y: 695 }, { x: 35,  y: 710 },
+      { x: 50,  y: 670 }, { x: 68,  y: 640 }, { x: 82,  y: 655 }, { x: 100, y: 615 },
+      { x: 118, y: 595 }, { x: 130, y: 610 }, { x: 148, y: 575 }, { x: 162, y: 548 },
+      { x: 175, y: 565 }, { x: 192, y: 530 }, { x: 208, y: 505 }, { x: 220, y: 520 },
+      { x: 235, y: 490 }, { x: 248, y: 465 }, { x: 255, y: 478 }, { x: 262, y: 450 },
+      { x: 268, y: 420 }, { x: 272, y: 395 }, { x: 278, y: 410 }, { x: 284, y: 388 },
+      { x: 290, y: 400 }, { x: 296, y: 415 }, { x: 304, y: 435 }, { x: 316, y: 455 },
+      { x: 328, y: 440 }, { x: 340, y: 465 }, { x: 355, y: 490 }, { x: 368, y: 475 },
+      { x: 382, y: 505 }, { x: 395, y: 530 }, { x: 408, y: 515 }, { x: 422, y: 545 },
+      { x: 438, y: 570 }, { x: 450, y: 555 }, { x: 462, y: 590 }, { x: 472, y: 625 },
+      { x: 480, y: 660 }, { x: 480, y: 854 },
+    ];
+    this.nearSilhouette = this.add.graphics().setDepth(4).setAlpha(0);
+    this.nearSilhouette.fillStyle(0x0d0910, 1);
+    this.nearSilhouette.fillPoints(points, true);
+  }
+
+  // ── Horizon glow ─────────────────────────────────────────────────────────────
+
+  private createHorizonGlow(): void {
+    this.horizonGlow = this.add.graphics().setDepth(3).setAlpha(0);
+    this.horizonGlow.fillStyle(0xff8833, 0.12);
+    this.horizonGlow.fillEllipse(GAME_WIDTH / 2, 450, 460, 60);
+    this.horizonGlow.fillStyle(0xff6611, 0.07);
+    this.horizonGlow.fillEllipse(GAME_WIDTH / 2, 445, 360, 40);
+    this.horizonGlow.fillStyle(0xffaa44, 0.05);
+    this.horizonGlow.fillEllipse(GAME_WIDTH / 2, 455, 300, 25);
+  }
+
+  // ── Player figure ────────────────────────────────────────────────────────────
+
+  private createPlayerFigure(): void {
+    this.playerFigure = this.add.image(284, 388, 'trashbag')
+      .setOrigin(0.5, 1.0)
+      .setScale(0.9)
+      .setDepth(5)
+      .setAlpha(0);
+  }
+
+  // ── Title ────────────────────────────────────────────────────────────────────
+
+  private createTitle(): void {
+    this.titleShadow = this.add.text(244, 306, 'HEAP', {
+      fontSize: '96px',
+      fontStyle: 'bold',
+      color: '#000000',
+      stroke: '#000000',
+      strokeThickness: 12,
+    }).setOrigin(0.5).setAlpha(0).setDepth(6);
+
+    this.titleText = this.add.text(240, 300, 'HEAP', {
+      fontSize: '96px',
+      fontStyle: 'bold',
+      color: '#ff9922',
+      stroke: '#1a0800',
+      strokeThickness: 8,
+    }).setOrigin(0.5).setAlpha(0).setDepth(6);
+  }
+
+  // ── Tagline ──────────────────────────────────────────────────────────────────
+
+  private createTagline(): void {
+    this.taglineText = this.add.text(GAME_WIDTH / 2, 368, 'How high can you climb?', {
+      fontSize: '18px',
+      fontStyle: 'italic',
+      color: '#cc9966',
+      stroke: '#000000',
+      strokeThickness: 2,
+    }).setOrigin(0.5).setAlpha(0).setDepth(7);
+  }
+
+  // ── Floating clouds ──────────────────────────────────────────────────────────
+
+  private createFloatingClouds(): void {
+    const data: [number, number, number, boolean, number][] = [
+      [480,  80,  2.2, true,  18000],
+      [300,  155, 1.4, true,  22000],
+      [100,  220, 3.0, true,  28000],
+      [-32,  310, 1.8, false, 20000],
+      [200,  420, 1.2, true,  16000],
+    ];
+    const alphas = [0.55, 0.65, 0.5, 0.6, 0.7];
+    data.forEach(([x, y, scale, goLeft, duration], i) => {
+      this.spawnCloud(x, y, scale, goLeft, duration, alphas[i]);
+    });
+  }
+
+  private spawnCloud(x: number, y: number, scaleVal: number, goLeft: boolean, duration: number, alpha: number): void {
+    const cloud = this.add.image(x, y, 'cloud')
+      .setScale(scaleVal)
+      .setAlpha(alpha)
+      .setDepth(3)
+      .setScrollFactor(0);
+
+    const offscreen = 32 * scaleVal + 10;
+    const targetX = goLeft ? -offscreen : GAME_WIDTH + offscreen;
+    const startX  = goLeft ? GAME_WIDTH + offscreen : -offscreen;
+
+    const doTween = () => {
+      this.tweens.add({
+        targets: cloud,
+        x: targetX,
+        duration,
+        ease: 'Linear',
+        onComplete: () => {
+          cloud.setX(startX);
+          doTween();
+        },
+      });
+    };
+    doTween();
+  }
+
+  // ── Balance ──────────────────────────────────────────────────────────────────
+
+  private createBalanceText(): void {
+    this.balanceText = this.add.text(GAME_WIDTH / 2, 615, `${getBalance()} coins`, {
+      fontSize: '16px',
+      color: '#ffdd77',
+      stroke: '#000000',
+      strokeThickness: 2,
+    }).setOrigin(0.5).setAlpha(0).setDepth(8);
+  }
+
+  // ── Start / Upgrade prompts ──────────────────────────────────────────────────
+
+  private createPrompts(im: InputManager): void {
+    const startLabel   = im.isMobile ? 'TAP  \u2014  Start run'  : 'SPACE  \u2014  Start run';
+    const upgradeLabel = im.isMobile ? 'TAP  \u2014  Upgrades'   : 'U  \u2014  Upgrades';
+
+    this.startText = this.add.text(GAME_WIDTH / 2, 640, startLabel, {
+      fontSize: '24px',
+      fontStyle: 'bold',
       color: '#ffffff',
       stroke: '#000000',
-      strokeThickness: 6,
-    }).setOrigin(0.5);
+      strokeThickness: 3,
+    }).setOrigin(0.5).setAlpha(0).setDepth(9);
 
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20, `Balance: ${getBalance()} coins`, {
-      fontSize: '18px',
-      color: '#aaddff',
-    }).setOrigin(0.5);
-
-    const startLabel = im.isMobile ? 'TAP \u2014 Start run' : 'SPACE \u2014 Start run';
-    const startText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 40, startLabel, {
-      fontSize: '22px',
-      color: '#ffffff',
-    }).setOrigin(0.5);
-
-    const upgradeLabel = im.isMobile ? 'TAP \u2014 Upgrades' : 'U \u2014 Upgrades';
-    const upgradeText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 85, upgradeLabel, {
-      fontSize: '22px',
+    this.upgradeText = this.add.text(GAME_WIDTH / 2, 700, upgradeLabel, {
+      fontSize: '20px',
       color: '#ffdd44',
-    }).setOrigin(0.5);
+      stroke: '#000000',
+      strokeThickness: 2,
+    }).setOrigin(0.5).setAlpha(0).setDepth(9);
 
-    // iOS tilt permission button
     if (im.isMobile && !im.tiltPermissionGranted) {
-      const tiltBtn = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 140,
-        'Enable Tilt Controls', {
-          fontSize: '18px',
-          color: '#88aaff',
-          stroke: '#000000',
-          strokeThickness: 2,
-        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      const tiltBtn = this.add.text(GAME_WIDTH / 2, 760, 'Enable Tilt Controls', {
+        fontSize: '17px',
+        color: '#88aaff',
+        stroke: '#000000',
+        strokeThickness: 2,
+      }).setOrigin(0.5).setAlpha(0).setDepth(9).setInteractive({ useHandCursor: true });
+
       tiltBtn.on('pointerup', () => {
         im.requestTiltPermission().then(() => tiltBtn.setVisible(false));
       });
+
+      this.tweens.add({ targets: tiltBtn, alpha: 1, duration: 300, delay: 2000 });
     }
-
-    this.createResetButton();
-    this.createSettingsButton();
-
-    // Wait one frame before listening so the input that launched this scene
-    // doesn't immediately trigger anything
-    this.time.delayedCall(100, () => {
-      this.input.keyboard!.once('keydown-SPACE', () => this.scene.start('GameScene'));
-      this.input.keyboard!.once('keydown-U',     () => this.scene.start('UpgradeScene'));
-
-      if (im.isMobile) {
-        startText.setInteractive(
-          new Phaser.Geom.Rectangle(-200, -35, 400, 70),
-          Phaser.Geom.Rectangle.Contains
-        );
-        startText.once('pointerup', () => this.scene.start('GameScene'));
-
-        upgradeText.setInteractive(
-          new Phaser.Geom.Rectangle(-200, -35, 400, 70),
-          Phaser.Geom.Rectangle.Contains
-        );
-        upgradeText.once('pointerup', () => this.scene.start('UpgradeScene'));
-      }
-    });
   }
 
-  private createResetButton(): void {
-    let confirmed = false;
-
-    const btn = this.add.text(16, GAME_HEIGHT - 16, 'Reset Save', {
-      fontSize: '13px',
-      color: '#ff6666',
-      stroke: '#000000',
-      strokeThickness: 2,
-    }).setOrigin(0, 1).setInteractive({ useHandCursor: true });
-
-    btn.on('pointerup', () => {
-      if (confirmed) {
-        resetAllData();
-        clearHeapAdditions();
-        this.scene.restart();
-      } else {
-        confirmed = true;
-        btn.setText('Confirm Reset?').setColor('#ff2222');
-        this.time.delayedCall(3000, () => {
-          confirmed = false;
-          btn.setText('Reset Save').setColor('#ff6666');
-        });
-      }
-    });
-  }
+  // ── Settings button ──────────────────────────────────────────────────────────
 
   private createSettingsButton(): void {
     const bx = GAME_WIDTH - 22;
     const by = GAME_HEIGHT - 22;
 
-    // Circle background
-    const btnGfx = this.add.graphics();
+    const btnGfx = this.add.graphics().setDepth(20);
     btnGfx.fillStyle(0x000000, 0.65);
     btnGfx.fillCircle(bx, by, 14);
     btnGfx.lineStyle(2, 0x8899bb, 1);
     btnGfx.strokeCircle(bx, by, 14);
 
-    // Gear icon
     this.add.text(bx, by, '\u2699', {
       fontSize: '16px', color: '#ddddff',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(20);
 
-    // Hit zone
-    const hitZone = this.add.zone(bx, by, 36, 36);
+    const hitZone = this.add.zone(bx, by, 36, 36).setDepth(20);
     hitZone.setInteractive({ useHandCursor: true });
 
-    // Overlay (hidden by default)
+    // Overlay
     const overlayBg = this.add.rectangle(
       GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.72,
-    ).setDepth(10).setVisible(false).setInteractive();
+    ).setDepth(30).setVisible(false).setInteractive();
 
     const panel = this.add.rectangle(
-      GAME_WIDTH / 2, GAME_HEIGHT / 2, 340, 240, 0x0d0d20,
-    ).setDepth(11).setVisible(false).setStrokeStyle(2, 0x4455aa);
+      GAME_WIDTH / 2, GAME_HEIGHT / 2, 360, 280, 0x0d0d20,
+    ).setDepth(31).setVisible(false).setStrokeStyle(2, 0x4455aa);
 
-    const title = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 90, 'SETTINGS', {
+    const title = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 105, 'SETTINGS', {
       fontSize: '28px', color: '#ffffff',
       stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5).setDepth(12).setVisible(false);
+    }).setOrigin(0.5).setDepth(32).setVisible(false);
+
+    // Close button
+    const closeBtn = this.add.text(GAME_WIDTH / 2 + 155, GAME_HEIGHT / 2 - 120, '\u2715', {
+      fontSize: '20px', color: '#aaaaaa',
+    }).setOrigin(0.5).setDepth(32).setVisible(false).setInteractive({ useHandCursor: true });
 
     // Reset button
     const resetBg = this.add.rectangle(
-      GAME_WIDTH / 2, GAME_HEIGHT / 2, 240, 50, 0x881111,
-    ).setDepth(12).setVisible(false).setStrokeStyle(2, 0xff4444)
+      GAME_WIDTH / 2, GAME_HEIGHT / 2, 260, 52, 0x881111,
+    ).setDepth(32).setVisible(false).setStrokeStyle(2, 0xff4444)
       .setInteractive({ useHandCursor: true });
 
     const resetLabel = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'Reset All Data', {
       fontSize: '20px', color: '#ffffff', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(13).setVisible(false);
+    }).setOrigin(0.5).setDepth(33).setVisible(false);
 
     const resetWarning = this.add.text(
-      GAME_WIDTH / 2, GAME_HEIGHT / 2 + 50,
+      GAME_WIDTH / 2, GAME_HEIGHT / 2 + 56,
       'Clears all coins, upgrades\nand placed blocks.',
-      {
-        fontSize: '14px', color: '#aa8888', align: 'center',
-      },
-    ).setOrigin(0.5).setDepth(12).setVisible(false);
+      { fontSize: '14px', color: '#aa8888', align: 'center' },
+    ).setOrigin(0.5).setDepth(32).setVisible(false);
 
-    const overlayParts = [overlayBg, panel, title, resetBg, resetLabel, resetWarning];
-
+    const overlayParts = [overlayBg, panel, title, closeBtn, resetBg, resetLabel, resetWarning];
     const open  = () => overlayParts.forEach(p => p.setVisible(true));
-    const close = () => overlayParts.forEach(p => p.setVisible(false));
+    const close = () => {
+      overlayParts.forEach(p => p.setVisible(false));
+      // Reset confirmation state when closing
+      this.resetConfirmed = false;
+      resetLabel.setText('Reset All Data');
+      resetBg.setFillStyle(0x881111);
+      resetWarning.setText('Clears all coins, upgrades\nand placed blocks.').setColor('#aa8888');
+    };
 
     hitZone.on('pointerup', open);
     overlayBg.on('pointerup', close);
+    closeBtn.on('pointerup', close);
 
     resetBg.on('pointerup', () => {
-      resetAllData();
-      clearHeapAdditions();
-      this.scene.restart();
+      if (!this.resetConfirmed) {
+        this.resetConfirmed = true;
+        resetLabel.setText('Confirm? Tap again');
+        resetBg.setFillStyle(0xcc2200);
+        resetWarning.setText('This cannot be undone!').setColor('#ff6666');
+        this.time.delayedCall(4000, () => {
+          if (this.resetConfirmed) {
+            this.resetConfirmed = false;
+            resetLabel.setText('Reset All Data');
+            resetBg.setFillStyle(0x881111);
+            resetWarning.setText('Clears all coins, upgrades\nand placed blocks.').setColor('#aa8888');
+          }
+        });
+      } else {
+        resetAllData();
+        clearHeapAdditions();
+        this.scene.restart();
+      }
+    });
+  }
+
+  // ── Entrance animation ───────────────────────────────────────────────────────
+
+  private runEntranceSequence(): void {
+    this.tweens.add({ targets: this.farSilhouette,  alpha: 1,    duration: 600, delay: 0    });
+    this.tweens.add({ targets: this.nearSilhouette, alpha: 1,    duration: 600, delay: 300  });
+    this.tweens.add({ targets: this.horizonGlow,    alpha: 1,    duration: 400, delay: 600  });
+    this.tweens.add({ targets: this.playerFigure,   alpha: 0.85, duration: 500, delay: 700  });
+    this.tweens.add({ targets: this.titleShadow,    alpha: 0.65, duration: 400, delay: 900  });
+    this.tweens.add({ targets: this.titleText,      alpha: 1,    duration: 500, delay: 1000 });
+    this.tweens.add({ targets: this.taglineText,    alpha: 1,    duration: 400, delay: 1300 });
+    this.tweens.add({ targets: this.balanceText,    alpha: 1,    duration: 300, delay: 1500 });
+    this.tweens.add({
+      targets: this.startText,
+      alpha: 1,
+      duration: 400,
+      delay: 1700,
+      onComplete: () => this.startPulse(),
+    });
+    this.tweens.add({ targets: this.upgradeText, alpha: 1, duration: 300, delay: 1900 });
+
+    this.time.delayedCall(2100, () => this.startTwinkle());
+
+    // Player idle bob (start immediately — subtle at 0 alpha, becomes visible with fade)
+    this.tweens.add({
+      targets: this.playerFigure,
+      y: 388 - 4,
+      duration: 1800,
+      yoyo: true,
+      loop: -1,
+      ease: 'Sine.easeInOut',
+    });
+  }
+
+  private startPulse(): void {
+    this.tweens.add({
+      targets: this.startText,
+      alpha: { from: 1.0, to: 0.35 },
+      duration: 900,
+      yoyo: true,
+      loop: -1,
+      ease: 'Sine.easeInOut',
+    });
+  }
+
+  private startTwinkle(): void {
+    for (const star of this.twinkleStars) {
+      this.tweens.add({
+        targets: star,
+        alpha: { from: 0.9, to: 0.15 },
+        duration: Phaser.Math.Between(1200, 2800),
+        yoyo: true,
+        loop: -1,
+        delay: Phaser.Math.Between(0, 2000),
+      });
+    }
+  }
+
+  // ── Input ────────────────────────────────────────────────────────────────────
+
+  private registerInput(im: InputManager): void {
+    this.time.delayedCall(100, () => {
+      this.input.keyboard!.once('keydown-SPACE', () => this.scene.start('GameScene'));
+      this.input.keyboard!.once('keydown-U',     () => this.scene.start('UpgradeScene'));
+
+      if (im.isMobile) {
+        this.startText.setInteractive(
+          new Phaser.Geom.Rectangle(-200, -35, 400, 70),
+          Phaser.Geom.Rectangle.Contains,
+        );
+        this.startText.once('pointerup', () => this.scene.start('GameScene'));
+
+        this.upgradeText.setInteractive(
+          new Phaser.Geom.Rectangle(-200, -35, 400, 70),
+          Phaser.Geom.Rectangle.Contains,
+        );
+        this.upgradeText.once('pointerup', () => this.scene.start('UpgradeScene'));
+      }
     });
   }
 }

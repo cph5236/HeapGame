@@ -12,6 +12,9 @@ export interface PlayerConfig {
   wallJump:        boolean;
   dash:            boolean;
   moneyMultiplier: number;
+  jumpBoost:       number; // px/s added to jump magnitude (0, 70, 150, 240)
+  stompBonus:      number; // coins per enemy stomp (25, 50, 90, 150)
+  peakMultiplier:  number; // peak coin multiplier (1.25, 1.40, 1.60, 1.85)
 }
 
 const DEFAULT: RawSave = { balance: 0, upgrades: {} };
@@ -69,10 +72,16 @@ export function resetAllData(): void {
 }
 
 export function getPlayerConfig(): PlayerConfig {
+  const jl = getUpgradeLevel('jump_boost');
+  const sl = getUpgradeLevel('stomp_gold');
+  const pl = getUpgradeLevel('peak_hunter');
   return {
     maxAirJumps:     1 + getUpgradeLevel('air_jump'),
     wallJump:        getUpgradeLevel('wall_jump') > 0,
     dash:            getUpgradeLevel('dash') > 0,
     moneyMultiplier: 1 + getUpgradeLevel('money_mult') * 0.1,
+    jumpBoost:       [0, 70, 150, 240][jl],
+    stompBonus:      [25, 50, 90, 150][sl],
+    peakMultiplier:  [1.25, 1.40, 1.60, 1.85][pl],
   };
 }

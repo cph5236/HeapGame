@@ -53,6 +53,12 @@ export const SWIPE_DIRECTION_RATIO = 2.0; // |dx|/|dy| must exceed this to be a 
 export const CHUNK_BAND_HEIGHT = 500; // px per visual silhouette band
 export const HEAP_FILL_TEXTURE = 'composite-heap';
 
+// ── Parallax Background ───────────────────────────────────────────────────────
+export const CLOUD_POOL_SIZE        = 14;     // max number of clouds at once; set based on density and screen height
+export const CLOUD_PARALLAX_FACTOR  = 0.15;   // clouds move at 30% of camera speed
+export const CLOUD_START_WORLD_Y    = 50_000; // show clouds everywhere; lower (e.g. 40_000) to gate by height
+export const GROUND_LAYER_HEIGHT    = 180;    // total depth of dirt cross-section in px
+
 // Enemies
 export const ENEMY_PERCHER_WIDTH        = 24;
 export const ENEMY_PERCHER_HEIGHT       = 24;

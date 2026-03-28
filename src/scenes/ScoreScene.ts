@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, SCORE_TO_COINS_DIVISOR, PEAK_COIN_MULTIPLIER } from '../constants';
+import { GAME_WIDTH, GAME_HEIGHT, SCORE_TO_COINS_DIVISOR } from '../constants';
 import { addBalance, getBalance, getPlayerConfig } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 
@@ -17,9 +17,11 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   create(): void {
-    const mult      = getPlayerConfig().moneyMultiplier;
+    const cfg       = getPlayerConfig();
+    const mult      = cfg.moneyMultiplier;
+    const peakMult  = cfg.peakMultiplier;
     const baseCoins = Math.floor(this.score / SCORE_TO_COINS_DIVISOR * mult);
-    const coins     = this.isPeak ? Math.floor(baseCoins * PEAK_COIN_MULTIPLIER) : baseCoins;
+    const coins     = this.isPeak ? Math.floor(baseCoins * peakMult) : baseCoins;
     addBalance(coins);
     const balance = getBalance();
 
@@ -48,7 +50,7 @@ export class ScoreScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     if (this.isPeak) {
-      this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 55, 'PEAK BONUS \u00d71.25!', {
+      this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 55, `PEAK BONUS \u00d7${peakMult.toFixed(2)}!`, {
         fontSize: '20px',
         color: '#ffdd44',
         stroke: '#000000',

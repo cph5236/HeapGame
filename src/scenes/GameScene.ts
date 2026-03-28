@@ -4,7 +4,7 @@ import { HeapGenerator } from '../systems/HeapGenerator';
 import { findSurfaceY } from '../systems/HeapSurface';
 import { DEV_HEAP } from '../data/devHeap';
 import { OBJECT_DEFS, HEAP_ITEM_COUNT } from '../data/heapObjectDefs';
-import { getPlayerConfig } from '../systems/SaveData';
+import { getPlayerConfig, PlayerConfig } from '../systems/SaveData';
 import { loadHeapAdditions, persistHeapEntry } from '../systems/HeapPersistence';
 import { HeapEntry } from '../data/heapTypes';
 import { HUD } from '../ui/HUD';
@@ -25,6 +25,7 @@ import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
+import { ParallaxBackground } from '../systems/ParallaxBackground';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -49,6 +50,8 @@ export class GameScene extends Phaser.Scene {
   private invincible = false;
   private debugMode = false;
   private debugText?: Phaser.GameObjects.Text;
+  private parallaxBg!: ParallaxBackground;
+  private playerConfig!: PlayerConfig;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -69,7 +72,8 @@ export class GameScene extends Phaser.Scene {
 
     // Spawn player at world floor (left clear zone) — player climbs up through the heap
     this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
-    this.player = new Player(this, WORLD_WIDTH * 0.0625, this.spawnY, getPlayerConfig());
+    this.playerConfig = getPlayerConfig();
+    this.player = new Player(this, WORLD_WIDTH * 0.0625, this.spawnY, this.playerConfig);
 
     // Stream an initial chunk of platforms around and above spawn
     this.highestGeneratedY = this.spawnY;
@@ -105,6 +109,9 @@ export class GameScene extends Phaser.Scene {
     // Snap camera to player immediately so the first-frame cull threshold
     // is correct (otherwise camBottom ≈ 0 and all bottom-world chunks get culled).
     this.cameras.main.centerOn(this.player.sprite.x, this.player.sprite.y);
+
+    // Background layers (sky colour set in main.ts; this adds ground dirt + parallax clouds)
+    this.parallaxBg = new ParallaxBackground(this);
 
     // Debug overlay (F2 to toggle)
     this.debugText = this.add.text(8, 8, '', {
@@ -168,6 +175,7 @@ export class GameScene extends Phaser.Scene {
     im.update(delta, inTopZone);
 
     this.player.update(delta);
+    this.parallaxBg.update();
     this.hud.update();
 
     const cam       = this.cameras.main;
@@ -305,7 +313,7 @@ export class GameScene extends Phaser.Scene {
   ): boolean => {
     const p = player as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
     const e = enemy as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
-    return p.body.velocity.y > 0 && (p.y + p.height / 2) <= (e.y + 4);
+    return p.body.velocity.y > 0 && p.body.center.y < e.body.center.y;
   };
 
   private readonly isDamaging = (
@@ -325,9 +333,10 @@ export class GameScene extends Phaser.Scene {
     e.destroy();
 
     this.player.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
-    addBalance(25);
+    const stompReward = this.playerConfig.stompBonus;
+    addBalance(stompReward);
 
-    const marker = this.add.text(stompX, stompY - 16, '+25', {
+    const marker = this.add.text(stompX, stompY - 16, `+${stompReward}`, {
       fontSize: '22px', color: '#ffdd44',
       stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(50);
