@@ -7,6 +7,8 @@ interface RawSave {
   upgrades: Record<string, number>; // upgradeId → current level
 }
 
+let _cache: RawSave | null = null;
+
 export interface PlayerConfig {
   maxAirJumps:     number;
   wallJump:        boolean;
@@ -20,14 +22,22 @@ export interface PlayerConfig {
 const DEFAULT: RawSave = { balance: 0, upgrades: {} };
 
 function load(): RawSave {
+  if (_cache) return _cache;
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) return { ...DEFAULT, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed: RawSave = { ...DEFAULT, ...JSON.parse(raw) };
+      _cache = parsed;
+      return parsed;
+    }
   } catch { /* corrupted save — fall through to default */ }
-  return { ...DEFAULT, upgrades: {} };
+  const fresh: RawSave = { ...DEFAULT, upgrades: {} };
+  _cache = fresh;
+  return fresh;
 }
 
 function persist(data: RawSave): void {
+  _cache = data;
   localStorage.setItem(SAVE_KEY, JSON.stringify(data));
 }
 
@@ -68,6 +78,7 @@ export function purchaseUpgrade(id: string): boolean {
 
 /** Wipe all saved progress — balance, upgrades. */
 export function resetAllData(): void {
+  _cache = null;
   localStorage.removeItem(SAVE_KEY);
 }
 

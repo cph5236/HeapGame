@@ -41,9 +41,11 @@ export class EnemyManager {
   /** Call every frame with current camera bounds. */
   update(_camTop: number, camBottom: number): void {
     // Cull enemies that have scrolled far below the camera
-    for (const go of this.group.getChildren().slice()) {
-      const s = go as Phaser.Physics.Arcade.Sprite;
-      if (s.y > camBottom + ENEMY_CULL_DISTANCE) s.destroy();
+    const children = this.group.getChildren();
+    const cullY = camBottom + ENEMY_CULL_DISTANCE;
+    for (let i = children.length - 1; i >= 0; i--) {
+      const s = children[i] as Phaser.Physics.Arcade.Sprite;
+      if (s.y > cullY) s.destroy();
     }
   }
 

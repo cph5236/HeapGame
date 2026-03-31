@@ -29,6 +29,24 @@ export class HeapChunkRenderer {
     this.scene = scene;
   }
 
+  /**
+   * Register an entry in the internal buckets WITHOUT triggering a re-render.
+   * Used by the worker path so that later addEntry() calls see all previous entries
+   * when they recompute the polygon for a band.
+   */
+  registerEntry(entry: HeapEntry): void {
+    const def = OBJECT_DEFS[entry.keyid] ?? OBJECT_DEFS[0];
+    const entryTop    = entry.y - def.height / 2;
+    const entryBottom = entry.y + def.height / 2;
+    const firstBand = Math.floor(entryTop    / CHUNK_BAND_HEIGHT) * CHUNK_BAND_HEIGHT;
+    const lastBand  = Math.floor(entryBottom / CHUNK_BAND_HEIGHT) * CHUNK_BAND_HEIGHT;
+    for (let band = firstBand; band <= lastBand; band += CHUNK_BAND_HEIGHT) {
+      let bucket = this.buckets.get(band);
+      if (!bucket) { bucket = []; this.buckets.set(band, bucket); }
+      bucket.push(entry);
+    }
+  }
+
   /** Register a new heap entry and redraw its chunk(s). */
   addEntry(entry: HeapEntry): void {
     const def = OBJECT_DEFS[entry.keyid] ?? OBJECT_DEFS[0];

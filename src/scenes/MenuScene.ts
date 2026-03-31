@@ -215,19 +215,14 @@ export class MenuScene extends Phaser.Scene {
     const targetX = goLeft ? -offscreen : GAME_WIDTH + offscreen;
     const startX  = goLeft ? GAME_WIDTH + offscreen : -offscreen;
 
-    const doTween = () => {
-      this.tweens.add({
-        targets: cloud,
-        x: targetX,
-        duration,
-        ease: 'Linear',
-        onComplete: () => {
-          cloud.setX(startX);
-          doTween();
-        },
-      });
-    };
-    doTween();
+    this.tweens.add({
+      targets: cloud,
+      x: targetX,
+      duration,
+      ease: 'Linear',
+      repeat: -1,
+      onRepeat: () => { cloud.setX(startX); },
+    });
   }
 
   // ── Balance ──────────────────────────────────────────────────────────────────

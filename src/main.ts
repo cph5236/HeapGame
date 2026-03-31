@@ -21,6 +21,14 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
+  render: {
+    antialias: true,
+    roundPixels: true,
+  },
+  fps: {
+    target: 60,
+    smoothStep: true,
+  },
   scene: [BootScene, MenuScene, GameScene, ScoreScene, UpgradeScene],
   parent: 'game',
 };

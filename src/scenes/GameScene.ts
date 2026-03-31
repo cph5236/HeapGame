@@ -52,6 +52,12 @@ export class GameScene extends Phaser.Scene {
   private debugText?: Phaser.GameObjects.Text;
   private parallaxBg!: ParallaxBackground;
   private playerConfig!: PlayerConfig;
+  private im!: InputManager;
+  private _lastScore = -1;
+  private _ghostLastX = NaN;
+  private _ghostLastSurfaceY = NaN;
+  private _ghostLastValid: boolean | null = null;
+  private _ghostLastInZone = false;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -75,9 +81,9 @@ export class GameScene extends Phaser.Scene {
     this.playerConfig = getPlayerConfig();
     this.player = new Player(this, WORLD_WIDTH * 0.0625, this.spawnY, this.playerConfig);
 
-    // Stream an initial chunk of platforms around and above spawn
+    // Stream an initial chunk synchronously so collision is ready before the first frame
     this.highestGeneratedY = this.spawnY;
-    this.generateUpTo(this.spawnY - GEN_LOOKAHEAD);
+    this.generateUpTo(this.spawnY - GEN_LOOKAHEAD, true);
 
     // Collider: player lands on top of platforms
     this.physics.add.collider(this.player.sprite, this.platforms);
@@ -125,7 +131,8 @@ export class GameScene extends Phaser.Scene {
     // Placement ghost (world-space, scrolls with camera)
     this.placementGhost = this.add.graphics().setDepth(15);
 
-    const im = InputManager.getInstance();
+    this.im = InputManager.getInstance();
+    const im = this.im;
 
     // HUD: score (always visible)
     this.scoreText = this.add.text(GAME_WIDTH / 2, 30, 'Score: 0', {
@@ -170,7 +177,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    const im = InputManager.getInstance();
+    const im = this.im;
     const inTopZone = this.player.sprite.y < this.heapGenerator.topY + HEAP_TOP_ZONE_PX;
     im.update(delta, inTopZone);
 
@@ -186,7 +193,10 @@ export class GameScene extends Phaser.Scene {
     this.chunkRenderer.cullChunks(camBottom);
     this.edgeCollider.cullBands(camBottom, 2000);
 
-    // Stream-generate platforms as player climbs upward
+    // Flush any worker results from the previous frame into Phaser objects
+    this.heapGenerator.flushWorkerResults();
+
+    // Stream-generate platforms as player climbs upward (async via worker)
     if (camTop < this.highestGeneratedY + GEN_LOOKAHEAD) {
       this.generateUpTo(camTop - GEN_LOOKAHEAD);
     }
@@ -202,7 +212,10 @@ export class GameScene extends Phaser.Scene {
 
     // Live score: pixels climbed from spawn
     const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
-    this.scoreText.setText(`Score: ${score}`);
+    if (score !== this._lastScore) {
+      this._lastScore = score;
+      this.scoreText.setText(`Score: ${score}`);
+    }
 
     // Top zone UI
     const showPlaceUI = inTopZone && !this.blockPlaced;
@@ -237,25 +250,56 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private generateUpTo(targetY: number): void {
-    this.heapGenerator.generateUpTo(targetY);
+  private generateUpTo(targetY: number, forceSync = false): void {
+    if (forceSync) {
+      this.heapGenerator.generateUpToSync(targetY);
+    } else {
+      this.heapGenerator.generateUpTo(targetY);
+    }
     this.highestGeneratedY = targetY;
   }
 
   private updatePlacementGhost(inTopZone: boolean): void {
-    this.placementGhost.clear();
-    if (!inTopZone || this.blockPlaced) return;
+    const active = inTopZone && !this.blockPlaced;
 
-    const def      = OBJECT_DEFS[0];
-    const px       = this.player.sprite.x;
+    // Clear once when leaving the active state
+    if (!active) {
+      if (this._ghostLastInZone) {
+        this.placementGhost.clear();
+        this._ghostLastX = NaN;
+        this._ghostLastSurfaceY = NaN;
+        this._ghostLastValid = null;
+        this._ghostLastInZone = false;
+      }
+      return;
+    }
+
+    const def = OBJECT_DEFS[0];
+    const px  = this.player.sprite.x;
+
+    // Skip redraw if player hasn't moved meaningfully
+    if (Math.abs(px - this._ghostLastX) < 0.5 && this._ghostLastInZone) return;
+
     const surfaceY = findSurfaceY(px, def.width, this.heapGenerator.entries);
-    if (surfaceY >= MOCK_HEAP_HEIGHT_PX) return; // no surface below — hide ghost
+
+    if (surfaceY >= MOCK_HEAP_HEIGHT_PX) {
+      // No surface — clear if we previously drew something
+      if (this._ghostLastSurfaceY < MOCK_HEAP_HEIGHT_PX) this.placementGhost.clear();
+      this._ghostLastX = px;
+      this._ghostLastSurfaceY = surfaceY;
+      this._ghostLastInZone = true;
+      return;
+    }
 
     const minX  = WORLD_WIDTH * 0.125 + def.width / 2;
     const maxX  = WORLD_WIDTH * 0.875 - def.width / 2;
     const valid = px >= minX && px <= maxX;
 
+    // Skip redraw if nothing has changed
+    if (px === this._ghostLastX && valid === this._ghostLastValid && this._ghostLastInZone) return;
+
     const ghostY = surfaceY - def.height / 2;
+    this.placementGhost.clear();
 
     if (valid) {
       this.placementGhost.fillStyle(0x44aaff, 0.45);
@@ -266,6 +310,11 @@ export class GameScene extends Phaser.Scene {
     }
     this.placementGhost.fillRect(px - def.width / 2, ghostY - def.height / 2, def.width, def.height);
     this.placementGhost.strokeRect(px - def.width / 2, ghostY - def.height / 2, def.width, def.height);
+
+    this._ghostLastX = px;
+    this._ghostLastSurfaceY = surfaceY;
+    this._ghostLastValid = valid;
+    this._ghostLastInZone = true;
   }
 
   private placeBlock(): void {
