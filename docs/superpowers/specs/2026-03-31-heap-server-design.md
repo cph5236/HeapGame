@@ -18,7 +18,7 @@ A Node.js + Express + SQLite backend that stores the community heap as a polygon
 **Three endpoints:**
 - `GET /heap?version=N` — returns heap delta since client's version
 - `GET /heap/base/:hash` — returns frozen base vertices by hash (client caches permanently)
-- `POST /heap` — accepts a player's block placement `{ x, y }`
+- `POST /heap/place` — accepts a player's block placement `{ x, y }`
 
 **Concurrency:** `better-sqlite3` is synchronous; SQLite's write lock serializes concurrent `AppendHeap` calls naturally with no additional locking.
 
@@ -98,7 +98,7 @@ interface AppendHeapResponse {
 3. 404 if not found (client should treat as a full re-sync).
 4. Response is gzip compressed.
 
-### `POST /heap`
+### `POST /heap/place`
 
 1. Parse `{ x, y }` from request body.
 2. Load full polygon (base vertices + live zone vertices).
@@ -141,7 +141,7 @@ shared/
 ### On Summit — Block Placement
 
 1. Player summits; client records `{ x, y }` of placement.
-2. `POST /heap` fires in the background — does not block gameplay or reward.
+2. `POST /heap/place` fires in the background — does not block gameplay or reward.
 3. `accepted: true` → update local cached version to match response version.
 4. `accepted: false` → silently ignored. Player's run is still counted locally.
 
