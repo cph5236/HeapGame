@@ -13,6 +13,7 @@ export interface PlayerConfig {
   maxAirJumps:     number;
   wallJump:        boolean;
   dash:            boolean;
+  dive:            boolean;
   moneyMultiplier: number;
   jumpBoost:       number; // px/s added to jump magnitude (0, 70, 150, 240)
   stompBonus:      number; // coins per enemy stomp (25, 50, 90, 150)
@@ -90,6 +91,7 @@ export function getPlayerConfig(): PlayerConfig {
     maxAirJumps:     1 + getUpgradeLevel('air_jump'),
     wallJump:        getUpgradeLevel('wall_jump') > 0,
     dash:            getUpgradeLevel('dash') > 0,
+    dive:            getUpgradeLevel('dive') > 0,
     moneyMultiplier: 1 + getUpgradeLevel('money_mult') * 0.1,
     jumpBoost:       [0, 70, 150, 240][jl],
     stompBonus:      [25, 50, 90, 150][sl],
