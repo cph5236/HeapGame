@@ -6,4 +6,4 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "heap"
-database_id = "REPLACE_AFTER_CREATION"
+database_id = "2806bb3d-bd95-4780-ae16-ee479eacede9"

@@ -5,13 +5,13 @@
 
 ## Overview
 
-A Node.js + Express + SQLite backend that stores the community heap as a polygon and serves it to clients incrementally. Players who summit place a block via `AppendHeap`; the server validates and integrates it into the polygon. Clients use a version number to avoid re-downloading data they already have.
+A Hono + Cloudflare Workers + D1 backend that stores the community heap as a polygon and serves it to clients incrementally. Players who summit place a block via `AppendHeap`; the server validates and integrates it into the polygon. Clients use a version number to avoid re-downloading data they already have.
 
 ---
 
 ## Architecture
 
-**Stack:** Node.js, Express, TypeScript, `better-sqlite3`
+**Stack:** Hono, Cloudflare Workers, Cloudflare D1 (SQLite), Wrangler, TypeScript 5
 
 **Location:** `server/` at repo root. Shared types live in `shared/` and are consumed by both client and server.
 
@@ -20,7 +20,11 @@ A Node.js + Express + SQLite backend that stores the community heap as a polygon
 - `GET /heap/base/:hash` — returns frozen base vertices by hash (client caches permanently)
 - `POST /heap/place` — accepts a player's block placement `{ x, y }`
 
-**Concurrency:** `better-sqlite3` is synchronous; SQLite's write lock serializes concurrent `AppendHeap` calls naturally with no additional locking.
+**Testability:** `db.ts` exports a `HeapDB` interface with a `D1HeapDB` production implementation. Tests inject a `MockHeapDB`. This keeps all unit and integration tests runnable locally with Vitest — no Workers runtime required.
+
+**Concurrency:** D1's serialized write model handles concurrent `AppendHeap` calls naturally.
+
+**`nodejs_compat` flag:** Enabled in `wrangler.toml` so `polygon.ts` can use `import { createHash } from 'crypto'` in both Workers and local Node test environments.
 
 ---
 
@@ -37,21 +41,24 @@ A `freeze_threshold_y` marks the boundary. When the live zone exceeds **500 vert
 
 Full vertex detail is preserved — no simplification is applied.
 
-### SQLite Schema
+### D1 Schema
 
 ```sql
-CREATE TABLE heap_polygon (
-  id        INTEGER PRIMARY KEY CHECK (id = 1),  -- singleton row
+CREATE TABLE IF NOT EXISTS heap_polygon (
+  id        INTEGER PRIMARY KEY CHECK (id = 1),
   version   INTEGER NOT NULL DEFAULT 0,
   base_hash TEXT    NOT NULL DEFAULT '',
-  live_zone TEXT    NOT NULL DEFAULT '[]',        -- JSON Vertex[]
-  freeze_y  REAL    NOT NULL DEFAULT 0            -- freeze_threshold_y
+  live_zone TEXT    NOT NULL DEFAULT '[]',
+  freeze_y  REAL    NOT NULL DEFAULT 0
 );
 
-CREATE TABLE heap_base (
+CREATE TABLE IF NOT EXISTS heap_base (
   hash     TEXT PRIMARY KEY,
-  vertices TEXT NOT NULL                          -- JSON Vertex[]
+  vertices TEXT NOT NULL
 );
+
+INSERT OR IGNORE INTO heap_polygon (id, version, base_hash, live_zone, freeze_y)
+VALUES (1, 0, '', '[]', 0);
 ```
 
 ### Shared Wire Types (`shared/heapTypes.ts`)
@@ -62,12 +69,9 @@ interface Vertex {
   y: number;
 }
 
-interface GetHeapResponse {
-  version:  number;
-  baseHash: string;
-  liveZone: Vertex[];
-  changed:  boolean;   // false = client is current; liveZone/baseHash omitted
-}
+type GetHeapResponse =
+  | { changed: false; version: number }
+  | { changed: true; version: number; baseHash: string; liveZone: Vertex[] };
 
 interface AppendHeapRequest {
   x: number;
@@ -89,14 +93,13 @@ interface AppendHeapResponse {
 1. Load singleton row from `heap_polygon`.
 2. If `N === current version` → return `{ changed: false, version: N }`.
 3. Otherwise → return `{ changed: true, version, baseHash, liveZone }`.
-4. Response is gzip compressed (Express middleware).
+4. Cloudflare edge handles compression automatically.
 
 ### `GET /heap/base/:hash`
 
 1. Look up `hash` in `heap_base`.
 2. Return the JSON `Vertex[]` directly.
 3. 404 if not found (client should treat as a full re-sync).
-4. Response is gzip compressed.
 
 ### `POST /heap/place`
 
@@ -104,7 +107,7 @@ interface AppendHeapResponse {
 2. Load full polygon (base vertices + live zone vertices).
 3. Run ray-casting point-in-polygon test against full polygon.
 4. If **inside** → return `{ accepted: false, version: currentVersion }`. No write.
-5. If **outside** → append `{ x, y }` to the live zone vertex array (insertion position: sorted by Y ascending so the summit is always at the front), run freeze check, bump version, persist in a single SQLite transaction.
+5. If **outside** → append `{ x, y }` to the live zone vertex array (insertion position: sorted by Y ascending so the summit is always at the front), run freeze check, bump version, persist in a single D1 batch.
 6. Return `{ accepted: true, version: newVersion }`.
 
 ---
@@ -114,12 +117,21 @@ interface AppendHeapResponse {
 ```
 server/
   src/
-    index.ts          // Express app setup, middleware, route registration
-    routes/heap.ts    // Route handlers for all three endpoints
-    db.ts             // SQLite connection, schema init, singleton accessors
+    index.ts          // Workers entry point — export default { fetch }
+    app.ts            // Hono app factory — createApp(db: HeapDB): Hono
+    db.ts             // HeapDB interface + D1HeapDB implementation
     polygon.ts        // Point-in-polygon (ray casting), freeze logic
+    routes/
+      heap.ts         // Hono route handlers for all three endpoints
+  tests/
+    helpers/
+      mockDb.ts       // MockHeapDB for unit/integration tests
+    polygon.test.ts   // Unit tests for polygon math
+    routes.test.ts    // Integration tests using Hono test client + MockHeapDB
   package.json
   tsconfig.json
+  vitest.config.ts
+  wrangler.toml       // Wrangler config — D1 binding, nodejs_compat flag
 
 shared/
   heapTypes.ts        // Vertex, GetHeapResponse, AppendHeapRequest, AppendHeapResponse
@@ -156,12 +168,28 @@ No fetch logic leaks into scenes or other systems.
 ### Error Handling
 
 - Network failure on load → fall back to last cached data, or local mock if no cache exists.
-- Network failure on `POST /heap` → silently dropped. The game never depends on the server for local progression.
+- Network failure on `POST /heap/place` → silently dropped. The game never depends on the server for local progression.
+
+---
+
+## Deployment
+
+```bash
+# One-time setup
+npx wrangler d1 create heap               # creates the D1 database, outputs database_id
+# Fill database_id into wrangler.toml
+npx wrangler d1 execute heap --local --file=schema.sql   # apply schema locally
+npx wrangler d1 execute heap --file=schema.sql           # apply schema to production
+
+# Deploy
+npx wrangler deploy                       # deploys server/ as a Cloudflare Worker
+```
+
+The frontend (Vite build + `npx wrangler deploy` via Cloudflare Pages) is configured separately in the Cloudflare dashboard as shown in the project setup screenshot.
 
 ---
 
 ## Out of Scope (Future)
 
 - Authentication / anti-cheat (verifying the player actually summited)
-- Cloudflare Workers migration (straightforward — same endpoints, KV replaces SQLite)
-- Paginated base chunks (upgrade path if single base blob exceeds ~1MB gzip)
+- Paginated base chunks (upgrade path if single base blob becomes very large)
