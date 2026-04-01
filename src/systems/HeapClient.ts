@@ -1,5 +1,6 @@
 import type {
   GetHeapResponse,
+  GetHashesResponse,
   AppendHeapRequest,
   AppendHeapResponse,
   Vertex,
@@ -9,8 +10,8 @@ const SERVER_URL: string =
   (import.meta as unknown as { env: Record<string, string> }).env.VITE_HEAP_SERVER_URL ??
   'http://localhost:8787';
 
-const CACHE_KEY = 'heap_cache';
-const BASE_CACHE_PREFIX = 'heap_base_';
+const CACHE_PREFIX = 'heap_cache_';       // + heapId
+const BASE_CACHE_PREFIX = 'heap_base_';  // + baseHash (content-addressed, unchanged)
 
 interface HeapCache {
   version: number;
@@ -18,17 +19,17 @@ interface HeapCache {
   liveZone: Vertex[];
 }
 
-function loadCache(): HeapCache | null {
+function loadCache(heapId: string): HeapCache | null {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
+    const raw = localStorage.getItem(CACHE_PREFIX + heapId);
     return raw ? (JSON.parse(raw) as HeapCache) : null;
   } catch {
     return null;
   }
 }
 
-function saveCache(cache: HeapCache): void {
-  localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+function saveCache(heapId: string, cache: HeapCache): void {
+  localStorage.setItem(CACHE_PREFIX + heapId, JSON.stringify(cache));
 }
 
 function loadCachedBase(hash: string): Vertex[] | null {
@@ -62,16 +63,31 @@ async function buildPolygon(cache: HeapCache): Promise<Vertex[]> {
 
 export class HeapClient {
   /**
-   * Load the full heap polygon.
-   * Uses localStorage cache + server delta strategy.
-   * Falls back to last cached data (or empty array) on network failure.
+   * Fetch all heap IDs from the server.
+   * Returns [] on network failure.
    */
-  static async load(): Promise<Vertex[]> {
-    const cache = loadCache();
+  static async getHashes(): Promise<string[]> {
+    try {
+      const res = await fetch(`${SERVER_URL}/heap/hashes`);
+      if (!res.ok) return [];
+      const data = (await res.json()) as GetHashesResponse;
+      return data.hashes;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Load the full polygon for a specific heap.
+   * Uses localStorage cache + server delta strategy.
+   * Falls back to last cached data (or []) on network failure.
+   */
+  static async load(heapId: string): Promise<Vertex[]> {
+    const cache = loadCache(heapId);
     const version = cache?.version ?? 0;
 
     try {
-      const res = await fetch(`${SERVER_URL}/heap?version=${version}`);
+      const res = await fetch(`${SERVER_URL}/heap/${heapId}?version=${version}`);
       if (!res.ok) throw new Error(`heap fetch failed: ${res.status}`);
       const data = (await res.json()) as GetHeapResponse;
 
@@ -85,7 +101,7 @@ export class HeapClient {
           baseHash: data.baseHash,
           liveZone: data.liveZone,
         };
-        saveCache(newCache);
+        saveCache(heapId, newCache);
         return buildPolygon(newCache);
       }
 
@@ -103,13 +119,13 @@ export class HeapClient {
   }
 
   /**
-   * Fire-and-forget block placement.
+   * Fire-and-forget block placement for a specific heap.
    * Called after the player summits. Never throws or blocks gameplay.
    */
-  static async append(x: number, y: number): Promise<void> {
-    const cache = loadCache();
+  static async append(heapId: string, x: number, y: number): Promise<void> {
+    const cache = loadCache(heapId);
     try {
-      const body: AppendHeapRequest = { x, y };
+      const body: AppendHeapRequest = { hash: heapId, x, y };
       const res = await fetch(`${SERVER_URL}/heap/place`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -118,7 +134,7 @@ export class HeapClient {
       if (!res.ok) return;
       const data = (await res.json()) as AppendHeapResponse;
       if (data.accepted && cache) {
-        saveCache({ ...cache, version: data.version });
+        saveCache(heapId, { ...cache, version: data.version });
       }
     } catch {
       // Silently drop — game never depends on server for local progression
