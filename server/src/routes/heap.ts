@@ -27,6 +27,7 @@ export function heapRoutes(db: HeapDB): Hono {
     return c.json(vertices);
   });
 
+  // NOTE: /base/:hash must be registered before /:hash to prevent Hono matching "base" as a heap ID
   // GET /heap/:hash?version=N — fetch a specific heap's delta
   app.get('/:hash', async (c) => {
     const heapId = c.req.param('hash');
@@ -111,8 +112,12 @@ export function heapRoutes(db: HeapDB): Hono {
     }
 
     const { vertices, overwriteHeap = false } = body;
-    if (!Array.isArray(vertices) || vertices.length === 0) {
-      return c.json({ error: 'vertices must be a non-empty array' }, 400);
+    if (
+      !Array.isArray(vertices) ||
+      vertices.length === 0 ||
+      !vertices.every((v) => typeof (v as Vertex)?.x === 'number' && typeof (v as Vertex)?.y === 'number')
+    ) {
+      return c.json({ error: 'vertices must be a non-empty array of {x, y} objects' }, 400);
     }
 
     const hash = hashVertices(vertices);
