@@ -19,7 +19,7 @@ describe('GET /heap', () => {
 
   it('returns changed:true with liveZone when client version is behind', async () => {
     const db = new MockHeapDB();
-    db.seedPolygon(3, [{ x: 10, y: 5 }], '', 0);
+    db.seedPolygon('default', 3, [{ x: 10, y: 5 }], '', 0);
     const app = createApp(db);
     const res = await app.request('/heap?version=0');
     expect(res.status).toBe(200);
@@ -75,7 +75,7 @@ describe('POST /heap/place', () => {
   it('rejects a point inside the polygon', async () => {
     const db = new MockHeapDB();
     // A square: (0,0),(100,0),(100,100),(0,100) — centroid (50,50) is inside
-    db.seedPolygon(1, [
+    db.seedPolygon('default', 1, [
       { x: 0, y: 0 },
       { x: 100, y: 0 },
       { x: 100, y: 100 },
@@ -95,7 +95,7 @@ describe('POST /heap/place', () => {
 
   it('accepts a point outside the polygon and bumps version', async () => {
     const db = new MockHeapDB();
-    db.seedPolygon(1, [
+    db.seedPolygon('default', 1, [
       { x: 0, y: 0 },
       { x: 100, y: 0 },
       { x: 100, y: 100 },

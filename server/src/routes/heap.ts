@@ -10,11 +10,17 @@ import type {
 
 export function heapRoutes(db: HeapDB): Hono {
   const app = new Hono();
+  const DEFAULT_HEAP_ID = 'default';
 
   // GET /heap?version=N
   app.get('/', async (c) => {
     const clientVersion = parseInt(c.req.query('version') ?? '0') || 0;
-    const row = await db.getPolygonRow();
+    const row = await db.getPolygonRow(DEFAULT_HEAP_ID);
+
+    // Return empty polygon (no change) if heap doesn't exist yet
+    if (!row) {
+      return c.json({ changed: false, version: 0 } satisfies GetHeapResponse);
+    }
 
     if (clientVersion === row.version) {
       return c.json({ changed: false, version: row.version } satisfies GetHeapResponse);
@@ -50,18 +56,22 @@ export function heapRoutes(db: HeapDB): Hono {
       return c.json({ error: 'x and y must be numbers' }, 400);
     }
 
-    const row = await db.getPolygonRow();
-    const liveZone: Vertex[] = JSON.parse(row.live_zone);
+    const row = await db.getPolygonRow(DEFAULT_HEAP_ID);
+    // Start with empty polygon if heap doesn't exist yet
+    const version = row?.version ?? 0;
+    const baseHash = row?.base_hash ?? '';
+    const freezeY = row?.freeze_y ?? 0;
+    const liveZone: Vertex[] = row ? JSON.parse(row.live_zone) : [];
 
     let baseVertices: Vertex[] = [];
-    if (row.base_hash) {
-      baseVertices = (await db.getBaseVertices(row.base_hash)) ?? [];
+    if (baseHash) {
+      baseVertices = (await db.getBaseVertices(baseHash)) ?? [];
     }
 
     const fullPolygon = [...baseVertices, ...liveZone];
 
     if (isPointInside({ x, y }, fullPolygon)) {
-      return c.json({ accepted: false, version: row.version } satisfies AppendHeapResponse);
+      return c.json({ accepted: false, version } satisfies AppendHeapResponse);
     }
 
     // Insert into live zone sorted Y ascending (summit = lowest Y = front)
@@ -73,9 +83,9 @@ export function heapRoutes(db: HeapDB): Hono {
       liveZone.splice(insertIdx, 0, newVertex);
     }
 
-    const newVersion = row.version + 1;
-    let newBaseHash = row.base_hash;
-    let newFreezeY = row.freeze_y;
+    const newVersion = version + 1;
+    let newBaseHash = baseHash;
+    let newFreezeY = freezeY;
     let finalLiveZone = liveZone;
 
     const freeze = checkFreeze(liveZone, baseVertices);
@@ -86,7 +96,7 @@ export function heapRoutes(db: HeapDB): Hono {
       finalLiveZone = freeze.newLiveZone;
     }
 
-    await db.updatePolygon(newVersion, newBaseHash, finalLiveZone, newFreezeY);
+    await db.upsertPolygonRow(DEFAULT_HEAP_ID, newBaseHash, newVersion, finalLiveZone, newFreezeY);
 
     return c.json({ accepted: true, version: newVersion } satisfies AppendHeapResponse);
   });

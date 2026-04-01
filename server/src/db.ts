@@ -1,16 +1,18 @@
 import { Vertex } from '../../shared/heapTypes';
 
 export interface HeapRow {
-  version: number;
+  heap_id: string;
   base_hash: string;
+  version: number;
   live_zone: string;   // JSON Vertex[]
   freeze_y: number;
 }
 
 /** Abstraction over D1 — allows MockHeapDB in tests. */
 export interface HeapDB {
-  getPolygonRow(): Promise<HeapRow>;
-  updatePolygon(version: number, baseHash: string, liveZone: Vertex[], freezeY: number): Promise<void>;
+  getAllHeapIds(): Promise<string[]>;
+  getPolygonRow(heapId: string): Promise<HeapRow | null>;
+  upsertPolygonRow(heapId: string, baseHash: string, version: number, liveZone: Vertex[], freezeY: number): Promise<void>;
   getBaseVertices(hash: string): Promise<Vertex[] | null>;
   upsertBase(hash: string, vertices: Vertex[]): Promise<void>;
 }
@@ -19,24 +21,33 @@ export interface HeapDB {
 export class D1HeapDB implements HeapDB {
   constructor(private d1: D1Database) {}
 
-  async getPolygonRow(): Promise<HeapRow> {
-    const row = await this.d1
-      .prepare('SELECT * FROM heap_polygon WHERE id = 1')
-      .first<HeapRow>();
-    return row!;
+  async getAllHeapIds(): Promise<string[]> {
+    const result = await this.d1
+      .prepare('SELECT heap_id FROM heap_polygon')
+      .all<{ heap_id: string }>();
+    return result.results.map((r) => r.heap_id);
   }
 
-  async updatePolygon(
-    version: number,
+  async getPolygonRow(heapId: string): Promise<HeapRow | null> {
+    const row = await this.d1
+      .prepare('SELECT heap_id, base_hash, version, live_zone, freeze_y FROM heap_polygon WHERE heap_id = ?1')
+      .bind(heapId)
+      .first<HeapRow>();
+    return row ?? null;
+  }
+
+  async upsertPolygonRow(
+    heapId: string,
     baseHash: string,
+    version: number,
     liveZone: Vertex[],
     freezeY: number,
   ): Promise<void> {
     await this.d1
       .prepare(
-        'UPDATE heap_polygon SET version = ?1, base_hash = ?2, live_zone = ?3, freeze_y = ?4 WHERE id = 1',
+        'INSERT OR REPLACE INTO heap_polygon (heap_id, base_hash, version, live_zone, freeze_y) VALUES (?1, ?2, ?3, ?4, ?5)',
       )
-      .bind(version, baseHash, JSON.stringify(liveZone), freezeY)
+      .bind(heapId, baseHash, version, JSON.stringify(liveZone), freezeY)
       .run();
   }
 
