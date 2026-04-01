@@ -4,3 +4,4 @@ android/
 ios/
 .DS_Store
 *.local
+.env
