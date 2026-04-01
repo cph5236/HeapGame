@@ -26,6 +26,7 @@ import { addBalance } from '../systems/SaveData';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
+import { HeapClient } from '../systems/HeapClient';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -347,6 +348,8 @@ export class GameScene extends Phaser.Scene {
     const entry: HeapEntry = { x: px, y, keyid };
     this.heapGenerator.addEntry(entry);
     persistHeapEntry(entry);
+    // Upload placement to server — fire-and-forget, never blocks gameplay
+    void HeapClient.append(entry.x, entry.y);
 
     const score = Math.max(0, Math.floor(this.spawnY - surfaceY));
     this.time.delayedCall(2000, () => {
