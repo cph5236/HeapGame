@@ -8,7 +8,8 @@
     "preview": "vite preview",
     "cap:sync": "cap sync",
     "cap:android": "cap open android",
-    "gen-assets": "node scripts/gen-heap-defs.mjs && node scripts/gen-heap-texture.mjs"
+    "gen-assets": "node scripts/gen-heap-defs.mjs && node scripts/gen-heap-texture.mjs",
+    "seed": "npx tsx scripts/seed-heap.ts"
   },
   "dependencies": {
     "@capacitor/android": "8.2.0",
@@ -19,6 +20,7 @@
     "@capacitor/cli": "8.2.0",
     "@types/node": "25.5.0",
     "sharp": "^0.34.5",
+    "tsx": "^4.19.2",
     "typescript": "5.9.3",
     "vite": "^6.3.0"
   }
