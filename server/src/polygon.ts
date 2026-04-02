@@ -30,7 +30,7 @@ export const FREEZE_BATCH = 250;
 export interface FreezeResult {
   newLiveZone: Vertex[];
   newBaseVertices: Vertex[];
-  newBaseHash: string;
+  newBaseVertexHash: string;
   newFreezeY: number;
 }
 
@@ -50,8 +50,8 @@ export function checkFreeze(
   const frozen = liveZone.slice(-FREEZE_BATCH);
   const newLiveZone = liveZone.slice(0, liveZone.length - FREEZE_BATCH);
   const newBaseVertices = [...existingBase, ...frozen];
-  const newBaseHash = hashVertices(newBaseVertices);
+  const newBaseVertexHash = hashVertices(newBaseVertices);
   const newFreezeY = frozen[0].y;
 
-  return { newLiveZone, newBaseVertices, newBaseHash, newFreezeY };
+  return { newLiveZone, newBaseVertices, newBaseVertexHash, newFreezeY };
 }

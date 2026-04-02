@@ -60,7 +60,7 @@ describe('checkFreeze', () => {
     expect(result!.newLiveZone).toHaveLength(LIVE_ZONE_MAX + 1 - FREEZE_BATCH);
     expect(result!.newBaseVertices).toHaveLength(1 + FREEZE_BATCH);
     expect(result!.newBaseVertices[0]).toEqual({ x: 99, y: 99 });
-    expect(result!.newBaseHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(result!.newBaseVertexHash).toMatch(/^[0-9a-f]{64}$/);
     const frozenBatch = liveZone.slice(-FREEZE_BATCH);
     expect(result!.newFreezeY).toBe(frozenBatch[0].y);
   });
