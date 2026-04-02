@@ -6,6 +6,6 @@ import { heapRoutes } from './routes/heap';
 export function createApp(db: HeapDB): Hono {
   const app = new Hono();
   app.use('*', cors());
-  app.route('/heap', heapRoutes(db));
+  app.route('/heaps', heapRoutes(db));
   return app;
 }
