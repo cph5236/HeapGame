@@ -349,7 +349,7 @@ export class GameScene extends Phaser.Scene {
     this.heapGenerator.addEntry(entry);
     persistHeapEntry(entry);
     // Upload placement to server — fire-and-forget, never blocks gameplay
-    void HeapClient.append('main', entry.x, entry.y);
+    void HeapClient.append(entry.x, entry.y);
 
     const score = Math.max(0, Math.floor(this.spawnY - surfaceY));
     this.time.delayedCall(2000, () => {
