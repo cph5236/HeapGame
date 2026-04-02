@@ -1,68 +1,91 @@
+// server/src/db.ts
+
 import { Vertex } from '../../shared/heapTypes';
 
 export interface HeapRow {
-  heap_id: string;
-  base_hash: string;
-  version: number;
+  id: string;
+  base_id: string;
   live_zone: string;   // JSON Vertex[]
   freeze_y: number;
+  version: number;
+  created_at: string;
+}
+
+export interface HeapSummaryRow {
+  id: string;
+  version: number;
+  created_at: string;
 }
 
 /** Abstraction over D1 — allows MockHeapDB in tests. */
 export interface HeapDB {
-  getAllHeapIds(): Promise<string[]>;
-  getPolygonRow(heapId: string): Promise<HeapRow | null>;
-  upsertPolygonRow(heapId: string, baseHash: string, version: number, liveZone: Vertex[], freezeY: number): Promise<void>;
-  getBaseVertices(hash: string): Promise<Vertex[] | null>;
-  upsertBase(hash: string, vertices: Vertex[]): Promise<void>;
+  listHeaps(): Promise<HeapSummaryRow[]>;
+  getHeap(id: string): Promise<HeapRow | null>;
+  /** Atomically creates the initial heap_base row and the heap row. */
+  createHeap(heapId: string, baseId: string, vertices: Vertex[], vertexHash: string, now: string): Promise<void>;
+  updateHeap(id: string, baseId: string, version: number, liveZone: Vertex[], freezeY: number): Promise<void>;
+  deleteHeap(id: string): Promise<void>;
+  getBaseVerticesById(baseId: string): Promise<Vertex[] | null>;
+  /** Creates a new base snapshot (used on freeze). */
+  createBase(id: string, heapId: string, vertices: Vertex[], vertexHash: string, now: string): Promise<void>;
 }
 
 /** Production implementation backed by Cloudflare D1. */
 export class D1HeapDB implements HeapDB {
   constructor(private d1: D1Database) {}
 
-  async getAllHeapIds(): Promise<string[]> {
+  async listHeaps(): Promise<HeapSummaryRow[]> {
     const result = await this.d1
-      .prepare('SELECT heap_id FROM heap_polygon')
-      .all<{ heap_id: string }>();
-    return result.results.map((r) => r.heap_id);
+      .prepare('SELECT id, version, created_at FROM heap')
+      .all<HeapSummaryRow>();
+    return result.results;
   }
 
-  async getPolygonRow(heapId: string): Promise<HeapRow | null> {
+  async getHeap(id: string): Promise<HeapRow | null> {
     const row = await this.d1
-      .prepare('SELECT heap_id, base_hash, version, live_zone, freeze_y FROM heap_polygon WHERE heap_id = ?1')
-      .bind(heapId)
+      .prepare('SELECT id, base_id, live_zone, freeze_y, version, created_at FROM heap WHERE id = ?1')
+      .bind(id)
       .first<HeapRow>();
     return row ?? null;
   }
 
-  async upsertPolygonRow(
-    heapId: string,
-    baseHash: string,
-    version: number,
-    liveZone: Vertex[],
-    freezeY: number,
-  ): Promise<void> {
+  async createHeap(heapId: string, baseId: string, vertices: Vertex[], vertexHash: string, now: string): Promise<void> {
+    await this.d1.batch([
+      this.d1
+        .prepare('INSERT INTO heap_base (id, heap_id, vertices, vertex_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5)')
+        .bind(baseId, heapId, JSON.stringify(vertices), vertexHash, now),
+      this.d1
+        .prepare('INSERT INTO heap (id, base_id, live_zone, freeze_y, version, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)')
+        .bind(heapId, baseId, '[]', 0, 1, now),
+    ]);
+  }
+
+  async updateHeap(id: string, baseId: string, version: number, liveZone: Vertex[], freezeY: number): Promise<void> {
     await this.d1
-      .prepare(
-        'INSERT OR REPLACE INTO heap_polygon (heap_id, base_hash, version, live_zone, freeze_y) VALUES (?1, ?2, ?3, ?4, ?5)',
-      )
-      .bind(heapId, baseHash, version, JSON.stringify(liveZone), freezeY)
+      .prepare('UPDATE heap SET base_id = ?1, version = ?2, live_zone = ?3, freeze_y = ?4 WHERE id = ?5')
+      .bind(baseId, version, JSON.stringify(liveZone), freezeY, id)
       .run();
   }
 
-  async getBaseVertices(hash: string): Promise<Vertex[] | null> {
+  async deleteHeap(id: string): Promise<void> {
+    await this.d1.batch([
+      this.d1.prepare('DELETE FROM heap_base WHERE heap_id = ?1').bind(id),
+      this.d1.prepare('DELETE FROM heap WHERE id = ?1').bind(id),
+    ]);
+  }
+
+  async getBaseVerticesById(baseId: string): Promise<Vertex[] | null> {
     const row = await this.d1
-      .prepare('SELECT vertices FROM heap_base WHERE hash = ?1')
-      .bind(hash)
+      .prepare('SELECT vertices FROM heap_base WHERE id = ?1')
+      .bind(baseId)
       .first<{ vertices: string }>();
     return row ? (JSON.parse(row.vertices) as Vertex[]) : null;
   }
 
-  async upsertBase(hash: string, vertices: Vertex[]): Promise<void> {
+  async createBase(id: string, heapId: string, vertices: Vertex[], vertexHash: string, now: string): Promise<void> {
     await this.d1
-      .prepare('INSERT OR REPLACE INTO heap_base (hash, vertices) VALUES (?1, ?2)')
-      .bind(hash, JSON.stringify(vertices))
+      .prepare('INSERT INTO heap_base (id, heap_id, vertices, vertex_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5)')
+      .bind(id, heapId, JSON.stringify(vertices), vertexHash, now)
       .run();
   }
 }
