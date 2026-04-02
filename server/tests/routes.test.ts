@@ -1,244 +1,64 @@
+// server/tests/routes.test.ts
+
 import { describe, it, expect } from 'vitest';
 import { createApp } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
-import type { GetHeapResponse, GetHashesResponse, AppendHeapResponse, SeedHeapResponse } from '../../shared/heapTypes';
+import type {
+  CreateHeapResponse,
+  ListHeapsResponse,
+  GetHeapResponse,
+  PlaceResponse,
+  ResetHeapResponse,
+  DeleteHeapResponse,
+} from '../../shared/heapTypes';
 
-const HEAP_ID = 'aaaa';  // arbitrary stable test heap ID
+const VERTICES = [
+  { x: 100, y: 400 },
+  { x: 300, y: 600 },
+  { x: 500, y: 400 },
+];
 
 function makeApp() {
   return createApp(new MockHeapDB());
 }
 
-// ── GET /heap/hashes ─────────────────────────────────────────────────────────
+// ── POST /heaps ──────────────────────────────────────────────────────────────
 
-describe('GET /heap/hashes', () => {
-  it('returns empty array when no heaps exist', async () => {
-    const res = await makeApp().request('/heap/hashes');
-    expect(res.status).toBe(200);
-    const body = await res.json() as GetHashesResponse;
-    expect(body.hashes).toEqual([]);
-  });
-
-  it('returns all heap IDs', async () => {
-    const db = new MockHeapDB();
-    db.seedPolygon('hash1', 1, []);
-    db.seedPolygon('hash2', 1, []);
-    const res = await createApp(db).request('/heap/hashes');
-    expect(res.status).toBe(200);
-    const body = await res.json() as GetHashesResponse;
-    expect(body.hashes).toHaveLength(2);
-    expect(body.hashes).toContain('hash1');
-    expect(body.hashes).toContain('hash2');
-  });
-});
-
-// ── GET /heap/:hash ──────────────────────────────────────────────────────────
-
-describe('GET /heap/:hash', () => {
-  it('returns 404 for an unknown heap ID', async () => {
-    const res = await makeApp().request('/heap/unknownhash');
-    expect(res.status).toBe(404);
-  });
-
-  it('returns changed:false when client version matches server', async () => {
-    const db = new MockHeapDB();
-    db.seedPolygon(HEAP_ID, 3, [{ x: 10, y: 5 }]);
-    const res = await createApp(db).request(`/heap/${HEAP_ID}?version=3`);
-    expect(res.status).toBe(200);
-    const body = await res.json() as GetHeapResponse;
-    expect(body.changed).toBe(false);
-    expect(body.version).toBe(3);
-  });
-
-  it('returns changed:true with liveZone when client version is behind', async () => {
-    const db = new MockHeapDB();
-    db.seedPolygon(HEAP_ID, 3, [{ x: 10, y: 5 }]);
-    const res = await createApp(db).request(`/heap/${HEAP_ID}?version=0`);
-    expect(res.status).toBe(200);
-    const body = await res.json() as GetHeapResponse;
-    expect(body.changed).toBe(true);
-    if (body.changed) {
-      expect(body.version).toBe(3);
-      expect(Array.isArray(body.liveZone)).toBe(true);
-      expect(typeof body.baseHash).toBe('string');
-    }
-  });
-
-  it('defaults to version=0 when no version param provided', async () => {
-    const db = new MockHeapDB();
-    db.seedPolygon(HEAP_ID, 1, []);
-    const res = await createApp(db).request(`/heap/${HEAP_ID}`);
-    expect(res.status).toBe(200);
-    const body = await res.json() as GetHeapResponse;
-    expect(body.changed).toBe(true);  // version 1 > 0
-  });
-});
-
-// ── GET /heap/base/:hash ─────────────────────────────────────────────────────
-
-describe('GET /heap/base/:hash', () => {
-  it('returns 404 for an unknown hash', async () => {
-    const res = await makeApp().request('/heap/base/unknownhash');
-    expect(res.status).toBe(404);
-  });
-
-  it('returns base vertices for a known hash', async () => {
-    const db = new MockHeapDB();
-    await db.upsertBase('myhash', [{ x: 1, y: 2 }]);
-    const res = await createApp(db).request('/heap/base/myhash');
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual([{ x: 1, y: 2 }]);
-  });
-});
-
-// ── POST /heap/place ─────────────────────────────────────────────────────────
-
-describe('POST /heap/place', () => {
-  it('returns 404 when the heap ID does not exist', async () => {
-    const res = await makeApp().request('/heap/place', {
+describe('POST /heaps', () => {
+  it('creates a heap and returns id, baseId, version 1, vertexCount', async () => {
+    const res = await makeApp().request('/heaps', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hash: 'nope', x: 100, y: 200 }),
+      body: JSON.stringify({ vertices: VERTICES }),
     });
-    expect(res.status).toBe(404);
-  });
-
-  it('accepts a point when the polygon is empty', async () => {
-    const db = new MockHeapDB();
-    db.seedPolygon(HEAP_ID, 1, []);
-    const res = await createApp(db).request('/heap/place', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hash: HEAP_ID, x: 100, y: 200 }),
-    });
-    expect(res.status).toBe(200);
-    const body = await res.json() as AppendHeapResponse;
-    expect(body.accepted).toBe(true);
-    expect(body.version).toBe(2);
-  });
-
-  it('rejects a point inside the polygon', async () => {
-    const db = new MockHeapDB();
-    // A square: (0,0),(100,0),(100,100),(0,100) — centroid (50,50) is inside
-    db.seedPolygon(HEAP_ID, 1, [
-      { x: 0, y: 0 },
-      { x: 100, y: 0 },
-      { x: 100, y: 100 },
-      { x: 0, y: 100 },
-    ]);
-    const res = await createApp(db).request('/heap/place', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hash: HEAP_ID, x: 50, y: 50 }),
-    });
-    expect(res.status).toBe(200);
-    const body = await res.json() as AppendHeapResponse;
-    expect(body.accepted).toBe(false);
-    expect(body.version).toBe(1);
-  });
-
-  it('accepts a point outside the polygon and bumps version', async () => {
-    const db = new MockHeapDB();
-    db.seedPolygon(HEAP_ID, 1, [
-      { x: 0, y: 0 },
-      { x: 100, y: 0 },
-      { x: 100, y: 100 },
-      { x: 0, y: 100 },
-    ]);
-    const res = await createApp(db).request('/heap/place', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hash: HEAP_ID, x: 200, y: 200 }),
-    });
-    expect(res.status).toBe(200);
-    const body = await res.json() as AppendHeapResponse;
-    expect(body.accepted).toBe(true);
-    expect(body.version).toBe(2);
-  });
-
-  it('returns 400 when hash, x, or y is missing', async () => {
-    const res = await makeApp().request('/heap/place', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ x: 10, y: 20 }),  // missing hash
-    });
-    expect(res.status).toBe(400);
-  });
-});
-
-// ── POST /heap/seed ──────────────────────────────────────────────────────────
-
-describe('POST /heap/seed', () => {
-  const vertices = [
-    { x: 100, y: 400 },
-    { x: 300, y: 600 },
-    { x: 500, y: 400 },
-  ];
-
-  it('seeds a new heap and returns seeded:true with version 1', async () => {
-    const res = await makeApp().request('/heap/seed', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vertices }),
-    });
-    expect(res.status).toBe(200);
-    const body = await res.json() as SeedHeapResponse;
-    expect(body.seeded).toBe(true);
+    expect(res.status).toBe(201);
+    const body = await res.json() as CreateHeapResponse;
+    expect(typeof body.id).toBe('string');
+    expect(typeof body.baseId).toBe('string');
+    expect(body.id).not.toBe(body.baseId);
     expect(body.version).toBe(1);
     expect(body.vertexCount).toBe(3);
-    expect(typeof body.hash).toBe('string');
   });
 
-  it('returns 409 when same vertices sent again without overwriteHeap', async () => {
+  it('two creates with same vertices produce two heaps with different ids', async () => {
     const app = makeApp();
-    // Seed once
-    await app.request('/heap/seed', {
+    const res1 = await app.request('/heaps', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vertices }),
+      body: JSON.stringify({ vertices: VERTICES }),
     });
-    // Try again — same vertices → same hash → conflict
-    const res = await app.request('/heap/seed', {
+    const res2 = await app.request('/heaps', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vertices }),
+      body: JSON.stringify({ vertices: VERTICES }),
     });
-    expect(res.status).toBe(409);
+    const b1 = await res1.json() as CreateHeapResponse;
+    const b2 = await res2.json() as CreateHeapResponse;
+    expect(b1.id).not.toBe(b2.id);
   });
 
-  it('resets live zone and version to 1 when overwriteHeap:true', async () => {
-    const db = new MockHeapDB();
-    const app = createApp(db);
-    // First seed
-    const first = await app.request('/heap/seed', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vertices }),
-    });
-    const { hash } = await first.json() as SeedHeapResponse;
-
-    // Manually advance version to simulate player activity
-    db.seedPolygon(hash, 42, [{ x: 200, y: 500 }]);
-
-    // Overwrite
-    const res = await app.request('/heap/seed', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vertices, overwriteHeap: true }),
-    });
-    expect(res.status).toBe(200);
-    const body = await res.json() as SeedHeapResponse;
-    expect(body.seeded).toBe(true);
-    expect(body.version).toBe(1);
-
-    // Confirm live zone was reset
-    const row = await db.getPolygonRow(hash);
-    expect(row?.version).toBe(1);
-    expect(JSON.parse(row!.live_zone)).toEqual([]);
-  });
-
-  it('rejects empty vertices array with 400', async () => {
-    const res = await makeApp().request('/heap/seed', {
+  it('rejects empty vertices with 400', async () => {
+    const res = await makeApp().request('/heaps', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ vertices: [] }),
@@ -246,23 +66,252 @@ describe('POST /heap/seed', () => {
     expect(res.status).toBe(400);
   });
 
-  it('two different vertex arrays produce two independent heaps', async () => {
-    const app = makeApp();
-    const verticesB = [{ x: 10, y: 20 }, { x: 30, y: 40 }, { x: 50, y: 20 }];
-
-    await app.request('/heap/seed', {
+  it('rejects missing vertices with 400', async () => {
+    const res = await makeApp().request('/heaps', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vertices }),
+      body: JSON.stringify({}),
     });
-    await app.request('/heap/seed', {
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects malformed vertex objects with 400', async () => {
+    const res = await makeApp().request('/heaps', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vertices: verticesB }),
+      body: JSON.stringify({ vertices: [{ x: 1 }] }),  // missing y
     });
+    expect(res.status).toBe(400);
+  });
+});
 
-    const hashRes = await app.request('/heap/hashes');
-    const { hashes } = await hashRes.json() as GetHashesResponse;
-    expect(hashes).toHaveLength(2);
+// ── GET /heaps ───────────────────────────────────────────────────────────────
+
+describe('GET /heaps', () => {
+  it('returns empty array when no heaps exist', async () => {
+    const res = await makeApp().request('/heaps');
+    expect(res.status).toBe(200);
+    const body = await res.json() as ListHeapsResponse;
+    expect(body.heaps).toEqual([]);
+  });
+
+  it('returns all heaps with id, version, createdAt', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap('heap-1', 1, []);
+    db.seedHeap('heap-2', 3, []);
+    const res = await createApp(db).request('/heaps');
+    expect(res.status).toBe(200);
+    const body = await res.json() as ListHeapsResponse;
+    expect(body.heaps).toHaveLength(2);
+    const ids = body.heaps.map(h => h.id);
+    expect(ids).toContain('heap-1');
+    expect(ids).toContain('heap-2');
+    const h2 = body.heaps.find(h => h.id === 'heap-2')!;
+    expect(h2.version).toBe(3);
+    expect(typeof h2.createdAt).toBe('string');
+  });
+});
+
+// ── GET /heaps/:id ───────────────────────────────────────────────────────────
+
+describe('GET /heaps/:id', () => {
+  it('returns 404 for unknown id', async () => {
+    const res = await makeApp().request('/heaps/does-not-exist');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns changed:false when client version matches', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 5, [{ x: 10, y: 20 }]);
+    const res = await createApp(db).request('/heaps/h1?version=5');
+    expect(res.status).toBe(200);
+    const body = await res.json() as GetHeapResponse;
+    expect(body.changed).toBe(false);
+    expect(body.version).toBe(5);
+  });
+
+  it('returns changed:true with liveZone and baseId when client version is behind', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 3, [{ x: 10, y: 20 }], 'base-guid-1');
+    const res = await createApp(db).request('/heaps/h1?version=0');
+    expect(res.status).toBe(200);
+    const body = await res.json() as GetHeapResponse;
+    expect(body.changed).toBe(true);
+    if (body.changed) {
+      expect(body.version).toBe(3);
+      expect(body.baseId).toBe('base-guid-1');
+      expect(body.liveZone).toEqual([{ x: 10, y: 20 }]);
+    }
+  });
+
+  it('defaults version to 0 when not provided', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 1, []);
+    const res = await createApp(db).request('/heaps/h1');
+    expect(res.status).toBe(200);
+    const body = await res.json() as GetHeapResponse;
+    expect(body.changed).toBe(true);  // version 1 > 0
+  });
+});
+
+// ── GET /heaps/:id/base ──────────────────────────────────────────────────────
+
+describe('GET /heaps/:id/base', () => {
+  it('returns 404 for unknown heap id', async () => {
+    const res = await makeApp().request('/heaps/no-heap/base');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns base vertices for known heap', async () => {
+    const db = new MockHeapDB();
+    const baseVertices = [{ x: 1, y: 2 }, { x: 3, y: 4 }];
+    db.seedHeap('h1', 1, [], 'base-1');
+    db.seedBase('base-1', 'h1', baseVertices);
+    const res = await createApp(db).request('/heaps/h1/base');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(baseVertices);
+  });
+});
+
+// ── PUT /heaps/:id/reset ─────────────────────────────────────────────────────
+
+describe('PUT /heaps/:id/reset', () => {
+  it('returns 404 for unknown id', async () => {
+    const res = await makeApp().request('/heaps/no-heap/reset', { method: 'PUT' });
+    expect(res.status).toBe(404);
+  });
+
+  it('resets live_zone to empty, version to 1, and returns previousVersion', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 42, [{ x: 10, y: 20 }], 'base-1');
+    const res = await createApp(db).request('/heaps/h1/reset', { method: 'PUT' });
+    expect(res.status).toBe(200);
+    const body = await res.json() as ResetHeapResponse;
+    expect(body.id).toBe('h1');
+    expect(body.version).toBe(1);
+    expect(body.previousVersion).toBe(42);
+
+    // Confirm state was written to DB
+    const row = await db.getHeap('h1');
+    expect(row?.version).toBe(1);
+    expect(JSON.parse(row!.live_zone)).toEqual([]);
+    expect(row?.freeze_y).toBe(0);
+  });
+
+  it('preserves base_id on reset', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 10, [{ x: 5, y: 5 }], 'base-preserved');
+    await createApp(db).request('/heaps/h1/reset', { method: 'PUT' });
+    const row = await db.getHeap('h1');
+    expect(row?.base_id).toBe('base-preserved');
+  });
+});
+
+// ── POST /heaps/:id/place ────────────────────────────────────────────────────
+
+describe('POST /heaps/:id/place', () => {
+  it('returns 404 for unknown heap id', async () => {
+    const res = await makeApp().request('/heaps/no-heap/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 10, y: 20 }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('accepts a point when live zone is empty and base is empty', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 1, [], 'base-1');
+    db.seedBase('base-1', 'h1', []);
+    const res = await createApp(db).request('/heaps/h1/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 100, y: 200 }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as PlaceResponse;
+    expect(body.accepted).toBe(true);
+    expect(body.version).toBe(2);
+  });
+
+  it('rejects a point inside the polygon', async () => {
+    const db = new MockHeapDB();
+    const square = [
+      { x: 0, y: 0 }, { x: 100, y: 0 },
+      { x: 100, y: 100 }, { x: 0, y: 100 },
+    ];
+    db.seedHeap('h1', 1, square, 'base-1');
+    db.seedBase('base-1', 'h1', []);
+    const res = await createApp(db).request('/heaps/h1/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 50, y: 50 }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as PlaceResponse;
+    expect(body.accepted).toBe(false);
+    expect(body.version).toBe(1);
+  });
+
+  it('accepts a point outside the polygon and bumps version', async () => {
+    const db = new MockHeapDB();
+    const square = [
+      { x: 0, y: 0 }, { x: 100, y: 0 },
+      { x: 100, y: 100 }, { x: 0, y: 100 },
+    ];
+    db.seedHeap('h1', 1, square, 'base-1');
+    db.seedBase('base-1', 'h1', []);
+    const res = await createApp(db).request('/heaps/h1/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 200, y: 200 }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as PlaceResponse;
+    expect(body.accepted).toBe(true);
+    expect(body.version).toBe(2);
+  });
+
+  it('returns 400 when x or y is missing', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 1, [], 'base-1');
+    const res = await createApp(db).request('/heaps/h1/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 10 }),  // missing y
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ── DELETE /heaps/:id ────────────────────────────────────────────────────────
+
+describe('DELETE /heaps/:id', () => {
+  it('returns 404 for unknown id', async () => {
+    const res = await makeApp().request('/heaps/no-heap', { method: 'DELETE' });
+    expect(res.status).toBe(404);
+  });
+
+  it('deletes heap and returns deleted:true', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 1, []);
+    const res = await createApp(db).request('/heaps/h1', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    const body = await res.json() as DeleteHeapResponse;
+    expect(body.deleted).toBe(true);
+
+    // Confirm gone from DB
+    const row = await db.getHeap('h1');
+    expect(row).toBeNull();
+  });
+
+  it('heap no longer appears in list after delete', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 1, []);
+    db.seedHeap('h2', 1, []);
+    await createApp(db).request('/heaps/h1', { method: 'DELETE' });
+    const listRes = await createApp(db).request('/heaps');
+    const body = await listRes.json() as ListHeapsResponse;
+    expect(body.heaps.map(h => h.id)).toEqual(['h2']);
   });
 });
