@@ -1,35 +1,63 @@
+// shared/heapTypes.ts
+
 export interface Vertex {
   x: number;
   y: number;
 }
 
-export type GetHeapResponse =
-  | { changed: false; version: number }
-  | { changed: true; version: number; baseHash: string; liveZone: Vertex[] };
+// ── Create ──────────────────────────────────────────────────────────────────
 
-export interface GetHashesResponse {
-  hashes: string[];
+export interface CreateHeapRequest {
+  vertices: Vertex[];
 }
 
-export interface AppendHeapRequest {
-  hash: string;
+export interface CreateHeapResponse {
+  id: string;       // heap GUID — stable identity
+  baseId: string;   // initial base snapshot GUID
+  version: number;  // always 1 on create
+  vertexCount: number;
+}
+
+// ── List ─────────────────────────────────────────────────────────────────────
+
+export interface HeapSummary {
+  id: string;
+  version: number;
+  createdAt: string;
+}
+
+export interface ListHeapsResponse {
+  heaps: HeapSummary[];
+}
+
+// ── Read (delta-aware) ───────────────────────────────────────────────────────
+
+export type GetHeapResponse =
+  | { changed: false; version: number }
+  | { changed: true; version: number; baseId: string; liveZone: Vertex[] };
+
+// ── Place ─────────────────────────────────────────────────────────────────────
+
+export interface PlaceRequest {
   x: number;
   y: number;
 }
 
-export interface AppendHeapResponse {
+export interface PlaceResponse {
   accepted: boolean;
   version: number;
 }
 
-export interface SeedHeapRequest {
-  vertices: Vertex[];
-  overwriteHeap?: boolean;
+// ── Reset ─────────────────────────────────────────────────────────────────────
+
+export interface ResetHeapResponse {
+  id: string;
+  version: number;
+  previousVersion: number;
 }
 
-export interface SeedHeapResponse {
-  seeded: boolean;
-  version: number;
-  hash: string;
-  vertexCount: number;
+// ── Delete ────────────────────────────────────────────────────────────────────
+
+export interface DeleteHeapResponse {
+  deleted: boolean;
 }
