@@ -29,6 +29,9 @@ export class HeapGenerator {
   // Entry buckets used for edge collider rebuilds in sync path + addEntry()
   private readonly entryBuckets: Map<number, HeapEntry[]> = new Map();
 
+  /** Set by GameScene when using the server polygon path. Overrides entry-based topY. */
+  private _polygonTopY: number | null = null;
+
   // ── Worker state ────────────────────────────────────────────────────────────
 
   private readonly worker: Worker;
@@ -80,6 +83,7 @@ export class HeapGenerator {
    * Used to define the player placement zone.
    */
   get topY(): number {
+    if (this._polygonTopY !== null) return this._polygonTopY;
     let min = MOCK_HEAP_HEIGHT_PX;
     for (const e of this.data) {
       const def = OBJECT_DEFS[e.keyid] ?? OBJECT_DEFS[0];
@@ -87,6 +91,11 @@ export class HeapGenerator {
       if (top < min) min = top;
     }
     return min;
+  }
+
+  /** Override topY for server polygon path (no entries to compute from). */
+  setPolygonTopY(y: number): void {
+    this._polygonTopY = y;
   }
 
   /**
