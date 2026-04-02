@@ -309,8 +309,9 @@ describe('DELETE /heaps/:id', () => {
     const db = new MockHeapDB();
     db.seedHeap('h1', 1, []);
     db.seedHeap('h2', 1, []);
-    await createApp(db).request('/heaps/h1', { method: 'DELETE' });
-    const listRes = await createApp(db).request('/heaps');
+    const app = createApp(db);
+    await app.request('/heaps/h1', { method: 'DELETE' });
+    const listRes = await app.request('/heaps');
     const body = await listRes.json() as ListHeapsResponse;
     expect(body.heaps.map(h => h.id)).toEqual(['h2']);
   });
