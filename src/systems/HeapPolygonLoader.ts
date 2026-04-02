@@ -63,7 +63,7 @@ export function applyPolygonToGenerator(polygon: Vertex[], generator: HeapGenera
 
   for (let bandTop = firstBand; bandTop <= maxY; bandTop += CHUNK_BAND_HEIGHT) {
     const bandBottom = bandTop + CHUNK_BAND_HEIGHT;
-    const bandVertices = polygon.filter((v) => v.y >= bandTop && v.y < bandBottom);
+    const bandVertices = clipPolygonToBand(polygon, bandTop, bandBottom);
     if (bandVertices.length >= 3) {
       generator.applyBandPolygon(bandTop, bandVertices);
     }
