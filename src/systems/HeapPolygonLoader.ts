@@ -1,0 +1,63 @@
+import { CHUNK_BAND_HEIGHT, MOCK_HEAP_HEIGHT_PX } from '../constants';
+import type { Vertex } from './HeapPolygon';
+import type { HeapGenerator } from './HeapGenerator';
+
+/**
+ * Splits a flat polygon Vertex[] into CHUNK_BAND_HEIGHT bands and calls
+ * generator.applyBandPolygon() for each band that has ≥3 vertices.
+ *
+ * The polygon must be structured as:
+ *   left-edge vertices (Y ascending) then right-edge vertices (Y descending).
+ * Filtering by Y while preserving array order yields a closed per-band polygon.
+ */
+export function applyPolygonToGenerator(polygon: Vertex[], generator: HeapGenerator): void {
+  if (polygon.length === 0) return;
+
+  let minY = MOCK_HEAP_HEIGHT_PX;
+  let maxY = 0;
+  for (const v of polygon) {
+    if (v.y < minY) minY = v.y;
+    if (v.y > maxY) maxY = v.y;
+  }
+
+  const firstBand = Math.floor(minY / CHUNK_BAND_HEIGHT) * CHUNK_BAND_HEIGHT;
+
+  for (let bandTop = firstBand; bandTop <= maxY; bandTop += CHUNK_BAND_HEIGHT) {
+    const bandBottom = bandTop + CHUNK_BAND_HEIGHT;
+    const bandVertices = polygon.filter((v) => v.y >= bandTop && v.y < bandBottom);
+    if (bandVertices.length >= 3) {
+      generator.applyBandPolygon(bandTop, bandVertices);
+    }
+  }
+}
+
+/**
+ * Returns the Y of the polygon's summit (smallest Y = highest point in world).
+ * Returns MOCK_HEAP_HEIGHT_PX if the polygon is empty (world floor fallback).
+ * Uses an explicit loop to avoid spread-operator stack overflow on large arrays.
+ */
+export function polygonTopY(polygon: Vertex[]): number {
+  if (polygon.length === 0) return MOCK_HEAP_HEIGHT_PX;
+  let min = MOCK_HEAP_HEIGHT_PX;
+  for (const v of polygon) {
+    if (v.y < min) min = v.y;
+  }
+  return min;
+}
+
+/**
+ * Finds the topmost surface Y within the X span [cx - width/2, cx + width/2].
+ * Returns MOCK_HEAP_HEIGHT_PX if no vertices overlap (world floor fallback).
+ */
+export function findSurfaceYFromPolygon(cx: number, width: number, polygon: Vertex[]): number {
+  const left = cx - width / 2;
+  const right = cx + width / 2;
+  let surfaceY = MOCK_HEAP_HEIGHT_PX;
+
+  for (const v of polygon) {
+    if (v.x >= left && v.x <= right && v.y < surfaceY) {
+      surfaceY = v.y;
+    }
+  }
+  return surfaceY;
+}
