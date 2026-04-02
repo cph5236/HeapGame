@@ -90,8 +90,8 @@ export function heapRoutes(db: HeapDB): Hono {
 
     const freeze = checkFreeze(liveZone, baseVertices);
     if (freeze) {
-      await db.upsertBase(freeze.newBaseHash, freeze.newBaseVertices);
-      currentBaseHash = freeze.newBaseHash;
+      await db.upsertBase(freeze.newBaseVertexHash, freeze.newBaseVertices);
+      currentBaseHash = freeze.newBaseVertexHash;
       newFreezeY = freeze.newFreezeY;
       finalLiveZone = freeze.newLiveZone;
     }
