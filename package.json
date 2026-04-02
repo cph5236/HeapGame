@@ -6,6 +6,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "test": "vitest run",
     "cap:sync": "cap sync",
     "cap:android": "cap open android",
     "gen-assets": "node scripts/gen-heap-defs.mjs && node scripts/gen-heap-texture.mjs",
@@ -22,6 +23,7 @@
     "sharp": "^0.34.5",
     "tsx": "^4.19.2",
     "typescript": "5.9.3",
-    "vite": "^6.3.0"
+    "vite": "^6.3.0",
+    "vitest": "^2.0.0"
   }
 }
