@@ -2,6 +2,45 @@ import { CHUNK_BAND_HEIGHT, MOCK_HEAP_HEIGHT_PX } from '../constants';
 import type { Vertex } from './HeapPolygon';
 import type { HeapGenerator } from './HeapGenerator';
 
+function interpolateAtY(a: Vertex, b: Vertex, targetY: number): Vertex {
+  const t = (targetY - a.y) / (b.y - a.y);
+  return { x: a.x + t * (b.x - a.x), y: targetY };
+}
+
+function clipToHalfPlane(
+  polygon: Vertex[],
+  inside: (v: Vertex) => boolean,
+  intersect: (a: Vertex, b: Vertex) => Vertex,
+): Vertex[] {
+  if (polygon.length === 0) return [];
+  const output: Vertex[] = [];
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    const aIn = inside(a);
+    const bIn = inside(b);
+    if (aIn) output.push(a);
+    if (aIn !== bIn) output.push(intersect(a, b));
+  }
+  return output;
+}
+
+export function clipPolygonToBand(polygon: Vertex[], bandTop: number, bandBottom: number): Vertex[] {
+  // Pass 1: discard vertices above the band (y < bandTop)
+  let clipped = clipToHalfPlane(
+    polygon,
+    (v) => v.y >= bandTop,
+    (a, b) => interpolateAtY(a, b, bandTop),
+  );
+  // Pass 2: discard vertices below the band (y > bandBottom)
+  clipped = clipToHalfPlane(
+    clipped,
+    (v) => v.y <= bandBottom,
+    (a, b) => interpolateAtY(a, b, bandBottom),
+  );
+  return clipped;
+}
+
 /**
  * Splits a flat polygon Vertex[] into CHUNK_BAND_HEIGHT bands and calls
  * generator.applyBandPolygon() for each band that has ≥3 vertices.
