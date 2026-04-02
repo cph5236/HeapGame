@@ -1,11 +1,15 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { HeapGenerator } from '../systems/HeapGenerator';
-import { findSurfaceY } from '../systems/HeapSurface';
-import { DEV_HEAP } from '../data/devHeap';
+import { persistHeapEntry } from '../systems/HeapPersistence';
+import type { Vertex } from '../systems/HeapPolygon';
+import {
+  applyPolygonToGenerator,
+  polygonTopY,
+  findSurfaceYFromPolygon,
+} from '../systems/HeapPolygonLoader';
 import { OBJECT_DEFS, HEAP_ITEM_COUNT } from '../data/heapObjectDefs';
 import { getPlayerConfig, PlayerConfig } from '../systems/SaveData';
-import { loadHeapAdditions, persistHeapEntry } from '../systems/HeapPersistence';
 import { HeapEntry } from '../data/heapTypes';
 import { HUD } from '../ui/HUD';
 import { InputManager } from '../systems/InputManager';
@@ -59,6 +63,8 @@ export class GameScene extends Phaser.Scene {
   private _ghostLastSurfaceY = NaN;
   private _ghostLastValid: boolean | null = null;
   private _ghostLastInZone = false;
+  private _heapPolygon: Vertex[] = [];
+  private _heapHash = '';
 
   constructor() {
     super({ key: 'GameScene' });
@@ -75,7 +81,20 @@ export class GameScene extends Phaser.Scene {
     this.platforms = this.physics.add.staticGroup();
     this.chunkRenderer = new HeapChunkRenderer(this);
     this.edgeCollider = new HeapEdgeCollider(this);
-    this.heapGenerator = new HeapGenerator(this, this.platforms, [...DEV_HEAP, ...loadHeapAdditions()], this.chunkRenderer, this.edgeCollider);
+
+    const polygon = (this.game.registry.get('heapPolygon') as Vertex[] | undefined) ?? [];
+    const heapHash = (this.game.registry.get('heapHash') as string | undefined) ?? '';
+    this._heapPolygon = polygon;
+    this._heapHash = heapHash;
+
+    this.heapGenerator = new HeapGenerator(
+      this, this.platforms, [], this.chunkRenderer, this.edgeCollider,
+    );
+
+    if (polygon.length > 0) {
+      applyPolygonToGenerator(polygon, this.heapGenerator);
+      this.heapGenerator.setPolygonTopY(polygonTopY(polygon));
+    }
 
     // Spawn player at world floor (left clear zone) — player climbs up through the heap
     this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
@@ -281,7 +300,7 @@ export class GameScene extends Phaser.Scene {
     // Skip redraw if player hasn't moved meaningfully
     if (Math.abs(px - this._ghostLastX) < 0.5 && this._ghostLastInZone) return;
 
-    const surfaceY = findSurfaceY(px, def.width, this.heapGenerator.entries);
+    const surfaceY = findSurfaceYFromPolygon(px, def.width, this._heapPolygon);
 
     if (surfaceY >= MOCK_HEAP_HEIGHT_PX) {
       // No surface — clear if we previously drew something
@@ -324,7 +343,7 @@ export class GameScene extends Phaser.Scene {
     const keyid    = Phaser.Math.Between(0, HEAP_ITEM_COUNT - 1);
     const def      = OBJECT_DEFS[keyid];
     const px       = this.player.sprite.x;
-    const surfaceY = findSurfaceY(px, def.width, this.heapGenerator.entries);
+    const surfaceY = findSurfaceYFromPolygon(px, def.width, this._heapPolygon);
 
     // Validate: must have a real surface to stack on
     if (surfaceY >= MOCK_HEAP_HEIGHT_PX) {
@@ -349,7 +368,7 @@ export class GameScene extends Phaser.Scene {
     this.heapGenerator.addEntry(entry);
     persistHeapEntry(entry);
     // Upload placement to server — fire-and-forget, never blocks gameplay
-    void HeapClient.append('', entry.x, entry.y);
+    void HeapClient.append(this._heapHash, entry.x, entry.y);
 
     const score = Math.max(0, Math.floor(this.spawnY - surfaceY));
     this.time.delayedCall(2000, () => {
