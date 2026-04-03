@@ -5,9 +5,7 @@ import type { Vertex } from '../systems/HeapPolygon';
 import {
   applyPolygonToGenerator,
   polygonTopY,
-  findSurfaceYFromPolygon,
 } from '../systems/HeapPolygonLoader';
-import { OBJECT_DEFS, HEAP_ITEM_COUNT } from '../data/heapObjectDefs';
 import { getPlayerConfig, PlayerConfig } from '../systems/SaveData';
 import { HUD } from '../ui/HUD';
 import { InputManager } from '../systems/InputManager';
@@ -38,7 +36,6 @@ export class GameScene extends Phaser.Scene {
   private placeKey!: Phaser.Input.Keyboard.Key;
   private topZoneText!: Phaser.GameObjects.Text;
   private scoreText!: Phaser.GameObjects.Text;
-  private flashText!: Phaser.GameObjects.Text;
   private placeBtnBg?: Phaser.GameObjects.Rectangle;
   private placeBtnLabel?: Phaser.GameObjects.Text;
   private infoOverlayParts: (Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text)[] = [];
@@ -171,14 +168,6 @@ export class GameScene extends Phaser.Scene {
       }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
     }
 
-    // Flash message for invalid placement attempts
-    this.flashText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60, '', {
-      fontSize: '22px', color: '#ff6666',
-      stroke: '#000000', strokeThickness: 3,
-      backgroundColor: '#000000aa',
-      padding: { x: 14, y: 8 },
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(30).setVisible(false);
-
     // HUD: ability indicators (dash bar, air jumps, wall jump)
     this.hud = new HUD(this, this.player);
 
@@ -269,33 +258,11 @@ export class GameScene extends Phaser.Scene {
   private placeBlock(): void {
     this.blockPlaced = true;
 
-    const keyid    = Phaser.Math.Between(0, HEAP_ITEM_COUNT - 1);
-    const def      = OBJECT_DEFS[keyid];
-    const px       = this.player.sprite.x;
-    const surfaceY = findSurfaceYFromPolygon(px, def.width, this._heapPolygon);
+    const px     = this.player.sprite.x;
+    const py     = this.player.sprite.y;
+    const isPeak = py <= this.heapGenerator.topY + PEAK_BONUS_ZONE_PX;
 
-    // Validate: must have a real surface to stack on
-    if (surfaceY >= MOCK_HEAP_HEIGHT_PX) {
-      this.blockPlaced = false;
-      this.showFlash('No surface here!');
-      return;
-    }
-
-    // Validate: must be in center 75% of the world (matches dev heap placement rules)
-    const minX = WORLD_WIDTH * 0.125 + def.width / 2;
-    const maxX = WORLD_WIDTH * 0.875 - def.width / 2;
-    if (px < minX || px > maxX) {
-      this.blockPlaced = false;
-      this.showFlash('Move to the center area!');
-      return;
-    }
-
-    const isPeak = this.player.sprite.y <= this.heapGenerator.topY + PEAK_BONUS_ZONE_PX;
-    const y = surfaceY - def.height / 2;
-
-    // Send to server then immediately fetch the authoritative live zone.
-    // No local addEntry — the server is the source of truth for the heap shape.
-    void HeapClient.append(this._heapId, px, y).then(() =>
+    void HeapClient.append(this._heapId, px, py).then(() =>
       HeapClient.load(this._heapId),
     ).then(freshPolygon => {
       this._heapPolygon = freshPolygon;
@@ -303,7 +270,7 @@ export class GameScene extends Phaser.Scene {
       this.heapGenerator.setPolygonTopY(polygonTopY(freshPolygon));
     });
 
-    const score = Math.max(0, Math.floor(this.spawnY - surfaceY));
+    const score = Math.max(0, Math.floor(this.spawnY - py));
     this.time.delayedCall(2000, () => {
       this.scene.launch('ScoreScene', { score, isPeak });
     });
@@ -362,11 +329,6 @@ export class GameScene extends Phaser.Scene {
     this.scene.launch('ScoreScene', { score, isPeak: false });
     this.scene.pause();
   };
-
-  private showFlash(message: string): void {
-    this.flashText.setText(message).setVisible(true);
-    this.time.delayedCall(1500, () => this.flashText.setVisible(false));
-  }
 
   private createInfoButton(isMobile: boolean): void {
     const bx = GAME_WIDTH - 22;
