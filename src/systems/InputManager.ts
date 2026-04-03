@@ -12,11 +12,13 @@ export class InputManager {
   goLeft  = false;
   goRight = false;
 
+  // Continuous placement state
+  placeHeld = false;
+
   // Consumed-per-frame impulse flags (cleared at start of each update)
   jumpJustPressed  = false;
   dashJustFired    = false;
   dashDir: 1 | -1  = 1;
-  placeJustPressed = false;
 
   // Platform
   readonly isMobile: boolean;
@@ -34,7 +36,6 @@ export class InputManager {
 
   // Pending impulse flags — set by touch handlers, consumed each frame
   private pendingJump     = false;
-  private pendingPlace    = false;
   private pendingDash     = false;
   private pendingDashDir: 1 | -1 = 1;
 
@@ -61,10 +62,8 @@ export class InputManager {
     this.jumpJustPressed  = this.pendingJump;
     this.dashJustFired    = this.pendingDash;
     if (this.pendingDash) this.dashDir = this.pendingDashDir;
-    this.placeJustPressed = this.pendingPlace;
     this.pendingJump  = false;
     this.pendingDash  = false;
-    this.pendingPlace = false;
 
     // Update directional state from tilt
     if (this.tiltListenerAttached) {
@@ -73,9 +72,14 @@ export class InputManager {
     }
   }
 
-  /** Called by the on-screen placement button to trigger a block placement. */
-  triggerPlace(): void {
-    this.pendingPlace = true;
+  /** Called by the on-screen placement button on pointerdown. */
+  startPlace(): void {
+    this.placeHeld = true;
+  }
+
+  /** Called by the on-screen placement button on pointerup / pointerout. */
+  endPlace(): void {
+    this.placeHeld = false;
   }
 
   /** Requests DeviceOrientation permission (iOS 13+). No-op on Android. */
