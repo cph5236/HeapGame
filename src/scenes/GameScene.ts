@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { HeapGenerator } from '../systems/HeapGenerator';
-import { persistHeapEntry } from '../systems/HeapPersistence';
 import type { Vertex } from '../systems/HeapPolygon';
 import {
   applyPolygonToGenerator,
@@ -10,7 +9,6 @@ import {
 } from '../systems/HeapPolygonLoader';
 import { OBJECT_DEFS, HEAP_ITEM_COUNT } from '../data/heapObjectDefs';
 import { getPlayerConfig, PlayerConfig } from '../systems/SaveData';
-import { HeapEntry } from '../data/heapTypes';
 import { HUD } from '../ui/HUD';
 import { InputManager } from '../systems/InputManager';
 import {
@@ -40,7 +38,6 @@ export class GameScene extends Phaser.Scene {
   private placeKey!: Phaser.Input.Keyboard.Key;
   private topZoneText!: Phaser.GameObjects.Text;
   private scoreText!: Phaser.GameObjects.Text;
-  private placementGhost!: Phaser.GameObjects.Graphics;
   private flashText!: Phaser.GameObjects.Text;
   private placeBtnBg?: Phaser.GameObjects.Rectangle;
   private placeBtnLabel?: Phaser.GameObjects.Text;
@@ -59,12 +56,8 @@ export class GameScene extends Phaser.Scene {
   private playerConfig!: PlayerConfig;
   private im!: InputManager;
   private _lastScore = -1;
-  private _ghostLastX = NaN;
-  private _ghostLastSurfaceY = NaN;
-  private _ghostLastValid: boolean | null = null;
-  private _ghostLastInZone = false;
   private _heapPolygon: Vertex[] = [];
-  private _heapHash = '';
+  private _heapId = '';
 
   constructor() {
     super({ key: 'GameScene' });
@@ -83,9 +76,9 @@ export class GameScene extends Phaser.Scene {
     this.edgeCollider = new HeapEdgeCollider(this);
 
     const polygon = (this.game.registry.get('heapPolygon') as Vertex[] | undefined) ?? [];
-    const heapHash = (this.game.registry.get('heapHash') as string | undefined) ?? '';
+    const heapId = (this.game.registry.get('heapId') as string | undefined) ?? '';
     this._heapPolygon = polygon;
-    this._heapHash = heapHash;
+    this._heapId = heapId;
 
     this.heapGenerator = new HeapGenerator(
       this, this.platforms, [], this.chunkRenderer, this.edgeCollider,
@@ -147,9 +140,6 @@ export class GameScene extends Phaser.Scene {
 
     // SPACE — place block when in top zone (desktop)
     this.placeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-
-    // Placement ghost (world-space, scrolls with camera)
-    this.placementGhost = this.add.graphics().setDepth(15);
 
     this.im = InputManager.getInstance();
     const im = this.im;
@@ -246,9 +236,6 @@ export class GameScene extends Phaser.Scene {
       this.topZoneText.setVisible(showPlaceUI);
     }
 
-    // Placement ghost preview
-    this.updatePlacementGhost(inTopZone);
-
     // Placement trigger
     if (!this.blockPlaced && inTopZone &&
         (Phaser.Input.Keyboard.JustDown(this.placeKey) || im.placeJustPressed)) {
@@ -279,64 +266,6 @@ export class GameScene extends Phaser.Scene {
     this.highestGeneratedY = targetY;
   }
 
-  private updatePlacementGhost(inTopZone: boolean): void {
-    const active = inTopZone && !this.blockPlaced;
-
-    // Clear once when leaving the active state
-    if (!active) {
-      if (this._ghostLastInZone) {
-        this.placementGhost.clear();
-        this._ghostLastX = NaN;
-        this._ghostLastSurfaceY = NaN;
-        this._ghostLastValid = null;
-        this._ghostLastInZone = false;
-      }
-      return;
-    }
-
-    const def = OBJECT_DEFS[0];
-    const px  = this.player.sprite.x;
-
-    // Skip redraw if player hasn't moved meaningfully
-    if (Math.abs(px - this._ghostLastX) < 0.5 && this._ghostLastInZone) return;
-
-    const surfaceY = findSurfaceYFromPolygon(px, def.width, this._heapPolygon);
-
-    if (surfaceY >= MOCK_HEAP_HEIGHT_PX) {
-      // No surface — clear if we previously drew something
-      if (this._ghostLastSurfaceY < MOCK_HEAP_HEIGHT_PX) this.placementGhost.clear();
-      this._ghostLastX = px;
-      this._ghostLastSurfaceY = surfaceY;
-      this._ghostLastInZone = true;
-      return;
-    }
-
-    const minX  = WORLD_WIDTH * 0.125 + def.width / 2;
-    const maxX  = WORLD_WIDTH * 0.875 - def.width / 2;
-    const valid = px >= minX && px <= maxX;
-
-    // Skip redraw if nothing has changed
-    if (px === this._ghostLastX && valid === this._ghostLastValid && this._ghostLastInZone) return;
-
-    const ghostY = surfaceY - def.height / 2;
-    this.placementGhost.clear();
-
-    if (valid) {
-      this.placementGhost.fillStyle(0x44aaff, 0.45);
-      this.placementGhost.lineStyle(2, 0x88ccff, 0.9);
-    } else {
-      this.placementGhost.fillStyle(0xff4444, 0.35);
-      this.placementGhost.lineStyle(2, 0xff8888, 0.8);
-    }
-    this.placementGhost.fillRect(px - def.width / 2, ghostY - def.height / 2, def.width, def.height);
-    this.placementGhost.strokeRect(px - def.width / 2, ghostY - def.height / 2, def.width, def.height);
-
-    this._ghostLastX = px;
-    this._ghostLastSurfaceY = surfaceY;
-    this._ghostLastValid = valid;
-    this._ghostLastInZone = true;
-  }
-
   private placeBlock(): void {
     this.blockPlaced = true;
 
@@ -362,13 +291,17 @@ export class GameScene extends Phaser.Scene {
     }
 
     const isPeak = this.player.sprite.y <= this.heapGenerator.topY + PEAK_BONUS_ZONE_PX;
-
     const y = surfaceY - def.height / 2;
-    const entry: HeapEntry = { x: px, y, keyid };
-    this.heapGenerator.addEntry(entry);
-    persistHeapEntry(entry);
-    // Upload placement to server — fire-and-forget, never blocks gameplay
-    void HeapClient.append(this._heapHash, entry.x, entry.y);
+
+    // Send to server then immediately fetch the authoritative live zone.
+    // No local addEntry — the server is the source of truth for the heap shape.
+    void HeapClient.append(this._heapId, px, y).then(() =>
+      HeapClient.load(this._heapId),
+    ).then(freshPolygon => {
+      this._heapPolygon = freshPolygon;
+      applyPolygonToGenerator(freshPolygon, this.heapGenerator);
+      this.heapGenerator.setPolygonTopY(polygonTopY(freshPolygon));
+    });
 
     const score = Math.max(0, Math.floor(this.spawnY - surfaceY));
     this.time.delayedCall(2000, () => {
