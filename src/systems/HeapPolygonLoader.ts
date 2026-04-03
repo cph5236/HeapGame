@@ -1,5 +1,6 @@
 import { CHUNK_BAND_HEIGHT, MOCK_HEAP_HEIGHT_PX } from '../constants';
 import type { Vertex } from './HeapPolygon';
+import { simplifyPolygon } from './HeapPolygon';
 import type { HeapGenerator } from './HeapGenerator';
 
 function interpolateAtY(a: Vertex, b: Vertex, targetY: number): Vertex {
@@ -82,6 +83,63 @@ export function polygonTopY(polygon: Vertex[]): number {
     if (v.y < min) min = v.y;
   }
   return min;
+}
+
+/**
+ * Reconstruct a proper boundary polygon from a flat list of placed points.
+ *
+ * The server stores placed points sorted by Y — not as a boundary polygon.
+ * This function buckets points into CHUNK_BAND_HEIGHT bands, finds the leftmost
+ * and rightmost X per band (with forward-fill for empty bands), and stitches
+ * them into the left-edge-ascending / right-edge-descending format required by
+ * applyPolygonToGenerator.
+ *
+ * Returns [] if fewer than 2 points are provided.
+ */
+export function reconstructPolygonFromPoints(points: Vertex[]): Vertex[] {
+  if (points.length < 2) return [];
+
+  const sorted = [...points].sort((a, b) => a.y - b.y);
+  const minY = sorted[0].y;
+  const maxY = sorted[sorted.length - 1].y;
+
+  const firstBand = Math.floor(minY / CHUNK_BAND_HEIGHT) * CHUNK_BAND_HEIGHT;
+
+  const leftEdge: Vertex[] = [];
+  const rightEdge: Vertex[] = [];
+
+  let lastMinX = sorted[0].x;
+  let lastMaxX = sorted[0].x;
+
+  for (let bandTop = firstBand; bandTop <= maxY; bandTop += CHUNK_BAND_HEIGHT) {
+    const bandBottom = bandTop + CHUNK_BAND_HEIGHT;
+    const bandMidY = bandTop + CHUNK_BAND_HEIGHT / 2;
+
+    let bandMinX = Infinity;
+    let bandMaxX = -Infinity;
+
+    for (const v of sorted) {
+      if (v.y >= bandTop && v.y < bandBottom) {
+        if (v.x < bandMinX) bandMinX = v.x;
+        if (v.x > bandMaxX) bandMaxX = v.x;
+      }
+    }
+
+    if (bandMinX !== Infinity) {
+      lastMinX = bandMinX;
+      lastMaxX = bandMaxX;
+    }
+    // Forward-fill: use last known min/max if band is empty
+
+    leftEdge.push({ x: lastMinX, y: bandMidY });
+    rightEdge.push({ x: lastMaxX, y: bandMidY });
+  }
+
+  const simplifiedLeft = simplifyPolygon(leftEdge, 2);
+  const simplifiedRight = simplifyPolygon(rightEdge, 2);
+
+  // Stitch: left edge ascending Y, right edge descending Y
+  return [...simplifiedLeft, ...[...simplifiedRight].reverse()];
 }
 
 /**
