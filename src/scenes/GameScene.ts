@@ -54,7 +54,6 @@ export class GameScene extends Phaser.Scene {
   private playerConfig!: PlayerConfig;
   private im!: InputManager;
   private _lastScore = -1;
-  private _heapPolygon: Vertex[] = [];
   private _heapId = '';
   private _holdElapsed = 0;
 
@@ -76,7 +75,6 @@ export class GameScene extends Phaser.Scene {
 
     const polygon = (this.game.registry.get('heapPolygon') as Vertex[] | undefined) ?? [];
     const heapId = (this.game.registry.get('heapId') as string | undefined) ?? '';
-    this._heapPolygon = polygon;
     this._heapId = heapId;
 
     this.heapGenerator = new HeapGenerator(
@@ -281,7 +279,6 @@ export class GameScene extends Phaser.Scene {
     void HeapClient.append(this._heapId, px, py).then(() =>
       HeapClient.load(this._heapId),
     ).then(freshPolygon => {
-      this._heapPolygon = freshPolygon;
       applyPolygonToGenerator(freshPolygon, this.heapGenerator);
       this.heapGenerator.setPolygonTopY(polygonTopY(freshPolygon));
     });
