@@ -22,7 +22,7 @@ export const GEN_LOOKAHEAD = 1200;
 
 // Mock global heap state — replace with backend later
 export const MOCK_HEAP_HEIGHT_PX = 50_000;
-export const MOCK_SEED = 42;
+export const MOCK_SEED = 12;
 
 // How many pixels above the heap's topmost block that activates the placement zone
 export const HEAP_TOP_ZONE_PX = 300;
@@ -42,6 +42,7 @@ export const WALL_SLIDE_SPEED       = 80;  // px/s downward cap while touching a
 // Placement rules
 export const PEAK_BONUS_ZONE_PX   = 80;   // px above heap topY that qualifies for peak bonus
 export const PEAK_COIN_MULTIPLIER = 1.25; // coin multiplier for placing at the peak
+export const PLACE_HOLD_DURATION_MS = 1000; // ms player must hold to confirm placement
 
 // Mobile controls tuning
 export const TILT_DEAD_ZONE_DEG    = 5;   // gamma degrees to ignore near center
