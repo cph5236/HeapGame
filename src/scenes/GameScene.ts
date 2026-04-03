@@ -56,6 +56,7 @@ export class GameScene extends Phaser.Scene {
   private _lastScore = -1;
   private _heapId = '';
   private _holdElapsed = 0;
+  private _holdBar!: Phaser.GameObjects.Graphics;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -140,6 +141,8 @@ export class GameScene extends Phaser.Scene {
 
     this.im = InputManager.getInstance();
     const im = this.im;
+
+    this._holdBar = this.add.graphics().setScrollFactor(0).setDepth(26);
 
     // HUD: score (always visible)
     this.scoreText = this.add.text(GAME_WIDTH / 2, 30, 'Score: 0', {
@@ -244,9 +247,44 @@ export class GameScene extends Phaser.Scene {
     } else {
       this._holdElapsed = 0;
     }
+
+    // Progress bar + button highlight
+    const progress = this._holdElapsed / PLACE_HOLD_DURATION_MS;
+    if (showPlaceUI) {
+      const holdActive = canPlace && holdInputActive;
+      if (im.isMobile) {
+        this.placeBtnBg?.setStrokeStyle(2, holdActive ? 0x88ddff : 0x4488dd);
+        // Bar anchored to bottom of button: center=(GAME_WIDTH/2, 82), size=(280, 56)
+        this._drawHoldBar(progress, GAME_WIDTH / 2 - 134, 96, 268, 8);
+      } else {
+        // Bar anchored below topZoneText at (GAME_WIDTH/2, 82)
+        this._drawHoldBar(progress, GAME_WIDTH / 2 - 100, 97, 200, 6);
+      }
+    } else {
+      if (im.isMobile) this.placeBtnBg?.setStrokeStyle(2, 0x4488dd);
+      this._holdBar.clear();
+    }
   }
 
   // ── Private ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Draws a hold-progress bar. Track is a dark rounded rect; fill is a white
+   * inset rect that grows left-to-right. Clears when progress <= 0.
+   */
+  private _drawHoldBar(progress: number, x: number, y: number, w: number, h: number): void {
+    this._holdBar.clear();
+    if (progress <= 0) return;
+    // Track
+    this._holdBar.fillStyle(0x000000, 0.4);
+    this._holdBar.fillRoundedRect(x, y, w, h, 4);
+    // Fill — straight rect inset 2px so it sits inside the rounded track
+    const fillW = Math.max(0, (w - 4) * Math.min(progress, 1));
+    if (fillW > 0) {
+      this._holdBar.fillStyle(0xffffff, 0.8);
+      this._holdBar.fillRect(x + 2, y + 2, fillW, h - 4);
+    }
+  }
 
   private toggleDebugMode(): void {
     this.debugMode = !this.debugMode;
