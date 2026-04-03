@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { reconstructPolygonFromPoints } from '../HeapPolygonLoader';
 
 // HeapClient reads SERVER_URL at module evaluation time from import.meta.env,
 // so we need to stub the global before importing.
@@ -95,7 +96,7 @@ describe('HeapClient.load', () => {
     const fetchMock = vi.mocked(fetch);
     expect(fetchMock).toHaveBeenNthCalledWith(1, `${BASE}/heaps/${heapId}?version=0`);
     expect(fetchMock).toHaveBeenNthCalledWith(2, `${BASE}/heaps/${heapId}/base`);
-    expect(polygon).toEqual([...baseVertices, ...liveZone]);
+    expect(polygon).toEqual(reconstructPolygonFromPoints([...baseVertices, ...liveZone]));
   });
 
   it('sends cached version in query param on warm cache', async () => {
@@ -125,7 +126,7 @@ describe('HeapClient.load', () => {
     expect(fetchMock).toHaveBeenCalledWith(`${BASE}/heaps/${heapId}?version=7`);
     // base should NOT be re-fetched — cached
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(polygon).toEqual([...cachedBase, ...cachedLive]);
+    expect(polygon).toEqual(reconstructPolygonFromPoints([...cachedBase, ...cachedLive]));
   });
 
   it('re-fetches base from GET /heaps/:id/base when baseId changes after freeze', async () => {
@@ -161,7 +162,7 @@ describe('HeapClient.load', () => {
 
     const fetchMock = vi.mocked(fetch);
     expect(fetchMock).toHaveBeenNthCalledWith(2, `${BASE}/heaps/${heapId}/base`);
-    expect(polygon).toEqual([...newBase, ...newLive]);
+    expect(polygon).toEqual(reconstructPolygonFromPoints([...newBase, ...newLive]));
   });
 
   it('falls back to cached polygon on network error', async () => {
@@ -183,7 +184,7 @@ describe('HeapClient.load', () => {
 
     const polygon = await HeapClient.load(heapId);
 
-    expect(polygon).toEqual([...base, ...live]);
+    expect(polygon).toEqual(reconstructPolygonFromPoints([...base, ...live]));
   });
 });
 
@@ -279,6 +280,6 @@ describe('HeapClient workflow: append then load', () => {
     const fetchMock = vi.mocked(fetch);
     // load() must send the PRE-append version (5, not 6) — we don't have v6 data yet
     expect(fetchMock).toHaveBeenNthCalledWith(2, `${BASE}/heaps/${heapId}?version=5`);
-    expect(polygon).toEqual([...base, ...liveAfterPlace]);
+    expect(polygon).toEqual(reconstructPolygonFromPoints([...base, ...liveAfterPlace]));
   });
 });

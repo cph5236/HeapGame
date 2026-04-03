@@ -3,6 +3,7 @@ import type {
   ListHeapsResponse,
   Vertex,
 } from '../../shared/heapTypes';
+import { reconstructPolygonFromPoints } from './HeapPolygonLoader';
 
 const SERVER_URL: string =
   (import.meta as unknown as { env: Record<string, string> }).env.VITE_HEAP_SERVER_URL ??
@@ -90,7 +91,7 @@ export class HeapClient {
       const data = (await res.json()) as GetHeapResponse;
 
       if (!data.changed && cache) {
-        return buildPolygon(heapId, cache);
+        return reconstructPolygonFromPoints(await buildPolygon(heapId, cache));
       }
 
       if (data.changed) {
@@ -100,16 +101,16 @@ export class HeapClient {
           liveZone: data.liveZone,
         };
         saveCache(heapId, newCache);
-        return buildPolygon(heapId, newCache);
+        return reconstructPolygonFromPoints(await buildPolygon(heapId, newCache));
       }
 
       return [];
     } catch {
       if (cache) {
         try {
-          return await buildPolygon(heapId, cache);
+          return reconstructPolygonFromPoints(await buildPolygon(heapId, cache));
         } catch {
-          return cache.liveZone;
+          return reconstructPolygonFromPoints(cache.liveZone);
         }
       }
       return [];
