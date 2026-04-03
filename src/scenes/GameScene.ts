@@ -319,6 +319,7 @@ export class GameScene extends Phaser.Scene {
     ).then(freshPolygon => {
       applyPolygonToGenerator(freshPolygon, this.heapGenerator);
       this.heapGenerator.setPolygonTopY(polygonTopY(freshPolygon));
+      this.game.registry.set('heapPolygon', freshPolygon);
     });
 
     const score = Math.max(0, Math.floor(this.spawnY - py));

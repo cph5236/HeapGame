@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
 import { getBalance, resetAllData } from '../systems/SaveData';
-import { clearHeapAdditions } from '../systems/HeapPersistence';
 import { InputManager } from '../systems/InputManager';
 
 export class MenuScene extends Phaser.Scene {
@@ -359,7 +358,6 @@ export class MenuScene extends Phaser.Scene {
         });
       } else {
         resetAllData();
-        clearHeapAdditions();
         this.scene.restart();
       }
     });

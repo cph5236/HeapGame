@@ -28,20 +28,20 @@ export class BootScene extends Phaser.Scene {
     this.createEnemyPercherTexture();
     this.createEnemyGhostTexture();
 
-    HeapClient.getHashes()
-      .then((hashes) => {
-        if (hashes.length === 0) {
-          return Promise.resolve({ hash: '', polygon: [] as Vertex[] });
+    HeapClient.list()
+      .then((ids) => {
+        if (ids.length === 0) {
+          return Promise.resolve({ id: '', polygon: [] as Vertex[] });
         }
-        const hash = hashes[0];
-        return HeapClient.load(hash).then((polygon) => ({ hash, polygon }));
+        const id = ids[0];
+        return HeapClient.load(id).then((polygon) => ({ id, polygon }));
       })
-      .then(({ hash, polygon }) => {
-        this.game.registry.set('heapHash', hash);
+      .then(({ id, polygon }) => {
+        this.game.registry.set('heapId', id);
         this.game.registry.set('heapPolygon', polygon);
       })
       .catch(() => {
-        this.game.registry.set('heapHash', '');
+        this.game.registry.set('heapId', '');
         this.game.registry.set('heapPolygon', [] as Vertex[]);
       })
       .finally(() => {

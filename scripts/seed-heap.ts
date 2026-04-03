@@ -23,7 +23,7 @@ import type { CreateHeapResponse, ResetHeapResponse } from '../shared/heapTypes'
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const SERVER_URL = process.env.HEAP_SERVER_URL ?? 'http://localhost:8787';
-const NUM_BLOCKS = 500;
+const NUM_BLOCKS = 200;
 const SIMPLIFY_EPSILON = 2;
 const OVERWRITE = process.env.OVERWRITE === 'true';
 const TARGET_HEAP_ID = process.env.TARGET_HEAP_ID ?? '';
