@@ -20,6 +20,7 @@ import {
   PEAK_BONUS_ZONE_PX,
   PLAYER_JUMP_VELOCITY,
   PLAYER_INVINCIBLE_MS,
+  PLACE_HOLD_DURATION_MS,
 } from '../constants';
 import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
@@ -55,6 +56,7 @@ export class GameScene extends Phaser.Scene {
   private _lastScore = -1;
   private _heapPolygon: Vertex[] = [];
   private _heapId = '';
+  private _holdElapsed = 0;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -152,7 +154,9 @@ export class GameScene extends Phaser.Scene {
         .setScrollFactor(0).setDepth(24).setVisible(false)
         .setStrokeStyle(2, 0x4488dd);
       this.placeBtnBg.setInteractive({ useHandCursor: true });
-      this.placeBtnBg.on('pointerup', () => im.triggerPlace());
+      this.placeBtnBg.on('pointerdown', () => im.startPlace());
+      this.placeBtnBg.on('pointerup', () => im.endPlace());
+      this.placeBtnBg.on('pointerout', () => im.endPlace());
 
       this.placeBtnLabel = this.add.text(GAME_WIDTH / 2, 82, 'PLACE BLOCK', {
         fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
@@ -225,10 +229,22 @@ export class GameScene extends Phaser.Scene {
       this.topZoneText.setVisible(showPlaceUI);
     }
 
-    // Placement trigger
-    if (!this.blockPlaced && inTopZone &&
-        (Phaser.Input.Keyboard.JustDown(this.placeKey) || im.placeJustPressed)) {
-      this.placeBlock();
+    // Hold-to-confirm placement
+    const body = this.player.sprite.body as Phaser.Physics.Arcade.Body;
+    const onHeapSurface = body.blocked.down;
+    const inCenterZone  = this.player.sprite.x >= WORLD_WIDTH * 0.125 &&
+                          this.player.sprite.x <= WORLD_WIDTH * 0.875;
+    const holdInputActive = im.isMobile ? im.placeHeld : this.placeKey.isDown;
+    const canPlace = !this.blockPlaced && inTopZone && inCenterZone && onHeapSurface;
+
+    if (canPlace && holdInputActive) {
+      this._holdElapsed += delta;
+      if (this._holdElapsed >= PLACE_HOLD_DURATION_MS) {
+        this._holdElapsed = 0;
+        this.placeBlock();
+      }
+    } else {
+      this._holdElapsed = 0;
     }
   }
 
