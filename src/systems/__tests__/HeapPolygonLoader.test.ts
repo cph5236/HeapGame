@@ -144,7 +144,7 @@ describe('reconstructPolygonFromPoints', () => {
     expect(result.length).toBeGreaterThanOrEqual(4);
 
     // Left edge: first half, Y must be ascending
-    const half = result.length / 2;
+    const half = Math.floor(result.length / 2);
     const leftEdge = result.slice(0, half);
     const rightEdge = result.slice(half);
 
