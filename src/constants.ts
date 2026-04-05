@@ -62,12 +62,5 @@ export const CLOUD_START_WORLD_Y    = 50_000; // show clouds everywhere; lower (
 export const GROUND_LAYER_HEIGHT    = 180;    // total depth of dirt cross-section in px
 
 // Enemies
-export const ENEMY_PERCHER_WIDTH        = 24;
-export const ENEMY_PERCHER_HEIGHT       = 24;
-export const ENEMY_GHOST_SIZE           = 36;
-export const ENEMY_GHOST_SPEED          = 240; // px/sec horizontal patrol speed
-export const ENEMY_PERCHER_CLEARANCE    = 80;   // min vertical space above block for spawn
-export const ENEMY_PERCHER_SPAWN_CHANCE = 0.25; // per-platform probability
-export const ENEMY_GHOST_SPAWN_CHANCE   = 0.05;  // per-platform probability
 export const ENEMY_CULL_DISTANCE        = 2000; // px below camera before destroy
 export const PLAYER_INVINCIBLE_MS       = 400;  // post-stomp / post-spawn invincibility
