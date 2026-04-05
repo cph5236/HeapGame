@@ -1,7 +1,7 @@
 -- server/schema.sql
 
-DROP TABLE IF EXISTS heap;
-DROP TABLE IF EXISTS heap_base;
+--DROP TABLE IF EXISTS heap;
+--DROP TABLE IF EXISTS heap_base;
 
 CREATE TABLE IF NOT EXISTS heap_base (
   id          TEXT PRIMARY KEY,
