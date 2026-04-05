@@ -62,6 +62,15 @@ export class GameScene extends Phaser.Scene {
     super({ key: 'GameScene' });
   }
 
+  preload(): void {
+    // Generate a plain magenta rectangle as fallback for missing enemy textures
+    const g = this.make.graphics({ x: 0, y: 0, add: false } as Phaser.Types.GameObjects.Graphics.Options);
+    g.fillStyle(0xff00ff);
+    g.fillRect(0, 0, 36, 36);
+    g.generateTexture('enemy-fallback', 36, 36);
+    g.destroy();
+  }
+
   create(): void {
     this.blockPlaced = false;
     this.infoOpen = false;
@@ -82,6 +91,18 @@ export class GameScene extends Phaser.Scene {
       this, this.platforms, [], this.chunkRenderer, this.edgeCollider,
     );
 
+    // Enemies — constructed and wired BEFORE polygon/generation calls so that
+    // onBandLoaded and onPlatformSpawned fire correctly during initial load.
+    this.enemyManager = new EnemyManager(this);
+
+    this.heapGenerator.onPlatformSpawned = (entry, platformTopY) => {
+      this.enemyManager.onPlatformSpawned(entry.x, platformTopY, this.blockPlaced);
+    };
+
+    this.heapGenerator.onBandLoaded = (bandTopY, vertices) => {
+      this.enemyManager.onBandLoaded(bandTopY, vertices);
+    };
+
     if (polygon.length > 0) {
       applyPolygonToGenerator(polygon, this.heapGenerator);
       this.heapGenerator.setPolygonTopY(polygonTopY(polygon));
@@ -98,13 +119,6 @@ export class GameScene extends Phaser.Scene {
 
     // Collider: player lands on top of platforms
     this.physics.add.collider(this.player.sprite, this.platforms);
-
-    // Enemies
-    this.enemyManager = new EnemyManager(this, () => this.heapGenerator.entries);
-
-    this.heapGenerator.onPlatformSpawned = (entry, platformTopY) => {
-      this.enemyManager.onPlatformSpawned(entry, platformTopY, this.blockPlaced);
-    };
 
     type ArcadeCB = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
     this.physics.add.overlap(
