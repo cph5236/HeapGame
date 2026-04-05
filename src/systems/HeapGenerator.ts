@@ -13,6 +13,7 @@ export class HeapGenerator {
   private readonly edgeCollider?: HeapEdgeCollider;
 
   onPlatformSpawned?: (entry: HeapEntry, platformTopY: number) => void;
+  onBandLoaded?: (bandTopY: number, vertices: Vertex[]) => void;
 
   // Data sorted by Y descending (highest Y = bottom of heap = index 0).
   private readonly data: HeapEntry[];
@@ -219,6 +220,7 @@ export class HeapGenerator {
   applyBandPolygon(bandTop: number, vertices: Vertex[]): void {
     this.edgeCollider?.buildFromVertices(bandTop, vertices, this.group);
     this.chunkRenderer?.renderFromPolygon(bandTop, vertices);
+    this.onBandLoaded?.(bandTop, vertices);
   }
 
   // ── Private ──────────────────────────────────────────────────────────────────
