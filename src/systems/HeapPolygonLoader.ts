@@ -103,7 +103,10 @@ export function reconstructPolygonFromPoints(points: Vertex[]): Vertex[] {
   const minY = sorted[0].y;
   const maxY = sorted[sorted.length - 1].y;
 
-  const firstBand = Math.floor(minY / CHUNK_BAND_HEIGHT) * CHUNK_BAND_HEIGHT;
+  // Smaller band = more shape detail. CHUNK_BAND_HEIGHT/10 = 50px is a good default.
+  // Decrease (e.g. /20 = 25px) for more fidelity; increase (e.g. /5 = 100px) for smoother silhouette.
+  const bandSize = CHUNK_BAND_HEIGHT / 25;
+  const firstBand = Math.floor(minY / bandSize) * bandSize;
 
   const leftEdge: Vertex[] = [];
   const rightEdge: Vertex[] = [];
@@ -111,9 +114,9 @@ export function reconstructPolygonFromPoints(points: Vertex[]): Vertex[] {
   let lastMinX = sorted[0].x;
   let lastMaxX = sorted[0].x;
 
-  for (let bandTop = firstBand; bandTop <= maxY; bandTop += CHUNK_BAND_HEIGHT) {
-    const bandBottom = bandTop + CHUNK_BAND_HEIGHT;
-    const bandMidY = bandTop + CHUNK_BAND_HEIGHT / 2;
+  for (let bandTop = firstBand; bandTop <= maxY; bandTop += bandSize) {
+    const bandBottom = bandTop + bandSize;
+    const bandMidY = bandTop + bandSize / 2;
 
     let bandMinX = Infinity;
     let bandMaxX = -Infinity;
@@ -126,8 +129,19 @@ export function reconstructPolygonFromPoints(points: Vertex[]): Vertex[] {
     }
 
     if (bandMinX !== Infinity) {
-      lastMinX = bandMinX;
-      lastMaxX = bandMaxX;
+      if (bandMinX === bandMaxX) {
+        // Single point in band — assign to whichever edge it's closest to,
+        // forward-fill the other. Prevents cross-heap cuts.
+        const midX = (lastMinX + lastMaxX) / 2;
+        if (bandMinX <= midX) {
+          lastMinX = bandMinX;
+        } else {
+          lastMaxX = bandMaxX;
+        }
+      } else {
+        lastMinX = bandMinX;
+        lastMaxX = bandMaxX;
+      }
     }
     // Forward-fill: use last known min/max if band is empty
 

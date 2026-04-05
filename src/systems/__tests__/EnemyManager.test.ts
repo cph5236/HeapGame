@@ -2,6 +2,56 @@
 import { describe, it, expect } from 'vitest';
 
 // ---------------------------------------------------------------------------
+// isPointInsidePolygon — exported for testing
+// Ray-casting point-in-polygon test.
+// ---------------------------------------------------------------------------
+import { isPointInsidePolygon } from '../EnemyManager';
+
+// Unit square: (0,0) → (10,0) → (10,10) → (0,10)
+const square = [
+  { x: 0, y: 0 },
+  { x: 10, y: 0 },
+  { x: 10, y: 10 },
+  { x: 0, y: 10 },
+];
+
+describe('isPointInsidePolygon', () => {
+  it('returns true for a point clearly inside', () => {
+    expect(isPointInsidePolygon(5, 5, square)).toBe(true);
+  });
+
+  it('returns false for a point clearly outside', () => {
+    expect(isPointInsidePolygon(20, 20, square)).toBe(false);
+  });
+
+  it('returns false for empty polygon', () => {
+    expect(isPointInsidePolygon(5, 5, [])).toBe(false);
+  });
+
+  it('returns false for a point above the polygon (y < all vertices)', () => {
+    // In Phaser coords Y increases downward, so y=-1 is above the square
+    expect(isPointInsidePolygon(5, -1, square)).toBe(false);
+  });
+
+  it('correctly identifies interior vs exterior for an L-shape', () => {
+    // L-shape polygon (Phaser Y-down coords):
+    //   (0,0)→(20,0)→(20,10)→(10,10)→(10,20)→(0,20)
+    const lShape = [
+      { x: 0,  y: 0  },
+      { x: 20, y: 0  },
+      { x: 20, y: 10 },
+      { x: 10, y: 10 },
+      { x: 10, y: 20 },
+      { x: 0,  y: 20 },
+    ];
+    expect(isPointInsidePolygon(5,  5,  lShape)).toBe(true);  // top-left arm
+    expect(isPointInsidePolygon(15, 5,  lShape)).toBe(true);  // top-right arm
+    expect(isPointInsidePolygon(5,  15, lShape)).toBe(true);  // bottom-left arm
+    expect(isPointInsidePolygon(15, 15, lShape)).toBe(false); // cutout corner
+  });
+});
+
+// ---------------------------------------------------------------------------
 // computeSurfaceAngle — exported for testing
 // Returns degrees from horizontal for a directed edge v1→v2.
 // ---------------------------------------------------------------------------

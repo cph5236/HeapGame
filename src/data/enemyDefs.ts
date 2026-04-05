@@ -47,7 +47,7 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
     speed: 240,
     spawnOnHeapSurface: true,
     spawnOnHeapWall: false,
-    spawnStartY: 40000,
+    spawnStartY: 50000,
     spawnEndY: -1,
     spawnChanceMin: 0.03,
     spawnChanceMax: 0.12,

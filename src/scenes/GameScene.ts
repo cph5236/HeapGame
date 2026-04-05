@@ -100,10 +100,13 @@ export class GameScene extends Phaser.Scene {
     };
 
     this.heapGenerator.onBandLoaded = (bandTopY, vertices) => {
-      this.enemyManager.onBandLoaded(bandTopY, vertices);
+      if (!this.blockPlaced) {
+        this.enemyManager.onBandLoaded(bandTopY, vertices);
+      }
     };
 
     if (polygon.length > 0) {
+      this.enemyManager.setPolygon(polygon);
       applyPolygonToGenerator(polygon, this.heapGenerator);
       this.heapGenerator.setPolygonTopY(polygonTopY(polygon));
     }
