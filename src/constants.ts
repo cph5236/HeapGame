@@ -22,7 +22,7 @@ export const GEN_LOOKAHEAD = 1200;
 
 // Mock global heap state — replace with backend later
 export const MOCK_HEAP_HEIGHT_PX = 50_000;
-export const MOCK_SEED = 42;
+export const MOCK_SEED = 12;
 
 // How many pixels above the heap's topmost block that activates the placement zone
 export const HEAP_TOP_ZONE_PX = 300;
@@ -35,12 +35,14 @@ export const SCORE_TO_COINS_DIVISOR = 100;
 export const PLAYER_DASH_VELOCITY   = 500; // px/sec horizontal burst
 export const DASH_COOLDOWN_MS       = 800; // ms between dashes
 export const DASH_DURATION_MS       = 200; // ms the dash velocity is protected from movement override
-export const PLAYER_MAX_FALL_SPEED  = 1200; // px/s; reached after ~1.5 s at gravity 800
+export const PLAYER_MAX_FALL_SPEED  = 800; // px/s; reached after ~1.5 s at gravity 800
+export const PLAYER_DIVE_SPEED      = 1200; // px/s; instant downward velocity while diving
 export const WALL_SLIDE_SPEED       = 80;  // px/s downward cap while touching a wall
 
 // Placement rules
 export const PEAK_BONUS_ZONE_PX   = 80;   // px above heap topY that qualifies for peak bonus
 export const PEAK_COIN_MULTIPLIER = 1.25; // coin multiplier for placing at the peak
+export const PLACE_HOLD_DURATION_MS = 1000; // ms player must hold to confirm placement
 
 // Mobile controls tuning
 export const TILT_DEAD_ZONE_DEG    = 5;   // gamma degrees to ignore near center
@@ -60,12 +62,5 @@ export const CLOUD_START_WORLD_Y    = 50_000; // show clouds everywhere; lower (
 export const GROUND_LAYER_HEIGHT    = 180;    // total depth of dirt cross-section in px
 
 // Enemies
-export const ENEMY_PERCHER_WIDTH        = 24;
-export const ENEMY_PERCHER_HEIGHT       = 24;
-export const ENEMY_GHOST_SIZE           = 36;
-export const ENEMY_GHOST_SPEED          = 240; // px/sec horizontal patrol speed
-export const ENEMY_PERCHER_CLEARANCE    = 80;   // min vertical space above block for spawn
-export const ENEMY_PERCHER_SPAWN_CHANCE = 0.25; // per-platform probability
-export const ENEMY_GHOST_SPAWN_CHANCE   = 0.05;  // per-platform probability
 export const ENEMY_CULL_DISTANCE        = 2000; // px below camera before destroy
 export const PLAYER_INVINCIBLE_MS       = 400;  // post-stomp / post-spawn invincibility

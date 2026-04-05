@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { HeapGenerator } from '../systems/HeapGenerator';
-import { findSurfaceY } from '../systems/HeapSurface';
-import { DEV_HEAP } from '../data/devHeap';
-import { OBJECT_DEFS, HEAP_ITEM_COUNT } from '../data/heapObjectDefs';
+import type { Vertex } from '../systems/HeapPolygon';
+import {
+  applyPolygonToGenerator,
+  polygonTopY,
+} from '../systems/HeapPolygonLoader';
 import { getPlayerConfig, PlayerConfig } from '../systems/SaveData';
-import { loadHeapAdditions, persistHeapEntry } from '../systems/HeapPersistence';
-import { HeapEntry } from '../data/heapTypes';
 import { HUD } from '../ui/HUD';
 import { InputManager } from '../systems/InputManager';
 import {
@@ -20,12 +20,14 @@ import {
   PEAK_BONUS_ZONE_PX,
   PLAYER_JUMP_VELOCITY,
   PLAYER_INVINCIBLE_MS,
+  PLACE_HOLD_DURATION_MS,
 } from '../constants';
 import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
+import { HeapClient } from '../systems/HeapClient';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -35,8 +37,6 @@ export class GameScene extends Phaser.Scene {
   private placeKey!: Phaser.Input.Keyboard.Key;
   private topZoneText!: Phaser.GameObjects.Text;
   private scoreText!: Phaser.GameObjects.Text;
-  private placementGhost!: Phaser.GameObjects.Graphics;
-  private flashText!: Phaser.GameObjects.Text;
   private placeBtnBg?: Phaser.GameObjects.Rectangle;
   private placeBtnLabel?: Phaser.GameObjects.Text;
   private infoOverlayParts: (Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text)[] = [];
@@ -54,13 +54,21 @@ export class GameScene extends Phaser.Scene {
   private playerConfig!: PlayerConfig;
   private im!: InputManager;
   private _lastScore = -1;
-  private _ghostLastX = NaN;
-  private _ghostLastSurfaceY = NaN;
-  private _ghostLastValid: boolean | null = null;
-  private _ghostLastInZone = false;
+  private _heapId = '';
+  private _holdElapsed = 0;
+  private _holdBar!: Phaser.GameObjects.Graphics;
 
   constructor() {
     super({ key: 'GameScene' });
+  }
+
+  preload(): void {
+    // Generate a plain magenta rectangle as fallback for missing enemy textures
+    const g = this.make.graphics({ x: 0, y: 0, add: false } as Phaser.Types.GameObjects.Graphics.Options);
+    g.fillStyle(0xff00ff);
+    g.fillRect(0, 0, 36, 36);
+    g.generateTexture('enemy-fallback', 36, 36);
+    g.destroy();
   }
 
   create(): void {
@@ -74,7 +82,34 @@ export class GameScene extends Phaser.Scene {
     this.platforms = this.physics.add.staticGroup();
     this.chunkRenderer = new HeapChunkRenderer(this);
     this.edgeCollider = new HeapEdgeCollider(this);
-    this.heapGenerator = new HeapGenerator(this, this.platforms, [...DEV_HEAP, ...loadHeapAdditions()], this.chunkRenderer, this.edgeCollider);
+
+    const polygon = (this.game.registry.get('heapPolygon') as Vertex[] | undefined) ?? [];
+    const heapId = (this.game.registry.get('heapId') as string | undefined) ?? '';
+    this._heapId = heapId;
+
+    this.heapGenerator = new HeapGenerator(
+      this, this.platforms, [], this.chunkRenderer, this.edgeCollider,
+    );
+
+    // Enemies — constructed and wired BEFORE polygon/generation calls so that
+    // onBandLoaded and onPlatformSpawned fire correctly during initial load.
+    this.enemyManager = new EnemyManager(this);
+
+    this.heapGenerator.onPlatformSpawned = (entry, platformTopY) => {
+      this.enemyManager.onPlatformSpawned(entry.x, platformTopY, this.blockPlaced);
+    };
+
+    this.heapGenerator.onBandLoaded = (bandTopY, vertices) => {
+      if (!this.blockPlaced) {
+        this.enemyManager.onBandLoaded(bandTopY, vertices);
+      }
+    };
+
+    if (polygon.length > 0) {
+      this.enemyManager.setPolygon(polygon);
+      applyPolygonToGenerator(polygon, this.heapGenerator);
+      this.heapGenerator.setPolygonTopY(polygonTopY(polygon));
+    }
 
     // Spawn player at world floor (left clear zone) — player climbs up through the heap
     this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
@@ -87,13 +122,6 @@ export class GameScene extends Phaser.Scene {
 
     // Collider: player lands on top of platforms
     this.physics.add.collider(this.player.sprite, this.platforms);
-
-    // Enemies
-    this.enemyManager = new EnemyManager(this, () => this.heapGenerator.entries);
-
-    this.heapGenerator.onPlatformSpawned = (entry, platformTopY) => {
-      this.enemyManager.onPlatformSpawned(entry, platformTopY, this.blockPlaced);
-    };
 
     type ArcadeCB = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
     this.physics.add.overlap(
@@ -128,11 +156,10 @@ export class GameScene extends Phaser.Scene {
     // SPACE — place block when in top zone (desktop)
     this.placeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
-    // Placement ghost (world-space, scrolls with camera)
-    this.placementGhost = this.add.graphics().setDepth(15);
-
     this.im = InputManager.getInstance();
     const im = this.im;
+
+    this._holdBar = this.add.graphics().setScrollFactor(0).setDepth(26);
 
     // HUD: score (always visible)
     this.scoreText = this.add.text(GAME_WIDTH / 2, 30, 'Score: 0', {
@@ -145,7 +172,9 @@ export class GameScene extends Phaser.Scene {
         .setScrollFactor(0).setDepth(24).setVisible(false)
         .setStrokeStyle(2, 0x4488dd);
       this.placeBtnBg.setInteractive({ useHandCursor: true });
-      this.placeBtnBg.on('pointerup', () => im.triggerPlace());
+      this.placeBtnBg.on('pointerdown', () => im.startPlace());
+      this.placeBtnBg.on('pointerup', () => im.endPlace());
+      this.placeBtnBg.on('pointerout', () => im.endPlace());
 
       this.placeBtnLabel = this.add.text(GAME_WIDTH / 2, 82, 'PLACE BLOCK', {
         fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
@@ -160,14 +189,6 @@ export class GameScene extends Phaser.Scene {
         fontSize: '18px', color: '#ffdd44', stroke: '#000000', strokeThickness: 3,
       }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
     }
-
-    // Flash message for invalid placement attempts
-    this.flashText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60, '', {
-      fontSize: '22px', color: '#ff6666',
-      stroke: '#000000', strokeThickness: 3,
-      backgroundColor: '#000000aa',
-      padding: { x: 14, y: 8 },
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(30).setVisible(false);
 
     // HUD: ability indicators (dash bar, air jumps, wall jump)
     this.hud = new HUD(this, this.player);
@@ -226,17 +247,61 @@ export class GameScene extends Phaser.Scene {
       this.topZoneText.setVisible(showPlaceUI);
     }
 
-    // Placement ghost preview
-    this.updatePlacementGhost(inTopZone);
+    // Hold-to-confirm placement
+    const body = this.player.sprite.body as Phaser.Physics.Arcade.Body;
+    const onHeapSurface = body.blocked.down;
+    const inCenterZone  = this.player.sprite.x >= WORLD_WIDTH * 0.125 &&
+                          this.player.sprite.x <= WORLD_WIDTH * 0.875;
+    const holdInputActive = im.isMobile ? im.placeHeld : this.placeKey.isDown;
+    const canPlace = !this.blockPlaced && inTopZone && inCenterZone && onHeapSurface;
 
-    // Placement trigger
-    if (!this.blockPlaced && inTopZone &&
-        (Phaser.Input.Keyboard.JustDown(this.placeKey) || im.placeJustPressed)) {
-      this.placeBlock();
+    if (canPlace && holdInputActive) {
+      this._holdElapsed += delta;
+      if (this._holdElapsed >= PLACE_HOLD_DURATION_MS) {
+        this._holdElapsed = 0;
+        this.placeBlock();
+      }
+    } else {
+      this._holdElapsed = 0;
+    }
+
+    // Progress bar + button highlight
+    const progress = this._holdElapsed / PLACE_HOLD_DURATION_MS;
+    if (showPlaceUI) {
+      const holdActive = canPlace && holdInputActive;
+      if (im.isMobile) {
+        this.placeBtnBg?.setStrokeStyle(2, holdActive ? 0x88ddff : 0x4488dd);
+        // Bar anchored to bottom of button: center=(GAME_WIDTH/2, 82), size=(280, 56)
+        this._drawHoldBar(progress, GAME_WIDTH / 2 - 134, 96, 268, 8);
+      } else {
+        // Bar anchored below topZoneText at (GAME_WIDTH/2, 82)
+        this._drawHoldBar(progress, GAME_WIDTH / 2 - 100, 97, 200, 6);
+      }
+    } else {
+      if (im.isMobile) this.placeBtnBg?.setStrokeStyle(2, 0x4488dd);
+      this._holdBar.clear();
     }
   }
 
   // ── Private ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Draws a hold-progress bar. Track is a dark rounded rect; fill is a white
+   * inset rect that grows left-to-right. Clears when progress <= 0.
+   */
+  private _drawHoldBar(progress: number, x: number, y: number, w: number, h: number): void {
+    this._holdBar.clear();
+    if (progress <= 0) return;
+    // Track
+    this._holdBar.fillStyle(0x000000, 0.4);
+    this._holdBar.fillRoundedRect(x, y, w, h, 4);
+    // Fill — straight rect inset 2px so it sits inside the rounded track
+    const fillW = Math.max(0, (w - 4) * Math.min(progress, 1));
+    if (fillW > 0) {
+      this._holdBar.fillStyle(0xffffff, 0.8);
+      this._holdBar.fillRect(x + 2, y + 2, fillW, h - 4);
+    }
+  }
 
   private toggleDebugMode(): void {
     this.debugMode = !this.debugMode;
@@ -259,96 +324,22 @@ export class GameScene extends Phaser.Scene {
     this.highestGeneratedY = targetY;
   }
 
-  private updatePlacementGhost(inTopZone: boolean): void {
-    const active = inTopZone && !this.blockPlaced;
-
-    // Clear once when leaving the active state
-    if (!active) {
-      if (this._ghostLastInZone) {
-        this.placementGhost.clear();
-        this._ghostLastX = NaN;
-        this._ghostLastSurfaceY = NaN;
-        this._ghostLastValid = null;
-        this._ghostLastInZone = false;
-      }
-      return;
-    }
-
-    const def = OBJECT_DEFS[0];
-    const px  = this.player.sprite.x;
-
-    // Skip redraw if player hasn't moved meaningfully
-    if (Math.abs(px - this._ghostLastX) < 0.5 && this._ghostLastInZone) return;
-
-    const surfaceY = findSurfaceY(px, def.width, this.heapGenerator.entries);
-
-    if (surfaceY >= MOCK_HEAP_HEIGHT_PX) {
-      // No surface — clear if we previously drew something
-      if (this._ghostLastSurfaceY < MOCK_HEAP_HEIGHT_PX) this.placementGhost.clear();
-      this._ghostLastX = px;
-      this._ghostLastSurfaceY = surfaceY;
-      this._ghostLastInZone = true;
-      return;
-    }
-
-    const minX  = WORLD_WIDTH * 0.125 + def.width / 2;
-    const maxX  = WORLD_WIDTH * 0.875 - def.width / 2;
-    const valid = px >= minX && px <= maxX;
-
-    // Skip redraw if nothing has changed
-    if (px === this._ghostLastX && valid === this._ghostLastValid && this._ghostLastInZone) return;
-
-    const ghostY = surfaceY - def.height / 2;
-    this.placementGhost.clear();
-
-    if (valid) {
-      this.placementGhost.fillStyle(0x44aaff, 0.45);
-      this.placementGhost.lineStyle(2, 0x88ccff, 0.9);
-    } else {
-      this.placementGhost.fillStyle(0xff4444, 0.35);
-      this.placementGhost.lineStyle(2, 0xff8888, 0.8);
-    }
-    this.placementGhost.fillRect(px - def.width / 2, ghostY - def.height / 2, def.width, def.height);
-    this.placementGhost.strokeRect(px - def.width / 2, ghostY - def.height / 2, def.width, def.height);
-
-    this._ghostLastX = px;
-    this._ghostLastSurfaceY = surfaceY;
-    this._ghostLastValid = valid;
-    this._ghostLastInZone = true;
-  }
-
   private placeBlock(): void {
     this.blockPlaced = true;
 
-    const keyid    = Phaser.Math.Between(0, HEAP_ITEM_COUNT - 1);
-    const def      = OBJECT_DEFS[keyid];
-    const px       = this.player.sprite.x;
-    const surfaceY = findSurfaceY(px, def.width, this.heapGenerator.entries);
+    const px     = this.player.sprite.x;
+    const py     = this.player.sprite.y;
+    const isPeak = py <= this.heapGenerator.topY + PEAK_BONUS_ZONE_PX;
 
-    // Validate: must have a real surface to stack on
-    if (surfaceY >= MOCK_HEAP_HEIGHT_PX) {
-      this.blockPlaced = false;
-      this.showFlash('No surface here!');
-      return;
-    }
+    void HeapClient.append(this._heapId, px, py).then(() =>
+      HeapClient.load(this._heapId),
+    ).then(freshPolygon => {
+      applyPolygonToGenerator(freshPolygon, this.heapGenerator);
+      this.heapGenerator.setPolygonTopY(polygonTopY(freshPolygon));
+      this.game.registry.set('heapPolygon', freshPolygon);
+    });
 
-    // Validate: must be in center 75% of the world (matches dev heap placement rules)
-    const minX = WORLD_WIDTH * 0.125 + def.width / 2;
-    const maxX = WORLD_WIDTH * 0.875 - def.width / 2;
-    if (px < minX || px > maxX) {
-      this.blockPlaced = false;
-      this.showFlash('Move to the center area!');
-      return;
-    }
-
-    const isPeak = this.player.sprite.y <= this.heapGenerator.topY + PEAK_BONUS_ZONE_PX;
-
-    const y = surfaceY - def.height / 2;
-    const entry: HeapEntry = { x: px, y, keyid };
-    this.heapGenerator.addEntry(entry);
-    persistHeapEntry(entry);
-
-    const score = Math.max(0, Math.floor(this.spawnY - surfaceY));
+    const score = Math.max(0, Math.floor(this.spawnY - py));
     this.time.delayedCall(2000, () => {
       this.scene.launch('ScoreScene', { score, isPeak });
     });
@@ -407,11 +398,6 @@ export class GameScene extends Phaser.Scene {
     this.scene.launch('ScoreScene', { score, isPeak: false });
     this.scene.pause();
   };
-
-  private showFlash(message: string): void {
-    this.flashText.setText(message).setVisible(true);
-    this.time.delayedCall(1500, () => this.flashText.setVisible(false));
-  }
 
   private createInfoButton(isMobile: boolean): void {
     const bx = GAME_WIDTH - 22;

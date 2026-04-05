@@ -10,6 +10,7 @@ import {
   DASH_COOLDOWN_MS,
   DASH_DURATION_MS,
   PLAYER_MAX_FALL_SPEED,
+  PLAYER_DIVE_SPEED,
   WALL_SLIDE_SPEED,
 } from '../constants';
 import { PlayerConfig } from '../systems/SaveData';
@@ -23,11 +24,13 @@ export class Player {
   private readonly leftKeys:         Phaser.Input.Keyboard.Key[];
   private readonly rightKeys:        Phaser.Input.Keyboard.Key[];
   private readonly jumpKeys:         Phaser.Input.Keyboard.Key[];
+  private readonly downKeys:         Phaser.Input.Keyboard.Key[];
   private readonly dashKey:          Phaser.Input.Keyboard.Key;
 
   private readonly maxAirJumps:      number;
   private readonly wallJumpEnabled:  boolean;
   private readonly dashEnabled:      boolean;
+  private readonly diveEnabled:      boolean;
   private readonly jumpBoost:        number;
 
   private airJumpsRemaining:  number = 0;
@@ -55,6 +58,7 @@ export class Player {
     this.maxAirJumps        = config.maxAirJumps;
     this.wallJumpEnabled    = config.wallJump;
     this.dashEnabled        = config.dash;
+    this.diveEnabled        = config.dive;
     this.jumpBoost          = config.jumpBoost;
     this.airJumpsRemaining  = this.maxAirJumps;
     this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
@@ -63,6 +67,7 @@ export class Player {
     this.leftKeys  = [kb.addKey(KeyCodes.LEFT),  kb.addKey(KeyCodes.A)];
     this.rightKeys = [kb.addKey(KeyCodes.RIGHT), kb.addKey(KeyCodes.D)];
     this.jumpKeys  = [kb.addKey(KeyCodes.UP),    kb.addKey(KeyCodes.W)];
+    this.downKeys  = [kb.addKey(KeyCodes.DOWN),  kb.addKey(KeyCodes.S)];
     this.dashKey   = kb.addKey(KeyCodes.SHIFT);
   }
 
@@ -140,6 +145,19 @@ export class Player {
     // Wall slide — cap downward velocity when touching a wall while falling
     if (!onGround && onWall && body.velocity.y > WALL_SLIDE_SPEED) {
       this.sprite.setVelocityY(WALL_SLIDE_SPEED);
+    }
+
+    // Dive — slam downward while airborne; release to return to normal fall speed
+    if (this.diveEnabled && !onGround) {
+      if (this.downKeys.some(k => k.isDown)) {
+        body.setMaxVelocityY(PLAYER_DIVE_SPEED);
+        this.sprite.setVelocityY(PLAYER_DIVE_SPEED);
+      } else {
+        body.setMaxVelocityY(PLAYER_MAX_FALL_SPEED);
+        if (body.velocity.y > PLAYER_MAX_FALL_SPEED) {
+          this.sprite.setVelocityY(PLAYER_MAX_FALL_SPEED);
+        }
+      }
     }
 
     // X wrap — seamless edge-to-edge teleport

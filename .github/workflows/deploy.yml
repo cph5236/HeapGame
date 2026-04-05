@@ -29,6 +29,8 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+        env:
+          VITE_HEAP_SERVER_URL: ${{ secrets.VITE_HEAP_SERVER_URL }}
 
       - uses: actions/configure-pages@v5
 

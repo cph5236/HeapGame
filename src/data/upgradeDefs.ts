@@ -56,4 +56,11 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     maxLevel: 3,
     cost: (l) => [400, 900, 1600][l - 1],
   },
+  {
+    id: 'dive',
+    name: 'Dive',
+    description: () => 'Down/S to dive',
+    maxLevel: 1,
+    cost: () => 500,
+  },
 ];

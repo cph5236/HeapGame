@@ -4,6 +4,8 @@ import { HEAP_PNG_URLS } from '../data/heapPngUrls';
 import { HEAP_FILL_TEXTURE } from '../constants';
 import compositeHeapUrl from '../assets/composite-heap.png?url';
 import trashbagUrl from '../sprites/player/trashbag.png?url';
+import { HeapClient } from '../systems/HeapClient';
+import type { Vertex } from '../systems/HeapPolygon';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -25,7 +27,26 @@ export class BootScene extends Phaser.Scene {
     this.createWallJumpTexture();
     this.createEnemyPercherTexture();
     this.createEnemyGhostTexture();
-    this.scene.start('MenuScene');
+
+    HeapClient.list()
+      .then((ids) => {
+        if (ids.length === 0) {
+          return Promise.resolve({ id: '', polygon: [] as Vertex[] });
+        }
+        const id = ids[0];
+        return HeapClient.load(id).then((polygon) => ({ id, polygon }));
+      })
+      .then(({ id, polygon }) => {
+        this.game.registry.set('heapId', id);
+        this.game.registry.set('heapPolygon', polygon);
+      })
+      .catch(() => {
+        this.game.registry.set('heapId', '');
+        this.game.registry.set('heapPolygon', [] as Vertex[]);
+      })
+      .finally(() => {
+        this.scene.start('MenuScene');
+      });
   }
 
   private createPlatformTexture(): void {
