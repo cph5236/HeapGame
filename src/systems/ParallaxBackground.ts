@@ -8,6 +8,7 @@ import {
   CLOUD_PARALLAX_FACTOR,
   CLOUD_START_WORLD_Y,
 } from '../constants';
+import { drawCloudShape } from './backgroundEntities';
 
 interface Cloud {
   gfx: Phaser.GameObjects.Graphics;
@@ -75,30 +76,11 @@ export class ParallaxBackground {
         scale,
       };
 
-      this.drawCloud(cloud);
+      drawCloudShape(gfx);
+      gfx.setScale(scale);
       cloud.gfx.setPosition(cloud.virtualX, cloud.virtualY);
       this.clouds.push(cloud);
     }
-  }
-
-  /** Draw cloud shape once — five overlapping ellipses + highlight. Never redrawn. */
-  private drawCloud(cloud: Cloud): void {
-    const g = cloud.gfx;
-    g.clear();
-
-    // Main body
-    g.fillStyle(0xeef4ff, 0.88);
-    g.fillEllipse(60, 40, 120, 28); // wide flat base
-    g.fillEllipse(24, 28,  56, 40); // left puff
-    g.fillEllipse(60, 18,  64, 48); // center dome (tallest)
-    g.fillEllipse(96, 26,  52, 36); // right puff
-    g.fillEllipse(40, 12,  32, 24); // small top-left detail
-
-    // Bright highlight on top
-    g.fillStyle(0xffffff, 0.55);
-    g.fillEllipse(60, 10, 40, 18);
-
-    g.setScale(cloud.scale);
   }
 
   private updateClouds(dy: number, scrollY: number): void {

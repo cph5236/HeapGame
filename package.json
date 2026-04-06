@@ -10,7 +10,7 @@
     "cap:sync": "cap sync",
     "cap:android": "cap open android",
     "gen-assets": "node scripts/gen-heap-defs.mjs && node scripts/gen-heap-texture.mjs",
-    "seed": "npx tsx scripts/seed-heap.ts"
+    "seed": "npx tsx --env-file=.env scripts/seed-heap.ts"
   },
   "dependencies": {
     "@capacitor/android": "8.2.0",

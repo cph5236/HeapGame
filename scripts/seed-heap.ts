@@ -3,7 +3,7 @@
  *
  * Usage:
  *   npm run seed                                                    # create new heap
- *   HEAP_SERVER_URL=https://heap-server.workers.dev npm run seed   # target prod
+ *   VITE_HEAP_SERVER_URL=https://heap-server.workers.dev npm run seed   # target prod
  *   OVERWRITE=true TARGET_HEAP_ID=<guid> npm run seed              # reset existing heap
  *   VERBOSE=true npm run seed                                       # show polygon details
  */
@@ -22,7 +22,7 @@ import type { CreateHeapResponse, ResetHeapResponse } from '../shared/heapTypes'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const SERVER_URL = process.env.HEAP_SERVER_URL ?? 'http://localhost:8787';
+const SERVER_URL = process.env.VITE_HEAP_SERVER_URL ?? 'http://localhost:8787';
 const NUM_BLOCKS = 200;
 const SIMPLIFY_EPSILON = 2;
 const OVERWRITE = process.env.OVERWRITE === 'true';

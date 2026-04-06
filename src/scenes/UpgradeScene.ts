@@ -4,10 +4,13 @@ import { UPGRADE_DEFS } from '../data/upgradeDefs';
 import { getBalance, getUpgradeLevel, purchaseUpgrade } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 
-const ROW_START_Y = 130;
-const ROW_SPACING = 98;
-const COL_LEFT    = 28;
-const COL_RIGHT   = GAME_WIDTH - 16;
+const ROW_START_Y   = 130;
+const ROW_SPACING   = 98;
+const ROW_HEIGHT    = 86;
+const COL_LEFT      = 28;
+const COL_RIGHT     = GAME_WIDTH - 16;
+const FOOTER_HEIGHT = 50;
+const HEADER_BOTTOM = 115;
 
 const ACCENT_COLORS: Record<string, number> = {
   air_jump:    0x4488ff,
@@ -26,6 +29,7 @@ export class UpgradeScene extends Phaser.Scene {
   private titleText!:    Phaser.GameObjects.Text;
   private rows:          UpgradeRow[] = [];
   private twinkleStars:  Phaser.GameObjects.Graphics[] = [];
+  private maxScroll:     number = 0;
 
   constructor() {
     super({ key: 'UpgradeScene' });
@@ -41,6 +45,7 @@ export class UpgradeScene extends Phaser.Scene {
     this.createHeader();
     this.createRows();
     this.createFooter();
+    this.setupScroll();
     this.registerInput();
     this.runEntranceSequence();
   }
@@ -68,7 +73,7 @@ export class UpgradeScene extends Phaser.Scene {
       [752, 47,  0x5e3a14],
       [799, 55,  0x3e280e],
     ];
-    const g = this.add.graphics().setDepth(0);
+    const g = this.add.graphics().setDepth(0).setScrollFactor(0);
     for (const [y, h, color] of bands) {
       g.fillStyle(color, 1);
       g.fillRect(0, y, GAME_WIDTH, h);
@@ -76,7 +81,7 @@ export class UpgradeScene extends Phaser.Scene {
   }
 
   private createStarField(): void {
-    const staticG = this.add.graphics().setDepth(1);
+    const staticG = this.add.graphics().setDepth(1).setScrollFactor(0);
     for (let i = 0; i < 68; i++) {
       const x    = Phaser.Math.Between(0, GAME_WIDTH);
       const y    = Phaser.Math.Between(0, 514);
@@ -87,7 +92,7 @@ export class UpgradeScene extends Phaser.Scene {
       staticG.fillCircle(x, y, r);
     }
     for (let i = 0; i < 12; i++) {
-      const g = this.add.graphics().setDepth(1);
+      const g = this.add.graphics().setDepth(1).setScrollFactor(0);
       const x = Phaser.Math.Between(0, GAME_WIDTH);
       const y = Phaser.Math.Between(0, 514);
       g.fillStyle(0xffffff, 1);
@@ -125,20 +130,46 @@ export class UpgradeScene extends Phaser.Scene {
   // ── Header ───────────────────────────────────────────────────────────────────
 
   private createHeader(): void {
+    // Cover panel — rows scroll behind this
+    this.add.rectangle(GAME_WIDTH / 2, HEADER_BOTTOM / 2, GAME_WIDTH, HEADER_BOTTOM, 0x000000, 0)
+      .setDepth(9).setScrollFactor(0);
+    const headerCover = this.add.graphics().setDepth(9).setScrollFactor(0);
+    headerCover.fillStyle(0x000000, 0);
+    // Reconstruct the sky gradient bands that sit in the header zone so rows scroll behind them
+    const bands: [number, number, number][] = [
+      [0,  47, 0x0a0818],
+      [47, 47, 0x0e0d24],
+      [94, 21, 0x121530],
+    ];
+    for (const [y, h, color] of bands) {
+      headerCover.fillStyle(color, 1);
+      headerCover.fillRect(0, y, GAME_WIDTH, h);
+    }
+
+    // Back button — top-left, transparent hit area, both platforms
+    const backHit = this.add.rectangle(30, 50, 52, 52, 0x000000, 0)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(11).setScrollFactor(0);
+    this.add.text(12, 34, '\u2190', {
+      fontSize: '48px', color: '#ff9922',
+      stroke: '#000000', strokeThickness: 3,
+    }).setDepth(11).setScrollFactor(0);
+    backHit.on('pointerup', () => this.scene.start('MenuScene'));
+
     this.titleShadow = this.add.text(242, 52, 'UPGRADES', {
       fontSize: '38px', fontStyle: 'bold',
       color: '#000000', stroke: '#000000', strokeThickness: 10,
-    }).setOrigin(0.5).setAlpha(0).setDepth(5);
+    }).setOrigin(0.5).setAlpha(0).setDepth(10).setScrollFactor(0);
 
     this.titleText = this.add.text(240, 50, 'UPGRADES', {
       fontSize: '38px', fontStyle: 'bold',
       color: '#ff9922', stroke: '#1a0800', strokeThickness: 6,
-    }).setOrigin(0.5).setAlpha(0).setDepth(5);
+    }).setOrigin(0.5).setAlpha(0).setDepth(10).setScrollFactor(0);
 
     this.balanceText = this.add.text(GAME_WIDTH / 2, 96, '', {
       fontSize: '18px', color: '#ffdd77',
       stroke: '#000000', strokeThickness: 2,
-    }).setOrigin(0.5).setAlpha(0).setDepth(5);
+    }).setOrigin(0.5).setAlpha(0).setDepth(10).setScrollFactor(0);
   }
 
   // ── Rows ─────────────────────────────────────────────────────────────────────
@@ -150,7 +181,6 @@ export class UpgradeScene extends Phaser.Scene {
       return new UpgradeRow(this, def.name, y, accentColor);
     });
 
-    // All rows get interactive — hover selects, click buys (desktop + mobile)
     this.rows.forEach((row, i) => {
       row.enableInteractive(
         () => { this.selectedIndex = i; this.refreshAll(); },
@@ -166,27 +196,74 @@ export class UpgradeScene extends Phaser.Scene {
   private createFooter(): void {
     const im = InputManager.getInstance();
 
-    if (im.isMobile) {
-      this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 54, 'Tap row to buy', {
-        fontSize: '14px', color: '#888888',
-      }).setOrigin(0.5).setDepth(8);
+    // Footer background panel — covers scrolling rows
+    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT - FOOTER_HEIGHT / 2, GAME_WIDTH, FOOTER_HEIGHT, 0x111118, 0.88)
+      .setDepth(9).setScrollFactor(0);
 
+    // Scroll fade gradient above footer
+    const fadeG = this.add.graphics().setDepth(9).setScrollFactor(0);
+    fadeG.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0, 0, 0.65, 0.65);
+    fadeG.fillRect(0, GAME_HEIGHT - FOOTER_HEIGHT - 28, GAME_WIDTH, 28);
+
+    if (im.isMobile) {
       const backBtnBg = this.add.rectangle(
         GAME_WIDTH / 2, GAME_HEIGHT - 24, 200, 36, 0x1a0800,
-      ).setStrokeStyle(1, 0xff9922).setInteractive({ useHandCursor: true }).setDepth(8);
+      ).setStrokeStyle(1, 0xff9922).setInteractive({ useHandCursor: true })
+       .setDepth(10).setScrollFactor(0);
 
       this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 24, '\u2190 Back to Menu', {
         fontSize: '15px', color: '#ff9922',
         stroke: '#000000', strokeThickness: 1,
-      }).setOrigin(0.5).setDepth(9);
+      }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
 
       backBtnBg.on('pointerup', () => this.scene.start('MenuScene'));
     } else {
       this.add.text(
-        GAME_WIDTH / 2, GAME_HEIGHT - 30,
-        '\u2191\u2193 navigate   ENTER / click to buy   ESC menu',
-        { fontSize: '14px', color: '#888888' },
-      ).setOrigin(0.5).setDepth(8);
+        GAME_WIDTH / 2, GAME_HEIGHT - 28,
+        '\u2191\u2193 navigate   ENTER / click BUY   ESC menu',
+        { fontSize: '16px', color: '#b1abab' },
+      ).setOrigin(0.5).setDepth(10).setScrollFactor(0);
+    }
+  }
+
+  // ── Scroll ───────────────────────────────────────────────────────────────────
+
+  private setupScroll(): void {
+    const contentH = ROW_START_Y + UPGRADE_DEFS.length * ROW_SPACING;
+    this.maxScroll  = Math.max(0, contentH - (GAME_HEIGHT - FOOTER_HEIGHT));
+
+    this.input.on('wheel', (_p: unknown, _g: unknown, _dx: unknown, dy: number) => {
+      this.scrollBy(dy * 0.6);
+    });
+
+    let lastPointerY = 0;
+    this.input.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
+      lastPointerY = ptr.y;
+    });
+    this.input.on('pointermove', (ptr: Phaser.Input.Pointer) => {
+      if (!ptr.isDown) return;
+      const delta = lastPointerY - ptr.y;
+      lastPointerY = ptr.y;
+      this.scrollBy(delta);
+    });
+  }
+
+  private scrollBy(delta: number): void {
+    const cam = this.cameras.main;
+    cam.scrollY = Phaser.Math.Clamp(cam.scrollY + delta, 0, this.maxScroll);
+  }
+
+  private ensureVisible(): void {
+    const rowTop = ROW_START_Y + this.selectedIndex * ROW_SPACING;
+    const rowBot = rowTop + ROW_HEIGHT;
+    const cam    = this.cameras.main;
+    const visTop = cam.scrollY + HEADER_BOTTOM;
+    const visBot = cam.scrollY + GAME_HEIGHT - FOOTER_HEIGHT;
+
+    if (rowTop < visTop) {
+      cam.scrollY = Phaser.Math.Clamp(rowTop - HEADER_BOTTOM, 0, this.maxScroll);
+    } else if (rowBot > visBot) {
+      cam.scrollY = Phaser.Math.Clamp(rowBot - (GAME_HEIGHT - FOOTER_HEIGHT), 0, this.maxScroll);
     }
   }
 
@@ -217,10 +294,7 @@ export class UpgradeScene extends Phaser.Scene {
       });
     });
 
-    // After all rows are visible, apply proper dim states for unaffordable rows
     this.time.delayedCall(lastDelay + 310, () => this.refreshAll());
-
-    // Twinkle after everything appears
     this.time.delayedCall(lastDelay + 400, () => this.startTwinkle());
   }
 
@@ -241,13 +315,13 @@ export class UpgradeScene extends Phaser.Scene {
   private move(dir: number): void {
     this.selectedIndex = (this.selectedIndex + dir + UPGRADE_DEFS.length) % UPGRADE_DEFS.length;
     this.refreshAll();
+    this.ensureVisible();
   }
 
   private buy(): void {
     const id      = UPGRADE_DEFS[this.selectedIndex].id;
     const success = purchaseUpgrade(id);
     if (success) {
-      // Flash the row green, then refresh after the animation
       this.rows[this.selectedIndex].flashSuccess();
       this.time.delayedCall(450, () => this.refreshAll());
     } else {
@@ -282,56 +356,75 @@ class UpgradeRow {
   private levelText: Phaser.GameObjects.Text;
   private costText:  Phaser.GameObjects.Text;
   private descText:  Phaser.GameObjects.Text;
+  private buyBtnBg:  Phaser.GameObjects.Rectangle;
+  private buyBtnTxt: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene, name: string, y: number, accentColor: number) {
     this.scene = scene;
 
-    this.bg = scene.add.rectangle(GAME_WIDTH / 2, y + 39, GAME_WIDTH - 20, 78, 0x0a0818)
+    this.bg = scene.add.rectangle(GAME_WIDTH / 2, y + ROW_HEIGHT / 2, GAME_WIDTH - 20, ROW_HEIGHT, 0x0a0818)
       .setFillStyle(0x0a0818, 0.92)
       .setStrokeStyle(1, 0x2a2240)
       .setDepth(6)
       .setAlpha(0);
 
-    this.accentBar = scene.add.rectangle(14, y + 39, 4, 74, accentColor)
+    this.accentBar = scene.add.rectangle(14, y + ROW_HEIGHT / 2, 4, ROW_HEIGHT - 4, accentColor)
       .setDepth(7)
       .setAlpha(0);
 
-    this.nameText = scene.add.text(COL_LEFT, y + 6, name, {
+    this.nameText = scene.add.text(COL_LEFT, y + 7, name, {
       fontSize: '20px', color: '#ffffff',
       stroke: '#000000', strokeThickness: 2,
     }).setDepth(7).setAlpha(0);
 
-    this.levelText = scene.add.text(COL_RIGHT, y + 6, '', {
+    this.levelText = scene.add.text(COL_RIGHT, y + 7, '', {
       fontSize: '16px', color: '#ffdd77',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(1, 0).setDepth(7).setAlpha(0);
 
-    this.costText = scene.add.text(COL_LEFT, y + 30, '', {
+    this.costText = scene.add.text(COL_LEFT, y + 29, '', {
       fontSize: '15px', color: '#ff9922',
       stroke: '#000000', strokeThickness: 1,
     }).setDepth(7).setAlpha(0);
 
-    this.descText = scene.add.text(COL_LEFT, y + 52, '', {
+    this.descText = scene.add.text(COL_LEFT, y + 50, '', {
       fontSize: '13px', color: '#cc9966',
       stroke: '#000000', strokeThickness: 1,
     }).setDepth(7).setAlpha(0);
+
+    // BUY button — right side, stacked below level text
+    const btnX = GAME_WIDTH - 52;
+    const btnY = y + 63;
+    this.buyBtnBg = scene.add.rectangle(btnX, btnY, 72, 22, 0x1a0800)
+      .setStrokeStyle(1, 0xff9922)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(7)
+      .setAlpha(0);
+
+    this.buyBtnTxt = scene.add.text(btnX, btnY, 'BUY', {
+      fontSize: '13px', color: '#ff9922',
+      stroke: '#000000', strokeThickness: 1,
+    }).setOrigin(0.5).setDepth(8).setAlpha(0);
   }
 
   getAllObjects(): Phaser.GameObjects.GameObject[] {
-    return [this.bg, this.accentBar, this.nameText, this.levelText, this.costText, this.descText];
+    return [this.bg, this.accentBar, this.nameText, this.levelText, this.costText, this.descText, this.buyBtnBg, this.buyBtnTxt];
   }
 
   enableInteractive(onHover: () => void, onBuy: () => void): void {
     this.bg.setInteractive({ useHandCursor: true });
     this.bg.on('pointerover', onHover);
-    this.bg.on('pointerup',   onBuy);
+    // Row background no longer triggers purchase — only the BUY button does
+    this.buyBtnBg.on('pointerover', onHover);
+    this.buyBtnBg.on('pointerup',   onBuy);
   }
 
   flashSuccess(): void {
     this.bg.setFillStyle(0x0a3018).setStrokeStyle(2, 0x44ff88);
-    // Restore to selected-state colors after flash (purchase always hits selected row)
+    this.buyBtnBg.setFillStyle(0x0a3018).setStrokeStyle(2, 0x44ff88);
     this.scene.time.delayedCall(400, () => {
       this.bg.setFillStyle(0x1a0800, 0.95).setStrokeStyle(2, 0xff9922);
+      this.buyBtnBg.setFillStyle(0x1a0800).setStrokeStyle(1, 0xff9922);
     });
   }
 
@@ -369,6 +462,22 @@ class UpgradeRow {
     // Description
     this.descText.setText(desc).setColor(maxed ? '#44ff88' : '#cc9966');
 
+    // BUY button
+    if (maxed) {
+      this.buyBtnBg.setVisible(false);
+      this.buyBtnTxt.setVisible(false);
+    } else {
+      this.buyBtnBg.setVisible(true);
+      this.buyBtnTxt.setVisible(true);
+      if (canAfford) {
+        this.buyBtnBg.setFillStyle(0x1a0800).setStrokeStyle(selected ? 2 : 1, 0xff9922);
+        this.buyBtnTxt.setColor('#ff9922');
+      } else {
+        this.buyBtnBg.setFillStyle(0x100808).setStrokeStyle(1, 0x664433);
+        this.buyBtnTxt.setColor('#664433');
+      }
+    }
+
     // Dim text + accent when unaffordable, not selected, not maxed
     const dimmed = !maxed && !canAfford && !selected;
     const alpha  = dimmed ? 0.65 : 1;
@@ -377,5 +486,7 @@ class UpgradeRow {
     this.costText.setAlpha(alpha);
     this.descText.setAlpha(alpha);
     this.accentBar.setAlpha(dimmed ? 0.45 : 1);
+    this.buyBtnBg.setAlpha(dimmed ? 0.65 : 1);
+    this.buyBtnTxt.setAlpha(dimmed ? 0.65 : 1);
   }
 }

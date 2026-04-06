@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
 import { getBalance, resetAllData } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
+import { drawCloudShape } from '../systems/backgroundEntities';
 
 export class MenuScene extends Phaser.Scene {
   private farSilhouette!: Phaser.GameObjects.Graphics;
@@ -12,6 +13,8 @@ export class MenuScene extends Phaser.Scene {
   private titleText!: Phaser.GameObjects.Text;
   private taglineText!: Phaser.GameObjects.Text;
   private balanceText!: Phaser.GameObjects.Text;
+  private startBg!: Phaser.GameObjects.Graphics;
+  private upgradeBg!: Phaser.GameObjects.Graphics;
   private startText!: Phaser.GameObjects.Text;
   private upgradeText!: Phaser.GameObjects.Text;
   private twinkleStars: Phaser.GameObjects.Graphics[] = [];
@@ -40,7 +43,7 @@ export class MenuScene extends Phaser.Scene {
     this.createPrompts(im);
     this.createSettingsButton();
     this.runEntranceSequence();
-    this.registerInput(im);
+    this.registerInput();
   }
 
   // ── Sky ──────────────────────────────────────────────────────────────────────
@@ -204,30 +207,34 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private spawnCloud(x: number, y: number, scaleVal: number, goLeft: boolean, duration: number, alpha: number): void {
-    const cloud = this.add.image(x, y, 'cloud')
-      .setScale(scaleVal)
+    const gfx = this.add.graphics()
       .setAlpha(alpha)
       .setDepth(3)
       .setScrollFactor(0);
 
-    const offscreen = 32 * scaleVal + 10;
+    drawCloudShape(gfx);
+    gfx.setScale(scaleVal);
+    gfx.setPosition(x, y);
+
+    // Cloud shape spans ~120px wide — ensure it fully clears the screen edge
+    const offscreen = 130 * scaleVal;
     const targetX = goLeft ? -offscreen : GAME_WIDTH + offscreen;
     const startX  = goLeft ? GAME_WIDTH + offscreen : -offscreen;
 
     this.tweens.add({
-      targets: cloud,
+      targets: gfx,
       x: targetX,
       duration,
       ease: 'Linear',
       repeat: -1,
-      onRepeat: () => { cloud.setX(startX); },
+      onRepeat: () => { gfx.setX(startX); },
     });
   }
 
   // ── Balance ──────────────────────────────────────────────────────────────────
 
   private createBalanceText(): void {
-    this.balanceText = this.add.text(GAME_WIDTH / 2, 615, `${getBalance()} coins`, {
+    this.balanceText = this.add.text(GAME_WIDTH / 2, 720, `${getBalance()} coins`, {
       fontSize: '16px',
       color: '#ffdd77',
       stroke: '#000000',
@@ -238,10 +245,14 @@ export class MenuScene extends Phaser.Scene {
   // ── Start / Upgrade prompts ──────────────────────────────────────────────────
 
   private createPrompts(im: InputManager): void {
-    const startLabel   = im.isMobile ? 'TAP  \u2014  Start run'  : 'SPACE  \u2014  Start run';
-    const upgradeLabel = im.isMobile ? 'TAP  \u2014  Upgrades'   : 'U  \u2014  Upgrades';
+    // Start button
+    this.startBg = this.add.graphics().setDepth(8).setAlpha(0);
+    this.startBg.fillStyle(0x000000, 0.5);
+    this.startBg.fillRoundedRect(GAME_WIDTH / 2 - 160, 540, 320, 56, 12);
+    this.startBg.lineStyle(2, 0x8899bb, 0.8);
+    this.startBg.strokeRoundedRect(GAME_WIDTH / 2 - 160, 540, 320, 56, 12);
 
-    this.startText = this.add.text(GAME_WIDTH / 2, 640, startLabel, {
+    this.startText = this.add.text(GAME_WIDTH / 2, 570, 'START RUN', {
       fontSize: '24px',
       fontStyle: 'bold',
       color: '#ffffff',
@@ -249,7 +260,14 @@ export class MenuScene extends Phaser.Scene {
       strokeThickness: 3,
     }).setOrigin(0.5).setAlpha(0).setDepth(9);
 
-    this.upgradeText = this.add.text(GAME_WIDTH / 2, 700, upgradeLabel, {
+    // Upgrade button
+    this.upgradeBg = this.add.graphics().setDepth(8).setAlpha(0);
+    this.upgradeBg.fillStyle(0x000000, 0.5);
+    this.upgradeBg.fillRoundedRect(GAME_WIDTH / 2 - 160, 612, 320, 56, 12);
+    this.upgradeBg.lineStyle(2, 0x8899bb, 0.6);
+    this.upgradeBg.strokeRoundedRect(GAME_WIDTH / 2 - 160, 612, 320, 56, 12);
+
+    this.upgradeText = this.add.text(GAME_WIDTH / 2, 640, 'UPGRADES', {
       fontSize: '20px',
       color: '#ffdd44',
       stroke: '#000000',
@@ -374,6 +392,7 @@ export class MenuScene extends Phaser.Scene {
     this.tweens.add({ targets: this.titleText,      alpha: 1,    duration: 500, delay: 1000 });
     this.tweens.add({ targets: this.taglineText,    alpha: 1,    duration: 400, delay: 1300 });
     this.tweens.add({ targets: this.balanceText,    alpha: 1,    duration: 300, delay: 1500 });
+    this.tweens.add({ targets: this.startBg,   alpha: 1, duration: 400, delay: 1700 });
     this.tweens.add({
       targets: this.startText,
       alpha: 1,
@@ -381,6 +400,7 @@ export class MenuScene extends Phaser.Scene {
       delay: 1700,
       onComplete: () => this.startPulse(),
     });
+    this.tweens.add({ targets: this.upgradeBg,   alpha: 1, duration: 300, delay: 1900 });
     this.tweens.add({ targets: this.upgradeText, alpha: 1, duration: 300, delay: 1900 });
 
     this.time.delayedCall(2100, () => this.startTwinkle());
@@ -422,24 +442,22 @@ export class MenuScene extends Phaser.Scene {
 
   // ── Input ────────────────────────────────────────────────────────────────────
 
-  private registerInput(im: InputManager): void {
+  private registerInput(): void {
     this.time.delayedCall(100, () => {
       this.input.keyboard!.once('keydown-SPACE', () => this.scene.start('GameScene'));
       this.input.keyboard!.once('keydown-U',     () => this.scene.start('UpgradeScene'));
 
-      if (im.isMobile) {
-        this.startText.setInteractive(
-          new Phaser.Geom.Rectangle(-200, -35, 400, 70),
-          Phaser.Geom.Rectangle.Contains,
-        );
-        this.startText.once('pointerup', () => this.scene.start('GameScene'));
+      this.startText.setInteractive(
+        new Phaser.Geom.Rectangle(-200, -40, 400, 80),
+        Phaser.Geom.Rectangle.Contains,
+      );
+      this.startText.once('pointerup', () => this.scene.start('GameScene'));
 
-        this.upgradeText.setInteractive(
-          new Phaser.Geom.Rectangle(-200, -35, 400, 70),
-          Phaser.Geom.Rectangle.Contains,
-        );
-        this.upgradeText.once('pointerup', () => this.scene.start('UpgradeScene'));
-      }
+      this.upgradeText.setInteractive(
+        new Phaser.Geom.Rectangle(-200, -40, 400, 80),
+        Phaser.Geom.Rectangle.Contains,
+      );
+      this.upgradeText.once('pointerup', () => this.scene.start('UpgradeScene'));
     });
   }
 }

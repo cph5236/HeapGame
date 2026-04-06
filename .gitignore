@@ -6,3 +6,5 @@ ios/
 *.local
 .env
 server/.wrangler
+todo/
+.superpowers/
