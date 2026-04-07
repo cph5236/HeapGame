@@ -64,3 +64,8 @@ export const GROUND_LAYER_HEIGHT    = 180;    // total depth of dirt cross-secti
 // Enemies
 export const ENEMY_CULL_DISTANCE        = 2000; // px below camera before destroy
 export const PLAYER_INVINCIBLE_MS       = 400;  // post-stomp / post-spawn invincibility
+
+// Heap edge collider slabs
+export const WALL_BODY_WIDTH         = 10;  // px, narrow in X — wall thickness
+export const WALL_BODY_HEIGHT        = 20;  // px, tall in Y — spans 5 scanlines (SCAN_STEP×5)
+export const MAX_WALKABLE_SLOPE_DEG  = 60;  // surfaces steeper than this are treated as walls
