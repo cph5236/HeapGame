@@ -32,7 +32,8 @@ import { HeapClient } from '../systems/HeapClient';
 export class GameScene extends Phaser.Scene {
   private player!: Player;
   private hud!: HUD;
-  private platforms!: Phaser.Physics.Arcade.StaticGroup;
+  private heapWalkableGroup!: Phaser.Physics.Arcade.StaticGroup;
+  private heapWallGroup!:     Phaser.Physics.Arcade.StaticGroup;
   private heapGenerator!: HeapGenerator;
   private placeKey!: Phaser.Input.Keyboard.Key;
   private topZoneText!: Phaser.GameObjects.Text;
@@ -79,7 +80,8 @@ export class GameScene extends Phaser.Scene {
     // World: Y=0 is the summit (top), Y=MOCK_HEAP_HEIGHT_PX is the base (bottom)
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX);
 
-    this.platforms = this.physics.add.staticGroup();
+    this.heapWalkableGroup = this.physics.add.staticGroup();
+    this.heapWallGroup     = this.physics.add.staticGroup();
     this.chunkRenderer = new HeapChunkRenderer(this);
     this.edgeCollider = new HeapEdgeCollider(this);
 
@@ -88,7 +90,7 @@ export class GameScene extends Phaser.Scene {
     this._heapId = heapId;
 
     this.heapGenerator = new HeapGenerator(
-      this, this.platforms, [], this.chunkRenderer, this.edgeCollider,
+      this, this.heapWalkableGroup, this.heapWallGroup, [], this.chunkRenderer, this.edgeCollider,
     );
 
     // Enemies — constructed and wired BEFORE polygon/generation calls so that
@@ -120,8 +122,16 @@ export class GameScene extends Phaser.Scene {
     this.highestGeneratedY = this.spawnY;
     this.generateUpTo(this.spawnY - GEN_LOOKAHEAD, true);
 
-    // Collider: player lands on top of platforms
-    this.physics.add.collider(this.player.sprite, this.platforms);
+    // Heap colliders — walkable surfaces resolve normally; wall surfaces use callback to prevent resting
+    type ArcadeProcess = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
+    this.physics.add.collider(this.player.sprite, this.heapWalkableGroup);
+    this.physics.add.collider(
+      this.player.sprite, this.heapWallGroup,
+      undefined, this.onHeapWallCollide as unknown as ArcadeProcess, this,
+    );
+    // Enemies land on both surface types
+    this.physics.add.collider(this.enemyManager.group, this.heapWalkableGroup);
+    this.physics.add.collider(this.enemyManager.group, this.heapWallGroup);
 
     type ArcadeCB = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
     this.physics.add.overlap(
@@ -391,6 +401,24 @@ export class GameScene extends Phaser.Scene {
 
     this.invincible = true;
     this.time.delayedCall(PLAYER_INVINCIBLE_MS, () => { this.invincible = false; });
+  };
+
+  /**
+   * Process callback for player vs heapWallGroup collisions.
+   * Returning true lets the collision resolve (wall blocks horizontal movement).
+   * When the player somehow lands on the top of a wall slab (body.blocked.down),
+   * a small downward + lateral nudge slides them off so they cannot stand there.
+   */
+  private readonly onHeapWallCollide = (
+    playerObj: Phaser.GameObjects.GameObject,
+  ): boolean => {
+    const body = (playerObj as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody).body;
+    if (body.blocked.down) {
+      body.velocity.y = 60;
+      if      (body.blocked.left)  body.velocity.x =  60;
+      else if (body.blocked.right) body.velocity.x = -60;
+    }
+    return true;
   };
 
   private readonly handleEnemyDamage = (): void => {
