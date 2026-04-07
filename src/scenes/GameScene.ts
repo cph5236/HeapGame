@@ -129,9 +129,7 @@ export class GameScene extends Phaser.Scene {
       this.player.sprite, this.heapWallGroup,
       undefined, this.onHeapWallCollide as unknown as ArcadeProcess, this,
     );
-    // Enemies land on both surface types
-    this.physics.add.collider(this.enemyManager.group, this.heapWalkableGroup);
-    this.physics.add.collider(this.enemyManager.group, this.heapWallGroup);
+    // Enemies all have allowGravity(false) and are positioned explicitly — no heap colliders needed.
 
     type ArcadeCB = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
     this.physics.add.overlap(

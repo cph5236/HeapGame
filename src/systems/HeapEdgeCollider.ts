@@ -5,6 +5,8 @@ import {
   WALL_BODY_WIDTH,
   WALL_BODY_HEIGHT,
   MAX_WALKABLE_SLOPE_DEG,
+  FLOOR_BODY_HEIGHT,
+  FLOOR_BODY_WIDTH,
 } from '../constants';
 import {
   computeBandScanlines,
@@ -87,7 +89,7 @@ export class HeapEdgeCollider {
     }
   }
 
-  // ── Core: place one tall narrow slab per scanline row, per edge ────────────
+  // ── Core: wall edges get narrow tall slabs; walkable rows get a full-width span ──
 
   private buildSlabs(
     bandTop: number,
@@ -101,27 +103,28 @@ export class HeapEdgeCollider {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
 
-      const leftAngle  = computeRowSlopeAngleDeg(rows, i, 'left');
-      const rightAngle = computeRowSlopeAngleDeg(rows, i, 'right');
+      const leftIsWall  = computeRowSlopeAngleDeg(rows, i, 'left')  > MAX_WALKABLE_SLOPE_DEG;
+      const rightIsWall = computeRowSlopeAngleDeg(rows, i, 'right') > MAX_WALKABLE_SLOPE_DEG;
 
-      const leftGroup  = leftAngle  > MAX_WALKABLE_SLOPE_DEG ? wallGroup : walkableGroup;
-      const rightGroup = rightAngle > MAX_WALKABLE_SLOPE_DEG ? wallGroup : walkableGroup;
-
-      bodies.push(this.createSlab(leftGroup,  row.leftX,  row.y));
-      bodies.push(this.createSlab(rightGroup, row.rightX, row.y));
+      // Gentle edges → one wide flat body spanning the full row width
+      const spanWidth = row.rightX - row.leftX;
+      const centerX   = (row.leftX + row.rightX) / 2;
+      bodies.push(this.createSpan(leftIsWall&&rightIsWall ? wallGroup : walkableGroup, centerX, row.y, spanWidth));
+    
     }
 
     this.bandBodies.set(bandTop, bodies);
   }
 
-  private createSlab(
+  private createSpan(
     group: Phaser.Physics.Arcade.StaticGroup,
     x: number,
     y: number,
+    width: number,
   ): Phaser.Physics.Arcade.Image {
     const img = group.create(x, y) as Phaser.Types.Physics.Arcade.ImageWithStaticBody;
     img.setVisible(false);
-    img.setDisplaySize(WALL_BODY_WIDTH, WALL_BODY_HEIGHT);
+    img.setDisplaySize(width, FLOOR_BODY_HEIGHT);
     img.refreshBody();
     return img as unknown as Phaser.Physics.Arcade.Image;
   }
