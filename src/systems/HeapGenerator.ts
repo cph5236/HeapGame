@@ -8,7 +8,8 @@ import { Vertex } from './HeapPolygon';
 import type { WorkerBandInput, WorkerRequest, WorkerResponse } from '../workers/heapWorker';
 
 export class HeapGenerator {
-  private readonly group: Phaser.Physics.Arcade.StaticGroup;
+  private readonly walkableGroup: Phaser.Physics.Arcade.StaticGroup;
+  private readonly wallGroup:     Phaser.Physics.Arcade.StaticGroup;
   private readonly chunkRenderer?: HeapChunkRenderer;
   private readonly edgeCollider?: HeapEdgeCollider;
 
@@ -44,12 +45,14 @@ export class HeapGenerator {
 
   constructor(
     _scene: Phaser.Scene,
-    group: Phaser.Physics.Arcade.StaticGroup,
+    walkableGroup: Phaser.Physics.Arcade.StaticGroup,
+    wallGroup: Phaser.Physics.Arcade.StaticGroup,
     data: HeapEntry[],
     chunkRenderer?: HeapChunkRenderer,
     edgeCollider?: HeapEdgeCollider,
   ) {
-    this.group = group;
+    this.walkableGroup = walkableGroup;
+    this.wallGroup     = wallGroup;
     this.chunkRenderer = chunkRenderer;
     this.edgeCollider = edgeCollider;
     // Sort defensively in case caller passes unsorted data
@@ -122,7 +125,7 @@ export class HeapGenerator {
       for (const bandTop of this.dirtyBands) {
         const bucket = this.entryBuckets.get(bandTop);
         if (bucket) {
-          this.edgeCollider.rebuildBand(bandTop, bucket, this.group);
+          this.edgeCollider.rebuildBand(bandTop, bucket, this.walkableGroup, this.wallGroup);
         }
       }
       this.dirtyBands.clear();
@@ -206,7 +209,7 @@ export class HeapGenerator {
       for (const bandTop of this.dirtyBands) {
         const bucket = this.entryBuckets.get(bandTop);
         if (bucket) {
-          this.edgeCollider.rebuildBand(bandTop, bucket, this.group);
+          this.edgeCollider.rebuildBand(bandTop, bucket, this.walkableGroup, this.wallGroup);
         }
       }
       this.dirtyBands.clear();
@@ -218,7 +221,7 @@ export class HeapGenerator {
    * Builds edge colliders and visuals without needing raw entries.
    */
   applyBandPolygon(bandTop: number, vertices: Vertex[]): void {
-    this.edgeCollider?.buildFromVertices(bandTop, vertices, this.group);
+    this.edgeCollider?.buildFromVertices(bandTop, vertices, this.walkableGroup, this.wallGroup);
     this.chunkRenderer?.renderFromPolygon(bandTop, vertices);
     this.onBandLoaded?.(bandTop, vertices);
   }
