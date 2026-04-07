@@ -1,59 +1,76 @@
 import Phaser from 'phaser';
 import { HeapEntry } from '../data/heapTypes';
-import { CHUNK_BAND_HEIGHT } from '../constants';
-import { computeBandScanlines, computeBandPolygon, ScanlineRow, Vertex } from './HeapPolygon';
-
-/** Size of each square collider body placed along polygon edges. */
-const BODY_SIZE = 8;
+import {
+  CHUNK_BAND_HEIGHT,
+  WALL_BODY_WIDTH,
+  WALL_BODY_HEIGHT,
+  MAX_WALKABLE_SLOPE_DEG,
+} from '../constants';
+import {
+  computeBandScanlines,
+  computeRowSlopeAngleDeg,
+  ScanlineRow,
+  Vertex,
+  SCAN_STEP,
+} from './HeapPolygon';
 
 /**
- * Manages static-body rectangles placed along the polygon boundary of each
- * heap chunk band. Bodies are placed directly on the polygon vertices that
- * define the visual outline, so physics collision matches the render exactly.
+ * Manages static-body slabs placed along the left/right boundaries of each
+ * heap chunk band. One 10×20px slab per ScanlineRow per edge → 16px Y overlap
+ * between adjacent slabs, making diagonal gaps impossible.
+ *
+ * Slabs are classified as walkable (slope ≤ MAX_WALKABLE_SLOPE_DEG) or wall
+ * (steeper) and placed into the appropriate StaticGroup so GameScene can wire
+ * different collision responses for each.
  *
  * Two input paths:
- *  - `buildFromScanlines()` — local path, converts scanlines → polygon → bodies
- *  - `buildFromVertices()`  — server path, takes a pre-computed closed polygon
+ *  - buildFromScanlines() — local path; directly receives ScanlineRow[]
+ *  - buildFromVertices()  — server path; rasterizes the polygon to ScanlineRow[]
  */
 export class HeapEdgeCollider {
-  /** Edge bodies per band, keyed by bandTop. */
+  /** All edge bodies per band, keyed by bandTop. */
   private readonly bandBodies: Map<number, Phaser.Physics.Arcade.Image[]> = new Map();
 
   constructor(_scene: Phaser.Scene) {}
 
-  // ── Local path ────────────────────────────────────────────────────────────
+  // ── Local path ─────────────────────────────────────────────────────────────
 
   buildFromScanlines(
     bandTop: number,
     rows: ScanlineRow[],
-    group: Phaser.Physics.Arcade.StaticGroup,
+    walkableGroup: Phaser.Physics.Arcade.StaticGroup,
+    wallGroup: Phaser.Physics.Arcade.StaticGroup,
   ): void {
     if (rows.length === 0) { this.destroyBand(bandTop); return; }
-    this.buildAlongEdges(bandTop, computeBandPolygon(rows), group);
+    this.buildSlabs(bandTop, rows, walkableGroup, wallGroup);
   }
 
-  // ── Server path ───────────────────────────────────────────────────────────
+  // ── Server path ────────────────────────────────────────────────────────────
 
   buildFromVertices(
     bandTop: number,
     vertices: Vertex[],
-    group: Phaser.Physics.Arcade.StaticGroup,
+    walkableGroup: Phaser.Physics.Arcade.StaticGroup,
+    wallGroup: Phaser.Physics.Arcade.StaticGroup,
   ): void {
-    this.buildAlongEdges(bandTop, vertices, group);
+    const rows = HeapEdgeCollider.verticesToScanlines(vertices);
+    if (rows.length === 0) { this.destroyBand(bandTop); return; }
+    this.buildSlabs(bandTop, rows, walkableGroup, wallGroup);
   }
 
-  // ── Convenience: rebuild a band from raw entries ──────────────────────────
+  // ── Convenience: rebuild a band from raw entries ───────────────────────────
 
   rebuildBand(
     bandTop: number,
     entries: HeapEntry[],
-    group: Phaser.Physics.Arcade.StaticGroup,
+    walkableGroup: Phaser.Physics.Arcade.StaticGroup,
+    wallGroup: Phaser.Physics.Arcade.StaticGroup,
   ): void {
     const rows = computeBandScanlines(entries, bandTop, bandTop + CHUNK_BAND_HEIGHT);
-    this.buildFromScanlines(bandTop, rows, group);
+    this.buildFromScanlines(bandTop, rows, walkableGroup, wallGroup);
   }
 
-  // ── Cleanup ───────────────────────────────────────────────────────────────
+  // ── Cleanup ────────────────────────────────────────────────────────────────
 
   destroyBand(bandTop: number): void {
     const bodies = this.bandBodies.get(bandTop);
@@ -70,52 +87,76 @@ export class HeapEdgeCollider {
     }
   }
 
-  // ── Core: walk polygon edges and tile with small square bodies ────────────
+  // ── Core: place one tall narrow slab per scanline row, per edge ────────────
 
-  private buildAlongEdges(
+  private buildSlabs(
     bandTop: number,
-    vertices: Vertex[],
-    group: Phaser.Physics.Arcade.StaticGroup,
+    rows: ScanlineRow[],
+    walkableGroup: Phaser.Physics.Arcade.StaticGroup,
+    wallGroup: Phaser.Physics.Arcade.StaticGroup,
   ): void {
     this.destroyBand(bandTop);
-    if (vertices.length < 3) return;
-
     const bodies: Phaser.Physics.Arcade.Image[] = [];
-    const n = vertices.length;
 
-    for (let i = 0; i < n; i++) {
-      const a = vertices[i];
-      const b = vertices[(i + 1) % n];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
 
-      // Cover the corner vertex itself — midpoint bodies leave an ~8px gap at each corner
-      bodies.push(this.createBody(group, a.x, a.y));
+      const leftAngle  = computeRowSlopeAngleDeg(rows, i, 'left');
+      const rightAngle = computeRowSlopeAngleDeg(rows, i, 'right');
 
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len < 1) continue;
+      const leftGroup  = leftAngle  > MAX_WALKABLE_SLOPE_DEG ? wallGroup : walkableGroup;
+      const rightGroup = rightAngle > MAX_WALKABLE_SLOPE_DEG ? wallGroup : walkableGroup;
 
-      const steps = Math.max(1, Math.ceil(len / BODY_SIZE));
-      for (let j = 0; j < steps; j++) {
-        const t = (j + 0.5) / steps;
-        bodies.push(this.createBody(group, a.x + dx * t, a.y + dy * t));
-      }
+      bodies.push(this.createSlab(leftGroup,  row.leftX,  row.y));
+      bodies.push(this.createSlab(rightGroup, row.rightX, row.y));
     }
 
     this.bandBodies.set(bandTop, bodies);
   }
 
-  private createBody(
+  private createSlab(
     group: Phaser.Physics.Arcade.StaticGroup,
     x: number,
     y: number,
   ): Phaser.Physics.Arcade.Image {
     const img = group.create(x, y) as Phaser.Types.Physics.Arcade.ImageWithStaticBody;
     img.setVisible(false);
-    // setDisplaySize before refreshBody — StaticBody.reset() reads displayWidth/displayHeight,
-    // so it must be set first. Calling setSize() after refreshBody() would be overwritten.
-    img.setDisplaySize(BODY_SIZE, BODY_SIZE);
+    img.setDisplaySize(WALL_BODY_WIDTH, WALL_BODY_HEIGHT);
     img.refreshBody();
     return img as unknown as Phaser.Physics.Arcade.Image;
+  }
+
+  // ── Vertex → ScanlineRow[] rasterization (server path) ────────────────────
+
+  /**
+   * Convert a closed polygon to ScanlineRow[] using a standard scanline scan.
+   * Works for any convex or concave polygon.
+   */
+  private static verticesToScanlines(vertices: Vertex[]): ScanlineRow[] {
+    if (vertices.length < 3) return [];
+
+    const ys = vertices.map(v => v.y);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const rows: ScanlineRow[] = [];
+    const n = vertices.length;
+
+    for (let y = minY; y <= maxY; y += SCAN_STEP) {
+      const xs: number[] = [];
+      for (let i = 0; i < n; i++) {
+        const a = vertices[i];
+        const b = vertices[(i + 1) % n];
+        // Edge crosses the horizontal scanline at y
+        if ((a.y <= y && b.y > y) || (b.y <= y && a.y > y)) {
+          const t = (y - a.y) / (b.y - a.y);
+          xs.push(a.x + t * (b.x - a.x));
+        }
+      }
+      if (xs.length >= 2) {
+        rows.push({ y, leftX: Math.min(...xs), rightX: Math.max(...xs) });
+      }
+    }
+
+    return rows;
   }
 }
