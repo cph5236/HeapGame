@@ -153,3 +153,21 @@ function perpendicularDistance(p: Vertex, a: Vertex, b: Vertex): number {
   const cross = Math.abs(dx * (a.y - p.y) - dy * (a.x - p.x));
   return cross / Math.sqrt(lenSq);
 }
+
+/**
+ * Angle (degrees from horizontal) of the heap edge at scanline row i.
+ * 90° = vertical wall, 0° = flat floor, 45° = 45° diagonal.
+ *
+ * Uses rows[i+1] for the delta; falls back to rows[i-1] for the last row.
+ */
+export function computeRowSlopeAngleDeg(
+  rows: ScanlineRow[],
+  i: number,
+  side: 'left' | 'right',
+): number {
+  const next = i < rows.length - 1 ? i + 1 : i - 1;
+  const deltaX = side === 'left'
+    ? Math.abs(rows[next].leftX  - rows[i].leftX)
+    : Math.abs(rows[next].rightX - rows[i].rightX);
+  return Math.atan2(SCAN_STEP, deltaX) * (180 / Math.PI);
+}
