@@ -2,11 +2,8 @@ import Phaser from 'phaser';
 import { HeapEntry } from '../data/heapTypes';
 import {
   CHUNK_BAND_HEIGHT,
-  WALL_BODY_WIDTH,
-  WALL_BODY_HEIGHT,
   MAX_WALKABLE_SLOPE_DEG,
   FLOOR_BODY_HEIGHT,
-  FLOOR_BODY_WIDTH,
 } from '../constants';
 import {
   computeBandScanlines,

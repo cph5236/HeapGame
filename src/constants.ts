@@ -66,8 +66,5 @@ export const ENEMY_CULL_DISTANCE        = 2000; // px below camera before destro
 export const PLAYER_INVINCIBLE_MS       = 400;  // post-stomp / post-spawn invincibility
 
 // Heap edge collider slabs
-export const WALL_BODY_WIDTH         = 10;  // px, narrow in X — wall thickness
-export const WALL_BODY_HEIGHT        = 20;  // px, tall in Y — spans 5 scanlines (SCAN_STEP×5)
-export const FLOOR_BODY_WIDTH  = 20;  // wide in X for floor coverage
 export const FLOOR_BODY_HEIGHT = 8;   // short in Y
 export const MAX_WALKABLE_SLOPE_DEG  = 60;  // surfaces steeper than this are treated as walls
