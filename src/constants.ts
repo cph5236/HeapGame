@@ -67,4 +67,5 @@ export const PLAYER_INVINCIBLE_MS       = 400;  // post-stomp / post-spawn invin
 
 // Heap edge collider slabs
 export const FLOOR_BODY_HEIGHT = 8;   // short in Y
-export const MAX_WALKABLE_SLOPE_DEG  = 40;  // surfaces steeper than this are treated as walls
+export const MAX_WALKABLE_SLOPE_DEG  = 35;  // surfaces steeper than this are treated as walls
+export const MOUNTAIN_CLIMBER_INCREMENT = 3; // degrees added per upgrade level — set by designer

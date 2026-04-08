@@ -1,4 +1,5 @@
 import { UPGRADE_DEFS } from '../data/upgradeDefs';
+import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT } from '../constants';
 
 const SAVE_KEY = 'heap_save';
 
@@ -10,14 +11,15 @@ interface RawSave {
 let _cache: RawSave | null = null;
 
 export interface PlayerConfig {
-  maxAirJumps:     number;
-  wallJump:        boolean;
-  dash:            boolean;
-  dive:            boolean;
-  moneyMultiplier: number;
-  jumpBoost:       number; // px/s added to jump magnitude (0, 70, 150, 240)
-  stompBonus:      number; // coins per enemy stomp (25, 50, 90, 150)
-  peakMultiplier:  number; // peak coin multiplier (1.25, 1.40, 1.60, 1.85)
+  maxAirJumps:         number;
+  wallJump:            boolean;
+  dash:                boolean;
+  dive:                boolean;
+  moneyMultiplier:     number;
+  jumpBoost:           number; // px/s added to jump magnitude (0, 70, 150, 240)
+  stompBonus:          number; // coins per enemy stomp (25, 50, 90, 150)
+  peakMultiplier:      number; // peak coin multiplier (1.25, 1.40, 1.60, 1.85)
+  maxWalkableSlopeDeg: number;
 }
 
 const DEFAULT: RawSave = { balance: 0, upgrades: {} };
@@ -95,6 +97,7 @@ export function getPlayerConfig(): PlayerConfig {
     moneyMultiplier: 1 + getUpgradeLevel('money_mult') * 0.1,
     jumpBoost:       [0, 70, 150, 240][jl],
     stompBonus:      [25, 50, 90, 150][sl],
-    peakMultiplier:  [1.25, 1.40, 1.60, 1.85][pl],
+    peakMultiplier:      [1.25, 1.40, 1.60, 1.85][pl],
+    maxWalkableSlopeDeg: MAX_WALKABLE_SLOPE_DEG + getUpgradeLevel('mountain_climber') * MOUNTAIN_CLIMBER_INCREMENT,
   };
 }

@@ -83,19 +83,22 @@ export class GameScene extends Phaser.Scene {
     this.heapWalkableGroup = this.physics.add.staticGroup();
     this.heapWallGroup     = this.physics.add.staticGroup();
     this.chunkRenderer = new HeapChunkRenderer(this);
-    this.edgeCollider = new HeapEdgeCollider(this);
 
     const polygon = (this.game.registry.get('heapPolygon') as Vertex[] | undefined) ?? [];
     const heapId = (this.game.registry.get('heapId') as string | undefined) ?? '';
     this._heapId = heapId;
 
-    this.heapGenerator = new HeapGenerator(
-      this, this.heapWalkableGroup, this.heapWallGroup, [], this.chunkRenderer, this.edgeCollider,
-    );
-
     // Enemies — constructed and wired BEFORE polygon/generation calls so that
     // onBandLoaded and onPlatformSpawned fire correctly during initial load.
     this.enemyManager = new EnemyManager(this);
+
+    // Spawn player at world floor (left clear zone) — player climbs up through the heap
+    this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
+    this.playerConfig = getPlayerConfig();
+    this.edgeCollider = new HeapEdgeCollider(this, this.playerConfig.maxWalkableSlopeDeg);
+    this.heapGenerator = new HeapGenerator(
+      this, this.heapWalkableGroup, this.heapWallGroup, [], this.chunkRenderer, this.edgeCollider,
+    );
 
     this.heapGenerator.onPlatformSpawned = (entry, platformTopY) => {
       this.enemyManager.onPlatformSpawned(entry.x, platformTopY, this.blockPlaced);
@@ -113,9 +116,6 @@ export class GameScene extends Phaser.Scene {
       this.heapGenerator.setPolygonTopY(polygonTopY(polygon));
     }
 
-    // Spawn player at world floor (left clear zone) — player climbs up through the heap
-    this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
-    this.playerConfig = getPlayerConfig();
     this.player = new Player(this, WORLD_WIDTH * 0.0625, this.spawnY, this.playerConfig);
 
     // Stream an initial chunk synchronously so collision is ready before the first frame
