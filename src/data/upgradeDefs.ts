@@ -1,3 +1,5 @@
+import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT } from '../constants';
+
 export interface UpgradeDef {
   id:          string;
   name:        string;
@@ -62,5 +64,12 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     description: () => 'Down/S to dive',
     maxLevel: 1,
     cost: () => 500,
+  },
+  {
+    id: 'mountain_climber',
+    name: 'Mountain Climber',
+    description: (l) => `Walk slopes up to ${MAX_WALKABLE_SLOPE_DEG + l * MOUNTAIN_CLIMBER_INCREMENT}°`,
+    maxLevel: 3,        // designer: set to desired max
+    cost: (l) => [0, 0, 0][l - 1], // designer: replace with actual costs
   },
 ];
