@@ -29,8 +29,11 @@ import {
 export class HeapEdgeCollider {
   /** All edge bodies per band, keyed by bandTop. */
   private readonly bandBodies: Map<number, Phaser.Physics.Arcade.Image[]> = new Map();
+  private readonly walkableSlopeDeg: number;
 
-  constructor(_scene: Phaser.Scene) {}
+  constructor(_scene: Phaser.Scene, walkableSlopeDeg = MAX_WALKABLE_SLOPE_DEG) {
+    this.walkableSlopeDeg = walkableSlopeDeg;
+  }
 
   // ── Local path ─────────────────────────────────────────────────────────────
 
@@ -100,8 +103,8 @@ export class HeapEdgeCollider {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
 
-      const leftIsWall  = computeRowSlopeAngleDeg(rows, i, 'left')  > MAX_WALKABLE_SLOPE_DEG;
-      const rightIsWall = computeRowSlopeAngleDeg(rows, i, 'right') > MAX_WALKABLE_SLOPE_DEG;
+      const leftIsWall  = computeRowSlopeAngleDeg(rows, i, 'left')  > this.walkableSlopeDeg;
+      const rightIsWall = computeRowSlopeAngleDeg(rows, i, 'right') > this.walkableSlopeDeg;
 
       // Gentle edges → one wide flat body spanning the full row width
       const centerX   = (row.leftX + row.rightX) / 2;
