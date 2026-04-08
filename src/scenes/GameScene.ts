@@ -127,7 +127,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player.sprite, this.heapWalkableGroup);
     this.physics.add.collider(
       this.player.sprite, this.heapWallGroup,
-      undefined, this.onHeapWallCollide as unknown as ArcadeProcess, this,
+      this.onHeapWallCollide as unknown as ArcadeProcess, undefined, this,
     );
     // Enemies all have allowGravity(false) and are positioned explicitly — no heap colliders needed.
 
@@ -409,14 +409,11 @@ export class GameScene extends Phaser.Scene {
    */
   private readonly onHeapWallCollide = (
     playerObj: Phaser.GameObjects.GameObject,
-  ): boolean => {
+  ): void => {
     const body = (playerObj as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody).body;
     if (body.blocked.down) {
-      body.velocity.y = 60;
-      if      (body.blocked.left)  body.velocity.x =  60;
-      else if (body.blocked.right) body.velocity.x = -60;
+      this.player.inSlopeZone = true;
     }
-    return true;
   };
 
   private readonly handleEnemyDamage = (): void => {

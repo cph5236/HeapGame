@@ -158,16 +158,24 @@ function perpendicularDistance(p: Vertex, a: Vertex, b: Vertex): number {
  * Angle (degrees from horizontal) of the heap edge at scanline row i.
  * 90° = vertical wall, 0° = flat floor, 45° = 45° diagonal.
  *
- * Uses rows[i+1] for the delta; falls back to rows[i-1] for the last row.
+ * Uses the minimum angle from both neighbouring rows so that a transition
+ * row at the top of a wall (steep below, flat above) is classified as floor.
  */
 export function computeRowSlopeAngleDeg(
   rows: ScanlineRow[],
   i: number,
   side: 'left' | 'right',
 ): number {
-  const next = i < rows.length - 1 ? i + 1 : i - 1;
-  const deltaX = side === 'left'
-    ? Math.abs(rows[next].leftX  - rows[i].leftX)
-    : Math.abs(rows[next].rightX - rows[i].rightX);
-  return Math.atan2(SCAN_STEP, deltaX) * (180 / Math.PI);
+  const angle = (a: number, b: number): number => {
+    const deltaX = side === 'left'
+      ? Math.abs(rows[b].leftX  - rows[a].leftX)
+      : Math.abs(rows[b].rightX - rows[a].rightX);
+    return Math.atan2(SCAN_STEP, deltaX) * (180 / Math.PI);
+  };
+
+  const angles: number[] = [];
+  if (i < rows.length - 1) angles.push(angle(i, i + 1));
+  if (i > 0)               angles.push(angle(i - 1, i));
+
+  return Math.min(...angles);
 }

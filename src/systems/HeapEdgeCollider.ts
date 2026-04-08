@@ -104,9 +104,17 @@ export class HeapEdgeCollider {
       const rightIsWall = computeRowSlopeAngleDeg(rows, i, 'right') > MAX_WALKABLE_SLOPE_DEG;
 
       // Gentle edges → one wide flat body spanning the full row width
-      const spanWidth = row.rightX - row.leftX;
       const centerX   = (row.leftX + row.rightX) / 2;
-      bodies.push(this.createSpan(leftIsWall&&rightIsWall ? wallGroup : walkableGroup, centerX, row.y, spanWidth));
+      const spanleft = Math.abs(row.leftX - centerX); //get width of span on the left side of heap
+      const spanright = Math.abs(row.rightX - centerX); //get width of span on the right side of heap
+      
+      //Get the center of each side of the heap and create a body for each side. If the side is a wall, use the wall group and set the body to only collide on the left or right (respectively); otherwise, use the walkable group and leave it as a full-width body. This allows for different collision responses on walls vs walkable surfaces while still preventing diagonal gaps.
+      const middleLeft = centerX - spanleft / 2;
+      const middleRight = centerX + spanright / 2;
+
+      //2 spans 1 for each side of the heap
+      bodies.push(this.createSpan(leftIsWall ? wallGroup : walkableGroup, middleLeft, row.y, spanleft, leftIsWall));
+      bodies.push(this.createSpan(rightIsWall ? wallGroup : walkableGroup, middleRight, row.y, spanright, rightIsWall));
     
     }
 
@@ -118,11 +126,17 @@ export class HeapEdgeCollider {
     x: number,
     y: number,
     width: number,
+    isWall: boolean = false,
   ): Phaser.Physics.Arcade.Image {
     const img = group.create(x, y) as Phaser.Types.Physics.Arcade.ImageWithStaticBody;
     img.setVisible(false);
     img.setDisplaySize(width, FLOOR_BODY_HEIGHT);
+    img.setDebugBodyColor(isWall ? 0xff0000 : 0x00ff00);
     img.refreshBody();
+    if (isWall) {
+      const staticBody = img.body as Phaser.Physics.Arcade.StaticBody;
+      staticBody.checkCollision.down = false;
+    }
     return img as unknown as Phaser.Physics.Arcade.Image;
   }
 

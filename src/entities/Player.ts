@@ -39,6 +39,10 @@ export class Player {
   private dashActive:         number = 0; // ms remaining of active dash
   private coyoteTimer:        number = 0; // ms remaining of coyote-time grace
 
+  /** Set by GameScene's wall-group collision callback each frame. When true the
+   *  player is resting on a steep wall surface and should be ejected outward. */
+  public inSlopeZone = false;
+
   // ── HUD accessors ──────────────────────────────────────────────────────────
   get dashCooldownFraction(): number  { return this.dashCooldown / DASH_COOLDOWN_MS; }
   get airJumpsLeft():         number  { return this.airJumpsRemaining; }
@@ -77,7 +81,7 @@ export class Player {
     const onWall   = body.blocked.left || body.blocked.right;
     // Filter spurious blocked.down from wall bodies: while sliding (velocity.y > 10)
     // and touching a wall, a wall-face body can register as ground — ignore it.
-    const onGround = (body.blocked.down && !(onWall && body.velocity.y > 10))
+    const onGround = (body.blocked.down && !this.inSlopeZone && !(onWall && body.velocity.y > 10))
                    || this.sprite.y >= floorY;
 
     // Landing resets air jump and wall jump counters, and refreshes coyote window
@@ -95,7 +99,11 @@ export class Player {
     const goRight = this.rightKeys.some(k => k.isDown) || im.goRight;
     this.dashActive = Math.max(0, this.dashActive - delta);
     if (this.dashActive === 0) {
-      if (goLeft) {
+      if (this.inSlopeZone && !goLeft && !goRight) {
+        // Eject outward along the wall surface until the player slides off the edge
+        const ejectDir = this.sprite.x < WORLD_WIDTH / 2 ? -1 : 1;
+        this.sprite.setVelocityX(ejectDir * PLAYER_SPEED);
+      } else if (goLeft) {
         this.sprite.setVelocityX(-PLAYER_SPEED);
         this.sprite.setFlipX(true);
       } else if (goRight) {
@@ -166,6 +174,9 @@ export class Player {
     } else if (this.sprite.x > WORLD_WIDTH) {
       this.sprite.x = 0;
     }
+
+    // Reset per-frame flag set by the wall-group collision callback (physics runs before update)
+    this.inSlopeZone = false;
 
     // Y clamp — prevent falling through the world floor; treat floor as ground
     if (this.sprite.y >= floorY) {
