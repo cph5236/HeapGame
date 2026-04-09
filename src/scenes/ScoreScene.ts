@@ -11,6 +11,7 @@ export class ScoreScene extends Phaser.Scene {
   private isPeak:              boolean = false;
   private checkpointAvailable: boolean = false;
   private isFailure:           boolean = false;
+  private _coinsAwarded:       boolean = false;
 
   constructor() {
     super({ key: 'ScoreScene' });
@@ -39,7 +40,10 @@ export class ScoreScene extends Phaser.Scene {
       isFailure:       this.isFailure,
     });
 
-    addBalance(result.finalCoins);
+    if (!this._coinsAwarded) {
+      this._coinsAwarded = true;
+      addBalance(result.finalCoins);
+    }
     const balance = getBalance();
 
     this.createBackground();
@@ -335,7 +339,7 @@ export class ScoreScene extends Phaser.Scene {
     });
   }
 
-  private rowLabel(type: string): string {
+  private rowLabel(type: 'money_mult' | 'peak_hunter' | 'death_penalty'): string {
     const labels: Record<string, string> = {
       money_mult:    'Coin Multiplier',
       peak_hunter:   'Peak Bonus \u2736',
