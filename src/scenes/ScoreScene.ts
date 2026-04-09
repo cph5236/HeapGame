@@ -171,8 +171,176 @@ export class ScoreScene extends Phaser.Scene {
 
   // ── Coins Panel ───────────────────────────────────────────────────────────────
 
-  private createCoinsPanel(_rows: BreakdownRow[], _finalCoins: number): void {
-    // Implemented in Task 4
+  private createCoinsPanel(rows: BreakdownRow[], finalCoins: number): void {
+    const PANEL_X    = CX;
+    const PANEL_TOP  = GAME_HEIGHT * 0.42;
+    const PANEL_W    = GAME_WIDTH * 0.88;
+    const ROW_H      = 26;
+    const PAD_X      = 14;
+
+    // Color map keyed by row type
+    const ROW_COLORS: Record<string, { accent: number; accentHex: string; labelHex: string }> = {
+      money_mult:    { accent: 0xffaa22, accentHex: '#ffaa22', labelHex: '#ffcc66' },
+      peak_hunter:   { accent: 0xcc44ff, accentHex: '#cc44ff', labelHex: '#dd88ff' },
+      death_penalty: { accent: 0xff4444, accentHex: '#ff4444', labelHex: '#ff8877' },
+    };
+
+    // Collapse threshold
+    const COLLAPSE_AT    = 4;
+    const multRows       = rows.filter(r => r.type !== 'base');
+    const shouldCollapse = multRows.length >= COLLAPSE_AT;
+
+    // Measure panel height dynamically
+    const visibleRowCount = (collapsed: boolean) =>
+      1 + (collapsed ? Math.min(3, multRows.length) : multRows.length); // base + mult rows
+
+    const panelHeight = (collapsed: boolean) => {
+      const headerH = 52; // coins total + divider
+      const toggleH = shouldCollapse ? 24 : 0;
+      return headerH + visibleRowCount(collapsed) * ROW_H + toggleH + 20;
+    };
+
+    // Panel background
+    const bg = this.add.graphics();
+    const drawBg = (collapsed: boolean) => {
+      bg.clear();
+      const h = panelHeight(collapsed);
+      if (this.isFailure) {
+        bg.fillStyle(0xff5050, 0.06);
+        bg.lineStyle(1, 0xff5555, 0.2);
+      } else {
+        bg.fillStyle(0x00ff64, 0.08);
+        bg.lineStyle(1, 0x44ff88, 0.2);
+      }
+      bg.strokeRoundedRect(PANEL_X - PANEL_W / 2, PANEL_TOP, PANEL_W, h, 8);
+      bg.fillRoundedRect(PANEL_X - PANEL_W / 2, PANEL_TOP, PANEL_W, h, 8);
+    };
+    drawBg(shouldCollapse);
+
+    // Header: "+N coins earned"
+    const coinColor  = this.isFailure ? '#ff8866' : '#44ff88';
+    const headerText = this.add.text(
+      PANEL_X, PANEL_TOP + 14,
+      `+${finalCoins}`,
+      { fontSize: '22px', fontFamily: 'monospace', color: coinColor, fontStyle: 'bold' },
+    ).setOrigin(0.5, 0);
+    this.add.text(
+      PANEL_X + headerText.width / 2 + 6, PANEL_TOP + 18,
+      'coins earned',
+      { fontSize: '11px', fontFamily: 'monospace', color: coinColor },
+    ).setOrigin(0, 0).setAlpha(0.5);
+
+    // Divider
+    const divG = this.add.graphics();
+    divG.lineStyle(1, this.isFailure ? 0xff5555 : 0x44ff88, 0.15);
+    divG.lineBetween(PANEL_X - PANEL_W / 2 + 10, PANEL_TOP + 42, PANEL_X + PANEL_W / 2 - 10, PANEL_TOP + 42);
+
+    // Row rendering helper
+    const rowObjects: Phaser.GameObjects.GameObject[] = [];
+
+    const renderRows = (collapsed: boolean) => {
+      rowObjects.forEach(o => o.destroy());
+      rowObjects.length = 0;
+
+      let rowY = PANEL_TOP + 48;
+      const left  = PANEL_X - PANEL_W / 2 + PAD_X;
+      const right = PANEL_X + PANEL_W / 2 - PAD_X;
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+
+        if (row.type === 'base') {
+          const lbl = this.add.text(left, rowY, 'Base (score \u00f7 100)', {
+            fontSize: '11px', fontFamily: 'monospace', color: '#ffffff',
+          }).setAlpha(0.33);
+          const val = this.add.text(right, rowY, String(row.value), {
+            fontSize: '11px', fontFamily: 'monospace', color: '#ffffff',
+          }).setOrigin(1, 0).setAlpha(0.47);
+          rowObjects.push(lbl, val);
+          rowY += ROW_H;
+          continue;
+        }
+
+        // Multiplier rows — skip if collapsed and past visible limit
+        const multIndex = i - 1; // offset by base row
+        if (collapsed && multIndex >= 3) break;
+
+        const c = ROW_COLORS[row.type];
+
+        // Tinted row background
+        const rowBg = this.add.graphics();
+        rowBg.fillStyle(c.accent, 0.10);
+        rowBg.fillRect(PANEL_X - PANEL_W / 2 + 1, rowY - 2, PANEL_W - 2, ROW_H - 2);
+        // Left accent bar
+        rowBg.fillStyle(c.accent, 1);
+        rowBg.fillRect(PANEL_X - PANEL_W / 2 + 1, rowY - 2, 2, ROW_H - 2);
+        rowObjects.push(rowBg);
+
+        const label    = `\u00d7\u00a0${row.multiplier.toFixed(1)}\u2002${this.rowLabel(row.type)}`;
+        const labelTxt = this.add.text(left + 8, rowY, label, {
+          fontSize: '11px', fontFamily: 'monospace', color: c.labelHex,
+        });
+        const valTxt = this.add.text(right, rowY, String(row.runningTotal), {
+          fontSize: '11px', fontFamily: 'monospace', color: c.accentHex, fontStyle: 'bold',
+        }).setOrigin(1, 0);
+        rowObjects.push(labelTxt, valTxt);
+        rowY += ROW_H;
+      }
+
+      return rowY; // bottom of last row
+    };
+
+    let collapsed     = shouldCollapse;
+    let lastRowBottom = renderRows(collapsed);
+
+    // Collapse toggle
+    let toggleText: Phaser.GameObjects.Text | null = null;
+    if (shouldCollapse) {
+      const toggleX = PANEL_X + PANEL_W / 2 - PAD_X;
+      toggleText = this.add.text(
+        toggleX, lastRowBottom + 4,
+        collapsed ? '\u25bc show' : '\u25b2 hide',
+        {
+          fontSize:        '10px',
+          fontFamily:      'monospace',
+          color:           coinColor,
+          backgroundColor: this.isFailure ? '#ff222211' : '#00ff4411',
+          padding:         { x: 6, y: 2 },
+        },
+      ).setOrigin(1, 0).setInteractive({ useHandCursor: true });
+
+      toggleText.on('pointerup', () => {
+        collapsed     = !collapsed;
+        lastRowBottom = renderRows(collapsed);
+        drawBg(collapsed);
+        toggleText!.setText(collapsed ? '\u25bc show' : '\u25b2 hide');
+        toggleText!.setY(lastRowBottom + 4);
+      });
+    }
+
+    // Panel fade-in + slide-up after 800ms score count-up + 300ms delay
+    const fadeTargets: Phaser.GameObjects.GameObject[] = [bg, headerText, divG, ...rowObjects];
+    if (toggleText) fadeTargets.push(toggleText);
+    fadeTargets.forEach(o => (o as unknown as Phaser.GameObjects.Components.Alpha).setAlpha(0));
+
+    this.time.delayedCall(1100, () => {
+      this.tweens.add({
+        targets:  fadeTargets,
+        alpha:    1,
+        y:        '+=20',
+        duration: 400,
+        ease:     'Cubic.Out',
+      });
+    });
+  }
+
+  private rowLabel(type: string): string {
+    const labels: Record<string, string> = {
+      money_mult:    'Coin Multiplier',
+      peak_hunter:   'Peak Bonus \u2736',
+      death_penalty: 'Death Penalty \ud83d\udc80',
+    };
+    return labels[type] ?? type;
   }
 
   // ── Balance ───────────────────────────────────────────────────────────────────
