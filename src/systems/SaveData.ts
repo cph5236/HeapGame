@@ -1,11 +1,21 @@
 import { UPGRADE_DEFS } from '../data/upgradeDefs';
+import { ITEM_DEFS } from '../data/itemDefs';
 import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT } from '../constants';
 
 const SAVE_KEY = 'heap_save';
 
+export interface PlacedItemSave {
+  id:    string;
+  x:     number;
+  y:     number;
+  meta?: Record<string, number>;
+}
+
 interface RawSave {
-  balance:  number;
-  upgrades: Record<string, number>; // upgradeId → current level
+  balance:   number;
+  upgrades:  Record<string, number>;
+  inventory: Record<string, number>;
+  placed:    PlacedItemSave[];
 }
 
 let _cache: RawSave | null = null;
@@ -16,25 +26,31 @@ export interface PlayerConfig {
   dash:                boolean;
   dive:                boolean;
   moneyMultiplier:     number;
-  jumpBoost:           number; // px/s added to jump magnitude (0, 70, 150, 240)
-  stompBonus:          number; // coins per enemy stomp (25, 50, 90, 150)
-  peakMultiplier:      number; // peak coin multiplier (1.25, 1.40, 1.60, 1.85)
+  jumpBoost:           number;
+  stompBonus:          number;
+  peakMultiplier:      number;
   maxWalkableSlopeDeg: number;
 }
 
-const DEFAULT: RawSave = { balance: 0, upgrades: {} };
+const DEFAULT: RawSave = { balance: 0, upgrades: {}, inventory: {}, placed: [] };
 
 function load(): RawSave {
   if (_cache) return _cache;
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (raw) {
-      const parsed: RawSave = { ...DEFAULT, ...JSON.parse(raw) };
-      _cache = parsed;
-      return parsed;
+      const parsed = JSON.parse(raw) as Partial<RawSave>;
+      const result: RawSave = {
+        ...DEFAULT,
+        ...parsed,
+        inventory: parsed.inventory ?? {},
+        placed:    parsed.placed    ?? [],
+      };
+      _cache = result;
+      return result;
     }
   } catch { /* corrupted save — fall through to default */ }
-  const fresh: RawSave = { ...DEFAULT, upgrades: {} };
+  const fresh: RawSave = { ...DEFAULT, upgrades: {}, inventory: {}, placed: [] };
   _cache = fresh;
   return fresh;
 }
@@ -43,6 +59,8 @@ function persist(data: RawSave): void {
   _cache = data;
   localStorage.setItem(SAVE_KEY, JSON.stringify(data));
 }
+
+// ── Balance ───────────────────────────────────────────────────────────────────
 
 export function getBalance(): number {
   return load().balance;
@@ -54,14 +72,12 @@ export function addBalance(amount: number): void {
   persist(data);
 }
 
+// ── Upgrades ──────────────────────────────────────────────────────────────────
+
 export function getUpgradeLevel(id: string): number {
   return load().upgrades[id] ?? 0;
 }
 
-/**
- * Attempt to purchase the next level of an upgrade.
- * Returns true on success, false if maxed or insufficient balance.
- */
 export function purchaseUpgrade(id: string): boolean {
   const def = UPGRADE_DEFS.find(d => d.id === id);
   if (!def) return false;
@@ -79,24 +95,94 @@ export function purchaseUpgrade(id: string): boolean {
   return true;
 }
 
-/** Wipe all saved progress — balance, upgrades. */
+// ── Inventory ─────────────────────────────────────────────────────────────────
+
+export function getItemQuantity(id: string): number {
+  return load().inventory[id] ?? 0;
+}
+
+export function addItem(id: string, qty = 1): void {
+  const data = load();
+  data.inventory[id] = (data.inventory[id] ?? 0) + qty;
+  persist(data);
+}
+
+export function spendItem(id: string): boolean {
+  const data = load();
+  const qty = data.inventory[id] ?? 0;
+  if (qty <= 0) return false;
+  data.inventory[id] = qty - 1;
+  persist(data);
+  return true;
+}
+
+export function purchaseItem(id: string): boolean {
+  const def = ITEM_DEFS.find(d => d.id === id);
+  if (!def) return false;
+  const data = load();
+  if (data.balance < def.cost) return false;
+  data.balance -= def.cost;
+  data.inventory[id] = (data.inventory[id] ?? 0) + 1;
+  persist(data);
+  return true;
+}
+
+// ── Placed items ──────────────────────────────────────────────────────────────
+
+export function getPlaced(): PlacedItemSave[] {
+  return [...load().placed];
+}
+
+export function addPlaced(item: PlacedItemSave): void {
+  const data = load();
+  data.placed.push(item);
+  persist(data);
+}
+
+export function removePlaced(index: number): void {
+  const data = load();
+  data.placed.splice(index, 1);
+  persist(data);
+}
+
+export function updatePlacedMeta(index: number, meta: Record<string, number>): void {
+  const data = load();
+  if (data.placed[index]) {
+    data.placed[index].meta = meta;
+    persist(data);
+  }
+}
+
+export function removeExpiredPlaced(): void {
+  const data = load();
+  data.placed = data.placed.filter(p => {
+    if (p.meta?.spawnsLeft !== undefined) return p.meta.spawnsLeft > 0;
+    return true;
+  });
+  persist(data);
+}
+
+// ── Reset ─────────────────────────────────────────────────────────────────────
+
 export function resetAllData(): void {
   _cache = null;
   localStorage.removeItem(SAVE_KEY);
 }
+
+// ── Player config ─────────────────────────────────────────────────────────────
 
 export function getPlayerConfig(): PlayerConfig {
   const jl = getUpgradeLevel('jump_boost');
   const sl = getUpgradeLevel('stomp_gold');
   const pl = getUpgradeLevel('peak_hunter');
   return {
-    maxAirJumps:     1 + getUpgradeLevel('air_jump'),
-    wallJump:        getUpgradeLevel('wall_jump') > 0,
-    dash:            getUpgradeLevel('dash') > 0,
-    dive:            getUpgradeLevel('dive') > 0,
-    moneyMultiplier: 1 + getUpgradeLevel('money_mult') * 0.1,
-    jumpBoost:       [0, 70, 150, 240][jl],
-    stompBonus:      [25, 50, 90, 150][sl],
+    maxAirJumps:         1 + getUpgradeLevel('air_jump'),
+    wallJump:            getUpgradeLevel('wall_jump') > 0,
+    dash:                getUpgradeLevel('dash') > 0,
+    dive:                getUpgradeLevel('dive') > 0,
+    moneyMultiplier:     1 + getUpgradeLevel('money_mult') * 0.1,
+    jumpBoost:           [0, 70, 150, 240][jl],
+    stompBonus:          [25, 50, 90, 150][sl],
     peakMultiplier:      [1.25, 1.40, 1.60, 1.85][pl],
     maxWalkableSlopeDeg: MAX_WALKABLE_SLOPE_DEG + getUpgradeLevel('mountain_climber') * MOUNTAIN_CLIMBER_INCREMENT,
   };
