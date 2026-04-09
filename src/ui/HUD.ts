@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
+import type { PlaceableManager } from '../systems/PlaceableManager';
 
 const HUD_Y    = GAME_HEIGHT - 44;
 const MARGIN_R = 20;   // gap from right screen edge
@@ -16,7 +17,7 @@ export class HUD {
   private readonly wallJumpIcons: Phaser.GameObjects.Image[] = [];
   private          dashLeft:      number = 0;
 
-  constructor(scene: Phaser.Scene, player: Player) {
+  constructor(scene: Phaser.Scene, player: Player, placeableManager?: PlaceableManager) {
     this.player = player;
 
     // Build positions right-to-left so the layout adapts to which abilities are unlocked
@@ -67,6 +68,25 @@ export class HUD {
         .setScrollFactor(0).setDepth(20).setScale(1.1);
       this.cloudIcons[i] = icon;
       cursorX -= cloudSpacing;
+    }
+
+    // ── Hotbar bag icon (bottom-left) ──────────────────────────────────────────
+    if (placeableManager) {
+      const bagX = 36;
+      const bagY = GAME_HEIGHT - 44;
+
+      scene.add.rectangle(bagX, bagY, 52, 52, 0x000000, 0.55)
+        .setScrollFactor(0).setDepth(19);
+
+      scene.add.text(bagX, bagY, '\uD83C\uDF92', {
+        fontSize: '26px',
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(21);
+
+      const bagHit = scene.add.zone(bagX, bagY, 52, 52)
+        .setScrollFactor(0).setDepth(22)
+        .setInteractive({ useHandCursor: true });
+
+      bagHit.on('pointerup', () => placeableManager.openHotbar());
     }
   }
 
