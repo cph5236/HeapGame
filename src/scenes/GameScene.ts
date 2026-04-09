@@ -28,6 +28,7 @@ import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { HeapClient } from '../systems/HeapClient';
+import { PlaceableManager } from '../systems/PlaceableManager';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -54,6 +55,7 @@ export class GameScene extends Phaser.Scene {
   private parallaxBg!: ParallaxBackground;
   private playerConfig!: PlayerConfig;
   private im!: InputManager;
+  private placeableManager!: PlaceableManager;
   private _lastScore = -1;
   private _heapId = '';
   private _holdElapsed = 0;
@@ -160,6 +162,7 @@ export class GameScene extends Phaser.Scene {
       fontSize: '13px', color: '#00ff88', stroke: '#000000', strokeThickness: 2,
     }).setScrollFactor(0).setDepth(20).setVisible(false);
     this.input.keyboard!.on('keydown-F2', () => this.toggleDebugMode());
+    this.input.keyboard!.on('keydown-R', () => this.placeableManager.openHotbar());
 
     // SPACE — place block when in top zone (desktop)
     this.placeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
@@ -198,8 +201,11 @@ export class GameScene extends Phaser.Scene {
       }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
     }
 
+    // PlaceableManager — items (shields, checkpoints, etc.)
+    this.placeableManager = new PlaceableManager(this, this.player, this.heapWalkableGroup);
+
     // HUD: ability indicators (dash bar, air jumps, wall jump)
-    this.hud = new HUD(this, this.player);
+    this.hud = new HUD(this, this.player, this.placeableManager);
 
     // Info button (ⓘ) — top-right corner
     this.createInfoButton(im.isMobile);
@@ -213,6 +219,7 @@ export class GameScene extends Phaser.Scene {
     this.player.update(delta);
     this.parallaxBg.update();
     this.hud.update();
+    this.placeableManager.update();
 
     const cam       = this.cameras.main;
     const camTop    = cam.scrollY;
@@ -417,6 +424,25 @@ export class GameScene extends Phaser.Scene {
   };
 
   private readonly handleEnemyDamage = (): void => {
+    // Shield absorbs the hit
+    if (this.player.hasActiveShield) {
+      this.player.absorbHit();
+      this.invincible = true;
+      this.time.delayedCall(PLAYER_INVINCIBLE_MS, () => { this.invincible = false; });
+      return;
+    }
+
+    // Checkpoint respawn
+    const respawned = this.placeableManager.handlePlayerDeath(
+      (v) => { this.invincible = v; },
+      (x, y) => {
+        this.player.sprite.setPosition(x, y);
+        this.player.sprite.setVelocity(0, 0);
+      },
+    );
+    if (respawned) return;
+
+    // Normal death — keep exactly whatever logic was already here
     const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
     this.scene.launch('ScoreScene', { score, isPeak: false });
     this.scene.pause();
