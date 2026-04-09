@@ -44,6 +44,10 @@ export class Player {
   public inSlopeZone = false;
 
   private shieldActive: boolean = false;
+  private shieldAura?: Phaser.GameObjects.Arc;
+  private readonly syncAura = (): void => {
+    this.shieldAura?.setPosition(this.sprite.x, this.sprite.y);
+  };
   private onLadder: boolean = false;
 
   // ── HUD accessors ──────────────────────────────────────────────────────────
@@ -83,14 +87,26 @@ export class Player {
     // Ladder climbing mode — vertical movement only, gravity off, jump suppressed
     if (this.onLadder) {
       const im = InputManager.getInstance();
-      const goUp   = this.jumpKeys.some(k => k.isDown)  || im.jumpJustPressed;
-      const goDown = this.downKeys.some(k => k.isDown);
-      this.sprite.setVelocityX(0);
-      this.sprite.setVelocityY(goUp ? -PLAYER_SPEED * 0.65 : goDown ? PLAYER_SPEED * 0.65 : 0);
-      // Still allow X-wrap so player doesn't get stuck at world edge on ladder
-      if (this.sprite.x < 0)           this.sprite.x = WORLD_WIDTH;
-      else if (this.sprite.x > WORLD_WIDTH) this.sprite.x = 0;
-      return; // skip all normal physics this frame
+      // Left/right exits the ladder
+      const goLeft  = this.leftKeys.some(k => k.isDown)  || im.goLeft;
+      const goRight = this.rightKeys.some(k => k.isDown) || im.goRight;
+      if (goLeft || goRight) {
+        this.exitLadder();
+        // fall through to normal physics this frame
+      } else {
+        const goUp   = this.jumpKeys.some(k => k.isDown)  || im.jumpJustPressed;
+        const goDown = this.downKeys.some(k => k.isDown);
+        this.sprite.setVelocityX(0);
+        this.sprite.setVelocityY(goUp ? -PLAYER_SPEED * 0.65 : goDown ? PLAYER_SPEED * 0.65 : 0);
+        // Ladder counts as grounded: keep jump charges full and coyote window fresh
+        this.airJumpsRemaining  = this.maxAirJumps;
+        this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
+        this.coyoteTimer        = 120;
+        // Still allow X-wrap so player doesn't get stuck at world edge on ladder
+        if (this.sprite.x < 0)           this.sprite.x = WORLD_WIDTH;
+        else if (this.sprite.x > WORLD_WIDTH) this.sprite.x = 0;
+        return; // skip all normal physics this frame
+      }
     }
 
     const body     = this.sprite.body;
@@ -209,12 +225,20 @@ export class Player {
 
   activateShield(): void {
     this.shieldActive = true;
-    this.sprite.setTint(0x8844ff); // purple tint = shield active
+    this.shieldAura?.destroy();
+    this.shieldAura = this.sprite.scene.add.arc(
+      this.sprite.x, this.sprite.y,
+      Math.max(PLAYER_WIDTH, PLAYER_HEIGHT) * 0.72,
+      0, 360, false, 0x44bbff, 0.35,
+    ).setStrokeStyle(2, 0x88ddff, 0.9).setDepth(9);
+    this.sprite.scene.events.on('prerender', this.syncAura, this);
   }
 
   absorbHit(): void {
     this.shieldActive = false;
-    this.sprite.clearTint();
+    this.sprite.scene.events.off('prerender', this.syncAura, this);
+    this.shieldAura?.destroy();
+    this.shieldAura = undefined;
   }
 
   get isOnLadder(): boolean { return this.onLadder; }

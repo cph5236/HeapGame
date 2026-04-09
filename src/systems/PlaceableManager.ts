@@ -3,11 +3,11 @@ import Phaser from 'phaser';
 import {
   LADDER_HEIGHT, LADDER_WIDTH,
   IBEAM_WIDTH, IBEAM_HEIGHT,
-  SNAP_RADIUS, PLAYER_INVINCIBLE_MS,
+  SNAP_RADIUS,
 } from '../constants';
 import {
-  getPlaced, addPlaced, removePlaced, updatePlacedMeta,
-  removeExpiredPlaced, spendItem, getItemQuantity, PlacedItemSave,
+  getPlaced, addPlaced, removePlaced,
+  spendItem, getItemQuantity, PlacedItemSave,
 } from './SaveData';
 import { ITEM_DEFS } from '../data/itemDefs';
 import { Player } from '../entities/Player';
@@ -24,6 +24,7 @@ export class PlaceableManager {
   private readonly scene:         Phaser.Scene;
   private readonly player:        Player;
   private readonly walkableGroup: Phaser.Physics.Arcade.StaticGroup;
+  private readonly wallGroup:     Phaser.Physics.Arcade.StaticGroup;
 
   private state:          PlacementState = PlacementState.Closed;
   private placingItemId:  string = '';
@@ -31,6 +32,7 @@ export class PlaceableManager {
   private ghostValid:     boolean = false;
   private ghostWorldX:    number = 0;
   private ghostWorldY:    number = 0;
+  private ghostLocked:    boolean = false;
 
   private hotbarBg!:      Phaser.GameObjects.Rectangle;
   private hotbarItems:    Phaser.GameObjects.Rectangle[] = [];
@@ -45,16 +47,19 @@ export class PlaceableManager {
   private spawnedBodies:  SpawnedBody[] = [];
   private ladderOverlaps: Phaser.Physics.Arcade.Collider[] = [];
   private ibeamColliders: Phaser.Physics.Arcade.Collider[] = [];
+  private ladderOverlapThisFrame = false;
   private checkpointGroup!: Phaser.Physics.Arcade.StaticGroup;
 
   constructor(
     scene:         Phaser.Scene,
     player:        Player,
     walkableGroup: Phaser.Physics.Arcade.StaticGroup,
+    wallGroup:     Phaser.Physics.Arcade.StaticGroup,
   ) {
     this.scene         = scene;
     this.player        = player;
     this.walkableGroup = walkableGroup;
+    this.wallGroup     = wallGroup;
 
     this.checkpointGroup = scene.physics.add.staticGroup();
     this.createUI();
@@ -65,6 +70,12 @@ export class PlaceableManager {
 
   /** Called from GameScene.update() */
   update(): void {
+    // Exit ladder when player is no longer overlapping any ladder body
+    if (this.player.isOnLadder && !this.ladderOverlapThisFrame) {
+      this.player.exitLadder();
+    }
+    this.ladderOverlapThisFrame = false;
+
     if (this.state === PlacementState.Placing) {
       this.updateGhost();
     }
@@ -83,20 +94,13 @@ export class PlaceableManager {
   closeAll(): void {
     this.state = PlacementState.Closed;
     this.placingItemId = '';
+    this.ghostLocked = false;
+    this.scene.input.off('pointerdown', this.onPlacementClick, this);
+    this.scene.input.keyboard!.removeAllListeners('keydown-ENTER');
+    this.confirmTxt?.setText('PLACE  [↵]');
     this.setHotbarVisible(false);
     this.setPlacementUIVisible(false);
     this.ghost.clear();
-  }
-
-  /**
-   * Intercept an enemy hit. Returns true if the hit was absorbed (checkpoint respawn).
-   * Caller should skip normal death logic when this returns true.
-   */
-  handlePlayerDeath(
-    invincibleSetter: (v: boolean) => void,
-    respawnAt: (x: number, y: number) => void,
-  ): boolean {
-    return this.tryCheckpointRespawn(invincibleSetter, respawnAt);
   }
 
   // ── UI creation ──────────────────────────────────────────────────────────────
@@ -151,7 +155,7 @@ export class PlaceableManager {
     ).setScrollFactor(0).setDepth(25).setStrokeStyle(2, 0x44ff88)
      .setInteractive({ useHandCursor: true }).setVisible(false);
 
-    this.confirmTxt = scene.add.text(GAME_WIDTH / 2 - 60, GAME_HEIGHT - 60, 'PLACE', {
+    this.confirmTxt = scene.add.text(GAME_WIDTH / 2 - 60, GAME_HEIGHT - 60, 'PLACE  [↵]', {
       fontSize: '16px', color: '#44ff88', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(26).setVisible(false);
@@ -193,11 +197,42 @@ export class PlaceableManager {
       this.closeAll();
       return;
     }
+    this.ghostLocked = false;
     this.setHotbarVisible(false);
     this.placingItemId = itemId;
     this.state = PlacementState.Placing;
     this.setPlacementUIVisible(true);
+
+    // Click on game canvas to lock/unlock ghost position
+    this.scene.input.once('pointerdown', this.onPlacementClick, this);
+    // ENTER key to confirm placement
+    this.scene.input.keyboard!.once('keydown-ENTER', () => this.confirmPlacement());
   }
+
+  private onPlacementClick = (ptr: Phaser.Input.Pointer): void => {
+    if (this.state !== PlacementState.Placing) return;
+    // Ignore clicks on the confirm/cancel buttons (screen-space overlap check)
+    const bx = this.confirmBtn.x, by = this.confirmBtn.y, bw = 110 / 2, bh = 36 / 2;
+    const cx = this.cancelBtn.x,  cy = this.cancelBtn.y;
+    if ((Math.abs(ptr.x - bx) < bw && Math.abs(ptr.y - by) < bh) ||
+        (Math.abs(ptr.x - cx) < bw && Math.abs(ptr.y - cy) < bh)) {
+      // Re-listen for next click (the button handled this one)
+      this.scene.input.once('pointerdown', this.onPlacementClick, this);
+      return;
+    }
+
+    if (this.ghostLocked) {
+      // Unlock — resume following cursor
+      this.ghostLocked = false;
+      this.confirmTxt.setText('PLACE  [↵]');
+    } else {
+      // Lock ghost at current snap position
+      this.ghostLocked = true;
+      this.confirmTxt.setText('PLACE ✓');
+    }
+    // Re-listen for next click to allow toggling
+    this.scene.input.once('pointerdown', this.onPlacementClick, this);
+  };
 
   private activateShield(): void {
     if (!spendItem('shield')) return;
@@ -207,15 +242,35 @@ export class PlaceableManager {
   // ── Ghost / surface snapping ─────────────────────────────────────────────────
 
   private updateGhost(): void {
+    if (this.ghostLocked) {
+      this.drawGhost();
+      return;
+    }
+
     const cam     = this.scene.cameras.main;
     const ptr     = this.scene.input.activePointer;
     const worldX  = ptr.x + cam.scrollX;
     const worldY  = ptr.y + cam.scrollY;
 
-    const snapY = this.findSurfaceY(worldX, worldY);
-    this.ghostValid = snapY !== null;
-    this.ghostWorldX = worldX;
-    this.ghostWorldY = snapY ?? worldY;
+    if (this.placingItemId === 'ibeam') {
+      // I-Beam snaps to wall surfaces; fall back to walkable
+      const wallSnap = this.findWallSnap(worldX, worldY);
+      if (wallSnap) {
+        this.ghostValid  = true;
+        this.ghostWorldX = wallSnap.x;
+        this.ghostWorldY = wallSnap.y;
+      } else {
+        const snapY = this.findSurfaceY(worldX, worldY);
+        this.ghostValid  = snapY !== null;
+        this.ghostWorldX = worldX;
+        this.ghostWorldY = snapY ?? worldY;
+      }
+    } else {
+      const snapY = this.findSurfaceY(worldX, worldY);
+      this.ghostValid  = snapY !== null;
+      this.ghostWorldX = worldX;
+      this.ghostWorldY = snapY ?? worldY;
+    }
 
     this.drawGhost();
   }
@@ -228,10 +283,32 @@ export class PlaceableManager {
       const body = (obj as Phaser.GameObjects.Image).body as Phaser.Physics.Arcade.StaticBody;
       if (worldX >= body.left && worldX <= body.right) {
         const dist = worldY - body.top;
-        if (dist >= -LADDER_HEIGHT && dist < SNAP_RADIUS && dist < bestDist) {
+        if (dist >= -SNAP_RADIUS && dist < SNAP_RADIUS && dist < bestDist) {
           best = body.top;
           bestDist = dist;
         }
+      }
+    }
+    return best;
+  }
+
+  /** Find the nearest wall face for I-Beam placement. Returns center X/Y for the beam. */
+  private findWallSnap(worldX: number, worldY: number): { x: number; y: number } | null {
+    const bodies = this.wallGroup.getChildren();
+    let best: { x: number; y: number } | null = null;
+    let bestDist = Infinity;
+    for (const obj of bodies) {
+      const body = (obj as Phaser.GameObjects.Image).body as Phaser.Physics.Arcade.StaticBody;
+      if (worldY < body.top || worldY > body.bottom) continue;
+      const distLeft  = Math.abs(worldX - body.left);
+      const distRight = Math.abs(worldX - body.right);
+      const dist = Math.min(distLeft, distRight);
+      if (dist < SNAP_RADIUS && dist < bestDist) {
+        bestDist = dist;
+        // Position beam so its inner edge aligns with the wall face
+        const faceX   = distLeft < distRight ? body.left : body.right;
+        const outward  = distLeft < distRight ? -1 : 1;
+        best = { x: faceX + outward * IBEAM_WIDTH / 2, y: worldY };
       }
     }
     return best;
@@ -335,7 +412,10 @@ export class PlaceableManager {
     const overlap = this.scene.physics.add.overlap(
       this.player.sprite,
       rect,
-      () => { this.player.enterLadder(); },
+      () => {
+        this.ladderOverlapThisFrame = true;
+        this.player.enterLadder();
+      },
     );
 
     this.ladderOverlaps.push(overlap);
@@ -365,28 +445,6 @@ export class PlaceableManager {
     this.scene.physics.add.existing(rect, true);
     this.checkpointGroup.add(rect);
     this.spawnedBodies.push({ saveIndex: index, object: rect, itemId: 'checkpoint' });
-  }
-
-  // ── Checkpoint respawn ───────────────────────────────────────────────────────
-
-  tryCheckpointRespawn(
-    invincibleSetter: (v: boolean) => void,
-    respawnAt: (x: number, y: number) => void,
-  ): boolean {
-    const placed = getPlaced();
-    const cpIdx = placed.findIndex(p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0);
-    if (cpIdx === -1) return false;
-
-    const cp = placed[cpIdx];
-    const newSpawns = (cp.meta?.spawnsLeft ?? 0) - 1;
-    updatePlacedMeta(cpIdx, { spawnsLeft: newSpawns });
-    if (newSpawns <= 0) removeExpiredPlaced();
-
-    respawnAt(cp.x, cp.y - 50);
-    invincibleSetter(true);
-    this.scene.time.delayedCall(PLAYER_INVINCIBLE_MS * 5, () => invincibleSetter(false));
-
-    return true;
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────

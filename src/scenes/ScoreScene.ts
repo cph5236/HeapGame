@@ -4,16 +4,18 @@ import { addBalance, getBalance, getPlayerConfig } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 
 export class ScoreScene extends Phaser.Scene {
-  private score:   number  = 0;
-  private isPeak:  boolean = false;
+  private score:               number  = 0;
+  private isPeak:              boolean = false;
+  private checkpointAvailable: boolean = false;
 
   constructor() {
     super({ key: 'ScoreScene' });
   }
 
-  init(data: { score: number; isPeak?: boolean }): void {
-    this.score  = data.score  ?? 0;
-    this.isPeak = data.isPeak ?? false;
+  init(data: { score: number; isPeak?: boolean; checkpointAvailable?: boolean }): void {
+    this.score               = data.score               ?? 0;
+    this.isPeak              = data.isPeak              ?? false;
+    this.checkpointAvailable = data.checkpointAvailable ?? false;
   }
 
   create(): void {
@@ -67,8 +69,31 @@ export class ScoreScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     const im = InputManager.getInstance();
+    let nextY = this.isPeak ? GAME_HEIGHT / 2 + 125 : GAME_HEIGHT / 2 + 100;
+
+    if (this.checkpointAvailable) {
+      const cpBtn = this.add.text(GAME_WIDTH / 2, nextY, 'Respawn at Checkpoint', {
+        fontSize: '22px',
+        color: '#44ddff',
+        stroke: '#000000',
+        strokeThickness: 3,
+        backgroundColor: '#00336688',
+        padding: { x: 16, y: 8 },
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+      cpBtn.on('pointerover', () => cpBtn.setColor('#ffffff'));
+      cpBtn.on('pointerout',  () => cpBtn.setColor('#44ddff'));
+      cpBtn.once('pointerup', () => {
+        this.scene.stop('ScoreScene');
+        this.scene.stop('GameScene');
+        this.scene.start('GameScene', { useCheckpoint: true });
+      });
+
+      nextY += 52;
+    }
+
     const continueLabel = im.isMobile ? 'Tap for menu' : 'Press any key for menu';
-    const continueText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 130, continueLabel, {
+    const continueText = this.add.text(GAME_WIDTH / 2, nextY, continueLabel, {
       fontSize: '20px',
       color: '#aaaaaa',
     }).setOrigin(0.5);

@@ -132,7 +132,7 @@ Tap/click an item icon in the hotbar. This enters **placement mode** for that it
 - Exiting the overlap zone restores normal physics
 
 ### I-Beam Platform (`category: 'placeable'`, `persistsOnHeap: true`)
-- Horizontal platform extending from the heap surface
+- Horizontal platform extending from the heap surface in the wall grouping
 - One-way static physics body: player can jump up through from below, stands on top
 - Width is a designer-tuned constant
 
