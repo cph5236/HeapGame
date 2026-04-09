@@ -212,8 +212,8 @@ export class ScoreScene extends Phaser.Scene {
         bg.fillStyle(0x00ff64, 0.08);
         bg.lineStyle(1, 0x44ff88, 0.2);
       }
-      bg.strokeRoundedRect(PANEL_X - PANEL_W / 2, PANEL_TOP, PANEL_W, h, 8);
       bg.fillRoundedRect(PANEL_X - PANEL_W / 2, PANEL_TOP, PANEL_W, h, 8);
+      bg.strokeRoundedRect(PANEL_X - PANEL_W / 2, PANEL_TOP, PANEL_W, h, 8);
     };
     drawBg(shouldCollapse);
 
