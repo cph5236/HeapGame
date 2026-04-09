@@ -4,6 +4,7 @@ import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
 import { ScoreScene } from './scenes/ScoreScene';
 import { UpgradeScene } from './scenes/UpgradeScene';
+import { StoreScene } from './scenes/StoreScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -29,7 +30,7 @@ const config: Phaser.Types.Core.GameConfig = {
     target: 60,
     smoothStep: true,
   },
-  scene: [BootScene, MenuScene, GameScene, ScoreScene, UpgradeScene],
+  scene: [BootScene, MenuScene, GameScene, ScoreScene, UpgradeScene, StoreScene],
   parent: 'game',
 };
 

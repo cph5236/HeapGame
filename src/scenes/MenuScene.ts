@@ -15,8 +15,10 @@ export class MenuScene extends Phaser.Scene {
   private balanceText!: Phaser.GameObjects.Text;
   private startBg!: Phaser.GameObjects.Graphics;
   private upgradeBg!: Phaser.GameObjects.Graphics;
+  private storeBg!: Phaser.GameObjects.Graphics;
   private startText!: Phaser.GameObjects.Text;
   private upgradeText!: Phaser.GameObjects.Text;
+  private storeText!: Phaser.GameObjects.Text;
   private twinkleStars: Phaser.GameObjects.Graphics[] = [];
   private resetConfirmed = false;
 
@@ -274,6 +276,20 @@ export class MenuScene extends Phaser.Scene {
       strokeThickness: 2,
     }).setOrigin(0.5).setAlpha(0).setDepth(9);
 
+    // Store button
+    this.storeBg = this.add.graphics().setDepth(8).setAlpha(0);
+    this.storeBg.fillStyle(0x000000, 0.5);
+    this.storeBg.fillRoundedRect(GAME_WIDTH / 2 - 160, 680, 320, 56, 12);
+    this.storeBg.lineStyle(2, 0x8899bb, 0.6);
+    this.storeBg.strokeRoundedRect(GAME_WIDTH / 2 - 160, 680, 320, 56, 12);
+
+    this.storeText = this.add.text(GAME_WIDTH / 2, 708, 'STORE', {
+      fontSize: '20px',
+      color: '#44ffaa',
+      stroke: '#000000',
+      strokeThickness: 2,
+    }).setOrigin(0.5).setAlpha(0).setDepth(9);
+
     if (im.isMobile && !im.tiltPermissionGranted) {
       const tiltBtn = this.add.text(GAME_WIDTH / 2, 760, 'Enable Tilt Controls', {
         fontSize: '17px',
@@ -402,6 +418,8 @@ export class MenuScene extends Phaser.Scene {
     });
     this.tweens.add({ targets: this.upgradeBg,   alpha: 1, duration: 300, delay: 1900 });
     this.tweens.add({ targets: this.upgradeText, alpha: 1, duration: 300, delay: 1900 });
+    this.tweens.add({ targets: this.storeBg,   alpha: 1, duration: 300, delay: 2000 });
+    this.tweens.add({ targets: this.storeText, alpha: 1, duration: 300, delay: 2000 });
 
     this.time.delayedCall(2100, () => this.startTwinkle());
 
@@ -458,6 +476,14 @@ export class MenuScene extends Phaser.Scene {
         Phaser.Geom.Rectangle.Contains,
       );
       this.upgradeText.once('pointerup', () => this.scene.start('UpgradeScene'));
+
+      this.storeText.setInteractive(
+        new Phaser.Geom.Rectangle(-200, -40, 400, 80),
+        Phaser.Geom.Rectangle.Contains,
+      );
+      this.storeText.once('pointerup', () => this.scene.start('StoreScene'));
+
+      this.input.keyboard!.once('keydown-S', () => this.scene.start('StoreScene'));
     });
   }
 }
