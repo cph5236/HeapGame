@@ -456,7 +456,7 @@ export class GameScene extends Phaser.Scene {
       p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
     );
     const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
-    this.scene.launch('ScoreScene', { score, isPeak: false, checkpointAvailable });
+    this.scene.launch('ScoreScene', { score, isPeak: false, checkpointAvailable, isFailure: true });
     this.scene.pause();
   };
 
