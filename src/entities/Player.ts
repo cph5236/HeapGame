@@ -44,6 +44,7 @@ export class Player {
   public inSlopeZone = false;
 
   private shieldActive: boolean = false;
+  private onLadder: boolean = false;
 
   // ── HUD accessors ──────────────────────────────────────────────────────────
   get dashCooldownFraction(): number  { return this.dashCooldown / DASH_COOLDOWN_MS; }
@@ -79,6 +80,19 @@ export class Player {
   }
 
   update(delta: number): void {
+    // Ladder climbing mode — vertical movement only, gravity off, jump suppressed
+    if (this.onLadder) {
+      const im = InputManager.getInstance();
+      const goUp   = this.jumpKeys.some(k => k.isDown)  || im.jumpJustPressed;
+      const goDown = this.downKeys.some(k => k.isDown);
+      this.sprite.setVelocityX(0);
+      this.sprite.setVelocityY(goUp ? -PLAYER_SPEED * 0.65 : goDown ? PLAYER_SPEED * 0.65 : 0);
+      // Still allow X-wrap so player doesn't get stuck at world edge on ladder
+      if (this.sprite.x < 0)           this.sprite.x = WORLD_WIDTH;
+      else if (this.sprite.x > WORLD_WIDTH) this.sprite.x = 0;
+      return; // skip all normal physics this frame
+    }
+
     const body     = this.sprite.body;
     const floorY   = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2;
     const onWall   = body.blocked.left || body.blocked.right;
@@ -201,5 +215,20 @@ export class Player {
   absorbHit(): void {
     this.shieldActive = false;
     this.sprite.clearTint();
+  }
+
+  get isOnLadder(): boolean { return this.onLadder; }
+
+  enterLadder(): void {
+    if (this.onLadder) return;
+    this.onLadder = true;
+    this.sprite.body.setAllowGravity(false);
+    this.sprite.setVelocityY(0);
+  }
+
+  exitLadder(): void {
+    if (!this.onLadder) return;
+    this.onLadder = false;
+    this.sprite.body.setAllowGravity(true);
   }
 }
