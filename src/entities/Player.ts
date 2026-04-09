@@ -43,6 +43,8 @@ export class Player {
    *  player is resting on a steep wall surface and should be ejected outward. */
   public inSlopeZone = false;
 
+  private shieldActive: boolean = false;
+
   // ── HUD accessors ──────────────────────────────────────────────────────────
   get dashCooldownFraction(): number  { return this.dashCooldown / DASH_COOLDOWN_MS; }
   get airJumpsLeft():         number  { return this.airJumpsRemaining; }
@@ -50,6 +52,7 @@ export class Player {
   get wallJumpsLeft():        number  { return this.wallJumpsRemaining; }
   get hasWallJump():          boolean { return this.wallJumpEnabled; }
   get hasDash():              boolean { return this.dashEnabled; }
+  get hasActiveShield():      boolean { return this.shieldActive; }
 
   constructor(scene: Phaser.Scene, x: number, y: number, config: PlayerConfig) {
     this.sprite = scene.physics.add.sprite(x, y, 'trashbag');
@@ -188,5 +191,15 @@ export class Player {
         this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
       }
     }
+  }
+
+  activateShield(): void {
+    this.shieldActive = true;
+    this.sprite.setTint(0x8844ff); // purple tint = shield active
+  }
+
+  absorbHit(): void {
+    this.shieldActive = false;
+    this.sprite.clearTint();
   }
 }
