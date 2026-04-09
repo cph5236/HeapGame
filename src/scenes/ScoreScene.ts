@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, SCORE_TO_COINS_DIVISOR } from '../constants';
 import { addBalance, getBalance, getPlayerConfig } from '../systems/SaveData';
 import { buildCoinBreakdown, BreakdownRow } from '../systems/coinBreakdown';
+import { InputManager } from '../systems/InputManager';
 
 const CX = GAME_WIDTH / 2;
 
@@ -345,20 +346,61 @@ export class ScoreScene extends Phaser.Scene {
 
   // ── Balance ───────────────────────────────────────────────────────────────────
 
-  private createBalance(_balance: number): void {
-    // Implemented in Task 5
+  private createBalance(balance: number): void {
+    this.add.text(CX, GAME_HEIGHT * 0.73, `Balance: ${balance} coins`, {
+      fontSize:   '10px',
+      fontFamily: 'monospace',
+      color:      '#aaddff',
+    }).setOrigin(0.5).setAlpha(0.33);
   }
 
   // ── Checkpoint Button ─────────────────────────────────────────────────────────
 
   private createCheckpointButton(): void {
     if (!this.checkpointAvailable) return;
-    // Full implementation in Task 5
+
+    const btn = this.add.text(CX, GAME_HEIGHT * 0.79, 'Respawn at Checkpoint', {
+      fontSize:        '12px',
+      fontFamily:      'monospace',
+      color:           '#88aaff',
+      backgroundColor: '#112266cc',
+      padding:         { x: 16, y: 8 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    btn.on('pointerover', () => btn.setColor('#ffffff'));
+    btn.on('pointerout',  () => btn.setColor('#88aaff'));
+    btn.once('pointerup', () => {
+      this.scene.stop('ScoreScene');
+      this.scene.stop('GameScene');
+      this.scene.start('GameScene', { useCheckpoint: true });
+    });
   }
 
   // ── Menu Prompt ───────────────────────────────────────────────────────────────
 
   private createMenuPrompt(): void {
-    // Implemented in Task 5
+    const im    = InputManager.getInstance();
+    const label = im.isMobile ? 'TAP ANYWHERE FOR MENU' : 'PRESS ANY KEY FOR MENU';
+    const promptY = this.checkpointAvailable ? GAME_HEIGHT * 0.88 : GAME_HEIGHT * 0.82;
+
+    const promptText = this.add.text(CX, promptY, label, {
+      fontSize:      '10px',
+      fontFamily:    'monospace',
+      color:         '#ffffff',
+      letterSpacing: 2,
+    }).setOrigin(0.5).setAlpha(0.16);
+
+    const goMenu = () => {
+      this.scene.stop('GameScene');
+      this.scene.start('MenuScene');
+    };
+
+    this.time.delayedCall(300, () => {
+      this.input.keyboard!.once('keydown', goMenu);
+      if (im.isMobile) {
+        promptText.setInteractive({ useHandCursor: true });
+        promptText.once('pointerup', goMenu);
+      }
+    });
   }
 }
