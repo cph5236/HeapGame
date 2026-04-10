@@ -264,7 +264,7 @@ export class Player {
   }
 
   freeze(): void {
-    if (this.onLadder) this.exitLadder(); // clears onLadder; briefly re-enables gravity
+    if (this.onLadder) this.exitLadder(); // clears onLadder flag; gravity re-enable is overridden below
     this.setControlsEnabled(false);
     this.sprite.setVelocity(0, 0);
     this.sprite.body.setAllowGravity(false);
