@@ -29,6 +29,8 @@ import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { HeapClient } from '../systems/HeapClient';
 import { PlaceableManager } from '../systems/PlaceableManager';
+import { TrashWallManager } from '../systems/TrashWallManager';
+import { TRASH_WALL_DEF } from '../data/trashWallDef';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -56,6 +58,7 @@ export class GameScene extends Phaser.Scene {
   private playerConfig!: PlayerConfig;
   private im!: InputManager;
   private placeableManager!: PlaceableManager;
+  private trashWallManager!: TrashWallManager;
   private _lastScore = -1;
   private _heapId = '';
   private _holdElapsed = 0;
@@ -139,6 +142,20 @@ export class GameScene extends Phaser.Scene {
         this.time.delayedCall(PLAYER_INVINCIBLE_MS * 5, () => { this.invincible = false; });
       }
     }
+
+    this.trashWallManager = new TrashWallManager(this, TRASH_WALL_DEF, () => {
+      this.player.freeze();
+      this.player.sprite.setDepth(4); // visually swallowed — below wall body (depth 5)
+      this.time.delayedCall(800, () => {
+        const checkpointAvailable = getPlaced().some(
+          p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
+        );
+        const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
+        this.scene.launch('ScoreScene', { score, isPeak: false, checkpointAvailable, isFailure: true });
+        this.scene.pause();
+      });
+    });
+    this.trashWallManager.spawn(this.player.sprite.y);
 
     // Stream an initial chunk synchronously so collision is ready before the first frame
     this.highestGeneratedY = this.spawnY;
@@ -245,6 +262,7 @@ export class GameScene extends Phaser.Scene {
     const camTop    = cam.scrollY;
     const camBottom = cam.scrollY + cam.height;
 
+    this.trashWallManager.update(this.player.sprite.y, delta);
     this.enemyManager.update(camTop, camBottom);
     this.chunkRenderer.cullChunks(camBottom);
     this.edgeCollider.cullBands(camBottom, 2000);
