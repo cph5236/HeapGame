@@ -64,9 +64,24 @@ export class ScoreScene extends Phaser.Scene {
   private createBackground(): void {
     const g = this.add.graphics();
     const bands: [number, number, number][] = [
-      [0,              GAME_HEIGHT * 0.4, 0x0a0818],
-      [GAME_HEIGHT * 0.4, GAME_HEIGHT * 0.3, 0x1a1040],
-      [GAME_HEIGHT * 0.7, GAME_HEIGHT * 0.3, 0x2a1060],
+      [0,   47, 0x0a0818],
+      [47,  47, 0x0c081c],
+      [94,  47, 0x0e0920],
+      [141, 47, 0x100925],
+      [188, 47, 0x130a2a],
+      [235, 47, 0x150b2f],
+      [282, 47, 0x170b34],
+      [329, 47, 0x190c3a],
+      [376, 47, 0x1b0c3f],
+      [423, 47, 0x1d0d44],
+      [470, 47, 0x1f0d49],
+      [517, 47, 0x210e4e],
+      [564, 47, 0x230e53],
+      [611, 47, 0x250f58],
+      [658, 47, 0x271060],
+      [705, 47, 0x271060],
+      [752, 47, 0x291060],
+      [799, 55, 0x2a1060],
     ];
     for (const [y, h, color] of bands) {
       g.fillStyle(color, 1);
@@ -91,10 +106,21 @@ export class ScoreScene extends Phaser.Scene {
 
   private createFailureGlow(): void {
     const g = this.add.graphics();
-    // Red radial ellipse at top — simulate rgba(255,60,60,0.12)
-    for (let i = 5; i >= 1; i--) {
-      g.fillStyle(0xff3c3c, 0.024 * i);
-      g.fillEllipse(CX, 0, GAME_WIDTH * 0.9, 120 * i / 5);
+    // Counter-gradient: ominous crimson bleed from top, fading ~55% down
+    const bands: [number, number, number, number][] = [
+      [0,   47, 0x3a0000, 0.45],
+      [47,  47, 0x3a0000, 0.38],
+      [94,  47, 0x300000, 0.30],
+      [141, 47, 0x280000, 0.22],
+      [188, 47, 0x200000, 0.15],
+      [235, 47, 0x180000, 0.10],
+      [282, 47, 0x100000, 0.06],
+      [329, 47, 0x080000, 0.03],
+      [376, 47, 0x040000, 0.01],
+    ];
+    for (const [y, h, color, alpha] of bands) {
+      g.fillStyle(color, alpha);
+      g.fillRect(0, y, GAME_WIDTH, h);
     }
   }
 
@@ -131,7 +157,7 @@ export class ScoreScene extends Phaser.Scene {
     const text  = this.isFailure ? 'HEAP FAILURE' : 'HEAP SUCCESSFUL';
     const color = this.isFailure ? '#ff5555' : '#44ffaa';
     this.add.text(CX, GAME_HEIGHT * 0.18, text, {
-      fontSize:        '11px',
+      fontSize:        '36px',
       fontFamily:      'monospace',
       color,
       letterSpacing:   4,
@@ -160,7 +186,7 @@ export class ScoreScene extends Phaser.Scene {
       fontFamily:    'monospace',
       color:         '#ffdd44',
       letterSpacing: 2,
-    }).setOrigin(0.5).setAlpha(0.4);
+    }).setOrigin(0.5);
 
     // Count-up tween
     const counter = { value: 0 };
@@ -226,14 +252,9 @@ export class ScoreScene extends Phaser.Scene {
     const coinColor  = this.isFailure ? '#ff8866' : '#44ff88';
     const headerText = this.add.text(
       PANEL_X, PANEL_TOP + 14,
-      `+${finalCoins}`,
+      `+${finalCoins} coins earned`,
       { fontSize: '22px', fontFamily: 'monospace', color: coinColor, fontStyle: 'bold' },
     ).setOrigin(0.5, 0);
-    this.add.text(
-      PANEL_X + headerText.width / 2 + 6, PANEL_TOP + 18,
-      'coins earned',
-      { fontSize: '11px', fontFamily: 'monospace', color: coinColor },
-    ).setOrigin(0, 0).setAlpha(0.5);
 
     // Divider
     const divG = this.add.graphics();
@@ -352,10 +373,10 @@ export class ScoreScene extends Phaser.Scene {
 
   private createBalance(balance: number): void {
     this.add.text(CX, GAME_HEIGHT * 0.73, `Balance: ${balance} coins`, {
-      fontSize:   '10px',
+      fontSize:   '16px',
       fontFamily: 'monospace',
       color:      '#aaddff',
-    }).setOrigin(0.5).setAlpha(0.33);
+    }).setOrigin(0.5).setAlpha(0.85);
   }
 
   // ── Checkpoint Button ─────────────────────────────────────────────────────────
@@ -385,14 +406,14 @@ export class ScoreScene extends Phaser.Scene {
   private createMenuPrompt(): void {
     const im    = InputManager.getInstance();
     const label = im.isMobile ? 'TAP ANYWHERE FOR MENU' : 'PRESS ANY KEY FOR MENU';
-    const promptY = this.checkpointAvailable ? GAME_HEIGHT * 0.88 : GAME_HEIGHT * 0.82;
+    const promptY = GAME_HEIGHT * 0.95;
 
     const promptText = this.add.text(CX, promptY, label, {
-      fontSize:      '10px',
+      fontSize:      '16px',
       fontFamily:    'monospace',
       color:         '#ffffff',
       letterSpacing: 2,
-    }).setOrigin(0.5).setAlpha(0.16);
+    }).setOrigin(0.5).setAlpha(0.4);
 
     const goMenu = () => {
       this.scene.stop('GameScene');

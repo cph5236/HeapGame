@@ -24,7 +24,7 @@ export type TrashWallDef = {
 };
 
 export const TRASH_WALL_DEF: TrashWallDef = {
-  spawnBelowPlayerDistance: 1200,
+  spawnBelowPlayerDistance: 1200,//1200,
   maxLaggingDistance:       2200,  // slightly above ENEMY_CULL_DISTANCE (2000)
   speedMin:                   40,  // px/s near world floor
   speedMax:                  120,  // px/s at high altitude
@@ -32,7 +32,7 @@ export const TRASH_WALL_DEF: TrashWallDef = {
   warningDistance:           600,
   warningSound:   'trashwall-warning', // placeholder — no audio hooked up yet
   killZoneHeight:             30,
-  undulateAmplitude:          40,
+  undulateAmplitude:          20,
   undulateSpeed:             0.6,
-  undulateCount:              12,
+  undulateCount:              24,
 };
