@@ -1,8 +1,4 @@
 // src/systems/TrashWallManager.ts
-import type { TrashWallDef } from '../data/trashWallDef';
-import { OBJECT_DEF_LIST } from '../data/heapObjectDefs';
-import { WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX } from '../constants';
-import Phaser from 'phaser';
 
 // ── Pure math — exported for unit testing ─────────────────────────────────────
 
