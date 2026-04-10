@@ -73,6 +73,7 @@ export class TrashWallManager {
    * (including checkpoint repositioning). Spawns wall below the player and builds the sprite pool.
    */
   spawn(playerY: number): void {
+    if (this.spawned) return;
     this.wallY  = playerY + this.def.spawnBelowPlayerDistance;
     this.spawned = true;
     this._buildSpritePool();
@@ -140,7 +141,7 @@ export class TrashWallManager {
     // Body: dark brown rectangle from wallY downward, spanning full world width
     this.body.clear();
     this.body.fillStyle(0x3B1F0A, 1);
-    this.body.fillRect(0, this.wallY, WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX);
+    this.body.fillRect(0, this.wallY, WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX - this.wallY);
 
     // Trash sprites undulate above the wall surface
     for (const img of this.trashSprites) {
