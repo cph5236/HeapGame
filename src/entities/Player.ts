@@ -49,6 +49,7 @@ export class Player {
     this.shieldAura?.setPosition(this.sprite.x, this.sprite.y);
   };
   private onLadder: boolean = false;
+  private controlsEnabled = true;
 
   // ── HUD accessors ──────────────────────────────────────────────────────────
   get dashCooldownFraction(): number  { return this.dashCooldown / DASH_COOLDOWN_MS; }
@@ -108,6 +109,8 @@ export class Player {
         return; // skip all normal physics this frame
       }
     }
+
+    if (!this.controlsEnabled) return;
 
     const body     = this.sprite.body;
     const floorY   = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2;
@@ -254,5 +257,16 @@ export class Player {
     if (!this.onLadder) return;
     this.onLadder = false;
     this.sprite.body.setAllowGravity(true);
+  }
+
+  setControlsEnabled(enabled: boolean): void {
+    this.controlsEnabled = enabled;
+  }
+
+  freeze(): void {
+    if (this.onLadder) this.exitLadder(); // clears onLadder; briefly re-enables gravity
+    this.setControlsEnabled(false);
+    this.sprite.setVelocity(0, 0);
+    this.sprite.body.setAllowGravity(false);
   }
 }
