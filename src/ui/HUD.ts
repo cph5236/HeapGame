@@ -1,12 +1,27 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
+import type { PlaceableManager } from '../systems/PlaceableManager';
 
 const HUD_Y    = GAME_HEIGHT - 44;
 const MARGIN_R = 20;   // gap from right screen edge
 const ICON_GAP = 14;   // gap between icon groups
 const DASH_W   = 80;
 const DASH_H   = 28;
+const ICON_BG_R = 30;  // radius of radial-gradient icon backgrounds
+
+/** Draw a dark-grey → transparent radial gradient circle for HUD icon backgrounds. */
+function addRadialBg(scene: Phaser.Scene, cx: number, cy: number): void {
+  const g = scene.add.graphics().setScrollFactor(0).setDepth(19);
+  const steps = 14;
+  for (let i = 0; i < steps; i++) {
+    // i=0: outermost, most transparent; i=steps-1: innermost, most opaque
+    const t      = i / (steps - 1);
+    const radius = ICON_BG_R * (1 - t * 0.88) + 1;
+    g.fillStyle(0x111111, t * 0.65);
+    g.fillCircle(cx, cy, radius);
+  }
+}
 
 export class HUD {
   private readonly player: Player;
@@ -16,7 +31,7 @@ export class HUD {
   private readonly wallJumpIcons: Phaser.GameObjects.Image[] = [];
   private          dashLeft:      number = 0;
 
-  constructor(scene: Phaser.Scene, player: Player) {
+  constructor(scene: Phaser.Scene, player: Player, placeableManager?: PlaceableManager) {
     this.player = player;
 
     // Build positions right-to-left so the layout adapts to which abilities are unlocked
@@ -49,24 +64,42 @@ export class HUD {
 
     // ── Wall jump icon (1 charge, right of clouds) ──────────────────────────
     if (player.hasWallJump) {
-      const iconW = 24;
-      const iconCX = cursorX - iconW / 2;
+      const iconCX = cursorX - ICON_BG_R;
+      addRadialBg(scene, iconCX, HUD_Y);
       const icon = scene.add.image(iconCX, HUD_Y, 'wall-jump')
         .setScrollFactor(0).setDepth(20);
       this.wallJumpIcons.push(icon);
-      cursorX = cursorX - iconW - ICON_GAP;
+      cursorX = iconCX - ICON_BG_R - ICON_GAP;
     }
 
     // ── Air jump clouds ─────────────────────────────────────────────────────
     // Lay out clouds right-to-left so the rightmost dims first
-    const cloudW = 32;
-    const cloudSpacing = cloudW + 6;
+    const cloudSpacing = ICON_BG_R * 2 + 6;
     for (let i = player.maxAirJumpsCount - 1; i >= 0; i--) {
-      const cx = cursorX - cloudW / 2;
+      const cx = cursorX - ICON_BG_R;
+      addRadialBg(scene, cx, HUD_Y);
       const icon = scene.add.image(cx, HUD_Y, 'cloud')
         .setScrollFactor(0).setDepth(20).setScale(1.1);
       this.cloudIcons[i] = icon;
       cursorX -= cloudSpacing;
+    }
+
+    // ── Hotbar bag icon (bottom-left) ──────────────────────────────────────────
+    if (placeableManager) {
+      const bagX = 36;
+      const bagY = GAME_HEIGHT - 44;
+
+      addRadialBg(scene, bagX, bagY);
+
+      scene.add.text(bagX, bagY, '\uD83C\uDF92', {
+        fontSize: '26px',
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(21);
+
+      const bagHit = scene.add.zone(bagX, bagY, 52, 52)
+        .setScrollFactor(0).setDepth(22)
+        .setInteractive({ useHandCursor: true });
+
+      bagHit.on('pointerup', () => placeableManager.openHotbar());
     }
   }
 

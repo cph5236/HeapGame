@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
-import { getBalance, resetAllData } from '../systems/SaveData';
+import { getBalance, getPlaced, resetAllData } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 
@@ -15,8 +15,10 @@ export class MenuScene extends Phaser.Scene {
   private balanceText!: Phaser.GameObjects.Text;
   private startBg!: Phaser.GameObjects.Graphics;
   private upgradeBg!: Phaser.GameObjects.Graphics;
+  private storeBg!: Phaser.GameObjects.Graphics;
   private startText!: Phaser.GameObjects.Text;
   private upgradeText!: Phaser.GameObjects.Text;
+  private storeText!: Phaser.GameObjects.Text;
   private twinkleStars: Phaser.GameObjects.Graphics[] = [];
   private resetConfirmed = false;
 
@@ -260,16 +262,37 @@ export class MenuScene extends Phaser.Scene {
       strokeThickness: 3,
     }).setOrigin(0.5).setAlpha(0).setDepth(9);
 
-    // Upgrade button
+    // Upgrades + Store — side by side, same total width as Start Run (320px)
+    // Each button: (320 - 8 gap) / 2 = 156px
+    const subBtnW  = 156;
+    const subBtnH  = 56;
+    const subBtnGap = 8;
+    const subLeft  = GAME_WIDTH / 2 - 160;        // same left edge as Start Run
+    const subY     = 612;
+    const subCY    = subY + subBtnH / 2;           // = 640
+
     this.upgradeBg = this.add.graphics().setDepth(8).setAlpha(0);
     this.upgradeBg.fillStyle(0x000000, 0.5);
-    this.upgradeBg.fillRoundedRect(GAME_WIDTH / 2 - 160, 612, 320, 56, 12);
+    this.upgradeBg.fillRoundedRect(subLeft, subY, subBtnW, subBtnH, 12);
     this.upgradeBg.lineStyle(2, 0x8899bb, 0.6);
-    this.upgradeBg.strokeRoundedRect(GAME_WIDTH / 2 - 160, 612, 320, 56, 12);
+    this.upgradeBg.strokeRoundedRect(subLeft, subY, subBtnW, subBtnH, 12);
 
-    this.upgradeText = this.add.text(GAME_WIDTH / 2, 640, 'UPGRADES', {
+    this.upgradeText = this.add.text(subLeft + subBtnW / 2, subCY, 'UPGRADES', {
       fontSize: '20px',
       color: '#ffdd44',
+      stroke: '#000000',
+      strokeThickness: 2,
+    }).setOrigin(0.5).setAlpha(0).setDepth(9);
+
+    this.storeBg = this.add.graphics().setDepth(8).setAlpha(0);
+    this.storeBg.fillStyle(0x000000, 0.5);
+    this.storeBg.fillRoundedRect(subLeft + subBtnW + subBtnGap, subY, subBtnW, subBtnH, 12);
+    this.storeBg.lineStyle(2, 0x8899bb, 0.6);
+    this.storeBg.strokeRoundedRect(subLeft + subBtnW + subBtnGap, subY, subBtnW, subBtnH, 12);
+
+    this.storeText = this.add.text(subLeft + subBtnW + subBtnGap + subBtnW / 2, subCY, 'STORE', {
+      fontSize: '20px',
+      color: '#44ffaa',
       stroke: '#000000',
       strokeThickness: 2,
     }).setOrigin(0.5).setAlpha(0).setDepth(9);
@@ -402,6 +425,8 @@ export class MenuScene extends Phaser.Scene {
     });
     this.tweens.add({ targets: this.upgradeBg,   alpha: 1, duration: 300, delay: 1900 });
     this.tweens.add({ targets: this.upgradeText, alpha: 1, duration: 300, delay: 1900 });
+    this.tweens.add({ targets: this.storeBg,   alpha: 1, duration: 300, delay: 2000 });
+    this.tweens.add({ targets: this.storeText, alpha: 1, duration: 300, delay: 2000 });
 
     this.time.delayedCall(2100, () => this.startTwinkle());
 
@@ -444,20 +469,35 @@ export class MenuScene extends Phaser.Scene {
 
   private registerInput(): void {
     this.time.delayedCall(100, () => {
-      this.input.keyboard!.once('keydown-SPACE', () => this.scene.start('GameScene'));
+      const startGame = (): void => {
+        const hasCheckpoint = getPlaced().some(
+          p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
+        );
+        this.scene.start('GameScene', hasCheckpoint ? { useCheckpoint: true } : undefined);
+      };
+
+      this.input.keyboard!.once('keydown-SPACE', startGame);
       this.input.keyboard!.once('keydown-U',     () => this.scene.start('UpgradeScene'));
 
       this.startText.setInteractive(
         new Phaser.Geom.Rectangle(-200, -40, 400, 80),
         Phaser.Geom.Rectangle.Contains,
       );
-      this.startText.once('pointerup', () => this.scene.start('GameScene'));
+      this.startText.once('pointerup', startGame);
 
       this.upgradeText.setInteractive(
-        new Phaser.Geom.Rectangle(-200, -40, 400, 80),
+        new Phaser.Geom.Rectangle(-78, -28, 156, 56),
         Phaser.Geom.Rectangle.Contains,
       );
       this.upgradeText.once('pointerup', () => this.scene.start('UpgradeScene'));
+
+      this.storeText.setInteractive(
+        new Phaser.Geom.Rectangle(-78, -28, 156, 56),
+        Phaser.Geom.Rectangle.Contains,
+      );
+      this.storeText.once('pointerup', () => this.scene.start('StoreScene'));
+
+      this.input.keyboard!.once('keydown-S', () => this.scene.start('StoreScene'));
     });
   }
 }

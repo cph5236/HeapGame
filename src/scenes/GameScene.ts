@@ -6,7 +6,7 @@ import {
   applyPolygonToGenerator,
   polygonTopY,
 } from '../systems/HeapPolygonLoader';
-import { getPlayerConfig, PlayerConfig } from '../systems/SaveData';
+import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced } from '../systems/SaveData';
 import { HUD } from '../ui/HUD';
 import { InputManager } from '../systems/InputManager';
 import {
@@ -28,6 +28,9 @@ import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { HeapClient } from '../systems/HeapClient';
+import { PlaceableManager } from '../systems/PlaceableManager';
+import { TrashWallManager } from '../systems/TrashWallManager';
+import { TRASH_WALL_DEF } from '../data/trashWallDef';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -54,13 +57,20 @@ export class GameScene extends Phaser.Scene {
   private parallaxBg!: ParallaxBackground;
   private playerConfig!: PlayerConfig;
   private im!: InputManager;
+  private placeableManager!: PlaceableManager;
+  private trashWallManager!: TrashWallManager;
   private _lastScore = -1;
   private _heapId = '';
   private _holdElapsed = 0;
   private _holdBar!: Phaser.GameObjects.Graphics;
+  private checkpointRespawn = false;
 
   constructor() {
     super({ key: 'GameScene' });
+  }
+
+  init(data?: { useCheckpoint?: boolean }): void {
+    this.checkpointRespawn = data?.useCheckpoint ?? false;
   }
 
   preload(): void {
@@ -118,6 +128,35 @@ export class GameScene extends Phaser.Scene {
 
     this.player = new Player(this, WORLD_WIDTH * 0.0625, this.spawnY, this.playerConfig);
 
+    // If restarted via checkpoint respawn, reposition player and consume one spawn
+    if (this.checkpointRespawn) {
+      const placed = getPlaced();
+      const cpIdx  = placed.findIndex(p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0);
+      if (cpIdx !== -1) {
+        const cp = placed[cpIdx];
+        this.player.sprite.setPosition(cp.x, cp.y - 50);
+        const newSpawns = (cp.meta?.spawnsLeft ?? 0) - 1;
+        updatePlacedMeta(cpIdx, { spawnsLeft: newSpawns });
+        if (newSpawns <= 0) removeExpiredPlaced();
+        this.invincible = true;
+        this.time.delayedCall(PLAYER_INVINCIBLE_MS * 5, () => { this.invincible = false; });
+      }
+    }
+
+    this.trashWallManager = new TrashWallManager(this, TRASH_WALL_DEF, () => {
+      this.player.freeze();
+      this.player.sprite.setDepth(4); // visually swallowed — below wall body (depth 5)
+      this.time.delayedCall(800, () => {
+        const checkpointAvailable = getPlaced().some(
+          p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
+        );
+        const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
+        this.scene.launch('ScoreScene', { score, isPeak: false, checkpointAvailable, isFailure: true });
+        this.scene.pause();
+      });
+    });
+    this.trashWallManager.spawn(this.player.sprite.y);
+
     // Stream an initial chunk synchronously so collision is ready before the first frame
     this.highestGeneratedY = this.spawnY;
     this.generateUpTo(this.spawnY - GEN_LOOKAHEAD, true);
@@ -160,6 +199,7 @@ export class GameScene extends Phaser.Scene {
       fontSize: '13px', color: '#00ff88', stroke: '#000000', strokeThickness: 2,
     }).setScrollFactor(0).setDepth(20).setVisible(false);
     this.input.keyboard!.on('keydown-F2', () => this.toggleDebugMode());
+    this.input.keyboard!.on('keydown-R', () => this.placeableManager.openHotbar());
 
     // SPACE — place block when in top zone (desktop)
     this.placeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
@@ -198,8 +238,11 @@ export class GameScene extends Phaser.Scene {
       }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
     }
 
+    // PlaceableManager — items (shields, checkpoints, etc.)
+    this.placeableManager = new PlaceableManager(this, this.player, this.heapWalkableGroup, this.heapWallGroup);
+
     // HUD: ability indicators (dash bar, air jumps, wall jump)
-    this.hud = new HUD(this, this.player);
+    this.hud = new HUD(this, this.player, this.placeableManager);
 
     // Info button (ⓘ) — top-right corner
     this.createInfoButton(im.isMobile);
@@ -213,11 +256,13 @@ export class GameScene extends Phaser.Scene {
     this.player.update(delta);
     this.parallaxBg.update();
     this.hud.update();
+    this.placeableManager.update();
 
     const cam       = this.cameras.main;
     const camTop    = cam.scrollY;
     const camBottom = cam.scrollY + cam.height;
 
+    this.trashWallManager.update(this.player.sprite.y, delta);
     this.enemyManager.update(camTop, camBottom);
     this.chunkRenderer.cullChunks(camBottom);
     this.edgeCollider.cullBands(camBottom, 2000);
@@ -417,8 +462,19 @@ export class GameScene extends Phaser.Scene {
   };
 
   private readonly handleEnemyDamage = (): void => {
+    // Shield absorbs the hit
+    if (this.player.hasActiveShield) {
+      this.player.absorbHit();
+      this.invincible = true;
+      this.time.delayedCall(PLAYER_INVINCIBLE_MS * 4, () => { this.invincible = false; });
+      return;
+    }
+
+    const checkpointAvailable = getPlaced().some(
+      p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
+    );
     const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
-    this.scene.launch('ScoreScene', { score, isPeak: false });
+    this.scene.launch('ScoreScene', { score, isPeak: false, checkpointAvailable, isFailure: true });
     this.scene.pause();
   };
 
