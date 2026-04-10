@@ -1,5 +1,8 @@
 ## FEATURES
--   PLACE-ABLES - Items you can buy in a store like UI that are placeable on the heap at any points
+-   Multiple Heaps -Add heap selector from main menu
+-   VERSIONING on localsavedata for upgrades and misc
+-   Add High score system locally and on server
+-   Infinite heap? 
 
 
 ### ENEMIES
