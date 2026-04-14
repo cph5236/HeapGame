@@ -16,7 +16,7 @@ export const enum PlacementState { Closed, Hotbar, Placing }
 
 interface SpawnedBody {
   saveIndex: number;
-  object:    Phaser.GameObjects.Rectangle;
+  object:    Phaser.GameObjects.Image;
   itemId:    string;
 }
 
@@ -389,7 +389,7 @@ export class PlaceableManager {
           // Re-index remaining bodies
           this.spawnedBodies.forEach(b => { if (b.saveIndex > cpIdx) b.saveIndex--; });
         }
-        save.meta = { spawnsLeft: 5 };
+        save.meta = { spawnsLeft: 5, variant: Math.random() < 0.5 ? 1 : 2 };
         addPlaced(save);
         this.spawnCheckpointBody(save, getPlaced().length - 1);
         break;
@@ -405,7 +405,8 @@ export class PlaceableManager {
     const ladderX = save.x;
     const ladderY = save.y - LADDER_HEIGHT / 2;
 
-    const rect = this.scene.add.rectangle(ladderX, ladderY, LADDER_WIDTH, LADDER_HEIGHT, 0x885522, 0.7)
+    const rect = this.scene.add.image(ladderX, ladderY, 'item-ladder')
+      .setDisplaySize(LADDER_WIDTH, LADDER_HEIGHT)
       .setDepth(8);
     this.scene.physics.add.existing(rect, true);
 
@@ -426,7 +427,8 @@ export class PlaceableManager {
     const beamX = save.x;
     const beamY = save.y - IBEAM_HEIGHT / 2;
 
-    const rect = this.scene.add.rectangle(beamX, beamY, IBEAM_WIDTH, IBEAM_HEIGHT, 0x558899, 1)
+    const rect = this.scene.add.image(beamX, beamY, 'item-ibeam')
+      .setDisplaySize(IBEAM_WIDTH, IBEAM_HEIGHT)
       .setDepth(8);
     this.scene.physics.add.existing(rect, true);
     const body = rect.body as Phaser.Physics.Arcade.StaticBody;
@@ -440,7 +442,9 @@ export class PlaceableManager {
   }
 
   private spawnCheckpointBody(save: PlacedItemSave, index: number): void {
-    const rect = this.scene.add.rectangle(save.x, save.y - 16, 32, 32, 0xffaa22, 0.85)
+    const variant = save.meta?.variant ?? (Math.random() < 0.5 ? 1 : 2);
+    const rect = this.scene.add.image(save.x, save.y - 16, `item-checkpoint-${variant}`)
+      .setDisplaySize(32, 32)
       .setDepth(8);
     this.scene.physics.add.existing(rect, true);
     this.checkpointGroup.add(rect);

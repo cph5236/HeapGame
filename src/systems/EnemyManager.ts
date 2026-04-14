@@ -2,10 +2,13 @@
 import Phaser from 'phaser';
 import { Enemy } from '../entities/Enemy';
 import { ENEMY_DEFS, EnemyDef } from '../data/enemyDefs';
-import { CHUNK_BAND_HEIGHT, ENEMY_CULL_DISTANCE } from '../constants';
+import { CHUNK_BAND_HEIGHT, ENEMY_CULL_DISTANCE, WORLD_WIDTH } from '../constants';
 import type { Vertex } from './HeapPolygon';
+import type { HeapEntry } from '../data/heapTypes';
+import { OBJECT_DEFS } from '../data/heapObjectDefs';
 
 const SURFACE_ANGLE_THRESHOLD = 30; // degrees — below this is a surface, above is a wall
+const RAT_IDLE_MS = 1000;
 
 /**
  * Ray-casting point-in-polygon test.
@@ -67,12 +70,22 @@ export class EnemyManager {
 
   /**
    * Call this from the HeapGenerator.onPlatformSpawned callback.
+   * entry is passed so we can derive platform width for rat patrol bounds.
    * blockPlaced guards against spawning enemies on the player's own summit block.
    */
-  onPlatformSpawned(x: number, platformTopY: number, blockPlaced: boolean): void {
+  onPlatformSpawned(x: number, platformTopY: number, blockPlaced: boolean, entry?: HeapEntry): void {
     if (blockPlaced) return;
+    let minX: number | undefined;
+    let maxX: number | undefined;
+    if (entry) {
+      const def = OBJECT_DEFS[entry.keyid];
+      if (def) {
+        minX = entry.x - def.width / 2;
+        maxX = entry.x + def.width / 2;
+      }
+    }
     for (const def of Object.values(ENEMY_DEFS)) {
-      this.trySpawn(def, x, platformTopY, 0);
+      this.trySpawn(def, x, platformTopY, 0, minX, maxX, platformTopY, platformTopY);
     }
   }
 
@@ -95,25 +108,111 @@ export class EnemyManager {
       const angle = computeSurfaceAngle(v1, v2);
       const spawnX = (v1.x + v2.x) / 2;
       const spawnY = Math.min(v1.y, v2.y);
+      // Use the edge extents as patrol bounds for rats
+      const leftV  = v1.x <= v2.x ? v1 : v2;
+      const rightV = v1.x <= v2.x ? v2 : v1;
+      const minX = leftV.x;
+      const maxX = rightV.x;
+      const minY = leftV.y;
+      const maxY = rightV.y;
       for (const def of Object.values(ENEMY_DEFS)) {
-        this.trySpawn(def, spawnX, spawnY, angle);
+        this.trySpawn(def, spawnX, spawnY, angle, minX, maxX, minY, maxY);
       }
     }
   }
 
   /** Call every frame with current camera bounds. */
   update(_camTop: number, camBottom: number): void {
+    const now = this.scene.time.now;
     const children = this.group.getChildren();
     const cullY = camBottom + ENEMY_CULL_DISTANCE;
+
     for (let i = children.length - 1; i >= 0; i--) {
       const s = children[i] as Phaser.Physics.Arcade.Sprite;
-      if (s.y > cullY) s.destroy();
+      if (s.y > cullY) { s.destroy(); continue; }
+
+      const kind: string = s.getData('kind');
+
+      if (kind === 'percher') {
+        const body  = s.body as Phaser.Physics.Arcade.Body;
+        const speed: number = s.getData('speed');
+        const minX: number  = s.getData('minX') ?? s.x;
+        const maxX: number  = s.getData('maxX') ?? s.x;
+        const minY: number  = s.getData('minY') ?? s.y;
+        const maxY: number  = s.getData('maxY') ?? s.y;
+        const state: string = s.getData('ratState') ?? 'walk-right';
+
+        // Follow the slope: interpolate Y based on current X position
+        if (maxX > minX) {
+          const t = (s.x - minX) / (maxX - minX);
+          const targetY = minY + t * (maxY - minY);
+          s.y = targetY;
+          body.position.y = targetY - body.halfHeight;
+        }
+
+        switch (state) {
+          case 'walk-right':
+            if (s.x >= maxX) {
+              body.setVelocityX(0);
+              s.setData('ratState', 'idle-right');
+              s.setData('idleUntil', now + RAT_IDLE_MS);
+              s.play('rat-idle');
+            }
+            break;
+          case 'idle-right':
+            if (now >= (s.getData('idleUntil') as number)) {
+              body.setVelocityX(-speed);
+              s.setData('ratState', 'walk-left');
+              s.play('rat-walk-left');
+            }
+            break;
+          case 'walk-left':
+            if (s.x <= minX) {
+              body.setVelocityX(0);
+              s.setData('ratState', 'idle-left');
+              s.setData('idleUntil', now + RAT_IDLE_MS);
+              s.play('rat-idle');
+            }
+            break;
+          case 'idle-left':
+            if (now >= (s.getData('idleUntil') as number)) {
+              body.setVelocityX(speed);
+              s.setData('ratState', 'walk-right');
+              s.play('rat-walk-right');
+            }
+            break;
+        }
+      }
+
+      if (kind === 'ghost') {
+        const body = s.body as Phaser.Physics.Arcade.Body;
+        const speed: number = s.getData('speed');
+
+        // Manually flip at world edges — avoids the oscillation that setBounce causes
+        if (s.x <= 0 && body.velocity.x < 0) {
+          body.setVelocityX(speed);
+        } else if (s.x >= WORLD_WIDTH && body.velocity.x > 0) {
+          body.setVelocityX(-speed);
+        }
+
+        const wantAnim = body.velocity.x < 0 ? 'vulture-fly-left' : 'vulture-fly-right';
+        if (s.anims.currentAnim?.key !== wantAnim) s.play(wantAnim);
+      }
     }
   }
 
   // ── Private ────────────────────────────────────────────────────────────────
 
-  private trySpawn(def: EnemyDef, x: number, y: number, surfaceAngle: number): void {
+  private trySpawn(
+    def: EnemyDef,
+    x: number,
+    y: number,
+    surfaceAngle: number,
+    minX?: number,
+    maxX?: number,
+    minY?: number,
+    maxY?: number,
+  ): void {
     const isSurface = surfaceAngle < SURFACE_ANGLE_THRESHOLD;
     const isWall    = surfaceAngle >= SURFACE_ANGLE_THRESHOLD;
 
@@ -130,6 +229,16 @@ export class EnemyManager {
     if (Math.random() >= chance) return;
 
     const spawnY = y - def.height / 2;
-    new Enemy(this.scene, this.group, x, spawnY, def);
+    const enemy = new Enemy(this.scene, this.group, x, spawnY, def);
+
+    if (def.kind === 'percher' && minX !== undefined && maxX !== undefined) {
+      enemy.sprite.setData('minX', minX);
+      enemy.sprite.setData('maxX', maxX);
+      const halfH = def.height / 2;
+      enemy.sprite.setData('minY', (minY ?? spawnY + halfH) - halfH);
+      enemy.sprite.setData('maxY', (maxY ?? spawnY + halfH) - halfH);
+      enemy.sprite.setData('ratState', 'walk-right');
+      enemy.sprite.setData('idleUntil', 0);
+    }
   }
 }

@@ -478,6 +478,7 @@ export class MenuScene extends Phaser.Scene {
 
       this.input.keyboard!.once('keydown-SPACE', startGame);
       this.input.keyboard!.once('keydown-U',     () => this.scene.start('UpgradeScene'));
+      this.input.keyboard!.once('keydown-F2',    () => this.scene.start('TexturePreviewScene'));
 
       this.startText.setInteractive(
         new Phaser.Geom.Rectangle(-200, -40, 400, 80),
