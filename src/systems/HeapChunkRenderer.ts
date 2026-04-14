@@ -3,6 +3,7 @@ import { HeapEntry } from '../data/heapTypes';
 import { OBJECT_DEFS } from '../data/heapObjectDefs'; // used by addEntry for bounding box calc
 import { CHUNK_BAND_HEIGHT, HEAP_FILL_TEXTURE, ENEMY_CULL_DISTANCE } from '../constants';
 import { computeBandScanlines, computeBandPolygon, Vertex } from './HeapPolygon';
+import { HEAP_TILE_COUNT } from '../data/heapTileUrls';
 
 /** Composite texture tile height in px — must match the generated PNG height. */
 const TEX_H = 1024;
@@ -130,7 +131,9 @@ export class HeapChunkRenderer {
 
     const tileOffsetY = -(bandTop % TEX_H);
     for (let ty = tileOffsetY; ty < CHUNK_BAND_HEIGHT; ty += TEX_H) {
-      rt.draw(HEAP_FILL_TEXTURE, 0, ty);
+      const worldTile = Math.floor((bandTop + ty) / TEX_H);
+      const tileKey = `${HEAP_FILL_TEXTURE}-${worldTile % HEAP_TILE_COUNT}`;
+      rt.draw(tileKey, 0, ty);
     }
 
     rt.setMask(maskGfx.createGeometryMask());

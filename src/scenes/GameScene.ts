@@ -111,7 +111,7 @@ export class GameScene extends Phaser.Scene {
     );
 
     this.heapGenerator.onPlatformSpawned = (entry, platformTopY) => {
-      this.enemyManager.onPlatformSpawned(entry.x, platformTopY, this.blockPlaced);
+      this.enemyManager.onPlatformSpawned(entry.x, platformTopY, this.blockPlaced, entry);
     };
 
     this.heapGenerator.onBandLoaded = (bandTopY, vertices) => {

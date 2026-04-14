@@ -30,11 +30,14 @@ export class Enemy {
 
     if (def.kind === 'percher') {
       this.sprite.setImmovable(true);
+      this.sprite.setData('speed', def.speed);
+      this.sprite.setVelocityX(def.speed); // start walking right; state machine takes over
+      this.sprite.play('rat-walk-right');
     } else {
-      // Patrol left→right across the full world width, bouncing off world bounds
-      this.sprite.setCollideWorldBounds(true);
-      this.sprite.setBounce(1, 0);
+      // Patrol left→right — direction is flipped manually in EnemyManager.update()
       this.sprite.setVelocityX(-def.speed); // start moving left
+      this.sprite.setData('speed', def.speed);
+      this.sprite.play('vulture-fly-left');
     }
   }
 

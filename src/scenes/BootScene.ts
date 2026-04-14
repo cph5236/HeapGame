@@ -2,10 +2,19 @@ import Phaser from 'phaser';
 import { OBJECT_DEF_LIST } from '../data/heapObjectDefs';
 import { HEAP_PNG_URLS } from '../data/heapPngUrls';
 import { HEAP_FILL_TEXTURE } from '../constants';
-import compositeHeapUrl from '../assets/composite-heap.png?url';
+import { HEAP_TILE_URLS, HEAP_TILE_COUNT } from '../data/heapTileUrls';
 import trashbagUrl from '../sprites/player/trashbag.png?url';
+import ibeamUrl from '../sprites/Placeables/IBeam.png?url';
+// import ibeamUrl from '../sprites/Placeables/IBeam2.png?url';
+import ladderUrl from '../sprites/Placeables/Ladder.png?url';
+import tombstone1Url from '../sprites/Placeables/TombStone (1).png?url';
+import tombstone2Url from '../sprites/Placeables/TombStone (2).png?url';
+import vultureFlyLeftUrl  from '../sprites/Enemies/vulture/vulture-fly-left.png?url';
+import vultureFlyRightUrl from '../sprites/Enemies/vulture/vulture-fly-right.png?url';
+import ratUrl from '../sprites/Enemies/Rat/rat.png?url';
 import { HeapClient } from '../systems/HeapClient';
 import type { Vertex } from '../systems/HeapPolygon';
+import { generateAllTextures } from '../entities/TextureGenerators';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -13,20 +22,48 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    this.load.image(HEAP_FILL_TEXTURE, compositeHeapUrl);
+    for (let i = 0; i < HEAP_TILE_COUNT; i++) {
+      this.load.image(`${HEAP_FILL_TEXTURE}-${i}`, HEAP_TILE_URLS[i]);
+    }
     this.load.image('trashbag', trashbagUrl);
+    this.load.image('item-ibeam', ibeamUrl);
+    this.load.image('item-ladder', ladderUrl);
+    this.load.image('item-checkpoint-1', tombstone1Url);
+    this.load.image('item-checkpoint-2', tombstone2Url);
 
     for (const def of OBJECT_DEF_LIST) {
       this.load.image(def.textureKey, HEAP_PNG_URLS[def.textureKey]);
     }
+
+    // Vulture (ghost enemy) fly animations — 256px wide strips
+    this.load.spritesheet('vulture-fly-left',  vultureFlyLeftUrl,  { frameWidth: 64, frameHeight: 43 });
+    this.load.spritesheet('vulture-fly-right', vultureFlyRightUrl, { frameWidth: 64, frameHeight: 42 });
+
+    // Rat (percher enemy) — 3×4 grid of 32×32 frames
+    this.load.spritesheet('rat', ratUrl, { frameWidth: 32, frameHeight: 32 });
   }
 
   create(): void {
-    this.createPlatformTexture();
-    this.createCloudTexture();
-    this.createWallJumpTexture();
-    this.createEnemyPercherTexture();
-    this.createEnemyGhostTexture();
+    generateAllTextures(this);
+
+    // Rat animations — rows 0–3, 3 frames each
+    this.anims.create({ key: 'rat-idle',  frames: this.anims.generateFrameNumbers('rat', { start: 0, end: 2 }), frameRate: 6,  repeat: -1 });
+    this.anims.create({ key: 'rat-walk-right', frames: this.anims.generateFrameNumbers('rat', { start: 3, end: 5 }), frameRate: 10, repeat: -1 });
+    this.anims.create({ key: 'rat-walk-down',  frames: this.anims.generateFrameNumbers('rat', { start: 6, end: 8 }), frameRate: 10, repeat: -1 });
+    this.anims.create({ key: 'rat-walk-left',  frames: this.anims.generateFrameNumbers('rat', { start: 9, end: 11 }), frameRate: 10, repeat: -1 });
+
+    this.anims.create({
+      key: 'vulture-fly-left',
+      frames: this.anims.generateFrameNumbers('vulture-fly-left', { start: 0, end: 3 }),
+      frameRate: 10,
+      repeat: -1,
+    });
+    this.anims.create({
+      key: 'vulture-fly-right',
+      frames: this.anims.generateFrameNumbers('vulture-fly-right', { start: 0, end: 3 }),
+      frameRate: 10,
+      repeat: -1,
+    });
 
     HeapClient.list()
       .then((ids) => {
@@ -47,56 +84,5 @@ export class BootScene extends Phaser.Scene {
       .finally(() => {
         this.scene.start('MenuScene');
       });
-  }
-
-  private createPlatformTexture(): void {
-    const g = this.make.graphics({ x: 0, y: 0 }, false);
-    g.fillStyle(0x8b5e3c, 1);
-    g.fillRect(0, 0, 200, 64);
-    g.lineStyle(2, 0xd4a96a, 0.8);
-    g.strokeRect(0, 0, 200, 64);
-    g.generateTexture('platform', 200, 64);
-    g.destroy();
-  }
-
-  private createCloudTexture(): void {
-    const g = this.make.graphics({ x: 0, y: 0 }, false);
-    g.fillStyle(0xffffff, 1);
-    g.fillCircle(10, 14, 8);
-    g.fillCircle(18, 10, 10);
-    g.fillCircle(26, 14, 8);
-    g.fillRect(2, 14, 28, 8);
-    g.generateTexture('cloud', 32, 22);
-    g.destroy();
-  }
-
-  private createEnemyPercherTexture(): void {
-    const g = this.make.graphics({ x: 0, y: 0 }, false);
-    g.fillStyle(0xff3333, 1);
-    g.fillRect(0, 0, 24, 24);
-    g.lineStyle(2, 0xff8888, 1);
-    g.strokeRect(0, 0, 24, 24);
-    g.generateTexture('enemy-percher', 24, 24);
-    g.destroy();
-  }
-
-  private createEnemyGhostTexture(): void {
-    const g = this.make.graphics({ x: 0, y: 0 }, false);
-    g.fillStyle(0xcc44ff, 0.95);
-    g.fillCircle(18, 18, 18);
-    g.generateTexture('enemy-ghost', 36, 36);
-    g.destroy();
-  }
-
-  private createWallJumpTexture(): void {
-    const g = this.make.graphics({ x: 0, y: 0 }, false);
-    // Wall (left side)
-    g.fillStyle(0xaaaaaa, 1);
-    g.fillRect(0, 0, 6, 32);
-    // Arrow pointing right (away from wall)
-    g.fillStyle(0xffffff, 1);
-    g.fillTriangle(8, 6, 8, 26, 22, 16);
-    g.generateTexture('wall-jump', 24, 32);
-    g.destroy();
   }
 }

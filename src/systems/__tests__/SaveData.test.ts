@@ -104,11 +104,11 @@ describe('purchaseItem', () => {
   });
 
   it('stacks correctly when purchased multiple times', () => {
-    addBalance(1000);
-    purchaseItem('ibeam'); // costs 200
-    purchaseItem('ibeam'); // costs 200
+    addBalance(1500);
+    purchaseItem('ibeam'); // costs 750
+    purchaseItem('ibeam'); // costs 750
     expect(getItemQuantity('ibeam')).toBe(2);
-    expect(getBalance()).toBe(600);
+    expect(getBalance()).toBe(0);
   });
 });
 

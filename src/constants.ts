@@ -72,7 +72,7 @@ export const MOUNTAIN_CLIMBER_INCREMENT = 3; // degrees added per upgrade level 
 
 // Place-Ables
 export const LADDER_HEIGHT  = 230;  // ~5× PLAYER_HEIGHT; designer-tunable
-export const LADDER_WIDTH   = 20;
+export const LADDER_WIDTH   = 35;
 export const IBEAM_WIDTH    = 120;  // designer-tunable
-export const IBEAM_HEIGHT   = 12;
+export const IBEAM_HEIGHT   = 16;
 export const SNAP_RADIUS    = 80;   // px below pointer to search for a walkable surface
