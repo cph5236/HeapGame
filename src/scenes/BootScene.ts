@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { OBJECT_DEF_LIST } from '../data/heapObjectDefs';
 import { HEAP_PNG_URLS } from '../data/heapPngUrls';
 import { HEAP_FILL_TEXTURE } from '../constants';
-import compositeHeapUrl from '../assets/composite-heap.png?url';
+import { HEAP_TILE_URLS, HEAP_TILE_COUNT } from '../data/heapTileUrls';
 import trashbagUrl from '../sprites/player/trashbag.png?url';
 import ibeamUrl from '../sprites/Placeables/IBeam.png?url';
 // import ibeamUrl from '../sprites/Placeables/IBeam2.png?url';
@@ -22,7 +22,9 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    this.load.image(HEAP_FILL_TEXTURE, compositeHeapUrl);
+    for (let i = 0; i < HEAP_TILE_COUNT; i++) {
+      this.load.image(`${HEAP_FILL_TEXTURE}-${i}`, HEAP_TILE_URLS[i]);
+    }
     this.load.image('trashbag', trashbagUrl);
     this.load.image('item-ibeam', ibeamUrl);
     this.load.image('item-ladder', ladderUrl);

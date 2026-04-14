@@ -11,7 +11,8 @@ export interface HeapChunk {
 
 export interface ObjectDef {
   textureKey: string; // Phaser texture key (used when loading and rendering)
-  filename: string;   // PNG filename in src/sprites/
+  filename: string;   // PNG path relative to src/sprites/
   width: number;      // scaled game width in px (preserves aspect ratio)
   height: number;     // scaled game height in px
+  rarity: number;     // 0→1 spawn weight relative to folder peers (set in sprite-config.mjs)
 }

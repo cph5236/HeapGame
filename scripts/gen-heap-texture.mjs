@@ -1,30 +1,38 @@
 /**
  * gen-heap-texture.mjs
  *
- * Generates src/assets/composite-heap.png — a 960×1024 tiling texture made by
- * randomly stamping all sprite PNGs onto a dark background.
- * Each of the STAMP_COUNT stamps picks a random sprite, position, and rotation.
- * Later stamps render on top of earlier ones, creating natural layering depth.
+ * Generates TILE_COUNT heap texture tiles (composite-heap-0.png … composite-heap-N.png)
+ * by stamping sprites onto a tall canvas then slicing every 1024px.
+ *
+ * Sprites are selected via weighted random sampling: each sprite's weight is
+ *   rarity / folderSpriteCount
+ * so a large folder doesn't dominate regardless of sprite count.
+ * Each sprite is scaled by its folder's FOLDER_SCALE before stamping.
+ *
+ * Also writes src/data/heapTileUrls.ts so BootScene can load all tiles
+ * without hardcoding import counts.
+ *
+ * Adjust rarity, scale, and tile settings in scripts/sprite-config.mjs.
  *
  * Run: node scripts/gen-heap-texture.mjs
- * Output is committed to source control and loaded by BootScene at runtime.
+ * Commit the output PNGs and heapTileUrls.ts to source control.
  */
 
 import sharp from 'sharp';
 import { writeFileSync, readdirSync, mkdirSync } from 'fs';
 import { join, extname, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { FOLDER_RARITY, FOLDER_SCALE, SPRITES_SUBDIR, TILE_COUNT, STAMPS_PER_TILE } from './sprite-config.mjs';
 
 const __dirname   = dirname(fileURLToPath(import.meta.url));
-const SPRITES_DIR = join(__dirname, '..', 'src', 'sprites');
-const OUT_FILE    = join(__dirname, '..', 'src', 'assets', 'composite-heap.png');
+const SPRITES_DIR = join(__dirname, '..', 'src', 'sprites', SPRITES_SUBDIR);
+const ASSETS_DIR  = join(__dirname, '..', 'src', 'assets');
+const OUT_URLS    = join(__dirname, '..', 'src', 'data', 'heapTileUrls.ts');
 
-/** Canvas dimensions — full world width, power-of-two height for seamless tiling */
-const CANVAS_W = 960;
-const CANVAS_H = 1024;
-
-/** How many random stamps to composite onto the canvas */
-const STAMP_COUNT = 1000;
+const CANVAS_W      = 960;
+const TILE_H        = 1024;
+const CANVAS_H      = TILE_H * TILE_COUNT;
+const STAMP_COUNT   = STAMPS_PER_TILE * TILE_COUNT;
 
 /** Seeded PRNG (mulberry32) for reproducible output */
 function makePrng(seed) {
@@ -41,30 +49,84 @@ function makePrng(seed) {
 const rand = makePrng(0xdeadbeef);
 
 // ---------------------------------------------------------------------------
-// Load all sprite PNGs
+// Load sprites — apply folder scale at load time
 // ---------------------------------------------------------------------------
 
-const pngFiles = readdirSync(SPRITES_DIR)
-  .filter(f => extname(f).toLowerCase() === '.png')
-  .sort();
+const folders = Object.keys(FOLDER_RARITY).filter(f => FOLDER_RARITY[f] > 0);
 
-console.log(`Found ${pngFiles.length} sprites — loading…`);
+/** @type {{ pngBuffer: Buffer, width: number, height: number, weight: number, label: string }[]} */
+const items = [];
 
-const items = await Promise.all(pngFiles.map(async filename => {
-  const pngPath = join(SPRITES_DIR, filename);
-  const meta = await sharp(pngPath).metadata();
-  const pngBuffer = await sharp(pngPath).png().toBuffer();
-  console.log(`  ✓ ${filename}  (${meta.width}×${meta.height}px)`);
-  return { filename, pngBuffer, width: meta.width, height: meta.height };
-}));
+for (const folder of folders) {
+  const folderPath = join(SPRITES_DIR, folder);
+  let files;
+  try {
+    files = readdirSync(folderPath)
+      .filter(f => extname(f).toLowerCase() === '.png')
+      .sort();
+  } catch {
+    console.warn(`  ⚠ Folder not found, skipping: ${folderPath}`);
+    continue;
+  }
+
+  const rarity = FOLDER_RARITY[folder];
+  const scale  = FOLDER_SCALE[folder] ?? 1.0;
+  const perSpriteWeight = rarity / files.length;
+
+  console.log(`📁 ${folder}  rarity: ${rarity}  scale: ${scale}  sprites: ${files.length}  weight/sprite: ${perSpriteWeight.toFixed(5)}`);
+
+  for (const filename of files) {
+    const pngPath = join(folderPath, filename);
+    const meta = await sharp(pngPath).metadata();
+
+    const scaledW = Math.max(1, Math.round(meta.width  * scale));
+    const scaledH = Math.max(1, Math.round(meta.height * scale));
+
+    const pngBuffer = await sharp(pngPath)
+      .resize(scaledW, scaledH, { fit: 'fill' })
+      .png()
+      .toBuffer();
+
+    items.push({
+      pngBuffer,
+      width: scaledW,
+      height: scaledH,
+      weight: perSpriteWeight,
+      label: `${folder}/${filename}`,
+    });
+  }
+}
+
+console.log(`\nLoaded ${items.length} sprites total across ${folders.length} folders.`);
 
 // ---------------------------------------------------------------------------
-// Build composite
+// Cumulative weight table for O(log n) weighted sampling
 // ---------------------------------------------------------------------------
 
-console.log(`\nCompositing ${STAMP_COUNT} stamps onto ${CANVAS_W}×${CANVAS_H} canvas…`);
+const cumWeights = [];
+let total = 0;
+for (const item of items) {
+  total += item.weight;
+  cumWeights.push(total);
+}
 
-// Start with a dark background
+function weightedPick() {
+  const r = rand() * total;
+  let lo = 0, hi = cumWeights.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (cumWeights[mid] < r) lo = mid + 1;
+    else hi = mid;
+  }
+  return items[lo];
+}
+
+// ---------------------------------------------------------------------------
+// Build tall composite canvas
+// ---------------------------------------------------------------------------
+
+console.log(`\nCompositing ${STAMP_COUNT} stamps onto ${CANVAS_W}×${CANVAS_H} canvas (${TILE_COUNT} tiles × ${STAMPS_PER_TILE} stamps)…`);
+
 let canvas = await sharp({
   create: {
     width:    CANVAS_W,
@@ -74,16 +136,13 @@ let canvas = await sharp({
   },
 }).png().toBuffer();
 
-// Accumulate all composites in one sharp call for efficiency
 const composites = [];
 
 for (let i = 0; i < STAMP_COUNT; i++) {
-  const item = items[Math.floor(rand() * items.length)];
+  const item = weightedPick();
 
-  // Random rotation in multiples of 15°
   const rotDeg = Math.floor(rand() * 24) * 15;
 
-  // Rasterise with rotation — let sharp handle it, keeping full extent
   const rotated = await sharp(item.pngBuffer)
     .rotate(rotDeg, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
@@ -93,22 +152,14 @@ for (let i = 0; i < STAMP_COUNT; i++) {
   const rw = meta.width;
   const rh = meta.height;
 
-  // Random position — allow items to hang over edges so borders look natural
   const left = Math.round(rand() * (CANVAS_W + rw)) - Math.round(rw / 2);
   const top  = Math.round(rand() * (CANVAS_H + rh)) - Math.round(rh / 2);
 
-  // Clamp to canvas bounds (sharp requires non-negative offsets)
   const clampedLeft = Math.max(0, Math.min(left, CANVAS_W - 1));
   const clampedTop  = Math.max(0, Math.min(top,  CANVAS_H - 1));
 
-  composites.push({
-    input: rotated,
-    left: clampedLeft,
-    top:  clampedTop,
-    blend: 'over',
-  });
+  composites.push({ input: rotated, left: clampedLeft, top: clampedTop, blend: 'over' });
 
-  // Batch in groups to avoid memory pressure
   if (composites.length === 100 || i === STAMP_COUNT - 1) {
     canvas = await sharp(canvas).composite(composites).png().toBuffer();
     composites.length = 0;
@@ -117,16 +168,48 @@ for (let i = 0; i < STAMP_COUNT; i++) {
 }
 
 // ---------------------------------------------------------------------------
-// Write output
+// Slice into tiles and write
 // ---------------------------------------------------------------------------
 
-mkdirSync(join(__dirname, '..', 'src', 'assets'), { recursive: true });
-const compressed = await sharp(canvas)
-  .png({ compressionLevel: 9, palette: false })
-  .toBuffer();
+mkdirSync(ASSETS_DIR, { recursive: true });
+console.log(`\n\nSlicing into ${TILE_COUNT} tiles…`);
 
-writeFileSync(OUT_FILE, compressed);
-console.log(`\n\n✅ Wrote ${OUT_FILE}`);
+for (let i = 0; i < TILE_COUNT; i++) {
+  const tileBuffer = await sharp(canvas)
+    .extract({ left: 0, top: i * TILE_H, width: CANVAS_W, height: TILE_H })
+    .png({ compressionLevel: 9, palette: false })
+    .toBuffer();
 
-const stats = await sharp(compressed).metadata();
-console.log(`   Size: ${stats.width}×${stats.height}px, ${(compressed.length / 1024).toFixed(0)} KB`);
+  const outFile = join(ASSETS_DIR, `composite-heap-${i}.png`);
+  writeFileSync(outFile, tileBuffer);
+  console.log(`  ✅ composite-heap-${i}.png  (${(tileBuffer.length / 1024).toFixed(0)} KB)`);
+}
+
+// ---------------------------------------------------------------------------
+// Emit heapTileUrls.ts — explicit ?url imports for Vite
+// ---------------------------------------------------------------------------
+
+const urlLines = [
+  `// AUTO-GENERATED by scripts/gen-heap-texture.mjs — do not edit by hand.`,
+  `// Re-run the script after changing TILE_COUNT in sprite-config.mjs.`,
+  ``,
+];
+
+for (let i = 0; i < TILE_COUNT; i++) {
+  urlLines.push(`import tile${i}Url from '../assets/composite-heap-${i}.png?url';`);
+}
+
+urlLines.push(``);
+urlLines.push(`export const HEAP_TILE_COUNT = ${TILE_COUNT};`);
+urlLines.push(``);
+urlLines.push(`/** Resolved asset URLs for all heap tiles, indexed 0…HEAP_TILE_COUNT-1. */`);
+urlLines.push(`export const HEAP_TILE_URLS: string[] = [`);
+for (let i = 0; i < TILE_COUNT; i++) {
+  urlLines.push(`  tile${i}Url,`);
+}
+urlLines.push(`];`);
+urlLines.push(``);
+
+writeFileSync(OUT_URLS, urlLines.join('\n'), 'utf8');
+console.log(`\n✅ Wrote ${OUT_URLS}`);
+console.log(`   TILE_COUNT=${TILE_COUNT}, STAMP_COUNT=${STAMP_COUNT}`);
