@@ -170,13 +170,14 @@ export class StoreScene extends Phaser.Scene {
     const startX = GAME_WIDTH / 2 - ((TAB_LABELS.length * tabW + (TAB_LABELS.length - 1) * 8) / 2);
 
     TAB_LABELS.forEach(({ label, value }, i) => {
+      const active = this.activeFilter === value;
       const tx = startX + i * (tabW + 8) + tabW / 2;
-      const bg = this.add.rectangle(tx, tabY, tabW, tabH, 0x1a0800)
-        .setStrokeStyle(1, 0xff9922)
+      const bg = this.add.rectangle(tx, tabY, tabW, tabH, active ? 0x3a1800 : 0x1a0800)
+        .setStrokeStyle(active ? 2 : 1, active ? 0xffaa33 : 0xff9922)
         .setInteractive({ useHandCursor: true })
         .setDepth(10).setScrollFactor(0).setAlpha(0);
       const txt = this.add.text(tx, tabY, label, {
-        fontSize: '14px', color: '#ff9922',
+        fontSize: '14px', color: active ? '#ffaa33' : '#ff9922',
         stroke: '#000000', strokeThickness: 1,
       }).setOrigin(0.5).setDepth(11).setScrollFactor(0).setAlpha(0);
 
@@ -184,8 +185,6 @@ export class StoreScene extends Phaser.Scene {
       this.tabBgs.push(bg);
       this.tabTexts.push(txt);
     });
-
-    this.refreshTabVisuals();
   }
 
   private setFilter(filter: ItemCategory | 'all'): void {
