@@ -57,7 +57,8 @@ export class InputManager {
   }
 
   /** Called once per frame from GameScene before player.update(). */
-  update(_delta: number, _inTopZone: boolean): void {
+  // _inLiveZone reserved for future mobile UI gating (e.g. showing/hiding placement button inside InputManager)
+  update(_delta: number, _inLiveZone: boolean): void {
     // Transfer pending touch impulses from last frame into active flags
     this.jumpJustPressed  = this.pendingJump;
     this.dashJustFired    = this.pendingDash;
