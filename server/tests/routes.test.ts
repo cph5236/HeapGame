@@ -3,6 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { createApp } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
+import { MockScoreDB } from './helpers/mockScoreDb';
 import type {
   CreateHeapResponse,
   ListHeapsResponse,
@@ -19,7 +20,7 @@ const VERTICES = [
 ];
 
 function makeApp() {
-  return createApp(new MockHeapDB());
+  return createApp(new MockHeapDB(), new MockScoreDB());
 }
 
 // ── POST /heaps ──────────────────────────────────────────────────────────────
@@ -99,7 +100,7 @@ describe('GET /heaps', () => {
     const db = new MockHeapDB();
     db.seedHeap('heap-1', 1, []);
     db.seedHeap('heap-2', 3, []);
-    const res = await createApp(db).request('/heaps');
+    const res = await createApp(db, new MockScoreDB()).request('/heaps');
     expect(res.status).toBe(200);
     const body = await res.json() as ListHeapsResponse;
     expect(body.heaps).toHaveLength(2);
@@ -123,7 +124,7 @@ describe('GET /heaps/:id', () => {
   it('returns changed:false when client version matches', async () => {
     const db = new MockHeapDB();
     db.seedHeap('h1', 5, [{ x: 10, y: 20 }]);
-    const res = await createApp(db).request('/heaps/h1?version=5');
+    const res = await createApp(db, new MockScoreDB()).request('/heaps/h1?version=5');
     expect(res.status).toBe(200);
     const body = await res.json() as GetHeapResponse;
     expect(body.changed).toBe(false);
@@ -133,7 +134,7 @@ describe('GET /heaps/:id', () => {
   it('returns changed:true with liveZone and baseId when client version is behind', async () => {
     const db = new MockHeapDB();
     db.seedHeap('h1', 3, [{ x: 10, y: 20 }], 'base-guid-1');
-    const res = await createApp(db).request('/heaps/h1?version=0');
+    const res = await createApp(db, new MockScoreDB()).request('/heaps/h1?version=0');
     expect(res.status).toBe(200);
     const body = await res.json() as GetHeapResponse;
     expect(body.changed).toBe(true);
@@ -147,7 +148,7 @@ describe('GET /heaps/:id', () => {
   it('defaults version to 0 when not provided', async () => {
     const db = new MockHeapDB();
     db.seedHeap('h1', 1, []);
-    const res = await createApp(db).request('/heaps/h1');
+    const res = await createApp(db, new MockScoreDB()).request('/heaps/h1');
     expect(res.status).toBe(200);
     const body = await res.json() as GetHeapResponse;
     expect(body.changed).toBe(true);  // version 1 > 0
@@ -167,7 +168,7 @@ describe('GET /heaps/:id/base', () => {
     const baseVertices = [{ x: 1, y: 2 }, { x: 3, y: 4 }];
     db.seedHeap('h1', 1, [], 'base-1');
     db.seedBase('base-1', 'h1', baseVertices);
-    const res = await createApp(db).request('/heaps/h1/base');
+    const res = await createApp(db, new MockScoreDB()).request('/heaps/h1/base');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(baseVertices);
   });
@@ -184,7 +185,7 @@ describe('PUT /heaps/:id/reset', () => {
   it('resets live_zone to empty, version to 1, and returns previousVersion', async () => {
     const db = new MockHeapDB();
     db.seedHeap('h1', 42, [{ x: 10, y: 20 }], 'base-1');
-    const res = await createApp(db).request('/heaps/h1/reset', { method: 'PUT' });
+    const res = await createApp(db, new MockScoreDB()).request('/heaps/h1/reset', { method: 'PUT' });
     expect(res.status).toBe(200);
     const body = await res.json() as ResetHeapResponse;
     expect(body.id).toBe('h1');
@@ -201,7 +202,7 @@ describe('PUT /heaps/:id/reset', () => {
   it('preserves base_id on reset', async () => {
     const db = new MockHeapDB();
     db.seedHeap('h1', 10, [{ x: 5, y: 5 }], 'base-preserved');
-    await createApp(db).request('/heaps/h1/reset', { method: 'PUT' });
+    await createApp(db, new MockScoreDB()).request('/heaps/h1/reset', { method: 'PUT' });
     const row = await db.getHeap('h1');
     expect(row?.base_id).toBe('base-preserved');
   });
@@ -223,7 +224,7 @@ describe('POST /heaps/:id/place', () => {
     const db = new MockHeapDB();
     db.seedHeap('h1', 1, [], 'base-1');
     db.seedBase('base-1', 'h1', []);
-    const res = await createApp(db).request('/heaps/h1/place', {
+    const res = await createApp(db, new MockScoreDB()).request('/heaps/h1/place', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ x: 100, y: 200 }),
@@ -242,7 +243,7 @@ describe('POST /heaps/:id/place', () => {
     ];
     db.seedHeap('h1', 1, square, 'base-1');
     db.seedBase('base-1', 'h1', []);
-    const res = await createApp(db).request('/heaps/h1/place', {
+    const res = await createApp(db, new MockScoreDB()).request('/heaps/h1/place', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ x: 50, y: 50 }),
@@ -261,7 +262,7 @@ describe('POST /heaps/:id/place', () => {
     ];
     db.seedHeap('h1', 1, square, 'base-1');
     db.seedBase('base-1', 'h1', []);
-    const res = await createApp(db).request('/heaps/h1/place', {
+    const res = await createApp(db, new MockScoreDB()).request('/heaps/h1/place', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ x: 200, y: 200 }),
@@ -275,7 +276,7 @@ describe('POST /heaps/:id/place', () => {
   it('returns 400 when x or y is missing', async () => {
     const db = new MockHeapDB();
     db.seedHeap('h1', 1, [], 'base-1');
-    const res = await createApp(db).request('/heaps/h1/place', {
+    const res = await createApp(db, new MockScoreDB()).request('/heaps/h1/place', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ x: 10 }),  // missing y
@@ -295,7 +296,7 @@ describe('DELETE /heaps/:id', () => {
   it('deletes heap and returns deleted:true', async () => {
     const db = new MockHeapDB();
     db.seedHeap('h1', 1, []);
-    const res = await createApp(db).request('/heaps/h1', { method: 'DELETE' });
+    const res = await createApp(db, new MockScoreDB()).request('/heaps/h1', { method: 'DELETE' });
     expect(res.status).toBe(200);
     const body = await res.json() as DeleteHeapResponse;
     expect(body.deleted).toBe(true);
@@ -309,7 +310,7 @@ describe('DELETE /heaps/:id', () => {
     const db = new MockHeapDB();
     db.seedHeap('h1', 1, []);
     db.seedHeap('h2', 1, []);
-    const app = createApp(db);
+    const app = createApp(db, new MockScoreDB());
     await app.request('/heaps/h1', { method: 'DELETE' });
     const listRes = await app.request('/heaps');
     const body = await listRes.json() as ListHeapsResponse;
