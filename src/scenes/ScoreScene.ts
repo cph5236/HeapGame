@@ -12,7 +12,7 @@ import {
 import { buildCoinBreakdown, BreakdownRow } from '../systems/coinBreakdown';
 import { InputManager } from '../systems/InputManager';
 import { ScoreClient } from '../systems/ScoreClient';
-import type { LeaderboardContext, LeaderboardEntry } from '../../shared/scoreTypes';
+import type { LeaderboardContext } from '../../shared/scoreTypes';
 
 const CX = GAME_WIDTH / 2;
 
