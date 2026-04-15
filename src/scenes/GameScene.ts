@@ -62,6 +62,7 @@ export class GameScene extends Phaser.Scene {
   private _lastScore = -1;
   private _heapId = '';
   private _holdElapsed = 0;
+  private _liveZoneBottomY: number | null = null;
   private _holdBar!: Phaser.GameObjects.Graphics;
   private checkpointRespawn = false;
 
@@ -97,6 +98,7 @@ export class GameScene extends Phaser.Scene {
     const polygon = (this.game.registry.get('heapPolygon') as Vertex[] | undefined) ?? [];
     const heapId = (this.game.registry.get('heapId') as string | undefined) ?? '';
     this._heapId = heapId;
+    this._liveZoneBottomY = HeapClient.getLiveZoneBottomY(heapId);
 
     // Enemies — constructed and wired BEFORE polygon/generation calls so that
     // onBandLoaded and onPlatformSpawned fire correctly during initial load.
@@ -250,8 +252,10 @@ export class GameScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     const im = this.im;
-    const inTopZone = this.player.sprite.y < this.heapGenerator.topY + HEAP_TOP_ZONE_PX;
-    im.update(delta, inTopZone);
+    const inLiveZone = this._liveZoneBottomY !== null
+      ? this.player.sprite.y <= this._liveZoneBottomY
+      : this.player.sprite.y < this.heapGenerator.topY + HEAP_TOP_ZONE_PX;
+    im.update(delta, inLiveZone);
 
     this.player.update(delta);
     this.parallaxBg.update();
@@ -292,7 +296,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Top zone UI
-    const showPlaceUI = inTopZone && !this.blockPlaced;
+    const showPlaceUI = inLiveZone && !this.blockPlaced;
     if (im.isMobile) {
       this.placeBtnBg?.setVisible(showPlaceUI);
       this.placeBtnLabel?.setVisible(showPlaceUI);
@@ -306,7 +310,7 @@ export class GameScene extends Phaser.Scene {
     const inCenterZone  = this.player.sprite.x >= WORLD_WIDTH * 0.125 &&
                           this.player.sprite.x <= WORLD_WIDTH * 0.875;
     const holdInputActive = im.isMobile ? im.placeHeld : this.placeKey.isDown;
-    const canPlace = !this.blockPlaced && inTopZone && inCenterZone && onHeapSurface;
+    const canPlace = !this.blockPlaced && inLiveZone && inCenterZone && onHeapSurface;
 
     if (canPlace && holdInputActive) {
       this._holdElapsed += delta;
@@ -390,6 +394,7 @@ export class GameScene extends Phaser.Scene {
       applyPolygonToGenerator(freshPolygon, this.heapGenerator);
       this.heapGenerator.setPolygonTopY(polygonTopY(freshPolygon));
       this.game.registry.set('heapPolygon', freshPolygon);
+      this._liveZoneBottomY = HeapClient.getLiveZoneBottomY(this._heapId);
     });
 
     const score = Math.max(0, Math.floor(this.spawnY - py));
