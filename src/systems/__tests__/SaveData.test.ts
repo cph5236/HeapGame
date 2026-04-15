@@ -14,6 +14,11 @@ import {
   purchaseItem,
   getBalance,
   addBalance,
+  getPlayerGuid,
+  getPlayerName,
+  setPlayerName,
+  getLocalHighScore,
+  setLocalHighScore,
 } from '../SaveData';
 
 // Stub localStorage — vitest runs in node environment
@@ -182,5 +187,104 @@ describe('save migration — missing inventory/placed fields', () => {
   it('defaults placed to [] when field is absent', () => {
     store['heap_save'] = JSON.stringify({ balance: 100, upgrades: {} });
     expect(getPlaced()).toEqual([]);
+  });
+});
+
+// ── Player identity ───────────────────────────────────────────────────────────
+
+describe('getPlayerGuid', () => {
+  it('generates a UUID on first call', () => {
+    const guid = getPlayerGuid();
+    expect(typeof guid).toBe('string');
+    expect(guid.length).toBeGreaterThan(0);
+  });
+
+  it('returns the same GUID on subsequent calls', () => {
+    const first  = getPlayerGuid();
+    const second = getPlayerGuid();
+    expect(first).toBe(second);
+  });
+
+  it('generates a new GUID after resetAllData', () => {
+    const before = getPlayerGuid();
+    resetAllData();
+    const after = getPlayerGuid();
+    // Both are valid GUIDs; they may or may not differ (RNG), but both must be non-empty
+    expect(typeof after).toBe('string');
+    expect(after.length).toBeGreaterThan(0);
+    // Statistically certain to differ; document the intent
+    expect(before).not.toBe(after);
+  });
+});
+
+describe('getPlayerName / setPlayerName', () => {
+  it('defaults to Trashbag#XXXXX format', () => {
+    const name = getPlayerName();
+    expect(name).toMatch(/^Trashbag#\d{5}$/);
+  });
+
+  it('setPlayerName persists across calls', () => {
+    setPlayerName('GarbageLord');
+    expect(getPlayerName()).toBe('GarbageLord');
+  });
+
+  it('setPlayerName trims whitespace', () => {
+    setPlayerName('  SpaceyTrash  ');
+    expect(getPlayerName()).toBe('SpaceyTrash');
+  });
+
+  it('setPlayerName enforces max 20 chars (truncates)', () => {
+    setPlayerName('A'.repeat(25));
+    expect(getPlayerName().length).toBeLessThanOrEqual(20);
+  });
+
+  it('setPlayerName with empty string after trim keeps existing name', () => {
+    setPlayerName('KeepMe');
+    setPlayerName('   ');
+    expect(getPlayerName()).toBe('KeepMe');
+  });
+});
+
+// ── High scores ───────────────────────────────────────────────────────────────
+
+describe('getLocalHighScore / setLocalHighScore', () => {
+  it('returns 0 for unknown heapId', () => {
+    expect(getLocalHighScore('unknown-heap')).toBe(0);
+  });
+
+  it('setLocalHighScore persists and getLocalHighScore retrieves', () => {
+    setLocalHighScore('heap-aaa', 4200);
+    expect(getLocalHighScore('heap-aaa')).toBe(4200);
+  });
+
+  it('each heapId is stored independently', () => {
+    setLocalHighScore('heap-aaa', 4200);
+    setLocalHighScore('heap-bbb', 8800);
+    expect(getLocalHighScore('heap-aaa')).toBe(4200);
+    expect(getLocalHighScore('heap-bbb')).toBe(8800);
+  });
+
+  it('overwriting a heapId score stores the new value', () => {
+    setLocalHighScore('heap-aaa', 4200);
+    setLocalHighScore('heap-aaa', 9999);
+    expect(getLocalHighScore('heap-aaa')).toBe(9999);
+  });
+});
+
+describe('save migration — missing playerGuid/playerName/highScores', () => {
+  it('generates playerGuid when field is absent in stored save', () => {
+    store['heap_save'] = JSON.stringify({ balance: 100, upgrades: {} });
+    expect(typeof getPlayerGuid()).toBe('string');
+    expect(getPlayerGuid().length).toBeGreaterThan(0);
+  });
+
+  it('defaults playerName to Trashbag#XXXXX when field is absent', () => {
+    store['heap_save'] = JSON.stringify({ balance: 100, upgrades: {} });
+    expect(getPlayerName()).toMatch(/^Trashbag#\d{5}$/);
+  });
+
+  it('defaults highScores to {} when field is absent', () => {
+    store['heap_save'] = JSON.stringify({ balance: 100, upgrades: {} });
+    expect(getLocalHighScore('any-heap')).toBe(0);
   });
 });

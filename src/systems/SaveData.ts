@@ -12,13 +12,21 @@ export interface PlacedItemSave {
 }
 
 interface RawSave {
-  balance:   number;
-  upgrades:  Record<string, number>;
-  inventory: Record<string, number>;
-  placed:    PlacedItemSave[];
+  balance:    number;
+  upgrades:   Record<string, number>;
+  inventory:  Record<string, number>;
+  placed:     PlacedItemSave[];
+  playerGuid: string;
+  playerName: string;
+  highScores: Record<string, number>;
 }
 
 let _cache: RawSave | null = null;
+
+function generateDefaultName(): string {
+  const n = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+  return `Trashbag#${n}`;
+}
 
 export interface PlayerConfig {
   maxAirJumps:         number;
@@ -32,7 +40,15 @@ export interface PlayerConfig {
   maxWalkableSlopeDeg: number;
 }
 
-const DEFAULT: RawSave = { balance: 0, upgrades: {}, inventory: {}, placed: [] };
+const DEFAULT: RawSave = {
+  balance:    0,
+  upgrades:   {},
+  inventory:  {},
+  placed:     [],
+  playerGuid: '',
+  playerName: '',
+  highScores: {},
+};
 
 function load(): RawSave {
   if (_cache) return _cache;
@@ -43,14 +59,25 @@ function load(): RawSave {
       const result: RawSave = {
         ...DEFAULT,
         ...parsed,
-        inventory: parsed.inventory ?? {},
-        placed:    parsed.placed    ?? [],
+        inventory:  parsed.inventory  ?? {},
+        placed:     parsed.placed     ?? [],
+        highScores: parsed.highScores ?? {},
+        playerGuid: parsed.playerGuid ?? crypto.randomUUID(),
+        playerName: parsed.playerName ?? generateDefaultName(),
       };
       _cache = result;
       return result;
     }
   } catch { /* corrupted save — fall through to default */ }
-  const fresh: RawSave = { ...DEFAULT, upgrades: {}, inventory: {}, placed: [] };
+  const fresh: RawSave = {
+    ...DEFAULT,
+    upgrades:   {},
+    inventory:  {},
+    placed:     [],
+    highScores: {},
+    playerGuid: crypto.randomUUID(),
+    playerName: generateDefaultName(),
+  };
   _cache = fresh;
   return fresh;
 }
@@ -186,4 +213,34 @@ export function getPlayerConfig(): PlayerConfig {
     peakMultiplier:      [1.25, 1.40, 1.60, 1.85][pl],
     maxWalkableSlopeDeg: MAX_WALKABLE_SLOPE_DEG + getUpgradeLevel('mountain_climber') * MOUNTAIN_CLIMBER_INCREMENT,
   };
+}
+
+// ── Player identity ───────────────────────────────────────────────────────────
+
+export function getPlayerGuid(): string {
+  return load().playerGuid;
+}
+
+export function getPlayerName(): string {
+  return load().playerName;
+}
+
+export function setPlayerName(name: string): void {
+  const trimmed = name.trim().slice(0, 20);
+  if (!trimmed) return;
+  const data = load();
+  data.playerName = trimmed;
+  persist(data);
+}
+
+// ── High scores ───────────────────────────────────────────────────────────────
+
+export function getLocalHighScore(heapId: string): number {
+  return load().highScores[heapId] ?? 0;
+}
+
+export function setLocalHighScore(heapId: string, score: number): void {
+  const data = load();
+  data.highScores[heapId] = score;
+  persist(data);
 }
