@@ -145,6 +145,6 @@ export class HeapClient {
   static getLiveZoneBottomY(heapId: string): number | null {
     const cache = loadCache(heapId);
     if (!cache || cache.liveZone.length === 0) return null;
-    return Math.max(...cache.liveZone.map(v => v.y));
+    return cache.liveZone.reduce((max, v) => v.y > max ? v.y : max, -Infinity);
   }
 }
