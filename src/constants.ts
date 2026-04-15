@@ -76,3 +76,7 @@ export const LADDER_WIDTH   = 35;
 export const IBEAM_WIDTH    = 120;  // designer-tunable
 export const IBEAM_HEIGHT   = 16;
 export const SNAP_RADIUS    = 80;   // px below pointer to search for a walkable surface
+
+// ── High scores ───────────────────────────────────────────────────────────────
+
+export const LEADERBOARD_TOP_N = 5;   // number of top entries shown in leaderboard panel

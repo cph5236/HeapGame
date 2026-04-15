@@ -1,8 +1,18 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, SCORE_TO_COINS_DIVISOR } from '../constants';
-import { addBalance, getBalance, getPlayerConfig } from '../systems/SaveData';
+import { GAME_WIDTH, GAME_HEIGHT, SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N } from '../constants';
+import {
+  addBalance,
+  getBalance,
+  getPlayerConfig,
+  getLocalHighScore,
+  setLocalHighScore,
+  getPlayerGuid,
+  getPlayerName,
+} from '../systems/SaveData';
 import { buildCoinBreakdown, BreakdownRow } from '../systems/coinBreakdown';
 import { InputManager } from '../systems/InputManager';
+import { ScoreClient } from '../systems/ScoreClient';
+import type { LeaderboardContext } from '../../shared/scoreTypes';
 
 const CX = GAME_WIDTH / 2;
 
@@ -12,6 +22,8 @@ export class ScoreScene extends Phaser.Scene {
   private checkpointAvailable: boolean = false;
   private isFailure:           boolean = false;
   private _coinsAwarded:       boolean = false;
+  private heapId:              string  = '';
+  private isNewHighScore:      boolean = false;
 
   constructor() {
     super({ key: 'ScoreScene' });
@@ -19,17 +31,28 @@ export class ScoreScene extends Phaser.Scene {
 
   init(data: {
     score:                number;
+    heapId?:              string;
     isPeak?:              boolean;
     checkpointAvailable?: boolean;
     isFailure?:           boolean;
   }): void {
     this.score               = data.score               ?? 0;
+    this.heapId              = data.heapId              ?? '';
     this.isPeak              = data.isPeak              ?? false;
     this.checkpointAvailable = data.checkpointAvailable ?? false;
     this.isFailure           = data.isFailure           ?? false;
   }
 
   create(): void {
+    // Check and update local high score before rendering anything
+    if (this.heapId && this.score > 0) {
+      const prev = getLocalHighScore(this.heapId);
+      if (this.score > prev) {
+        setLocalHighScore(this.heapId, this.score);
+        this.isNewHighScore = true;
+      }
+    }
+
     const cfg    = getPlayerConfig();
     const result = buildCoinBreakdown({
       score:           this.score,
@@ -53,7 +76,9 @@ export class ScoreScene extends Phaser.Scene {
 
     this.createTitle();
     this.createScoreDisplay();
+    if (this.isNewHighScore) this.createHighScoreBadge();
     this.createCoinsPanel(result.rows, result.finalCoins);
+    this.createLeaderboardPanel();
     this.createBalance(balance);
     this.createCheckpointButton();
     this.createMenuPrompt();
@@ -198,6 +223,17 @@ export class ScoreScene extends Phaser.Scene {
       onUpdate: () => { scoreText.setText(String(Math.floor(counter.value))); },
       onComplete: () => { scoreText.setText(String(this.score)); },
     });
+  }
+
+  private createHighScoreBadge(): void {
+    const color = '#ffdd44';
+    this.add.text(CX, GAME_HEIGHT * 0.36, 'NEW HIGH SCORE!', {
+      fontSize:      '18px',
+      fontFamily:    'monospace',
+      color,
+      letterSpacing: 3,
+      fontStyle:     'bold',
+    }).setOrigin(0.5).setShadow(0, 0, color, 10, true, true);
   }
 
   // ── Coins Panel ───────────────────────────────────────────────────────────────
@@ -369,10 +405,115 @@ export class ScoreScene extends Phaser.Scene {
     return labels[type] ?? type;
   }
 
+  // ── Leaderboard Panel ─────────────────────────────────────────────────────────
+
+  private createLeaderboardPanel(): void {
+    if (!this.heapId) return;
+
+    const PANEL_TOP = GAME_HEIGHT * 0.64;
+    const PANEL_W   = GAME_WIDTH * 0.88;
+    const PANEL_X   = CX;
+    const ROW_H     = 20;
+
+    // Loading placeholder
+    const loading = this.add.text(PANEL_X, PANEL_TOP + 8, 'Loading leaderboard...', {
+      fontSize:   '11px',
+      fontFamily: 'monospace',
+      color:      '#557799',
+    }).setOrigin(0.5, 0).setAlpha(0);
+
+    // Fade placeholder in after score count-up (800ms) + 300ms
+    this.time.delayedCall(1100, () => {
+      this.tweens.add({ targets: loading, alpha: 1, duration: 300, ease: 'Linear' });
+    });
+
+    // Kick off server call
+    const playerId   = getPlayerGuid();
+    const playerName = getPlayerName();
+    const call       = this.isNewHighScore
+      ? ScoreClient.submitScore({
+          heapId: this.heapId, playerId, playerName,
+          score:  this.score, limit: LEADERBOARD_TOP_N,
+        })
+      : ScoreClient.getContext({ heapId: this.heapId, playerId, limit: LEADERBOARD_TOP_N });
+
+    call.then((ctx) => {
+      loading.destroy();
+      if (!ctx) return; // offline — silently show nothing
+
+      this.renderLeaderboardEntries(ctx, PANEL_TOP, PANEL_W, ROW_H);
+    });
+  }
+
+  private renderLeaderboardEntries(
+    ctx:      LeaderboardContext,
+    panelTop: number,
+    panelW:   number,
+    rowH:     number,
+  ): void {
+    const PAD_X  = 14;
+    const left   = CX - panelW / 2 + PAD_X;
+    const right  = CX + panelW / 2 - PAD_X;
+
+    // Panel background
+    const totalRows = ctx.top.length + (ctx.player && !this.playerInTop(ctx) ? 2 : 0); // +1 for gap, +1 for player
+    const panelH    = totalRows * rowH + 8;
+    const bg = this.add.graphics();
+    bg.fillStyle(0x002244, 0.5);
+    bg.lineStyle(1, 0x336699, 0.3);
+    bg.fillRoundedRect(CX - panelW / 2, panelTop, panelW, panelH, 6);
+    bg.strokeRoundedRect(CX - panelW / 2, panelTop, panelW, panelH, 6);
+
+    let y = panelTop + 4;
+
+    // Top N rows
+    for (const entry of ctx.top) {
+      const isPlayer = entry.playerId === (ctx.player?.playerId ?? '');
+      const nameCol  = isPlayer && this.isNewHighScore ? '#ffdd44' : '#aaccee';
+      const rankCol  = isPlayer && this.isNewHighScore ? '#ffdd44' : '#668899';
+
+      this.add.text(left, y, `#${entry.rank}`, {
+        fontSize: '11px', fontFamily: 'monospace', color: rankCol,
+      });
+      this.add.text(left + 36, y, entry.name, {
+        fontSize: '11px', fontFamily: 'monospace', color: nameCol,
+      });
+      this.add.text(right, y, String(entry.score), {
+        fontSize: '11px', fontFamily: 'monospace', color: nameCol,
+      }).setOrigin(1, 0);
+      y += rowH;
+    }
+
+    // Gap + player row if player is not already in top N
+    if (ctx.player && !this.playerInTop(ctx)) {
+      this.add.text(CX, y, '·  ·  ·', {
+        fontSize: '10px', fontFamily: 'monospace', color: '#335566',
+      }).setOrigin(0.5, 0);
+      y += rowH;
+
+      const p      = ctx.player;
+      const pColor = this.isNewHighScore ? '#ffdd44' : '#aaccee';
+      this.add.text(left, y, `#${p.rank}`, {
+        fontSize: '11px', fontFamily: 'monospace', color: pColor,
+      });
+      this.add.text(left + 36, y, p.name, {
+        fontSize: '11px', fontFamily: 'monospace', color: pColor,
+      });
+      this.add.text(right, y, String(p.score), {
+        fontSize: '11px', fontFamily: 'monospace', color: pColor,
+      }).setOrigin(1, 0);
+    }
+  }
+
+  private playerInTop(ctx: LeaderboardContext): boolean {
+    if (!ctx.player) return false;
+    return ctx.top.some(e => e.playerId === ctx.player!.playerId);
+  }
+
   // ── Balance ───────────────────────────────────────────────────────────────────
 
   private createBalance(balance: number): void {
-    this.add.text(CX, GAME_HEIGHT * 0.73, `Balance: ${balance} coins`, {
+    this.add.text(CX, GAME_HEIGHT * 0.82, `Balance: ${balance} coins`, {
       fontSize:   '16px',
       fontFamily: 'monospace',
       color:      '#aaddff',
@@ -384,7 +525,7 @@ export class ScoreScene extends Phaser.Scene {
   private createCheckpointButton(): void {
     if (!this.checkpointAvailable) return;
 
-    const btn = this.add.text(CX, GAME_HEIGHT * 0.79, 'Respawn at Checkpoint', {
+    const btn = this.add.text(CX, GAME_HEIGHT * 0.87, 'Respawn at Checkpoint', {
       fontSize:        '12px',
       fontFamily:      'monospace',
       color:           '#88aaff',

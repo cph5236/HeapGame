@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
-import { getBalance, getPlaced, resetAllData } from '../systems/SaveData';
+import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 
@@ -21,6 +21,7 @@ export class MenuScene extends Phaser.Scene {
   private storeText!: Phaser.GameObjects.Text;
   private twinkleStars: Phaser.GameObjects.Graphics[] = [];
   private resetConfirmed = false;
+  private playerNameText!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -42,6 +43,7 @@ export class MenuScene extends Phaser.Scene {
     this.createTagline();
     this.createFloatingClouds();
     this.createBalanceText();
+    this.createPlayerName();
     this.createPrompts(im);
     this.createSettingsButton();
     this.runEntranceSequence();
@@ -244,6 +246,34 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0).setDepth(8);
   }
 
+  private createPlayerName(): void {
+    const name = getPlayerName();
+    this.playerNameText = this.add.text(
+      GAME_WIDTH / 2, 748,
+      `${name}  [edit]`,
+      {
+        fontSize:        '13px',
+        fontFamily:      'monospace',
+        color:           '#8899aa',
+        stroke:          '#000000',
+        strokeThickness: 1,
+      },
+    ).setOrigin(0.5).setAlpha(0).setDepth(8)
+     .setInteractive({ useHandCursor: true });
+
+    this.playerNameText.on('pointerover', () => this.playerNameText.setColor('#aabbcc'));
+    this.playerNameText.on('pointerout',  () => this.playerNameText.setColor('#8899aa'));
+    this.playerNameText.on('pointerup',   () => this.promptNameChange());
+  }
+
+  private promptNameChange(): void {
+    const current = getPlayerName();
+    const input   = window.prompt('Enter your player name (max 20 chars):', current);
+    if (input === null) return;  // cancelled
+    setPlayerName(input);
+    this.playerNameText.setText(`${getPlayerName()}  [edit]`);
+  }
+
   // ── Start / Upgrade prompts ──────────────────────────────────────────────────
 
   private createPrompts(im: InputManager): void {
@@ -414,7 +444,7 @@ export class MenuScene extends Phaser.Scene {
     this.tweens.add({ targets: this.titleShadow,    alpha: 0.65, duration: 400, delay: 900  });
     this.tweens.add({ targets: this.titleText,      alpha: 1,    duration: 500, delay: 1000 });
     this.tweens.add({ targets: this.taglineText,    alpha: 1,    duration: 400, delay: 1300 });
-    this.tweens.add({ targets: this.balanceText,    alpha: 1,    duration: 300, delay: 1500 });
+    this.tweens.add({ targets: [this.balanceText, this.playerNameText], alpha: 1, duration: 300, delay: 1500 });
     this.tweens.add({ targets: this.startBg,   alpha: 1, duration: 400, delay: 1700 });
     this.tweens.add({
       targets: this.startText,
