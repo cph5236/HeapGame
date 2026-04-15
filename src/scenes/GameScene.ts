@@ -153,7 +153,7 @@ export class GameScene extends Phaser.Scene {
           p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
         );
         const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
-        this.scene.launch('ScoreScene', { score, isPeak: false, checkpointAvailable, isFailure: true });
+        this.scene.launch('ScoreScene', { score, heapId: this._heapId, isPeak: false, checkpointAvailable, isFailure: true });
         this.scene.pause();
       });
     });
@@ -399,7 +399,7 @@ export class GameScene extends Phaser.Scene {
 
     const score = Math.max(0, Math.floor(this.spawnY - py));
     this.time.delayedCall(2000, () => {
-      this.scene.launch('ScoreScene', { score, isPeak });
+      this.scene.launch('ScoreScene', { score, heapId: this._heapId, isPeak });
     });
   }
 
@@ -479,7 +479,7 @@ export class GameScene extends Phaser.Scene {
       p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
     );
     const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
-    this.scene.launch('ScoreScene', { score, isPeak: false, checkpointAvailable, isFailure: true });
+    this.scene.launch('ScoreScene', { score, heapId: this._heapId, isPeak: false, checkpointAvailable, isFailure: true });
     this.scene.pause();
   };
 
