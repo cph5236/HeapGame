@@ -19,15 +19,16 @@ async function buildContext(
   playerId: string,
   limit:    number,
 ): Promise<LeaderboardContext> {
-  const topRows = await db.getTopScores(heapId, limit);
+  const [topRows, playerRow] = await Promise.all([
+    db.getTopScores(heapId, limit),
+    db.getScore(heapId, playerId),
+  ]);
   const top: LeaderboardEntry[] = topRows.map((row, i) => ({
     rank:     i + 1,
     playerId: row.player_id,
     name:     row.name,
     score:    row.score,
   }));
-
-  const playerRow = await db.getScore(heapId, playerId);
   if (!playerRow) return { top, player: null };
 
   const rank: number = await db.getRank(heapId, playerRow.score);
@@ -90,7 +91,7 @@ export function scoreRoutes(db: ScoreDB): Hono {
     const heapId = c.req.param('heapId');
     const page   = parseInt(c.req.query('page') ?? '0') || 0;
     const limit  = Math.min(
-      parseInt(c.req.query('limit') ?? '50') || 50,
+      parseInt(c.req.query('limit') ?? String(MAX_LIMIT)) || MAX_LIMIT,
       MAX_LIMIT,
     );
     const offset = page * limit;
