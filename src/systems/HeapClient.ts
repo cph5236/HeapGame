@@ -137,4 +137,14 @@ export class HeapClient {
       // Silently drop — game never depends on server for local progression
     }
   }
+
+  /**
+   * Returns the maximum Y value (freeze line) of the cached liveZone for a heap.
+   * Returns null if the cache is absent or the liveZone is empty.
+   */
+  static getLiveZoneBottomY(heapId: string): number | null {
+    const cache = loadCache(heapId);
+    if (!cache || cache.liveZone.length === 0) return null;
+    return Math.max(...cache.liveZone.map(v => v.y));
+  }
 }

@@ -283,3 +283,36 @@ describe('HeapClient workflow: append then load', () => {
     expect(polygon).toEqual(reconstructPolygonFromPoints([...base, ...liveAfterPlace]));
   });
 });
+
+// ── getLiveZoneBottomY() ──────────────────────────────────────────────────────
+
+describe('HeapClient.getLiveZoneBottomY', () => {
+  it('returns null when no cache exists for the heapId', () => {
+    // localStorage is empty (fresh stub from beforeEach)
+    expect(HeapClient.getLiveZoneBottomY('no-such-id')).toBeNull();
+  });
+
+  it('returns null when cached liveZone is empty', () => {
+    localStorageStub.setItem(
+      'heap_cache_abc',
+      JSON.stringify({ version: 1, baseId: 'b1', liveZone: [] }),
+    );
+    expect(HeapClient.getLiveZoneBottomY('abc')).toBeNull();
+  });
+
+  it('returns the maximum Y value from a populated liveZone', () => {
+    localStorageStub.setItem(
+      'heap_cache_xyz',
+      JSON.stringify({
+        version: 3,
+        baseId: 'b2',
+        liveZone: [
+          { x: 100, y: 200 },
+          { x: 150, y: 800 },
+          { x: 120, y: 500 },
+        ],
+      }),
+    );
+    expect(HeapClient.getLiveZoneBottomY('xyz')).toBe(800);
+  });
+});
