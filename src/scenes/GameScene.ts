@@ -21,6 +21,7 @@ import {
   PLAYER_JUMP_VELOCITY,
   PLAYER_INVINCIBLE_MS,
   PLACE_HOLD_DURATION_MS,
+  SCORE_DISPLAY_DIVISOR,
 } from '../constants';
 import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
@@ -31,6 +32,9 @@ import { HeapClient } from '../systems/HeapClient';
 import { PlaceableManager } from '../systems/PlaceableManager';
 import { TrashWallManager } from '../systems/TrashWallManager';
 import { TRASH_WALL_DEF } from '../data/trashWallDef';
+import type { EnemyKind } from '../entities/Enemy';
+import { buildRunScore } from '../systems/buildRunScore';
+import { ENEMY_DEFS } from '../data/enemyDefs';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -65,6 +69,8 @@ export class GameScene extends Phaser.Scene {
   private _liveZoneBottomY: number | null = null;
   private _holdBar!: Phaser.GameObjects.Graphics;
   private checkpointRespawn = false;
+  private _runKills:     Partial<Record<EnemyKind, number>> = {};
+  private _runStartTime: number | null = null;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -87,6 +93,8 @@ export class GameScene extends Phaser.Scene {
     this.blockPlaced = false;
     this.infoOpen = false;
     this.infoOverlayParts = [];
+    this._runKills     = {};
+    this._runStartTime = null;
 
     // World: Y=0 is the summit (top), Y=MOCK_HEAP_HEIGHT_PX is the base (bottom)
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX);
@@ -152,8 +160,23 @@ export class GameScene extends Phaser.Scene {
         const checkpointAvailable = getPlaced().some(
           p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
         );
-        const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
-        this.scene.launch('ScoreScene', { score, heapId: this._heapId, isPeak: false, checkpointAvailable, isFailure: true });
+        const baseHeightPx = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
+        const elapsedMs    = this._runStartTime !== null ? (this.time.now - this._runStartTime) : 0;
+        const runResult    = buildRunScore(
+          { baseHeightPx, kills: this._runKills, elapsedMs },
+          ENEMY_DEFS,
+          true,
+        );
+        this.scene.launch('ScoreScene', {
+          score:        runResult.finalScore,
+          heapId:       this._heapId,
+          isPeak:       false,
+          checkpointAvailable,
+          isFailure:    true,
+          baseHeightPx,
+          kills:        this._runKills,
+          elapsedMs,
+        });
         this.scene.pause();
       });
     });
@@ -290,9 +313,13 @@ export class GameScene extends Phaser.Scene {
 
     // Live score: pixels climbed from spawn
     const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
+    if (score > 0 && this._runStartTime === null) {
+      this._runStartTime = this.time.now;
+    }
     if (score !== this._lastScore) {
       this._lastScore = score;
-      this.scoreText.setText(`Score: ${score}`);
+      const ft = Math.floor(score / SCORE_DISPLAY_DIVISOR);
+      this.scoreText.setText(`${ft} ft`);
     }
 
     // Top zone UI
@@ -397,10 +424,23 @@ export class GameScene extends Phaser.Scene {
       this._liveZoneBottomY = HeapClient.getLiveZoneBottomY(this._heapId);
     });
 
-    const score = Math.max(0, Math.floor(this.spawnY - py));
+    const baseHeightPx = Math.max(0, Math.floor(this.spawnY - py));
+    const elapsedMs    = this._runStartTime !== null ? (this.time.now - this._runStartTime) : 0;
+    const runResult    = buildRunScore(
+      { baseHeightPx, kills: this._runKills, elapsedMs },
+      ENEMY_DEFS,
+      false,
+    );
     this.time.delayedCall(2000, () => {
       void appendDone.then(() => {
-        this.scene.launch('ScoreScene', { score, heapId: this._heapId, isPeak });
+        this.scene.launch('ScoreScene', {
+          score:        runResult.finalScore,
+          heapId:       this._heapId,
+          isPeak,
+          baseHeightPx,
+          kills:        this._runKills,
+          elapsedMs,
+        });
         this.scene.pause();
       });
     });
@@ -432,6 +472,9 @@ export class GameScene extends Phaser.Scene {
     const stompX = e.x;
     const stompY = e.y;
     e.destroy();
+
+    const kind = e.getData('kind') as EnemyKind;
+    this._runKills[kind] = (this._runKills[kind] ?? 0) + 1;
 
     this.player.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
     const stompReward = this.playerConfig.stompBonus;
@@ -481,8 +524,23 @@ export class GameScene extends Phaser.Scene {
     const checkpointAvailable = getPlaced().some(
       p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
     );
-    const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
-    this.scene.launch('ScoreScene', { score, heapId: this._heapId, isPeak: false, checkpointAvailable, isFailure: true });
+    const baseHeightPx = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
+    const elapsedMs    = this._runStartTime !== null ? (this.time.now - this._runStartTime) : 0;
+    const runResult    = buildRunScore(
+      { baseHeightPx, kills: this._runKills, elapsedMs },
+      ENEMY_DEFS,
+      true,
+    );
+    this.scene.launch('ScoreScene', {
+      score:        runResult.finalScore,
+      heapId:       this._heapId,
+      isPeak:       false,
+      checkpointAvailable,
+      isFailure:    true,
+      baseHeightPx,
+      kills:        this._runKills,
+      elapsedMs,
+    });
     this.scene.pause();
   };
 
