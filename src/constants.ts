@@ -80,3 +80,6 @@ export const SNAP_RADIUS    = 80;   // px below pointer to search for a walkable
 // ── High scores ───────────────────────────────────────────────────────────────
 
 export const LEADERBOARD_TOP_N = 5;   // number of top entries shown in leaderboard panel
+
+export const PACE_BONUS_CONST    = 10;  // multiplier on px/s pace component
+export const SCORE_DISPLAY_DIVISOR = 10; // px ÷ 10 = ft for HUD display
