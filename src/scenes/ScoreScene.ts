@@ -33,8 +33,6 @@ export class ScoreScene extends Phaser.Scene {
   private _elapsedMs:    number                             = 0;
   private _scoreRows:    RunScoreRow[]                      = [];
 
-  get scoreRows(): RunScoreRow[] { return this._scoreRows; }
-
   constructor() {
     super({ key: 'ScoreScene' });
   }
