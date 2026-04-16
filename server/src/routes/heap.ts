@@ -32,18 +32,26 @@ function validateMult(value: number, name: string): string | null {
 }
 
 function resolveParams(input: Partial<HeapParams> | undefined): HeapParams | { error: string } {
+  if (input !== undefined && (typeof input !== 'object' || input === null || Array.isArray(input))) {
+    return { error: 'params must be an object' };
+  }
+
   const merged: HeapParams = { ...DEFAULT_HEAP_PARAMS, ...(input ?? {}) };
   if (typeof merged.name !== 'string' || merged.name.trim() === '') {
     return { error: 'name must be a non-empty string' };
   }
   merged.name = merged.name.slice(0, 40);
+
+  if (typeof merged.difficulty !== 'number') return { error: 'difficulty must be a number' };
   const dErr = validateDifficulty(merged.difficulty);
   if (dErr) return { error: dErr };
+
   for (const [k, v] of [
     ['spawnRateMult', merged.spawnRateMult],
     ['coinMult',      merged.coinMult],
     ['scoreMult',     merged.scoreMult],
   ] as const) {
+    if (typeof v !== 'number') return { error: `${k} must be a number` };
     const err = validateMult(v, k);
     if (err) return { error: err };
   }

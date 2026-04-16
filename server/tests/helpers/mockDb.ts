@@ -11,6 +11,7 @@ interface BaseRecord {
   created_at: string;
 }
 
+/** In-memory HeapDB for use in tests. No D1 or Workers runtime needed. */
 export class MockHeapDB implements HeapDB {
   private heaps = new Map<string, Omit<HeapRow, 'id'>>();
   private bases = new Map<string, BaseRecord>();
@@ -102,6 +103,7 @@ export class MockHeapDB implements HeapDB {
     });
   }
 
+  /** Test helper — seed a heap row directly without going through createHeap. */
   seedHeap(id: string, version: number, liveZone: Vertex[], baseId = id, freezeY = 0, params: HeapParams = DEFAULT_HEAP_PARAMS): void {
     this.heaps.set(id, {
       base_id: baseId,
@@ -117,6 +119,7 @@ export class MockHeapDB implements HeapDB {
     });
   }
 
+  /** Test helper — seed a base row directly. */
   seedBase(id: string, heapId: string, vertices: Vertex[]): void {
     this.bases.set(id, {
       heap_id: heapId,

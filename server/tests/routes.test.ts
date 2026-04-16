@@ -394,6 +394,33 @@ describe('POST /heaps with params', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('rejects params that are not an object', async () => {
+    const res = await makeApp().request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES, params: 'hello' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects params as an array', async () => {
+    const res = await makeApp().request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES, params: [1, 2, 3] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects non-number difficulty', async () => {
+    const res = await makeApp().request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES, params: { difficulty: '3' } }),
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('GET /heaps/:id', () => {
