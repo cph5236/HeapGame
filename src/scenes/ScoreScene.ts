@@ -33,6 +33,9 @@ export class ScoreScene extends Phaser.Scene {
   private _elapsedMs:    number                             = 0;
   private _scoreRows:    RunScoreRow[]                      = [];
 
+  private _breakdownOpen    = false;
+  private _breakdownObjects: Phaser.GameObjects.GameObject[] = [];
+
   constructor() {
     super({ key: 'ScoreScene' });
   }
@@ -247,6 +250,13 @@ export class ScoreScene extends Phaser.Scene {
       onUpdate: () => { scoreText.setText(String(Math.floor(counter.value))); },
       onComplete: () => { scoreText.setText(String(this.score)); },
     });
+
+    if (this._scoreRows.length > 0) {
+      scoreText.setInteractive({ useHandCursor: true });
+      scoreText.on('pointerover', () => scoreText.setColor('#ffff88'));
+      scoreText.on('pointerout',  () => scoreText.setColor('#ffdd44'));
+      scoreText.on('pointerup',   () => this.toggleScoreBreakdown());
+    }
   }
 
   private createHighScoreBadge(): void {
@@ -258,6 +268,135 @@ export class ScoreScene extends Phaser.Scene {
       letterSpacing: 3,
       fontStyle:     'bold',
     }).setOrigin(0.5).setShadow(0, 0, color, 10, true, true);
+  }
+
+  // ── Score Breakdown Panel ─────────────────────────────────────────────────────
+
+  private toggleScoreBreakdown(): void {
+    if (this._breakdownOpen) {
+      this.closeScoreBreakdown();
+    } else {
+      this.openScoreBreakdown();
+    }
+  }
+
+  private openScoreBreakdown(): void {
+    if (this._breakdownOpen) return;
+    this._breakdownOpen = true;
+
+    const PANEL_W   = GAME_WIDTH * 0.88;
+    const PANEL_X   = CX;
+    const PANEL_TOP = GAME_HEIGHT * 0.32;
+    const ROW_H     = 24;
+    const PAD_X     = 14;
+    const left      = PANEL_X - PANEL_W / 2 + PAD_X;
+    const right     = PANEL_X + PANEL_W / 2 - PAD_X;
+
+    const rows      = this._scoreRows;
+    const panelH    = (rows.length + 1) * ROW_H + 32;
+
+    // Panel background
+    const bg = this.add.graphics().setDepth(60);
+    bg.fillStyle(0x0a0820, 0.95);
+    bg.lineStyle(1, 0xffdd44, 0.25);
+    bg.fillRoundedRect(PANEL_X - PANEL_W / 2, PANEL_TOP, PANEL_W, panelH, 8);
+    bg.strokeRoundedRect(PANEL_X - PANEL_W / 2, PANEL_TOP, PANEL_W, panelH, 8);
+    this._breakdownObjects.push(bg);
+
+    let y = PANEL_TOP + 10;
+
+    for (const row of rows) {
+      const mid = y + ROW_H / 2;
+
+      if (row.type === 'height') {
+        const lbl = this.add.text(left, mid, row.label, {
+          fontSize: '11px', fontFamily: 'monospace', color: '#aaaacc',
+        }).setOrigin(0, 0.5).setDepth(61);
+        const det = this.add.text(left + 110, mid, row.detail, {
+          fontSize: '11px', fontFamily: 'monospace', color: '#aaaacc',
+        }).setOrigin(0, 0.5).setDepth(61);
+        const val = this.add.text(right, mid, String(row.value), {
+          fontSize: '11px', fontFamily: 'monospace', color: '#ffffff',
+        }).setOrigin(1, 0.5).setDepth(61);
+        this._breakdownObjects.push(lbl, det, val);
+
+      } else if (row.type === 'kill') {
+        const lbl = this.add.text(left, mid, row.label, {
+          fontSize: '11px', fontFamily: 'monospace', color: '#ff9944',
+        }).setOrigin(0, 0.5).setDepth(61);
+        const val = this.add.text(right, mid, `+${row.value}`, {
+          fontSize: '11px', fontFamily: 'monospace', color: '#ff9944', fontStyle: 'bold',
+        }).setOrigin(1, 0.5).setDepth(61);
+        this._breakdownObjects.push(lbl, val);
+
+      } else if (row.type === 'pace') {
+        const lbl = this.add.text(left, mid, row.label, {
+          fontSize: '11px', fontFamily: 'monospace', color: '#44ddff',
+        }).setOrigin(0, 0.5).setDepth(61);
+        const det = this.add.text(left + 50, mid, row.detail, {
+          fontSize: '10px', fontFamily: 'monospace', color: '#44aacc',
+        }).setOrigin(0, 0.5).setDepth(61);
+        const val = this.add.text(right, mid, `+${row.value}`, {
+          fontSize: '11px', fontFamily: 'monospace', color: '#44ddff', fontStyle: 'bold',
+        }).setOrigin(1, 0.5).setDepth(61);
+        this._breakdownObjects.push(lbl, det, val);
+      }
+
+      y += ROW_H;
+    }
+
+    // Divider
+    const divG = this.add.graphics().setDepth(61);
+    divG.lineStyle(1, 0xffdd44, 0.2);
+    divG.lineBetween(PANEL_X - PANEL_W / 2 + 10, y + 2, PANEL_X + PANEL_W / 2 - 10, y + 2);
+    this._breakdownObjects.push(divG);
+    y += 8;
+
+    // Total row
+    const totalMid = y + ROW_H / 2;
+    const totLbl = this.add.text(left, totalMid, 'TOTAL', {
+      fontSize: '12px', fontFamily: 'monospace', color: '#ffdd44', fontStyle: 'bold',
+    }).setOrigin(0, 0.5).setDepth(61);
+    const totVal = this.add.text(right, totalMid, String(this.score), {
+      fontSize: '12px', fontFamily: 'monospace', color: '#ffdd44', fontStyle: 'bold',
+    }).setOrigin(1, 0.5).setDepth(61);
+    this._breakdownObjects.push(totLbl, totVal);
+
+    // Tap-outside-to-close transparent overlay (behind panel)
+    const blocker = this.add.rectangle(PANEL_X, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0)
+      .setDepth(59)
+      .setInteractive();
+    blocker.once('pointerup', () => this.closeScoreBreakdown());
+    this._breakdownObjects.push(blocker);
+
+    // Slide-in animation — start offset by +20 then tween back
+    for (const o of this._breakdownObjects) {
+      const go = o as Phaser.GameObjects.GameObject & { alpha: number; y: number };
+      go.alpha = 0;
+      go.y += 20;
+    }
+    this.tweens.add({
+      targets:  this._breakdownObjects,
+      alpha:    1,
+      y:        '-=20',
+      duration: 250,
+      ease:     'Cubic.Out',
+    });
+  }
+
+  private closeScoreBreakdown(): void {
+    if (!this._breakdownOpen) return;
+    this._breakdownOpen = false;
+    this.tweens.add({
+      targets:  this._breakdownObjects,
+      alpha:    0,
+      duration: 150,
+      ease:     'Linear',
+      onComplete: () => {
+        this._breakdownObjects.forEach(o => o.destroy());
+        this._breakdownObjects = [];
+      },
+    });
   }
 
   // ── Coins Panel ───────────────────────────────────────────────────────────────
