@@ -10,6 +10,9 @@ import {
   getPlayerName,
 } from '../systems/SaveData';
 import { buildCoinBreakdown, BreakdownRow } from '../systems/coinBreakdown';
+import { buildRunScore, RunScoreRow } from '../systems/buildRunScore';
+import type { EnemyKind } from '../entities/Enemy';
+import { ENEMY_DEFS } from '../data/enemyDefs';
 import { InputManager } from '../systems/InputManager';
 import { ScoreClient } from '../systems/ScoreClient';
 import type { LeaderboardContext } from '../../shared/scoreTypes';
@@ -25,6 +28,13 @@ export class ScoreScene extends Phaser.Scene {
   private heapId:              string  = '';
   private isNewHighScore:      boolean = false;
 
+  private _baseHeightPx: number                             = 0;
+  private _kills:        Partial<Record<EnemyKind, number>> = {};
+  private _elapsedMs:    number                             = 0;
+  private _scoreRows:    RunScoreRow[]                      = [];
+
+  get scoreRows(): RunScoreRow[] { return this._scoreRows; }
+
   constructor() {
     super({ key: 'ScoreScene' });
   }
@@ -35,12 +45,19 @@ export class ScoreScene extends Phaser.Scene {
     isPeak?:              boolean;
     checkpointAvailable?: boolean;
     isFailure?:           boolean;
+    baseHeightPx?:        number;
+    kills?:               Partial<Record<EnemyKind, number>>;
+    elapsedMs?:           number;
   }): void {
     this.score               = data.score               ?? 0;
     this.heapId              = data.heapId              ?? '';
     this.isPeak              = data.isPeak              ?? false;
     this.checkpointAvailable = data.checkpointAvailable ?? false;
     this.isFailure           = data.isFailure           ?? false;
+    this._baseHeightPx       = data.baseHeightPx        ?? 0;
+    this._kills              = data.kills               ?? {};
+    this._elapsedMs          = data.elapsedMs           ?? 0;
+    this._scoreRows          = [];
   }
 
   create(): void {
@@ -51,6 +68,15 @@ export class ScoreScene extends Phaser.Scene {
         setLocalHighScore(this.heapId, this.score);
         this.isNewHighScore = true;
       }
+    }
+
+    if (this._baseHeightPx > 0) {
+      const runResult = buildRunScore(
+        { baseHeightPx: this._baseHeightPx, kills: this._kills, elapsedMs: this._elapsedMs },
+        ENEMY_DEFS,
+        this.isFailure,
+      );
+      this._scoreRows = runResult.rows;
     }
 
     const cfg    = getPlayerConfig();
