@@ -259,6 +259,10 @@ export class Player {
     this.sprite.body.setAllowGravity(true);
   }
 
+  refundAirJump(): void {
+    this.airJumpsRemaining = Math.min(this.maxAirJumps, this.airJumpsRemaining + 1);
+  }
+
   setControlsEnabled(enabled: boolean): void {
     this.controlsEnabled = enabled;
   }

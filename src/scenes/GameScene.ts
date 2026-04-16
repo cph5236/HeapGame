@@ -476,6 +476,7 @@ export class GameScene extends Phaser.Scene {
 
     this._runKills[kind] = (this._runKills[kind] ?? 0) + 1;
 
+    this.player.refundAirJump();
     this.player.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
     const stompReward = this.playerConfig.stompBonus;
     addBalance(stompReward);
