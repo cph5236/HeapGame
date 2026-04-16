@@ -24,7 +24,7 @@ interface RawSave {
 let _cache: RawSave | null = null;
 
 function generateDefaultName(): string {
-  const n = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+  const n = Array.from({ length: 5 }, () => Math.floor(Math.random() * 10)).join('');
   return `Trashbag#${n}`;
 }
 

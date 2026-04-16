@@ -455,6 +455,11 @@ export class ScoreScene extends Phaser.Scene {
     const left   = CX - panelW / 2 + PAD_X;
     const right  = CX + panelW / 2 - PAD_X;
 
+    // "HIGH SCORES" label above the panel — styled like SCORE label but smaller, left-aligned
+    this.add.text(left, panelTop - 2, 'HIGH SCORES', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#ffdd44', letterSpacing: 2,
+    }).setOrigin(0, 1);
+
     // Panel background
     const totalRows = ctx.top.length + (ctx.player && !this.playerInTop(ctx) ? 2 : 0); // +1 for gap, +1 for player
     const panelH    = totalRows * rowH + 8;
@@ -467,41 +472,49 @@ export class ScoreScene extends Phaser.Scene {
     let y = panelTop + 4;
 
     // Top N rows
-    for (const entry of ctx.top) {
+    for (let i = 0; i < ctx.top.length; i++) {
+      const entry    = ctx.top[i];
       const isPlayer = entry.playerId === (ctx.player?.playerId ?? '');
       const nameCol  = isPlayer && this.isNewHighScore ? '#ffdd44' : '#aaccee';
       const rankCol  = isPlayer && this.isNewHighScore ? '#ffdd44' : '#668899';
+      const mid      = y + rowH / 2;
 
-      this.add.text(left, y, `#${entry.rank}`, {
+      // Alternating row stripe
+      const stripe = this.add.graphics();
+      stripe.fillStyle(i % 2 === 0 ? 0x0d3155 : 0x071d33, 0.5);
+      stripe.fillRect(CX - panelW / 2, y, panelW, rowH);
+
+      this.add.text(left, mid, `#${entry.rank}`, {
         fontSize: '11px', fontFamily: 'monospace', color: rankCol,
-      });
-      this.add.text(left + 36, y, entry.name, {
+      }).setOrigin(0, 0.5);
+      this.add.text(left + 36, mid, entry.name, {
         fontSize: '11px', fontFamily: 'monospace', color: nameCol,
-      });
-      this.add.text(right, y, String(entry.score), {
+      }).setOrigin(0, 0.5);
+      this.add.text(right, mid, String(entry.score), {
         fontSize: '11px', fontFamily: 'monospace', color: nameCol,
-      }).setOrigin(1, 0);
+      }).setOrigin(1, 0.5);
       y += rowH;
     }
 
     // Gap + player row if player is not already in top N
     if (ctx.player && !this.playerInTop(ctx)) {
-      this.add.text(CX, y, '·  ·  ·', {
+      this.add.text(CX, y + rowH / 2, '·  ·  ·', {
         fontSize: '10px', fontFamily: 'monospace', color: '#335566',
-      }).setOrigin(0.5, 0);
+      }).setOrigin(0.5, 0.5);
       y += rowH;
 
       const p      = ctx.player;
       const pColor = this.isNewHighScore ? '#ffdd44' : '#aaccee';
-      this.add.text(left, y, `#${p.rank}`, {
+      const mid    = y + rowH / 2;
+      this.add.text(left, mid, `#${p.rank}`, {
         fontSize: '11px', fontFamily: 'monospace', color: pColor,
-      });
-      this.add.text(left + 36, y, p.name, {
+      }).setOrigin(0, 0.5);
+      this.add.text(left + 36, mid, p.name, {
         fontSize: '11px', fontFamily: 'monospace', color: pColor,
-      });
-      this.add.text(right, y, String(p.score), {
+      }).setOrigin(0, 0.5);
+      this.add.text(right, mid, String(p.score), {
         fontSize: '11px', fontFamily: 'monospace', color: pColor,
-      }).setOrigin(1, 0);
+      }).setOrigin(1, 0.5);
     }
   }
 

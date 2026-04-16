@@ -1,6 +1,5 @@
 ## BUGS
 # Main menu 
-    - 
 
 # Gameplay 
     - 

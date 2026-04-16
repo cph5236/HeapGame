@@ -388,7 +388,7 @@ export class GameScene extends Phaser.Scene {
     const py     = this.player.sprite.y;
     const isPeak = py <= this.heapGenerator.topY + PEAK_BONUS_ZONE_PX;
 
-    void HeapClient.append(this._heapId, px, py).then(() =>
+    const appendDone = HeapClient.append(this._heapId, px, py).then(() =>
       HeapClient.load(this._heapId),
     ).then(freshPolygon => {
       applyPolygonToGenerator(freshPolygon, this.heapGenerator);
@@ -399,7 +399,10 @@ export class GameScene extends Phaser.Scene {
 
     const score = Math.max(0, Math.floor(this.spawnY - py));
     this.time.delayedCall(2000, () => {
-      this.scene.launch('ScoreScene', { score, heapId: this._heapId, isPeak });
+      void appendDone.then(() => {
+        this.scene.launch('ScoreScene', { score, heapId: this._heapId, isPeak });
+        this.scene.pause();
+      });
     });
   }
 
