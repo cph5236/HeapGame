@@ -5,10 +5,27 @@ export interface Vertex {
   y: number;
 }
 
+export interface HeapParams {
+  name: string;
+  difficulty: number;      // 1.0..5.0 in 0.5 steps
+  spawnRateMult: number;
+  coinMult: number;
+  scoreMult: number;
+}
+
+export const DEFAULT_HEAP_PARAMS: HeapParams = {
+  name: 'Unnamed Heap',
+  difficulty: 1.0,
+  spawnRateMult: 1.0,
+  coinMult: 1.0,
+  scoreMult: 1.0,
+};
+
 // ── Create ──────────────────────────────────────────────────────────────────
 
 export interface CreateHeapRequest {
   vertices: Vertex[];
+  params?: Partial<HeapParams>;
 }
 
 export interface CreateHeapResponse {
@@ -24,6 +41,7 @@ export interface HeapSummary {
   id: string;
   version: number;
   createdAt: string;
+  params: HeapParams;
 }
 
 export interface ListHeapsResponse {
@@ -34,7 +52,7 @@ export interface ListHeapsResponse {
 
 export type GetHeapResponse =
   | { changed: false; version: number }
-  | { changed: true; version: number; baseId: string; liveZone: Vertex[] };
+  | { changed: true; version: number; baseId: string; liveZone: Vertex[]; params: HeapParams };
 
 // ── Place ─────────────────────────────────────────────────────────────────────
 

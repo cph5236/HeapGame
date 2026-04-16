@@ -29,6 +29,13 @@ const OVERWRITE = process.env.OVERWRITE === 'true';
 const TARGET_HEAP_ID = process.env.TARGET_HEAP_ID ?? '';
 const VERBOSE = process.env.VERBOSE === 'true';
 
+// Heap params from env
+const PARAM_NAME      = process.env.NAME       ?? '';
+const PARAM_DIFF      = process.env.DIFFICULTY ? Number(process.env.DIFFICULTY) : 1.0;
+const PARAM_SPAWN     = process.env.SPAWN_MULT ? Number(process.env.SPAWN_MULT) : 1.0;
+const PARAM_COIN      = process.env.COIN_MULT  ? Number(process.env.COIN_MULT)  : 1.0;
+const PARAM_SCORE     = process.env.SCORE_MULT ? Number(process.env.SCORE_MULT) : 1.0;
+
 // ── Generate HeapEntry[] via seeded PRNG ──────────────────────────────────────
 
 function buildHeap(): HeapEntry[] {
@@ -121,10 +128,19 @@ async function seed(): Promise<void> {
   const url = `${SERVER_URL}/heaps`;
   console.log(`POSTing to ${url}…`);
 
+  const params = {
+    name:          PARAM_NAME || `Heap #${Date.now().toString(36).slice(-4)}`,
+    difficulty:    PARAM_DIFF,
+    spawnRateMult: PARAM_SPAWN,
+    coinMult:      PARAM_COIN,
+    scoreMult:     PARAM_SCORE,
+  };
+  console.log('Heap params:', params);
+
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ vertices }),
+    body: JSON.stringify({ vertices, params }),
   });
 
   if (!res.ok) {

@@ -13,7 +13,42 @@ import type {
   ResetHeapResponse,
   DeleteHeapResponse,
   Vertex,
+  HeapParams,
 } from '../../../shared/heapTypes';
+import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
+
+function validateDifficulty(d: number): string | null {
+  if (!Number.isFinite(d)) return 'difficulty must be a finite number';
+  if (d < 1 || d > 5) return 'difficulty must be between 1 and 5';
+  const stepped = Math.round(d * 2) / 2;
+  if (Math.abs(stepped - d) > 1e-6) return 'difficulty must be a multiple of 0.5';
+  return null;
+}
+
+function validateMult(value: number, name: string): string | null {
+  if (!Number.isFinite(value)) return `${name} must be a finite number`;
+  if (value <= 0) return `${name} must be > 0`;
+  return null;
+}
+
+function resolveParams(input: Partial<HeapParams> | undefined): HeapParams | { error: string } {
+  const merged: HeapParams = { ...DEFAULT_HEAP_PARAMS, ...(input ?? {}) };
+  if (typeof merged.name !== 'string' || merged.name.trim() === '') {
+    return { error: 'name must be a non-empty string' };
+  }
+  merged.name = merged.name.slice(0, 40);
+  const dErr = validateDifficulty(merged.difficulty);
+  if (dErr) return { error: dErr };
+  for (const [k, v] of [
+    ['spawnRateMult', merged.spawnRateMult],
+    ['coinMult',      merged.coinMult],
+    ['scoreMult',     merged.scoreMult],
+  ] as const) {
+    const err = validateMult(v, k);
+    if (err) return { error: err };
+  }
+  return merged;
+}
 
 export function heapRoutes(db: HeapDB): Hono {
   const app = new Hono();
@@ -27,7 +62,7 @@ export function heapRoutes(db: HeapDB): Hono {
       return c.json({ error: 'Invalid JSON' }, 400);
     }
 
-    const { vertices } = body;
+    const { vertices, params } = body;
     if (
       !Array.isArray(vertices) ||
       vertices.length < 3 ||
@@ -36,12 +71,15 @@ export function heapRoutes(db: HeapDB): Hono {
       return c.json({ error: 'vertices must be an array of at least 3 {x, y} objects' }, 400);
     }
 
+    const resolved = resolveParams(params);
+    if ('error' in resolved) return c.json({ error: resolved.error }, 400);
+
     const heapId = crypto.randomUUID();
     const baseId = crypto.randomUUID();
     const vertexHash = hashVertices(vertices);
     const now = new Date().toISOString();
 
-    await db.createHeap(heapId, baseId, vertices, vertexHash, now);
+    await db.createHeap(heapId, baseId, vertices, vertexHash, now, resolved);
 
     return c.json({
       id: heapId,
@@ -55,7 +93,18 @@ export function heapRoutes(db: HeapDB): Hono {
   app.get('/', async (c) => {
     const rows = await db.listHeaps();
     return c.json({
-      heaps: rows.map((r) => ({ id: r.id, version: r.version, createdAt: r.created_at })),
+      heaps: rows.map((r) => ({
+        id: r.id,
+        version: r.version,
+        createdAt: r.created_at,
+        params: {
+          name:          r.name,
+          difficulty:    r.difficulty,
+          spawnRateMult: r.spawn_rate_mult,
+          coinMult:      r.coin_mult,
+          scoreMult:     r.score_mult,
+        },
+      })),
     } satisfies ListHeapsResponse);
   });
 
@@ -90,6 +139,13 @@ export function heapRoutes(db: HeapDB): Hono {
       version: row.version,
       baseId: row.base_id,
       liveZone,
+      params: {
+        name:          row.name,
+        difficulty:    row.difficulty,
+        spawnRateMult: row.spawn_rate_mult,
+        coinMult:      row.coin_mult,
+        scoreMult:     row.score_mult,
+      },
     } satisfies GetHeapResponse);
   });
 
