@@ -471,9 +471,9 @@ export class GameScene extends Phaser.Scene {
     const e = enemy as Phaser.Physics.Arcade.Sprite;
     const stompX = e.x;
     const stompY = e.y;
+    const kind = e.getData('kind') as EnemyKind;
     e.destroy();
 
-    const kind = e.getData('kind') as EnemyKind;
     this._runKills[kind] = (this._runKills[kind] ?? 0) + 1;
 
     this.player.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
