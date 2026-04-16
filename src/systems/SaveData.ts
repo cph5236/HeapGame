@@ -3,6 +3,7 @@ import { ITEM_DEFS } from '../data/itemDefs';
 import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT } from '../constants';
 
 const SAVE_KEY = 'heap_save';
+const CURRENT_SCHEMA = 2;
 
 export interface PlacedItemSave {
   id:    string;
@@ -12,13 +13,16 @@ export interface PlacedItemSave {
 }
 
 interface RawSave {
-  balance:    number;
-  upgrades:   Record<string, number>;
-  inventory:  Record<string, number>;
-  placed:     PlacedItemSave[];
-  playerGuid: string;
-  playerName: string;
-  highScores: Record<string, number>;
+  schemaVersion: number;
+  balance:        number;
+  upgrades:       Record<string, number>;
+  inventory:      Record<string, number>;
+  placed:         Record<string, PlacedItemSave[]>;
+  selectedHeapId: string;
+  playerGuid:     string;
+  playerName:     string;
+  highScores:     Record<string, number>;
+  _legacyPlaced?: PlacedItemSave[];
 }
 
 let _cache: RawSave | null = null;
@@ -28,56 +32,67 @@ function generateDefaultName(): string {
   return `Trashbag#${n}`;
 }
 
-export interface PlayerConfig {
-  maxAirJumps:         number;
-  wallJump:            boolean;
-  dash:                boolean;
-  dive:                boolean;
-  moneyMultiplier:     number;
-  jumpBoost:           number;
-  stompBonus:          number;
-  peakMultiplier:      number;
-  maxWalkableSlopeDeg: number;
+function freshSave(): RawSave {
+  return {
+    schemaVersion: CURRENT_SCHEMA,
+    balance:        0,
+    upgrades:       {},
+    inventory:      {},
+    placed:         {},
+    selectedHeapId: '',
+    playerGuid:     crypto.randomUUID(),
+    playerName:     generateDefaultName(),
+    highScores:     {},
+  };
 }
 
-const DEFAULT: RawSave = {
-  balance:    0,
-  upgrades:   {},
-  inventory:  {},
-  placed:     [],
-  playerGuid: '',
-  playerName: '',
-  highScores: {},
-};
+function migrate(parsed: any): RawSave {
+  // v1 has no schemaVersion and `placed` is an array.
+  const version = parsed?.schemaVersion ?? 1;
+  if (version === CURRENT_SCHEMA && !Array.isArray(parsed.placed)) {
+    return {
+      schemaVersion: CURRENT_SCHEMA,
+      balance:        parsed.balance        ?? 0,
+      upgrades:       parsed.upgrades       ?? {},
+      inventory:      parsed.inventory      ?? {},
+      placed:         parsed.placed         ?? {},
+      selectedHeapId: parsed.selectedHeapId ?? '',
+      playerGuid:     parsed.playerGuid     ?? crypto.randomUUID(),
+      playerName:     parsed.playerName     ?? generateDefaultName(),
+      highScores:     parsed.highScores     ?? {},
+      _legacyPlaced:  parsed._legacyPlaced,
+    };
+  }
+
+  // v1 migration.
+  const legacyArray: PlacedItemSave[] = Array.isArray(parsed?.placed) ? parsed.placed : [];
+  return {
+    schemaVersion: CURRENT_SCHEMA,
+    balance:        parsed.balance    ?? 0,
+    upgrades:       parsed.upgrades   ?? {},
+    inventory:      parsed.inventory  ?? {},
+    placed:         {},
+    selectedHeapId: '',
+    playerGuid:     parsed.playerGuid ?? crypto.randomUUID(),
+    playerName:     parsed.playerName ?? generateDefaultName(),
+    highScores:     parsed.highScores ?? {},
+    _legacyPlaced:  legacyArray.length > 0 ? legacyArray : undefined,
+  };
+}
 
 function load(): RawSave {
   if (_cache) return _cache;
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<RawSave>;
-      const result: RawSave = {
-        ...DEFAULT,
-        ...parsed,
-        inventory:  parsed.inventory  ?? {},
-        placed:     parsed.placed     ?? [],
-        highScores: parsed.highScores ?? {},
-        playerGuid: parsed.playerGuid ?? crypto.randomUUID(),
-        playerName: parsed.playerName ?? generateDefaultName(),
-      };
-      _cache = result;
-      return result;
+      const parsed = JSON.parse(raw);
+      const migrated = migrate(parsed);
+      _cache = migrated;
+      if ((parsed?.schemaVersion ?? 1) !== CURRENT_SCHEMA) persist(migrated);
+      return migrated;
     }
-  } catch { /* corrupted save — fall through to default */ }
-  const fresh: RawSave = {
-    ...DEFAULT,
-    upgrades:   {},
-    inventory:  {},
-    placed:     [],
-    highScores: {},
-    playerGuid: crypto.randomUUID(),
-    playerName: generateDefaultName(),
-  };
+  } catch { /* fall through */ }
+  const fresh = freshSave();
   _cache = fresh;
   return fresh;
 }
@@ -89,9 +104,7 @@ function persist(data: RawSave): void {
 
 // ── Balance ───────────────────────────────────────────────────────────────────
 
-export function getBalance(): number {
-  return load().balance;
-}
+export function getBalance(): number { return load().balance; }
 
 export function addBalance(amount: number): void {
   const data = load();
@@ -101,21 +114,16 @@ export function addBalance(amount: number): void {
 
 // ── Upgrades ──────────────────────────────────────────────────────────────────
 
-export function getUpgradeLevel(id: string): number {
-  return load().upgrades[id] ?? 0;
-}
+export function getUpgradeLevel(id: string): number { return load().upgrades[id] ?? 0; }
 
 export function purchaseUpgrade(id: string): boolean {
   const def = UPGRADE_DEFS.find(d => d.id === id);
   if (!def) return false;
-
-  const data  = load();
+  const data = load();
   const level = data.upgrades[id] ?? 0;
   if (level >= def.maxLevel) return false;
-
   const price = def.cost(level + 1);
   if (data.balance < price) return false;
-
   data.balance -= price;
   data.upgrades[id] = level + 1;
   persist(data);
@@ -124,9 +132,7 @@ export function purchaseUpgrade(id: string): boolean {
 
 // ── Inventory ─────────────────────────────────────────────────────────────────
 
-export function getItemQuantity(id: string): number {
-  return load().inventory[id] ?? 0;
-}
+export function getItemQuantity(id: string): number { return load().inventory[id] ?? 0; }
 
 export function addItem(id: string, qty = 1): void {
   const data = load();
@@ -154,38 +160,60 @@ export function purchaseItem(id: string): boolean {
   return true;
 }
 
-// ── Placed items ──────────────────────────────────────────────────────────────
+// ── Placed items (per heap) ──────────────────────────────────────────────────
 
-export function getPlaced(): PlacedItemSave[] {
-  return [...load().placed];
+export function getPlaced(heapId: string): PlacedItemSave[] {
+  return [...(load().placed[heapId] ?? [])];
 }
 
-export function addPlaced(item: PlacedItemSave): void {
+export function addPlaced(heapId: string, item: PlacedItemSave): void {
   const data = load();
-  data.placed.push(item);
+  if (!data.placed[heapId]) data.placed[heapId] = [];
+  data.placed[heapId].push(item);
   persist(data);
 }
 
-export function removePlaced(index: number): void {
+export function removePlaced(heapId: string, index: number): void {
   const data = load();
-  data.placed.splice(index, 1);
+  const list = data.placed[heapId];
+  if (!list) return;
+  list.splice(index, 1);
   persist(data);
 }
 
-export function updatePlacedMeta(index: number, meta: Record<string, number>): void {
+export function updatePlacedMeta(heapId: string, index: number, meta: Record<string, number>): void {
   const data = load();
-  if (data.placed[index]) {
-    data.placed[index].meta = meta;
-    persist(data);
-  }
+  const list = data.placed[heapId];
+  if (!list || !list[index]) return;
+  list[index].meta = meta;
+  persist(data);
 }
 
-export function removeExpiredPlaced(): void {
+export function removeExpiredPlaced(heapId: string): void {
   const data = load();
-  data.placed = data.placed.filter(p => {
+  const list = data.placed[heapId];
+  if (!list) return;
+  data.placed[heapId] = list.filter(p => {
     if (p.meta?.spawnsLeft !== undefined) return p.meta.spawnsLeft > 0;
     return true;
   });
+  persist(data);
+}
+
+// ── Legacy migration handoff ─────────────────────────────────────────────────
+
+export function finalizeLegacyPlaced(heapId: string): void {
+  const data = load();
+  if (!data._legacyPlaced || data._legacyPlaced.length === 0) {
+    if (data._legacyPlaced) {
+      delete data._legacyPlaced;
+      persist(data);
+    }
+    return;
+  }
+  const existing = data.placed[heapId] ?? [];
+  data.placed[heapId] = [...existing, ...data._legacyPlaced];
+  delete data._legacyPlaced;
   persist(data);
 }
 
@@ -197,6 +225,18 @@ export function resetAllData(): void {
 }
 
 // ── Player config ─────────────────────────────────────────────────────────────
+
+export interface PlayerConfig {
+  maxAirJumps:         number;
+  wallJump:            boolean;
+  dash:                boolean;
+  dive:                boolean;
+  moneyMultiplier:     number;
+  jumpBoost:           number;
+  stompBonus:          number;
+  peakMultiplier:      number;
+  maxWalkableSlopeDeg: number;
+}
 
 export function getPlayerConfig(): PlayerConfig {
   const jl = getUpgradeLevel('jump_boost');
@@ -217,19 +257,24 @@ export function getPlayerConfig(): PlayerConfig {
 
 // ── Player identity ───────────────────────────────────────────────────────────
 
-export function getPlayerGuid(): string {
-  return load().playerGuid;
-}
-
-export function getPlayerName(): string {
-  return load().playerName;
-}
+export function getPlayerGuid(): string { return load().playerGuid; }
+export function getPlayerName(): string { return load().playerName; }
 
 export function setPlayerName(name: string): void {
   const trimmed = name.trim().slice(0, 20);
   if (!trimmed) return;
   const data = load();
   data.playerName = trimmed;
+  persist(data);
+}
+
+// ── Selected heap ────────────────────────────────────────────────────────────
+
+export function getSelectedHeapId(): string { return load().selectedHeapId; }
+
+export function setSelectedHeapId(id: string): void {
+  const data = load();
+  data.selectedHeapId = id;
   persist(data);
 }
 
@@ -244,3 +289,9 @@ export function setLocalHighScore(heapId: string, score: number): void {
   data.highScores[heapId] = score;
   persist(data);
 }
+
+// ── Test helpers ──────────────────────────────────────────────────────────────
+
+export function resetCacheForTests(): void { _cache = null; }
+export function getLegacyPlacedForTests(): PlacedItemSave[] | undefined { return load()._legacyPlaced; }
+export function getSchemaVersionForTests(): number { return load().schemaVersion; }
