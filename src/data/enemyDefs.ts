@@ -22,6 +22,10 @@ export interface EnemyDef {
   spawnChanceMin: number; // probability at spawnStartY (0–1)
   spawnChanceMax: number; // probability at spawnRampEndY (0–1)
   spawnRampEndY: number;  // Y at which spawnChanceMax is reached; -1 = ramp never arrives
+
+  // Score tracking
+  displayName: string;  // human-readable name shown in score breakdown
+  scoreValue: number;   // score points awarded per kill
 }
 
 export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
@@ -38,6 +42,8 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
     spawnChanceMin: 0.15,
     spawnChanceMax: 0.35,
     spawnRampEndY: 10000,
+    displayName: 'RAT',
+    scoreValue: 100,
   },
   ghost: {
     kind: 'ghost',
@@ -52,5 +58,7 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
     spawnChanceMin: 0.25,
     spawnChanceMax: 0.5,
     spawnRampEndY: 5000,
+    displayName: 'VULTURE',
+    scoreValue: 200,
   },
 };

@@ -101,6 +101,8 @@ const baseDef: EnemyDef = {
   spawnChanceMin: 0.1,
   spawnChanceMax: 0.5,
   spawnRampEndY: 10000,
+  displayName: 'TEST',
+  scoreValue: 50,
 };
 
 describe('spawnChance', () => {
