@@ -24,8 +24,9 @@ export class MenuScene extends Phaser.Scene {
   private twinkleStars: Phaser.GameObjects.Graphics[] = [];
   private resetConfirmed = false;
   private playerNameText!: Phaser.GameObjects.Text;
-  private heapPickerBg!: Phaser.GameObjects.Graphics;
-  private heapPickerText!: Phaser.GameObjects.Text;
+  private heapPickerBg!:    Phaser.GameObjects.Graphics;
+  private heapPickerText!:  Phaser.GameObjects.Text;
+  private heapPickerStars!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -51,6 +52,7 @@ export class MenuScene extends Phaser.Scene {
     this.createPrompts(im);
     this.createHeapPicker();
     this.createSettingsButton();
+    if (!im.isMobile) this.createHotkeyLegend();
     this.runEntranceSequence();
     this.registerInput();
   }
@@ -359,13 +361,24 @@ export class MenuScene extends Phaser.Scene {
     this.heapPickerBg.lineStyle(1, 0x8899bb, 0.6);
     this.heapPickerBg.strokeRoundedRect(GAME_WIDTH / 2 - 160, 480, 320, 48, 10);
 
-    const label = `\u25BE ${params.name}  ${formatDifficulty(params.difficulty)}`;
-    this.heapPickerText = this.add.text(GAME_WIDTH / 2, 504, label, {
-      fontSize: '16px',
-      color: '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 2,
-    }).setOrigin(0.5).setAlpha(0).setDepth(9);
+    const nameLabel  = `\u25BE ${params.name}  `;
+    const starsLabel = formatDifficulty(params.difficulty);
+
+    this.heapPickerText = this.add.text(0, 504, nameLabel, {
+      fontSize: '16px', color: '#ffffff',
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0, 0.5).setAlpha(0).setDepth(9);
+
+    this.heapPickerStars = this.add.text(0, 504, starsLabel, {
+      fontSize: '16px', color: '#ff9922',
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0, 0.5).setAlpha(0).setDepth(9);
+
+    // Center both texts together on the button
+    const totalW = this.heapPickerText.width + this.heapPickerStars.width;
+    const startX = GAME_WIDTH / 2 - totalW / 2;
+    this.heapPickerText.setX(startX);
+    this.heapPickerStars.setX(startX + this.heapPickerText.width);
 
     this.heapPickerText.setInteractive(
       new Phaser.Geom.Rectangle(-160, -24, 320, 48),
@@ -375,6 +388,22 @@ export class MenuScene extends Phaser.Scene {
   }
 
   // ── Settings button ──────────────────────────────────────────────────────────
+
+  private createHotkeyLegend(): void {
+    const keys = [
+      { key: 'Space', label: 'Start Run' },
+      { key: 'U',     label: 'Upgrades'  },
+      { key: 'S',     label: 'Store'     },
+      { key: 'H',     label: 'Heap'      },
+    ];
+    const parts = keys.map(k => `${k.key}: ${k.label}`).join('   ');
+    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 52, parts, {
+      fontSize:      '11px',
+      fontFamily:    'monospace',
+      color:         '#667799',
+      letterSpacing: 1,
+    }).setOrigin(0.5, 0.5).setDepth(9);
+  }
 
   private createSettingsButton(): void {
     const bx = GAME_WIDTH - 22;
@@ -476,7 +505,7 @@ export class MenuScene extends Phaser.Scene {
     this.tweens.add({ targets: this.titleText,      alpha: 1,    duration: 500, delay: 1000 });
     this.tweens.add({ targets: this.taglineText,    alpha: 1,    duration: 400, delay: 1300 });
     this.tweens.add({ targets: [this.balanceText, this.playerNameText], alpha: 1, duration: 300, delay: 1500 });
-    this.tweens.add({ targets: [this.heapPickerBg, this.heapPickerText], alpha: 1, duration: 300, delay: 1600 });
+    this.tweens.add({ targets: [this.heapPickerBg, this.heapPickerText, this.heapPickerStars], alpha: 1, duration: 300, delay: 1600 });
     this.tweens.add({ targets: this.startBg,   alpha: 1, duration: 400, delay: 1700 });
     this.tweens.add({
       targets: this.startText,
@@ -562,6 +591,7 @@ export class MenuScene extends Phaser.Scene {
       this.storeText.once('pointerup', () => this.scene.start('StoreScene'));
 
       this.input.keyboard!.once('keydown-S', () => this.scene.start('StoreScene'));
+      this.input.keyboard!.once('keydown-H', () => this.scene.start('HeapSelectScene'));
     });
   }
 }
