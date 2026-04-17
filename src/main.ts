@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
 import { MenuScene } from './scenes/MenuScene';
+import { HeapSelectScene } from './scenes/HeapSelectScene';
 import { GameScene } from './scenes/GameScene';
 import { ScoreScene } from './scenes/ScoreScene';
 import { UpgradeScene } from './scenes/UpgradeScene';
@@ -31,7 +32,7 @@ const config: Phaser.Types.Core.GameConfig = {
     target: 60,
     smoothStep: true,
   },
-  scene: [BootScene, MenuScene, GameScene, ScoreScene, UpgradeScene, StoreScene, TexturePreviewScene],
+  scene: [BootScene, MenuScene, HeapSelectScene, GameScene, ScoreScene, UpgradeScene, StoreScene, TexturePreviewScene],
   parent: 'game',
 };
 

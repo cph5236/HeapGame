@@ -3,6 +3,8 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
 import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
+import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
+import { formatDifficulty } from '../ui/DifficultyStars';
 
 export class MenuScene extends Phaser.Scene {
   private farSilhouette!: Phaser.GameObjects.Graphics;
@@ -22,6 +24,8 @@ export class MenuScene extends Phaser.Scene {
   private twinkleStars: Phaser.GameObjects.Graphics[] = [];
   private resetConfirmed = false;
   private playerNameText!: Phaser.GameObjects.Text;
+  private heapPickerBg!: Phaser.GameObjects.Graphics;
+  private heapPickerText!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -45,6 +49,7 @@ export class MenuScene extends Phaser.Scene {
     this.createBalanceText();
     this.createPlayerName();
     this.createPrompts(im);
+    this.createHeapPicker();
     this.createSettingsButton();
     this.runEntranceSequence();
     this.registerInput();
@@ -343,6 +348,32 @@ export class MenuScene extends Phaser.Scene {
     }
   }
 
+  // ── Heap picker ──────────────────────────────────────────────────────────
+
+  private createHeapPicker(): void {
+    const params = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
+
+    this.heapPickerBg = this.add.graphics().setDepth(8).setAlpha(0);
+    this.heapPickerBg.fillStyle(0x000000, 0.5);
+    this.heapPickerBg.fillRoundedRect(GAME_WIDTH / 2 - 160, 480, 320, 48, 10);
+    this.heapPickerBg.lineStyle(1, 0x8899bb, 0.6);
+    this.heapPickerBg.strokeRoundedRect(GAME_WIDTH / 2 - 160, 480, 320, 48, 10);
+
+    const label = `\u25BE ${params.name}  ${formatDifficulty(params.difficulty)}`;
+    this.heapPickerText = this.add.text(GAME_WIDTH / 2, 504, label, {
+      fontSize: '16px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
+    }).setOrigin(0.5).setAlpha(0).setDepth(9);
+
+    this.heapPickerText.setInteractive(
+      new Phaser.Geom.Rectangle(-160, -24, 320, 48),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    this.heapPickerText.on('pointerup', () => this.scene.start('HeapSelectScene'));
+  }
+
   // ── Settings button ──────────────────────────────────────────────────────────
 
   private createSettingsButton(): void {
@@ -445,6 +476,7 @@ export class MenuScene extends Phaser.Scene {
     this.tweens.add({ targets: this.titleText,      alpha: 1,    duration: 500, delay: 1000 });
     this.tweens.add({ targets: this.taglineText,    alpha: 1,    duration: 400, delay: 1300 });
     this.tweens.add({ targets: [this.balanceText, this.playerNameText], alpha: 1, duration: 300, delay: 1500 });
+    this.tweens.add({ targets: [this.heapPickerBg, this.heapPickerText], alpha: 1, duration: 300, delay: 1600 });
     this.tweens.add({ targets: this.startBg,   alpha: 1, duration: 400, delay: 1700 });
     this.tweens.add({
       targets: this.startText,
@@ -500,7 +532,8 @@ export class MenuScene extends Phaser.Scene {
   private registerInput(): void {
     this.time.delayedCall(100, () => {
       const startGame = (): void => {
-        const hasCheckpoint = getPlaced().some(
+        const activeHeapId = (this.game.registry.get('activeHeapId') as string) ?? '';
+        const hasCheckpoint = getPlaced(activeHeapId).some(
           p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
         );
         this.scene.start('GameScene', hasCheckpoint ? { useCheckpoint: true } : undefined);

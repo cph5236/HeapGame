@@ -17,7 +17,7 @@ import type { Vertex } from '../systems/HeapPolygon';
 import { generateAllTextures } from '../entities/TextureGenerators';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
-import { getSelectedHeapId, setSelectedHeapId } from '../systems/SaveData';
+import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced } from '../systems/SaveData';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -85,6 +85,7 @@ export class BootScene extends Phaser.Scene {
                         || a.createdAt.localeCompare(b.createdAt))[0];
 
         setSelectedHeapId(pick.id);
+        finalizeLegacyPlaced(pick.id);
         this.game.registry.set('activeHeapId', pick.id);
         this.game.registry.set('heapParams',   pick.params);
 
