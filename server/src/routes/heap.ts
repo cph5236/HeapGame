@@ -157,7 +157,7 @@ export function heapRoutes(db: HeapDB): Hono {
     } satisfies GetHeapResponse);
   });
 
-  // PUT /heaps/:id/reset — clear live zone and reset version to 1
+  // PUT /heaps/:id/reset — clear live zone, reset version to 1, optionally update params
   app.put('/:id/reset', async (c) => {
     const id = c.req.param('id');
     const row = await db.getHeap(id);
@@ -165,6 +165,20 @@ export function heapRoutes(db: HeapDB): Hono {
 
     const previousVersion = row.version;
     await db.updateHeap(id, row.base_id, 1, [], 0);
+
+    let bodyParams: Partial<HeapParams> = {};
+    try { bodyParams = await c.req.json<Partial<HeapParams>>(); } catch { /* no body */ }
+
+    if (Object.keys(bodyParams).length > 0) {
+      const merged: HeapParams = {
+        name:          bodyParams.name          ?? row.name,
+        difficulty:    bodyParams.difficulty     ?? row.difficulty,
+        spawnRateMult: bodyParams.spawnRateMult  ?? row.spawn_rate_mult,
+        coinMult:      bodyParams.coinMult       ?? row.coin_mult,
+        scoreMult:     bodyParams.scoreMult      ?? row.score_mult,
+      };
+      await db.updateHeapParams(id, merged);
+    }
 
     return c.json({
       id,

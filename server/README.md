@@ -22,7 +22,10 @@ A Cloudflare Worker that serves as the backend for Heap. Built with [Hono](https
 ## Local Development
 
 ```bash
-# From server/
+# From server/ — apply schema to local D1 replica first
+npx wrangler d1 execute heap --local --file=schema.sql
+
+# Then start the worker
 npm run dev
 ```
 
