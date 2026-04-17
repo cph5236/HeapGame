@@ -142,3 +142,17 @@ describe('spawnChance', () => {
     expect(spawnChance(def, 5000)).toBeCloseTo(0.1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// scaleSpawnChance — exported for testing
+// Scales a spawn chance by a multiplier and clamps to [0, 1].
+// ---------------------------------------------------------------------------
+import { scaleSpawnChance } from '../EnemyManager';
+
+describe('spawnChance with spawnRateMult', () => {
+  it('scaleSpawnChance scales linearly and clamps at 1', () => {
+    expect(scaleSpawnChance(0.2, 2)).toBeCloseTo(0.4);
+    expect(scaleSpawnChance(0.2, 10)).toBe(1);
+    expect(scaleSpawnChance(0.2, 0.5)).toBeCloseTo(0.1);
+  });
+});

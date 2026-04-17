@@ -62,15 +62,15 @@ async function buildPolygon(heapId: string, cache: HeapCache): Promise<Vertex[]>
 
 export class HeapClient {
   /**
-   * Fetch all heap IDs from the server.
+   * Fetch all heap summaries from the server.
    * Returns [] on network failure.
    */
-  static async list(): Promise<string[]> {
+  static async list(): Promise<import('../../shared/heapTypes').HeapSummary[]> {
     try {
       const res = await fetch(`${SERVER_URL}/heaps`);
       if (!res.ok) return [];
       const data = (await res.json()) as ListHeapsResponse;
-      return data.heaps.map(h => h.id);
+      return data.heaps;
     } catch {
       return [];
     }

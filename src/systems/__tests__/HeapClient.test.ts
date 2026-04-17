@@ -36,38 +36,34 @@ const { HeapClient } = await import('../HeapClient');
 // ── list() ────────────────────────────────────────────────────────────────────
 
 describe('HeapClient.list', () => {
-  it('returns array of IDs from GET /heaps', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
+  it('returns heap summaries with params from server', async () => {
+    (global as any).fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         heaps: [
-          { id: 'aaa', version: 1, createdAt: '2026-01-01T00:00:00.000Z' },
-          { id: 'bbb', version: 2, createdAt: '2026-01-02T00:00:00.000Z' },
+          {
+            id: 'abc',
+            version: 3,
+            createdAt: '2026-04-01T00:00:00.000Z',
+            params: { name: 'A', difficulty: 2, spawnRateMult: 1, coinMult: 1, scoreMult: 1 },
+          },
         ],
       }),
-    }));
-
-    const ids = await HeapClient.list();
-
-    expect(ids).toEqual(['aaa', 'bbb']);
-    const fetchMock = vi.mocked(fetch);
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/heaps`);
+    });
+    const summaries = await HeapClient.list();
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0].id).toBe('abc');
+    expect(summaries[0].params.name).toBe('A');
   });
 
-  it('returns [] on network error', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('network down')));
-
-    const ids = await HeapClient.list();
-
-    expect(ids).toEqual([]);
+  it('returns [] when fetch fails', async () => {
+    (global as any).fetch = vi.fn().mockRejectedValue(new Error('net'));
+    expect(await HeapClient.list()).toEqual([]);
   });
 
-  it('returns [] when server responds with non-ok status', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: false, status: 500 }));
-
-    const ids = await HeapClient.list();
-
-    expect(ids).toEqual([]);
+  it('returns [] when response is not ok', async () => {
+    (global as any).fetch = vi.fn().mockResolvedValue({ ok: false });
+    expect(await HeapClient.list()).toEqual([]);
   });
 });
 

@@ -12,12 +12,17 @@ CREATE TABLE IF NOT EXISTS heap_base (
 );
 
 CREATE TABLE IF NOT EXISTS heap (
-  id         TEXT PRIMARY KEY,
-  base_id    TEXT NOT NULL,
-  live_zone  TEXT NOT NULL DEFAULT '[]',
-  freeze_y   REAL NOT NULL DEFAULT 0,
-  version    INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL
+  id              TEXT PRIMARY KEY,
+  base_id         TEXT NOT NULL,
+  live_zone       TEXT NOT NULL DEFAULT '[]',
+  freeze_y        REAL NOT NULL DEFAULT 0,
+  version         INTEGER NOT NULL DEFAULT 1,
+  created_at      TEXT NOT NULL,
+  name            TEXT NOT NULL DEFAULT 'Unnamed Heap',
+  difficulty      REAL NOT NULL DEFAULT 1.0,
+  spawn_rate_mult REAL NOT NULL DEFAULT 1.0,
+  coin_mult       REAL NOT NULL DEFAULT 1.0,
+  score_mult      REAL NOT NULL DEFAULT 1.0
 );
 
 -- High scores — one row per (heap, player), enforced by PRIMARY KEY

@@ -25,6 +25,7 @@ export class PlaceableManager {
   private readonly player:        Player;
   private readonly walkableGroup: Phaser.Physics.Arcade.StaticGroup;
   private readonly wallGroup:     Phaser.Physics.Arcade.StaticGroup;
+  private readonly _heapId:       string;
 
   private state:          PlacementState = PlacementState.Closed;
   private placingItemId:  string = '';
@@ -55,11 +56,13 @@ export class PlaceableManager {
     player:        Player,
     walkableGroup: Phaser.Physics.Arcade.StaticGroup,
     wallGroup:     Phaser.Physics.Arcade.StaticGroup,
+    heapId:        string,
   ) {
     this.scene         = scene;
     this.player        = player;
     this.walkableGroup = walkableGroup;
     this.wallGroup     = wallGroup;
+    this._heapId       = heapId;
 
     this.checkpointGroup = scene.physics.add.staticGroup();
     this.createUI();
@@ -179,7 +182,7 @@ export class PlaceableManager {
   // ── Spawn saved items on run start ───────────────────────────────────────────
 
   private spawnSavedItems(): void {
-    const placed = getPlaced();
+    const placed = getPlaced(this._heapId);
     placed.forEach((save, index) => {
       switch (save.id) {
         case 'ladder':     this.spawnLadderBody(save, index); break;
@@ -368,30 +371,30 @@ export class PlaceableManager {
     switch (this.placingItemId) {
       case 'ladder':
         if (!spendItem('ladder')) return;
-        addPlaced(save);
-        this.spawnLadderBody(save, getPlaced().length - 1);
+        addPlaced(this._heapId, save);
+        this.spawnLadderBody(save, getPlaced(this._heapId).length - 1);
         break;
       case 'ibeam':
         if (!spendItem('ibeam')) return;
-        addPlaced(save);
-        this.spawnIBeamBody(save, getPlaced().length - 1);
+        addPlaced(this._heapId, save);
+        this.spawnIBeamBody(save, getPlaced(this._heapId).length - 1);
         break;
       case 'checkpoint': {
         if (!spendItem('checkpoint')) return;
         // Remove any existing checkpoint
-        const existing = getPlaced();
+        const existing = getPlaced(this._heapId);
         const cpIdx = existing.findIndex(p => p.id === 'checkpoint');
         if (cpIdx !== -1) {
           const body = this.spawnedBodies.find(b => b.saveIndex === cpIdx);
           if (body) { body.object.destroy(); }
           this.spawnedBodies = this.spawnedBodies.filter(b => b.saveIndex !== cpIdx);
-          removePlaced(cpIdx);
+          removePlaced(this._heapId, cpIdx);
           // Re-index remaining bodies
           this.spawnedBodies.forEach(b => { if (b.saveIndex > cpIdx) b.saveIndex--; });
         }
         save.meta = { spawnsLeft: 5, variant: Math.random() < 0.5 ? 1 : 2 };
-        addPlaced(save);
-        this.spawnCheckpointBody(save, getPlaced().length - 1);
+        addPlaced(this._heapId, save);
+        this.spawnCheckpointBody(save, getPlaced(this._heapId).length - 1);
         break;
       }
     }

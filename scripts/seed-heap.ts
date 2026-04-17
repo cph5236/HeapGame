@@ -2,11 +2,22 @@
  * Seed script — generates an initial heap polygon and uploads it to the server.
  *
  * Usage:
- *   npm run seed                                                    # create new heap
- *   VITE_HEAP_SERVER_URL=https://heap-server.workers.dev npm run seed   # target prod
- *   OVERWRITE=true TARGET_HEAP_ID=<guid> npm run seed              # reset existing heap
- *   VERBOSE=true npm run seed                                       # show polygon details
- */
+ *   npm run seed                                                                    # create new heap (random seed)
+ *   NAME="Downtown Dump" DIFFICULTY=3 SPAWN_MULT=1.5 COIN_MULT=1.25 SCORE_MULT=1.25 npm run seed
+ *   SEED=42 NAME="Horder's Heap" DIFFICULTY=2 npm run seed                         # fixed map seed
+ *   VITE_HEAP_SERVER_URL=https://heap-server.workers.dev npm run seed              # target prod
+ *   OVERWRITE=true TARGET_HEAP_ID=<guid> npm run seed                              # reset existing heap
+ *   VERBOSE=true npm run seed                                                       # show polygon details
+ 
+      SEED SCRIPT WITH OVERWRITE:
+        1. Run with OVERWRITE=true and a TARGET_HEAP_ID to reset an existing heap to empty.
+        2. The response will include the heap id and new version number.
+        3. Use that heap id for TARGET_HEAP_ID in future runs to overwrite the same heap.
+        
+        --Script example:
+        NAME="Downtown Dump" DIFFICULTY=3.0 SPAWN_MULT=1.5 COIN_MULT=1.25 SCORE_MULT=1.25 OVERWRITE=true TARGET_HEAP_ID=<guid> npm run seed
+
+*/
 
 import { HeapState } from '../src/systems/HeapState';
 import { OBJECT_DEFS } from '../src/data/heapObjectDefs';
@@ -16,23 +27,32 @@ import {
   computeBandPolygon,
   simplifyPolygon,
 } from '../src/systems/HeapPolygon';
-import { WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX, MOCK_SEED } from '../src/constants';
+import { WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX } from '../src/constants';
 import type { HeapEntry } from '../src/data/heapTypes';
 import type { CreateHeapResponse, ResetHeapResponse } from '../shared/heapTypes';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const SERVER_URL = process.env.VITE_HEAP_SERVER_URL ?? 'http://localhost:8787';
-const NUM_BLOCKS = 200;
+const NUM_BLOCKS = 400;
 const SIMPLIFY_EPSILON = 2;
 const OVERWRITE = process.env.OVERWRITE === 'true';
 const TARGET_HEAP_ID = process.env.TARGET_HEAP_ID ?? '';
 const VERBOSE = process.env.VERBOSE === 'true';
 
+// Heap params from env
+const PARAM_NAME      = process.env.NAME       ?? '';
+const PARAM_DIFF      = process.env.DIFFICULTY ? Number(process.env.DIFFICULTY) : 1.0;
+const PARAM_SPAWN     = process.env.SPAWN_MULT ? Number(process.env.SPAWN_MULT) : 1.0;
+const PARAM_COIN      = process.env.COIN_MULT  ? Number(process.env.COIN_MULT)  : 1.0;
+const PARAM_SCORE     = process.env.SCORE_MULT ? Number(process.env.SCORE_MULT) : 1.0;
+const PARAM_SEED      = process.env.SEED       ? Number(process.env.SEED)       : Math.floor(Math.random() * 1_000_000);
+
 // ── Generate HeapEntry[] via seeded PRNG ──────────────────────────────────────
 
 function buildHeap(): HeapEntry[] {
-  const state = new HeapState(MOCK_HEAP_HEIGHT_PX, MOCK_SEED);
+  console.log(`Generating heap entries with seed ${PARAM_SEED}…`);
+  const state = new HeapState(MOCK_HEAP_HEIGHT_PX, PARAM_SEED);
   const entries: HeapEntry[] = [];
 
   for (let i = 0; i < NUM_BLOCKS; i++) {
@@ -86,7 +106,18 @@ async function seed(): Promise<void> {
     const url = `${SERVER_URL}/heaps/${TARGET_HEAP_ID}/reset`;
     console.log(`Resetting heap ${TARGET_HEAP_ID} at ${url}…`);
 
-    const res = await fetch(url, { method: 'PUT' });
+    const params = {
+      name:          PARAM_NAME || undefined,
+      difficulty:    PARAM_DIFF,
+      spawnRateMult: PARAM_SPAWN,
+      coinMult:      PARAM_COIN,
+      scoreMult:     PARAM_SCORE,
+    };
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
     if (!res.ok) {
       const body = await res.text();
       console.error(`  ✗ ${res.status}: ${body}`);
@@ -98,7 +129,7 @@ async function seed(): Promise<void> {
     return;
   }
 
-  console.log(`Building heap with ${NUM_BLOCKS} blocks…`);
+  console.log(`Building heap with ${NUM_BLOCKS} blocks… (seed=${PARAM_SEED})`);
   const entries = buildHeap();
   if (VERBOSE) {
     const xVals = entries.map(e => e.x).sort((a, b) => a - b);
@@ -121,10 +152,19 @@ async function seed(): Promise<void> {
   const url = `${SERVER_URL}/heaps`;
   console.log(`POSTing to ${url}…`);
 
+  const params = {
+    name:          PARAM_NAME || `Heap #${Date.now().toString(36).slice(-4)}`,
+    difficulty:    PARAM_DIFF,
+    spawnRateMult: PARAM_SPAWN,
+    coinMult:      PARAM_COIN,
+    scoreMult:     PARAM_SCORE,
+  };
+  console.log('Heap params:', params);
+
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ vertices }),
+    body: JSON.stringify({ vertices, params }),
   });
 
   if (!res.ok) {

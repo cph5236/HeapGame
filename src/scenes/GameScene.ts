@@ -35,6 +35,8 @@ import { TRASH_WALL_DEF } from '../data/trashWallDef';
 import type { EnemyKind } from '../entities/Enemy';
 import { buildRunScore } from '../systems/buildRunScore';
 import { ENEMY_DEFS } from '../data/enemyDefs';
+import type { HeapParams } from '../../shared/heapTypes';
+import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -71,6 +73,7 @@ export class GameScene extends Phaser.Scene {
   private checkpointRespawn = false;
   private _runKills:     Partial<Record<EnemyKind, number>> = {};
   private _runStartTime: number | null = null;
+  private _heapParams!: HeapParams;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -104,13 +107,14 @@ export class GameScene extends Phaser.Scene {
     this.chunkRenderer = new HeapChunkRenderer(this);
 
     const polygon = (this.game.registry.get('heapPolygon') as Vertex[] | undefined) ?? [];
-    const heapId = (this.game.registry.get('heapId') as string | undefined) ?? '';
+    const heapId = (this.game.registry.get('activeHeapId') as string | undefined) ?? '';
     this._heapId = heapId;
     this._liveZoneBottomY = HeapClient.getLiveZoneBottomY(heapId);
+    this._heapParams = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
 
     // Enemies — constructed and wired BEFORE polygon/generation calls so that
     // onBandLoaded and onPlatformSpawned fire correctly during initial load.
-    this.enemyManager = new EnemyManager(this);
+    this.enemyManager = new EnemyManager(this, this._heapParams.spawnRateMult);
 
     // Spawn player at world floor (left clear zone) — player climbs up through the heap
     this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
@@ -140,14 +144,14 @@ export class GameScene extends Phaser.Scene {
 
     // If restarted via checkpoint respawn, reposition player and consume one spawn
     if (this.checkpointRespawn) {
-      const placed = getPlaced();
+      const placed = getPlaced(this._heapId);
       const cpIdx  = placed.findIndex(p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0);
       if (cpIdx !== -1) {
         const cp = placed[cpIdx];
         this.player.sprite.setPosition(cp.x, cp.y - 50);
         const newSpawns = (cp.meta?.spawnsLeft ?? 0) - 1;
-        updatePlacedMeta(cpIdx, { spawnsLeft: newSpawns });
-        if (newSpawns <= 0) removeExpiredPlaced();
+        updatePlacedMeta(this._heapId, cpIdx, { spawnsLeft: newSpawns });
+        if (newSpawns <= 0) removeExpiredPlaced(this._heapId);
         this.invincible = true;
         this.time.delayedCall(PLAYER_INVINCIBLE_MS * 5, () => { this.invincible = false; });
       }
@@ -157,7 +161,7 @@ export class GameScene extends Phaser.Scene {
       this.player.freeze();
       this.player.sprite.setDepth(4); // visually swallowed — below wall body (depth 5)
       this.time.delayedCall(800, () => {
-        const checkpointAvailable = getPlaced().some(
+        const checkpointAvailable = getPlaced(this._heapId).some(
           p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
         );
         const baseHeightPx = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
@@ -166,6 +170,7 @@ export class GameScene extends Phaser.Scene {
           { baseHeightPx, kills: this._runKills, elapsedMs },
           ENEMY_DEFS,
           true,
+          this._heapParams.scoreMult,
         );
         this.scene.launch('ScoreScene', {
           score:        runResult.finalScore,
@@ -176,6 +181,7 @@ export class GameScene extends Phaser.Scene {
           baseHeightPx,
           kills:        this._runKills,
           elapsedMs,
+          heapParams:   this._heapParams,
         });
         this.scene.pause();
       });
@@ -264,7 +270,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // PlaceableManager — items (shields, checkpoints, etc.)
-    this.placeableManager = new PlaceableManager(this, this.player, this.heapWalkableGroup, this.heapWallGroup);
+    this.placeableManager = new PlaceableManager(this, this.player, this.heapWalkableGroup, this.heapWallGroup, this._heapId);
 
     // HUD: ability indicators (dash bar, air jumps, wall jump)
     this.hud = new HUD(this, this.player, this.placeableManager);
@@ -430,6 +436,7 @@ export class GameScene extends Phaser.Scene {
       { baseHeightPx, kills: this._runKills, elapsedMs },
       ENEMY_DEFS,
       false,
+      this._heapParams.scoreMult,
     );
     this.time.delayedCall(2000, () => {
       void appendDone.then(() => {
@@ -440,6 +447,7 @@ export class GameScene extends Phaser.Scene {
           baseHeightPx,
           kills:        this._runKills,
           elapsedMs,
+          heapParams:   this._heapParams,
         });
         this.scene.pause();
       });
@@ -478,7 +486,7 @@ export class GameScene extends Phaser.Scene {
 
     this.player.refundAirJump();
     this.player.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
-    const stompReward = this.playerConfig.stompBonus;
+    const stompReward = Math.round(this.playerConfig.stompBonus * this._heapParams.coinMult);
     addBalance(stompReward);
 
     const marker = this.add.text(stompX, stompY - 16, `+${stompReward}`, {
@@ -522,7 +530,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const checkpointAvailable = getPlaced().some(
+    const checkpointAvailable = getPlaced(this._heapId).some(
       p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
     );
     const baseHeightPx = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
@@ -531,6 +539,7 @@ export class GameScene extends Phaser.Scene {
       { baseHeightPx, kills: this._runKills, elapsedMs },
       ENEMY_DEFS,
       true,
+      this._heapParams.scoreMult,
     );
     this.scene.launch('ScoreScene', {
       score:        runResult.finalScore,
@@ -541,6 +550,7 @@ export class GameScene extends Phaser.Scene {
       baseHeightPx,
       kills:        this._runKills,
       elapsedMs,
+      heapParams:   this._heapParams,
     });
     this.scene.pause();
   };

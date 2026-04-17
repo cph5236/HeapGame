@@ -19,6 +19,12 @@ import {
   setPlayerName,
   getLocalHighScore,
   setLocalHighScore,
+  getSelectedHeapId,
+  setSelectedHeapId,
+  finalizeLegacyPlaced,
+  resetCacheForTests,
+  getLegacyPlacedForTests,
+  getSchemaVersionForTests,
 } from '../SaveData';
 
 // Stub localStorage — vitest runs in node environment
@@ -29,6 +35,7 @@ beforeAll(() => {
       getItem:    (k: string) => store[k] ?? null,
       setItem:    (k: string, v: string) => { store[k] = v; },
       removeItem: (k: string) => { delete store[k]; },
+      clear:      () => { Object.keys(store).forEach(k => delete store[k]); },
     },
     configurable: true,
   });
@@ -120,61 +127,67 @@ describe('purchaseItem', () => {
 // ── Placed items ──────────────────────────────────────────────────────────────
 
 describe('getPlaced / addPlaced / removePlaced', () => {
+  const heapId = 'test-heap';
+
   it('returns empty array by default', () => {
-    expect(getPlaced()).toEqual([]);
+    expect(getPlaced(heapId)).toEqual([]);
   });
 
   it('addPlaced appends an item', () => {
-    addPlaced({ id: 'ladder', x: 100, y: 200 });
-    expect(getPlaced()).toHaveLength(1);
-    expect(getPlaced()[0]).toMatchObject({ id: 'ladder', x: 100, y: 200 });
+    addPlaced(heapId, { id: 'ladder', x: 100, y: 200 });
+    expect(getPlaced(heapId)).toHaveLength(1);
+    expect(getPlaced(heapId)[0]).toMatchObject({ id: 'ladder', x: 100, y: 200 });
   });
 
   it('removePlaced removes by index', () => {
-    addPlaced({ id: 'ladder', x: 100, y: 200 });
-    addPlaced({ id: 'ibeam', x: 300, y: 400 });
-    removePlaced(0);
-    const placed = getPlaced();
+    addPlaced(heapId, { id: 'ladder', x: 100, y: 200 });
+    addPlaced(heapId, { id: 'ibeam', x: 300, y: 400 });
+    removePlaced(heapId, 0);
+    const placed = getPlaced(heapId);
     expect(placed).toHaveLength(1);
     expect(placed[0].id).toBe('ibeam');
   });
 
   it('getPlaced returns a copy (mutating it does not affect save)', () => {
-    addPlaced({ id: 'ladder', x: 100, y: 200 });
-    const copy = getPlaced();
+    addPlaced(heapId, { id: 'ladder', x: 100, y: 200 });
+    const copy = getPlaced(heapId);
     copy.push({ id: 'ibeam', x: 0, y: 0 });
-    expect(getPlaced()).toHaveLength(1);
+    expect(getPlaced(heapId)).toHaveLength(1);
   });
 });
 
 describe('updatePlacedMeta', () => {
+  const heapId = 'test-heap';
+
   it('updates meta on a placed item', () => {
-    addPlaced({ id: 'checkpoint', x: 50, y: 50, meta: { spawnsLeft: 5 } });
-    updatePlacedMeta(0, { spawnsLeft: 3 });
-    expect(getPlaced()[0].meta?.spawnsLeft).toBe(3);
+    addPlaced(heapId, { id: 'checkpoint', x: 50, y: 50, meta: { spawnsLeft: 5 } });
+    updatePlacedMeta(heapId, 0, { spawnsLeft: 3 });
+    expect(getPlaced(heapId)[0].meta?.spawnsLeft).toBe(3);
   });
 
   it('does nothing for out-of-bounds index', () => {
-    addPlaced({ id: 'checkpoint', x: 50, y: 50 });
-    updatePlacedMeta(99, { spawnsLeft: 0 });
-    expect(getPlaced()).toHaveLength(1);
+    addPlaced(heapId, { id: 'checkpoint', x: 50, y: 50 });
+    updatePlacedMeta(heapId, 99, { spawnsLeft: 0 });
+    expect(getPlaced(heapId)).toHaveLength(1);
   });
 });
 
 describe('removeExpiredPlaced', () => {
+  const heapId = 'test-heap';
+
   it('removes placed items where spawnsLeft === 0', () => {
-    addPlaced({ id: 'checkpoint', x: 0, y: 0, meta: { spawnsLeft: 0 } });
-    addPlaced({ id: 'ladder', x: 0, y: 0 }); // no meta — not expired
-    removeExpiredPlaced();
-    const placed = getPlaced();
+    addPlaced(heapId, { id: 'checkpoint', x: 0, y: 0, meta: { spawnsLeft: 0 } });
+    addPlaced(heapId, { id: 'ladder', x: 0, y: 0 }); // no meta — not expired
+    removeExpiredPlaced(heapId);
+    const placed = getPlaced(heapId);
     expect(placed).toHaveLength(1);
     expect(placed[0].id).toBe('ladder');
   });
 
   it('keeps items with spawnsLeft > 0', () => {
-    addPlaced({ id: 'checkpoint', x: 0, y: 0, meta: { spawnsLeft: 2 } });
-    removeExpiredPlaced();
-    expect(getPlaced()).toHaveLength(1);
+    addPlaced(heapId, { id: 'checkpoint', x: 0, y: 0, meta: { spawnsLeft: 2 } });
+    removeExpiredPlaced(heapId);
+    expect(getPlaced(heapId)).toHaveLength(1);
   });
 });
 
@@ -184,9 +197,9 @@ describe('save migration — missing inventory/placed fields', () => {
     expect(getItemQuantity('ladder')).toBe(0);
   });
 
-  it('defaults placed to [] when field is absent', () => {
+  it('defaults placed to {} when field is absent', () => {
     store['heap_save'] = JSON.stringify({ balance: 100, upgrades: {} });
-    expect(getPlaced()).toEqual([]);
+    expect(getPlaced('test-heap')).toEqual([]);
   });
 });
 
@@ -286,5 +299,75 @@ describe('save migration — missing playerGuid/playerName/highScores', () => {
   it('defaults highScores to {} when field is absent', () => {
     store['heap_save'] = JSON.stringify({ balance: 100, upgrades: {} });
     expect(getLocalHighScore('any-heap')).toBe(0);
+  });
+});
+
+describe('SaveData v1→v2 migration', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetCacheForTests();
+  });
+
+  it('migrates v1 flat placed[] into _legacyPlaced', () => {
+    localStorage.setItem('heap_save', JSON.stringify({
+      balance: 100,
+      upgrades: {},
+      inventory: {},
+      placed: [{ id: 'ibeam', x: 10, y: 20 }],
+      playerGuid: 'p1',
+      playerName: 'tester',
+      highScores: {},
+    }));
+
+    expect(getPlaced('any-heap')).toEqual([]);                 // fresh key is empty
+    expect(getLegacyPlacedForTests()).toEqual([{ id: 'ibeam', x: 10, y: 20 }]);
+    expect(getSchemaVersionForTests()).toBe(2);
+  });
+
+  it('finalizeLegacyPlaced moves items onto a heap id', () => {
+    localStorage.setItem('heap_save', JSON.stringify({
+      balance: 0,
+      upgrades: {}, inventory: {},
+      placed: [{ id: 'ibeam', x: 1, y: 2 }, { id: 'ladder', x: 3, y: 4 }],
+      playerGuid: 'p', playerName: 'n', highScores: {},
+    }));
+
+    finalizeLegacyPlaced('heap-abc');
+
+    expect(getPlaced('heap-abc')).toEqual([
+      { id: 'ibeam',  x: 1, y: 2 },
+      { id: 'ladder', x: 3, y: 4 },
+    ]);
+    expect(getLegacyPlacedForTests()).toBeUndefined();
+  });
+
+  it('v2 save passes through unchanged', () => {
+    localStorage.setItem('heap_save', JSON.stringify({
+      schemaVersion: 2,
+      balance: 50,
+      upgrades: {}, inventory: {},
+      placed: { 'heap-a': [{ id: 'ibeam', x: 0, y: 0 }] },
+      selectedHeapId: 'heap-a',
+      playerGuid: 'p', playerName: 'n', highScores: {},
+    }));
+    expect(getPlaced('heap-a')).toHaveLength(1);
+    expect(getSelectedHeapId()).toBe('heap-a');
+  });
+});
+
+describe('SaveData per-heap placeables', () => {
+  beforeEach(() => { localStorage.clear(); resetCacheForTests(); });
+
+  it('addPlaced is isolated per heap', () => {
+    addPlaced('h1', { id: 'ibeam', x: 0, y: 0 });
+    addPlaced('h2', { id: 'ladder', x: 0, y: 0 });
+    expect(getPlaced('h1')).toHaveLength(1);
+    expect(getPlaced('h2')).toHaveLength(1);
+    expect(getPlaced('h3')).toEqual([]);
+  });
+
+  it('selectedHeapId persists', () => {
+    setSelectedHeapId('heap-xyz');
+    expect(getSelectedHeapId()).toBe('heap-xyz');
   });
 });

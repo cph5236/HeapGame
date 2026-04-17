@@ -51,16 +51,23 @@ export function spawnChance(def: EnemyDef, y: number): number | null {
   return def.spawnChanceMin + t * (def.spawnChanceMax - def.spawnChanceMin);
 }
 
+/** Scales a spawn chance by a multiplier, clamping to [0, 1]. */
+export function scaleSpawnChance(chance: number, mult: number): number {
+  return Math.max(0, Math.min(1, chance * mult));
+}
+
 export class EnemyManager {
   /** Arcade group — use this for overlap registration in GameScene */
   readonly group: Phaser.Physics.Arcade.Group;
 
   private readonly scene: Phaser.Scene;
   private heapPolygon: Vertex[] = [];
+  private _spawnRateMult: number;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, spawnRateMult: number = 1.0) {
     this.scene = scene;
     this.group = scene.physics.add.group();
+    this._spawnRateMult = spawnRateMult;
   }
 
   /** Update the heap polygon used for interior-spawn rejection. Call after every polygon load. */
@@ -224,8 +231,9 @@ export class EnemyManager {
     // (outside the polygon). Interior ledges and walls still have heap above them.
     if (this.heapPolygon.length > 0 && isPointInsidePolygon(x, y - 1, this.heapPolygon)) return;
 
-    const chance = spawnChance(def, y);
-    if (chance === null) return;
+    const rawChance = spawnChance(def, y);
+    if (rawChance === null) return;
+    const chance = scaleSpawnChance(rawChance, this._spawnRateMult);
     if (Math.random() >= chance) return;
 
     const spawnY = y - def.height / 2;

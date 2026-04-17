@@ -317,3 +317,130 @@ describe('DELETE /heaps/:id', () => {
     expect(body.heaps.map(h => h.id)).toEqual(['h2']);
   });
 });
+
+// ── Heap params ──────────────────────────────────────────────────────────────
+
+describe('POST /heaps with params', () => {
+  it('accepts full params and returns them in GET /heaps', async () => {
+    const app = makeApp();
+    const res = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertices: VERTICES,
+        params: {
+          name: 'Frostbite Summit',
+          difficulty: 3.5,
+          spawnRateMult: 1.5,
+          coinMult: 1.3,
+          scoreMult: 2.0,
+        },
+      }),
+    });
+    expect(res.status).toBe(201);
+
+    const listRes = await app.request('/heaps');
+    const list = await listRes.json() as ListHeapsResponse;
+    expect(list.heaps).toHaveLength(1);
+    expect(list.heaps[0].params).toEqual({
+      name: 'Frostbite Summit',
+      difficulty: 3.5,
+      spawnRateMult: 1.5,
+      coinMult: 1.3,
+      scoreMult: 2.0,
+    });
+  });
+
+  it('applies defaults when params omitted', async () => {
+    const app = makeApp();
+    await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const list = await (await app.request('/heaps')).json() as ListHeapsResponse;
+    expect(list.heaps[0].params).toEqual({
+      name: 'Unnamed Heap',
+      difficulty: 1.0,
+      spawnRateMult: 1.0,
+      coinMult: 1.0,
+      scoreMult: 1.0,
+    });
+  });
+
+  it('rejects difficulty out of range', async () => {
+    const res = await makeApp().request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES, params: { difficulty: 6 } }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects difficulty not on 0.5 step', async () => {
+    const res = await makeApp().request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES, params: { difficulty: 2.3 } }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects non-positive coinMult', async () => {
+    const res = await makeApp().request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES, params: { coinMult: 0 } }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects params that are not an object', async () => {
+    const res = await makeApp().request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES, params: 'hello' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects params as an array', async () => {
+    const res = await makeApp().request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES, params: [1, 2, 3] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects non-number difficulty', async () => {
+    const res = await makeApp().request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES, params: { difficulty: '3' } }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('GET /heaps/:id', () => {
+  it('includes params on the changed: true branch', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertices: VERTICES,
+        params: { name: 'X', difficulty: 2, spawnRateMult: 1.1, coinMult: 1.2, scoreMult: 1.3 },
+      }),
+    });
+    const created = await createRes.json() as CreateHeapResponse;
+
+    const res = await app.request(`/heaps/${created.id}?version=0`);
+    const body = await res.json() as GetHeapResponse;
+    expect(body.changed).toBe(true);
+    if (body.changed) {
+      expect(body.params).toEqual({ name: 'X', difficulty: 2, spawnRateMult: 1.1, coinMult: 1.2, scoreMult: 1.3 });
+    }
+  });
+});

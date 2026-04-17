@@ -15,6 +15,9 @@ import ratUrl from '../sprites/Enemies/Rat/rat.png?url';
 import { HeapClient } from '../systems/HeapClient';
 import type { Vertex } from '../systems/HeapPolygon';
 import { generateAllTextures } from '../entities/TextureGenerators';
+import type { HeapSummary } from '../../shared/heapTypes';
+import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
+import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced } from '../systems/SaveData';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -66,20 +69,35 @@ export class BootScene extends Phaser.Scene {
     });
 
     HeapClient.list()
-      .then((ids) => {
-        if (ids.length === 0) {
-          return Promise.resolve({ id: '', polygon: [] as Vertex[] });
+      .then((summaries) => {
+        this.game.registry.set('heapCatalog', summaries);
+
+        if (summaries.length === 0) {
+          this.game.registry.set('activeHeapId', '');
+          this.game.registry.set('heapPolygon', [] as Vertex[]);
+          this.game.registry.set('heapParams', DEFAULT_HEAP_PARAMS);
+          return;
         }
-        const id = ids[0];
-        return HeapClient.load(id).then((polygon) => ({ id, polygon }));
-      })
-      .then(({ id, polygon }) => {
-        this.game.registry.set('heapId', id);
-        this.game.registry.set('heapPolygon', polygon);
+
+        const stored = getSelectedHeapId();
+        const pick = summaries.find((s) => s.id === stored)
+                  ?? [...summaries].sort((a, b) => a.params.difficulty - b.params.difficulty
+                        || a.createdAt.localeCompare(b.createdAt))[0];
+
+        setSelectedHeapId(pick.id);
+        finalizeLegacyPlaced(pick.id);
+        this.game.registry.set('activeHeapId', pick.id);
+        this.game.registry.set('heapParams',   pick.params);
+
+        return HeapClient.load(pick.id).then((polygon) => {
+          this.game.registry.set('heapPolygon', polygon);
+        });
       })
       .catch(() => {
-        this.game.registry.set('heapId', '');
-        this.game.registry.set('heapPolygon', [] as Vertex[]);
+        this.game.registry.set('heapCatalog',  [] as HeapSummary[]);
+        this.game.registry.set('activeHeapId', '');
+        this.game.registry.set('heapPolygon',  [] as Vertex[]);
+        this.game.registry.set('heapParams',   DEFAULT_HEAP_PARAMS);
       })
       .finally(() => {
         this.scene.start('MenuScene');

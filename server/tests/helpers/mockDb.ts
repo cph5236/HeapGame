@@ -1,7 +1,8 @@
 // server/tests/helpers/mockDb.ts
 
 import type { HeapDB, HeapRow, HeapSummaryRow } from '../../src/db';
-import type { Vertex } from '../../../shared/heapTypes';
+import type { HeapParams, Vertex } from '../../../shared/heapTypes';
+import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
 
 interface BaseRecord {
   heap_id: string;
@@ -20,6 +21,11 @@ export class MockHeapDB implements HeapDB {
       id,
       version: row.version,
       created_at: row.created_at,
+      name:            row.name,
+      difficulty:      row.difficulty,
+      spawn_rate_mult: row.spawn_rate_mult,
+      coin_mult:       row.coin_mult,
+      score_mult:      row.score_mult,
     }));
   }
 
@@ -29,15 +35,51 @@ export class MockHeapDB implements HeapDB {
     return { id, ...row };
   }
 
-  async createHeap(heapId: string, baseId: string, vertices: Vertex[], vertexHash: string, now: string): Promise<void> {
-    this.bases.set(baseId, { heap_id: heapId, vertices: JSON.stringify(vertices), vertex_hash: vertexHash, created_at: now });
-    this.heaps.set(heapId, { base_id: baseId, live_zone: '[]', freeze_y: 0, version: 1, created_at: now });
+  async createHeap(
+    heapId: string,
+    baseId: string,
+    vertices: Vertex[],
+    vertexHash: string,
+    now: string,
+    params: HeapParams = DEFAULT_HEAP_PARAMS,
+  ): Promise<void> {
+    this.bases.set(baseId, {
+      heap_id: heapId,
+      vertices: JSON.stringify(vertices),
+      vertex_hash: vertexHash,
+      created_at: now,
+    });
+    this.heaps.set(heapId, {
+      base_id: baseId,
+      live_zone: '[]',
+      freeze_y: 0,
+      version: 1,
+      created_at: now,
+      name:            params.name,
+      difficulty:      params.difficulty,
+      spawn_rate_mult: params.spawnRateMult,
+      coin_mult:       params.coinMult,
+      score_mult:      params.scoreMult,
+    });
   }
 
   async updateHeap(id: string, baseId: string, version: number, liveZone: Vertex[], freezeY: number): Promise<void> {
     const existing = this.heaps.get(id);
     if (!existing) return;
     this.heaps.set(id, { ...existing, base_id: baseId, version, live_zone: JSON.stringify(liveZone), freeze_y: freezeY });
+  }
+
+  async updateHeapParams(id: string, params: HeapParams): Promise<void> {
+    const existing = this.heaps.get(id);
+    if (!existing) return;
+    this.heaps.set(id, {
+      ...existing,
+      name:            params.name,
+      difficulty:      params.difficulty,
+      spawn_rate_mult: params.spawnRateMult,
+      coin_mult:       params.coinMult,
+      score_mult:      params.scoreMult,
+    });
   }
 
   async deleteHeap(id: string): Promise<void> {
@@ -53,17 +95,27 @@ export class MockHeapDB implements HeapDB {
   }
 
   async createBase(id: string, heapId: string, vertices: Vertex[], vertexHash: string, now: string): Promise<void> {
-    this.bases.set(id, { heap_id: heapId, vertices: JSON.stringify(vertices), vertex_hash: vertexHash, created_at: now });
+    this.bases.set(id, {
+      heap_id: heapId,
+      vertices: JSON.stringify(vertices),
+      vertex_hash: vertexHash,
+      created_at: now,
+    });
   }
 
   /** Test helper — seed a heap row directly without going through createHeap. */
-  seedHeap(id: string, version: number, liveZone: Vertex[], baseId = id, freezeY = 0): void {
+  seedHeap(id: string, version: number, liveZone: Vertex[], baseId = id, freezeY = 0, params: HeapParams = DEFAULT_HEAP_PARAMS): void {
     this.heaps.set(id, {
       base_id: baseId,
       version,
       live_zone: JSON.stringify(liveZone),
       freeze_y: freezeY,
       created_at: '2026-01-01T00:00:00.000Z',
+      name:            params.name,
+      difficulty:      params.difficulty,
+      spawn_rate_mult: params.spawnRateMult,
+      coin_mult:       params.coinMult,
+      score_mult:      params.scoreMult,
     });
   }
 
