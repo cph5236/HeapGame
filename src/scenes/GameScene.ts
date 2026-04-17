@@ -104,7 +104,7 @@ export class GameScene extends Phaser.Scene {
     this.chunkRenderer = new HeapChunkRenderer(this);
 
     const polygon = (this.game.registry.get('heapPolygon') as Vertex[] | undefined) ?? [];
-    const heapId = (this.game.registry.get('heapId') as string | undefined) ?? '';
+    const heapId = (this.game.registry.get('activeHeapId') as string | undefined) ?? '';
     this._heapId = heapId;
     this._liveZoneBottomY = HeapClient.getLiveZoneBottomY(heapId);
 
@@ -140,14 +140,14 @@ export class GameScene extends Phaser.Scene {
 
     // If restarted via checkpoint respawn, reposition player and consume one spawn
     if (this.checkpointRespawn) {
-      const placed = getPlaced();
+      const placed = getPlaced(this._heapId);
       const cpIdx  = placed.findIndex(p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0);
       if (cpIdx !== -1) {
         const cp = placed[cpIdx];
         this.player.sprite.setPosition(cp.x, cp.y - 50);
         const newSpawns = (cp.meta?.spawnsLeft ?? 0) - 1;
-        updatePlacedMeta(cpIdx, { spawnsLeft: newSpawns });
-        if (newSpawns <= 0) removeExpiredPlaced();
+        updatePlacedMeta(this._heapId, cpIdx, { spawnsLeft: newSpawns });
+        if (newSpawns <= 0) removeExpiredPlaced(this._heapId);
         this.invincible = true;
         this.time.delayedCall(PLAYER_INVINCIBLE_MS * 5, () => { this.invincible = false; });
       }
@@ -157,7 +157,7 @@ export class GameScene extends Phaser.Scene {
       this.player.freeze();
       this.player.sprite.setDepth(4); // visually swallowed — below wall body (depth 5)
       this.time.delayedCall(800, () => {
-        const checkpointAvailable = getPlaced().some(
+        const checkpointAvailable = getPlaced(this._heapId).some(
           p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
         );
         const baseHeightPx = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
@@ -264,7 +264,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // PlaceableManager — items (shields, checkpoints, etc.)
-    this.placeableManager = new PlaceableManager(this, this.player, this.heapWalkableGroup, this.heapWallGroup);
+    this.placeableManager = new PlaceableManager(this, this.player, this.heapWalkableGroup, this.heapWallGroup, this._heapId);
 
     // HUD: ability indicators (dash bar, air jumps, wall jump)
     this.hud = new HUD(this, this.player, this.placeableManager);
@@ -522,7 +522,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const checkpointAvailable = getPlaced().some(
+    const checkpointAvailable = getPlaced(this._heapId).some(
       p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
     );
     const baseHeightPx = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
