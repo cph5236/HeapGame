@@ -122,4 +122,21 @@ describe('buildRunScore', () => {
     const paceRow = result.rows.find(r => r.type === 'pace')!;
     expect(paceRow.detail).toBe('6000 / 85s x 10');
   });
+
+  describe('buildRunScore scoreMult', () => {
+    it('multiplies finalScore by scoreMult', () => {
+      const stats = { baseHeightPx: 1000, kills: {}, elapsedMs: 10_000 };
+      const defs = {} as any;
+      const a = buildRunScore(stats, defs, false, 1.0);
+      const b = buildRunScore(stats, defs, false, 2.0);
+      expect(b.finalScore).toBe(Math.round(a.finalScore * 2));
+    });
+
+    it('defaults to 1.0 when omitted', () => {
+      const stats = { baseHeightPx: 500, kills: {}, elapsedMs: 5_000 };
+      const defs = {} as any;
+      const r = buildRunScore(stats, defs, false);
+      expect(r.finalScore).toBeGreaterThan(0);
+    });
+  });
 });

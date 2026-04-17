@@ -35,6 +35,8 @@ import { TRASH_WALL_DEF } from '../data/trashWallDef';
 import type { EnemyKind } from '../entities/Enemy';
 import { buildRunScore } from '../systems/buildRunScore';
 import { ENEMY_DEFS } from '../data/enemyDefs';
+import type { HeapParams } from '../../shared/heapTypes';
+import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -71,6 +73,7 @@ export class GameScene extends Phaser.Scene {
   private checkpointRespawn = false;
   private _runKills:     Partial<Record<EnemyKind, number>> = {};
   private _runStartTime: number | null = null;
+  private _heapParams!: HeapParams;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -107,10 +110,11 @@ export class GameScene extends Phaser.Scene {
     const heapId = (this.game.registry.get('activeHeapId') as string | undefined) ?? '';
     this._heapId = heapId;
     this._liveZoneBottomY = HeapClient.getLiveZoneBottomY(heapId);
+    this._heapParams = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
 
     // Enemies — constructed and wired BEFORE polygon/generation calls so that
     // onBandLoaded and onPlatformSpawned fire correctly during initial load.
-    this.enemyManager = new EnemyManager(this);
+    this.enemyManager = new EnemyManager(this, this._heapParams.spawnRateMult);
 
     // Spawn player at world floor (left clear zone) — player climbs up through the heap
     this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
@@ -166,6 +170,7 @@ export class GameScene extends Phaser.Scene {
           { baseHeightPx, kills: this._runKills, elapsedMs },
           ENEMY_DEFS,
           true,
+          this._heapParams.scoreMult,
         );
         this.scene.launch('ScoreScene', {
           score:        runResult.finalScore,
@@ -176,6 +181,7 @@ export class GameScene extends Phaser.Scene {
           baseHeightPx,
           kills:        this._runKills,
           elapsedMs,
+          heapParams:   this._heapParams,
         });
         this.scene.pause();
       });
@@ -430,6 +436,7 @@ export class GameScene extends Phaser.Scene {
       { baseHeightPx, kills: this._runKills, elapsedMs },
       ENEMY_DEFS,
       false,
+      this._heapParams.scoreMult,
     );
     this.time.delayedCall(2000, () => {
       void appendDone.then(() => {
@@ -440,6 +447,7 @@ export class GameScene extends Phaser.Scene {
           baseHeightPx,
           kills:        this._runKills,
           elapsedMs,
+          heapParams:   this._heapParams,
         });
         this.scene.pause();
       });
@@ -478,7 +486,7 @@ export class GameScene extends Phaser.Scene {
 
     this.player.refundAirJump();
     this.player.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
-    const stompReward = this.playerConfig.stompBonus;
+    const stompReward = Math.round(this.playerConfig.stompBonus * this._heapParams.coinMult);
     addBalance(stompReward);
 
     const marker = this.add.text(stompX, stompY - 16, `+${stompReward}`, {
@@ -531,6 +539,7 @@ export class GameScene extends Phaser.Scene {
       { baseHeightPx, kills: this._runKills, elapsedMs },
       ENEMY_DEFS,
       true,
+      this._heapParams.scoreMult,
     );
     this.scene.launch('ScoreScene', {
       score:        runResult.finalScore,
@@ -541,6 +550,7 @@ export class GameScene extends Phaser.Scene {
       baseHeightPx,
       kills:        this._runKills,
       elapsedMs,
+      heapParams:   this._heapParams,
     });
     this.scene.pause();
   };

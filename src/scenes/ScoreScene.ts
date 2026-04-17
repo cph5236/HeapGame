@@ -16,6 +16,8 @@ import { ENEMY_DEFS } from '../data/enemyDefs';
 import { InputManager } from '../systems/InputManager';
 import { ScoreClient } from '../systems/ScoreClient';
 import type { LeaderboardContext } from '../../shared/scoreTypes';
+import type { HeapParams } from '../../shared/heapTypes';
+import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 
 const CX = GAME_WIDTH / 2;
 
@@ -32,6 +34,7 @@ export class ScoreScene extends Phaser.Scene {
   private _kills:        Partial<Record<EnemyKind, number>> = {};
   private _elapsedMs:    number                             = 0;
   private _scoreRows:    RunScoreRow[]                      = [];
+  private _heapParams:   HeapParams                         = DEFAULT_HEAP_PARAMS;
 
   private _breakdownOpen    = false;
   private _breakdownObjects: Phaser.GameObjects.GameObject[] = [];
@@ -49,6 +52,7 @@ export class ScoreScene extends Phaser.Scene {
     baseHeightPx?:        number;
     kills?:               Partial<Record<EnemyKind, number>>;
     elapsedMs?:           number;
+    heapParams?:          HeapParams;
   }): void {
     this.score               = data.score               ?? 0;
     this.heapId              = data.heapId              ?? '';
@@ -59,6 +63,7 @@ export class ScoreScene extends Phaser.Scene {
     this._kills              = data.kills               ?? {};
     this._elapsedMs          = data.elapsedMs           ?? 0;
     this._scoreRows          = [];
+    this._heapParams         = data.heapParams          ?? DEFAULT_HEAP_PARAMS;
   }
 
   create(): void {
@@ -92,7 +97,7 @@ export class ScoreScene extends Phaser.Scene {
 
     if (!this._coinsAwarded) {
       this._coinsAwarded = true;
-      addBalance(result.finalCoins);
+      addBalance(Math.round(result.finalCoins * this._heapParams.coinMult));
     }
     const balance = getBalance();
 
@@ -293,7 +298,10 @@ export class ScoreScene extends Phaser.Scene {
     const right     = PANEL_X + PANEL_W / 2 - PAD_X;
 
     const rows      = this._scoreRows;
-    const panelH    = (rows.length + 1) * ROW_H + 32;
+    let extraRows   = 1; // for the total row
+    if (this._heapParams.coinMult !== 1.0) extraRows++;
+    if (this._heapParams.scoreMult !== 1.0) extraRows++;
+    const panelH    = (rows.length + extraRows) * ROW_H + 32;
 
     // Panel background
     const bg = this.add.graphics().setDepth(60);
@@ -342,6 +350,31 @@ export class ScoreScene extends Phaser.Scene {
         this._breakdownObjects.push(lbl, det, val);
       }
 
+      y += ROW_H;
+    }
+
+    // Heap multiplier rows
+    if (this._heapParams.coinMult !== 1.0) {
+      const mid = y + ROW_H / 2;
+      const lbl = this.add.text(left, mid, 'COIN MULT', {
+        fontSize: '11px', fontFamily: 'monospace', color: '#88dd88',
+      }).setOrigin(0, 0.5).setDepth(61);
+      const val = this.add.text(right, mid, `×${this._heapParams.coinMult.toFixed(2)}`, {
+        fontSize: '11px', fontFamily: 'monospace', color: '#88dd88', fontStyle: 'bold',
+      }).setOrigin(1, 0.5).setDepth(61);
+      this._breakdownObjects.push(lbl, val);
+      y += ROW_H;
+    }
+
+    if (this._heapParams.scoreMult !== 1.0) {
+      const mid = y + ROW_H / 2;
+      const lbl = this.add.text(left, mid, 'SCORE MULT', {
+        fontSize: '11px', fontFamily: 'monospace', color: '#dd88ff',
+      }).setOrigin(0, 0.5).setDepth(61);
+      const val = this.add.text(right, mid, `×${this._heapParams.scoreMult.toFixed(2)}`, {
+        fontSize: '11px', fontFamily: 'monospace', color: '#dd88ff', fontStyle: 'bold',
+      }).setOrigin(1, 0.5).setDepth(61);
+      this._breakdownObjects.push(lbl, val);
       y += ROW_H;
     }
 

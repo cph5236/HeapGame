@@ -24,6 +24,7 @@ export function buildRunScore(
   stats:     RunStats,
   defs:      Record<EnemyKind, EnemyDef>,
   isFailure: boolean,
+  scoreMult: number = 1.0,
 ): RunScoreResult {
   const rows: RunScoreRow[] = [];
   let total = stats.baseHeightPx;
@@ -64,5 +65,5 @@ export function buildRunScore(
     total += paceBonus;
   }
 
-  return { rows, finalScore: total };
+  return { rows, finalScore: Math.round(total * scoreMult) };
 }
