@@ -66,7 +66,7 @@ export function scoreRoutes(db: ScoreDB): Hono {
     );
 
     const now       = new Date().toISOString();
-    const submitted = await db.upsertScore(heapId, playerId, playerName, score, now);
+    const submitted = await db.upsertScore(heapId, playerId, playerName.slice(0, 32), score, now);
     if (submitted) await db.pruneScores(heapId);
 
     const context = await buildContext(db, heapId, playerId, limit);
