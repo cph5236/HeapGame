@@ -25,7 +25,7 @@ export class BridgeSpawner {
   readonly group: Phaser.Physics.Arcade.StaticGroup;
 
   constructor(
-    private readonly scene: Phaser.Scene,
+    scene: Phaser.Scene,
     private readonly generators: [HeapGenerator, HeapGenerator, HeapGenerator],
     private readonly colBounds: [number, number][],
     private readonly def: BridgeDef,

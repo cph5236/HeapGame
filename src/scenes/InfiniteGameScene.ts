@@ -1,0 +1,356 @@
+import Phaser from 'phaser';
+import { Player } from '../entities/Player';
+import { HeapGenerator } from '../systems/HeapGenerator';
+import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
+import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
+import { EnemyManager } from '../systems/EnemyManager';
+import { TrashWallManager } from '../systems/TrashWallManager';
+import { PlaceableManager } from '../systems/PlaceableManager';
+import { BridgeSpawner } from '../systems/BridgeSpawner';
+import { PortalManager } from '../systems/PortalManager';
+import { CameraController } from '../systems/CameraController';
+import { InputManager } from '../systems/InputManager';
+import { HUD } from '../ui/HUD';
+import { ParallaxBackground } from '../systems/ParallaxBackground';
+import { buildColumnEntries } from '../systems/InfiniteColumnGenerator';
+import { findSurfaceY } from '../systems/HeapSurface';
+import { buildRunScore } from '../systems/buildRunScore';
+import { getPlayerConfig, addBalance } from '../systems/SaveData';
+import { ENEMY_DEFS } from '../data/enemyDefs';
+import { BRIDGE_DEF } from '../data/bridgeDefs';
+import { PORTAL_DEF } from '../data/portalDefs';
+import { TRASH_WALL_DEF } from '../data/trashWallDef';
+import {
+  INFINITE_HEAP_ID,
+  INFINITE_SURFACE_SNAP_THRESHOLD,
+  INFINITE_MIN_SPAWN_MULT,
+  INFINITE_MAX_SPAWN_MULT,
+  computeDifficultyFactor,
+} from '../data/infiniteDefs';
+import {
+  WORLD_WIDTH,
+  MOCK_HEAP_HEIGHT_PX,
+  GEN_LOOKAHEAD,
+  INFINITE_WORLD_WIDTH,
+  INFINITE_GAP_WIDTH,
+  PLAYER_HEIGHT,
+  PLAYER_JUMP_VELOCITY,
+  PLAYER_INVINCIBLE_MS,
+} from '../constants';
+import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
+import type { EnemyKind } from '../entities/Enemy';
+
+const BLOCKS_PER_COLUMN = 300;
+
+function makeColBounds(): [number, number][] {
+  return [
+    [0,                                        WORLD_WIDTH],
+    [WORLD_WIDTH + INFINITE_GAP_WIDTH,         WORLD_WIDTH * 2 + INFINITE_GAP_WIDTH],
+    [WORLD_WIDTH * 2 + INFINITE_GAP_WIDTH * 2, INFINITE_WORLD_WIDTH],
+  ];
+}
+
+export class InfiniteGameScene extends Phaser.Scene {
+  private player!: Player;
+  private hud!: HUD;
+  private im!: InputManager;
+  private scoreText!: Phaser.GameObjects.Text;
+
+  private walkableGroups: Phaser.Physics.Arcade.StaticGroup[] = [];
+  private wallGroups:     Phaser.Physics.Arcade.StaticGroup[] = [];
+  private generators:     HeapGenerator[]  = [];
+  private enemyManagers:  EnemyManager[]   = [];
+  private trashWallManager!: TrashWallManager;
+  private placeableManager!: PlaceableManager;
+  private bridgeSpawner!:    BridgeSpawner;
+  private portalManager!:    PortalManager;
+
+  private spawnY:        number  = 0;
+  private invincible:    boolean = false;
+  private _runStartTime: number | null = null;
+  private _runKills:     Partial<Record<EnemyKind, number>> = {};
+  private colBounds:     [number, number][] = [];
+  private playerConfig!: ReturnType<typeof getPlayerConfig>;
+
+  constructor() { super({ key: 'InfiniteGameScene' }); }
+
+  create(): void {
+    this._runKills     = {};
+    this._runStartTime = null;
+    this.invincible    = false;
+    this.generators    = [];
+    this.enemyManagers = [];
+    this.walkableGroups = [];
+    this.wallGroups     = [];
+
+    this.physics.world.setBounds(0, 0, INFINITE_WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX);
+    this.colBounds    = makeColBounds();
+    this.playerConfig = getPlayerConfig();
+
+    // ── 3 heap columns ─────────────────────────────────────────────────────────
+    for (let i = 0; i < 3; i++) {
+      const seed    = Math.floor(Math.random() * 1_000_000);
+      const [xMin, xMax] = this.colBounds[i];
+      const walkable = this.physics.add.staticGroup();
+      const wall     = this.physics.add.staticGroup();
+      const renderer = new HeapChunkRenderer(this);
+      const edge     = new HeapEdgeCollider(this, this.playerConfig.maxWalkableSlopeDeg);
+      const entries  = buildColumnEntries(seed, xMin, xMax, BLOCKS_PER_COLUMN);
+      const gen      = new HeapGenerator(this, walkable, wall, entries, renderer, edge);
+
+      const em = new EnemyManager(this, 1.0, xMin, xMax);
+
+      gen.onPlatformSpawned = (entry, platformTopY) => {
+        em.onPlatformSpawned(entry.x, platformTopY, false, entry);
+      };
+
+      const colIdx = i;
+      gen.onBandLoaded = (bandTopY, vertices) => {
+        em.onBandLoaded(bandTopY, vertices);
+        if (colIdx === 0) {
+          this.bridgeSpawner?.onBandLoaded(bandTopY);
+          this.portalManager?.onBandLoaded(bandTopY);
+        }
+      };
+
+      this.walkableGroups.push(walkable);
+      this.wallGroups.push(wall);
+      this.generators.push(gen);
+      this.enemyManagers.push(em);
+    }
+
+    // ── Player (center column) ──────────────────────────────────────────────────
+    const [cMin, cMax] = this.colBounds[1];
+    const centerX = (cMin + cMax) / 2;
+    this.spawnY   = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
+    this.player   = new Player(this, centerX, this.spawnY, this.playerConfig);
+
+    // ── Colliders ───────────────────────────────────────────────────────────────
+    type AP = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
+    for (let i = 0; i < 3; i++) {
+      this.physics.add.collider(this.player.sprite, this.walkableGroups[i]);
+      this.physics.add.collider(
+        this.player.sprite, this.wallGroups[i],
+        this.onHeapWallCollide as unknown as AP, undefined, this,
+      );
+    }
+
+    // ── Bridge spawner ──────────────────────────────────────────────────────────
+    this.bridgeSpawner = new BridgeSpawner(
+      this,
+      this.generators as [HeapGenerator, HeapGenerator, HeapGenerator],
+      this.colBounds,
+      BRIDGE_DEF,
+    );
+    this.physics.add.collider(this.player.sprite, this.bridgeSpawner.group);
+
+    // ── Portal manager ──────────────────────────────────────────────────────────
+    this.portalManager = new PortalManager(
+      this, this.player, this.colBounds, PORTAL_DEF,
+      (ms) => {
+        this.invincible = true;
+        this.time.delayedCall(ms, () => { this.invincible = false; });
+      },
+    );
+
+    // ── Trash wall ───────────────────────────────────────────────────────────────
+    this.trashWallManager = new TrashWallManager(this, TRASH_WALL_DEF, () => {
+      this.handleDeath();
+    });
+    this.trashWallManager.spawn(this.player.sprite.y);
+
+    // ── Placeable manager ────────────────────────────────────────────────────────
+    this.placeableManager = new PlaceableManager(
+      this, this.player, this.walkableGroups[0], this.wallGroups[0],
+      INFINITE_HEAP_ID,
+      (x, savedY) => {
+        for (const gen of this.generators) {
+          const surfY = findSurfaceY(x, 10, gen.entries);
+          if (Math.abs(surfY - savedY) <= INFINITE_SURFACE_SNAP_THRESHOLD) return true;
+        }
+        return false;
+      },
+      true, // excludeCheckpoint
+    );
+
+    // ── Enemy overlaps ───────────────────────────────────────────────────────────
+    for (const em of this.enemyManagers) {
+      this.physics.add.overlap(
+        this.player.sprite, em.group,
+        this.handleStomp as unknown as AP,
+        this.isStomping as unknown as AP,
+        this,
+      );
+      this.physics.add.overlap(
+        this.player.sprite, em.group,
+        this.handleEnemyDamage as unknown as AP,
+        this.isDamaging as unknown as AP,
+        this,
+      );
+    }
+
+    // ── Camera ───────────────────────────────────────────────────────────────────
+    CameraController.setup(this, this.player.sprite, INFINITE_WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX);
+
+    // ── HUD / score text ─────────────────────────────────────────────────────────
+    this.hud = new HUD(this, this.player, this.placeableManager);
+    this.scoreText = this.add.text(8, 8, '0 ft', {
+      fontSize: '18px', color: '#ffffff',
+      stroke: '#000000', strokeThickness: 2,
+    }).setScrollFactor(0).setDepth(20);
+
+    this.im = InputManager.getInstance();
+    this.input.keyboard!.on('keydown-R', () => this.placeableManager.openHotbar());
+
+    // ── Background ────────────────────────────────────────────────────────────────
+    new ParallaxBackground(this);
+
+    // ── Initial generation (sync so collision is ready frame 1) ──────────────────
+    for (const gen of this.generators) {
+      gen.generateUpToSync(this.spawnY - GEN_LOOKAHEAD);
+    }
+  }
+
+  update(_time: number, delta: number): void {
+    const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
+    if (score > 0 && this._runStartTime === null) {
+      this._runStartTime = this.time.now;
+    }
+    this.scoreText.setText(`${Math.floor(score / 100)} ft`);
+
+    // ── World wrap ────────────────────────────────────────────────────────────────
+    if (this.player.sprite.x < 0) {
+      this.player.sprite.setX(INFINITE_WORLD_WIDTH - 1);
+      (this.player.sprite.body as Phaser.Physics.Arcade.Body).reset(
+        INFINITE_WORLD_WIDTH - 1, this.player.sprite.y,
+      );
+    } else if (this.player.sprite.x > INFINITE_WORLD_WIDTH) {
+      this.player.sprite.setX(1);
+      (this.player.sprite.body as Phaser.Physics.Arcade.Body).reset(1, this.player.sprite.y);
+    }
+
+    // ── Player + input ────────────────────────────────────────────────────────────
+    this.im.update(delta, false);
+    this.player.update(delta);
+    this.placeableManager.update();
+    this.hud.update();
+
+    // ── Heap generation ───────────────────────────────────────────────────────────
+    const cam    = this.cameras.main;
+    const camTop = cam.worldView.top;
+    const camBot = cam.worldView.bottom;
+
+    for (const gen of this.generators) {
+      gen.generateUpTo(camTop - GEN_LOOKAHEAD);
+      gen.flushWorkerResults();
+    }
+
+    // ── Difficulty ramp ───────────────────────────────────────────────────────────
+    const elapsed = this._runStartTime !== null ? this.time.now - this._runStartTime : 0;
+    const factor  = computeDifficultyFactor(score, elapsed);
+    const spawnMult = INFINITE_MIN_SPAWN_MULT +
+      factor * (INFINITE_MAX_SPAWN_MULT - INFINITE_MIN_SPAWN_MULT);
+
+    for (const em of this.enemyManagers) {
+      em.setSpawnRateMult(spawnMult);
+      em.update(camTop, camBot);
+    }
+
+    this.trashWallManager.update(this.player.sprite.y, delta);
+    this.portalManager.update();
+  }
+
+  // ── Death ────────────────────────────────────────────────────────────────────
+
+  private handleDeath(): void {
+    if (!this.scene.isActive()) return;
+    this.player.freeze();
+    const score      = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
+    const elapsedMs  = this._runStartTime !== null ? this.time.now - this._runStartTime : 0;
+    const runResult  = buildRunScore(
+      { baseHeightPx: score, kills: this._runKills, elapsedMs },
+      ENEMY_DEFS,
+      true,
+      1.0,
+    );
+    this.time.delayedCall(800, () => {
+      this.scene.launch('ScoreScene', {
+        score:               runResult.finalScore,
+        heapId:              INFINITE_HEAP_ID,
+        isPeak:              false,
+        checkpointAvailable: false,
+        isFailure:           true,
+        baseHeightPx:        score,
+        kills:               this._runKills,
+        elapsedMs,
+        heapParams: {
+          ...DEFAULT_HEAP_PARAMS,
+          name: '∞ Infinite Heap',
+          difficulty: 5.0,
+          isInfinite: true,
+        },
+      });
+      this.scene.pause();
+    });
+  }
+
+  // ── Enemy callbacks (same pattern as GameScene) ───────────────────────────────
+
+  private readonly isStomping = (
+    player: Phaser.GameObjects.GameObject,
+    enemy:  Phaser.GameObjects.GameObject,
+  ): boolean => {
+    const p = player as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
+    const e = enemy  as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
+    return p.body.velocity.y > 0 && p.body.center.y < e.body.center.y;
+  };
+
+  private readonly isDamaging = (
+    player: Phaser.GameObjects.GameObject,
+    enemy:  Phaser.GameObjects.GameObject,
+  ): boolean => !this.invincible && !this.isStomping(player, enemy);
+
+  private readonly handleStomp = (
+    _player: Phaser.GameObjects.GameObject,
+    enemy:   Phaser.GameObjects.GameObject,
+  ): void => {
+    const e    = enemy as Phaser.Physics.Arcade.Sprite;
+    const kind = e.getData('kind') as EnemyKind;
+    e.destroy();
+
+    this._runKills[kind] = (this._runKills[kind] ?? 0) + 1;
+    this.player.refundAirJump();
+    this.player.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
+
+    const reward = this.playerConfig.stompBonus;
+    addBalance(reward);
+    const marker = this.add.text(e.x, e.y - 16, `+${reward}`, {
+      fontSize: '22px', color: '#ffdd44', stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(50);
+    this.tweens.add({
+      targets: marker, y: e.y - 80, alpha: 0,
+      duration: 2000, ease: 'Cubic.Out',
+      onComplete: () => marker.destroy(),
+    });
+
+    this.invincible = true;
+    this.time.delayedCall(PLAYER_INVINCIBLE_MS, () => { this.invincible = false; });
+  };
+
+  private readonly handleEnemyDamage = (): void => {
+    if (this.player.hasActiveShield) {
+      this.player.absorbHit();
+      this.invincible = true;
+      this.time.delayedCall(PLAYER_INVINCIBLE_MS * 4, () => { this.invincible = false; });
+      return;
+    }
+    this.handleDeath();
+  };
+
+  private readonly onHeapWallCollide = (
+    playerObj: Phaser.GameObjects.GameObject,
+  ): void => {
+    const body = (playerObj as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody).body;
+    if (body.blocked.down) this.player.inSlopeZone = true;
+  };
+}
