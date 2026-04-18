@@ -156,3 +156,28 @@ describe('spawnChance with spawnRateMult', () => {
     expect(scaleSpawnChance(0.2, 0.5)).toBeCloseTo(0.1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// computeGhostFlip — exported for testing
+// Returns new velocity X for ghost enemies based on column X bounds.
+// ---------------------------------------------------------------------------
+import { computeGhostFlip } from '../EnemyManager';
+
+describe('computeGhostFlip', () => {
+  it('flips right when at left bound moving left', () => {
+    expect(computeGhostFlip(0, -50, 50, 0, 960)).toBe(50);
+  });
+
+  it('flips left when at right bound moving right', () => {
+    expect(computeGhostFlip(960, 50, 50, 0, 960)).toBe(-50);
+  });
+
+  it('preserves velocity when not at bounds', () => {
+    expect(computeGhostFlip(400, -50, 50, 0, 960)).toBe(-50);
+  });
+
+  it('uses custom xMin/xMax bounds', () => {
+    expect(computeGhostFlip(100, -50, 50, 100, 500)).toBe(50);
+    expect(computeGhostFlip(500, 50, 50, 100, 500)).toBe(-50);
+  });
+});

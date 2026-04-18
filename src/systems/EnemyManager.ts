@@ -56,6 +56,22 @@ export function scaleSpawnChance(chance: number, mult: number): number {
   return Math.max(0, Math.min(1, chance * mult));
 }
 
+/**
+ * Returns the new velocity X for a ghost based on world X bounds.
+ * Extracted for unit testing.
+ */
+export function computeGhostFlip(
+  x: number,
+  velocityX: number,
+  speed: number,
+  xMin: number,
+  xMax: number,
+): number {
+  if (x <= xMin && velocityX < 0) return speed;
+  if (x >= xMax && velocityX > 0) return -speed;
+  return velocityX;
+}
+
 export class EnemyManager {
   /** Arcade group — use this for overlap registration in GameScene */
   readonly group: Phaser.Physics.Arcade.Group;
@@ -63,11 +79,19 @@ export class EnemyManager {
   private readonly scene: Phaser.Scene;
   private heapPolygon: Vertex[] = [];
   private _spawnRateMult: number;
+  private readonly _xMin: number;
+  private readonly _xMax: number;
 
-  constructor(scene: Phaser.Scene, spawnRateMult: number = 1.0) {
+  constructor(scene: Phaser.Scene, spawnRateMult: number = 1.0, xMin: number = 0, xMax: number = WORLD_WIDTH) {
     this.scene = scene;
     this.group = scene.physics.add.group();
     this._spawnRateMult = spawnRateMult;
+    this._xMin = xMin;
+    this._xMax = xMax;
+  }
+
+  setSpawnRateMult(mult: number): void {
+    this._spawnRateMult = mult;
   }
 
   /** Update the heap polygon used for interior-spawn rejection. Call after every polygon load. */
@@ -195,12 +219,9 @@ export class EnemyManager {
         const body = s.body as Phaser.Physics.Arcade.Body;
         const speed: number = s.getData('speed');
 
-        // Manually flip at world edges — avoids the oscillation that setBounce causes
-        if (s.x <= 0 && body.velocity.x < 0) {
-          body.setVelocityX(speed);
-        } else if (s.x >= WORLD_WIDTH && body.velocity.x > 0) {
-          body.setVelocityX(-speed);
-        }
+        // Manually flip at column edges — avoids the oscillation that setBounce causes
+        const newVx = computeGhostFlip(s.x, body.velocity.x, speed, this._xMin, this._xMax);
+        if (newVx !== body.velocity.x) body.setVelocityX(newVx);
 
         const wantAnim = body.velocity.x < 0 ? 'vulture-fly-left' : 'vulture-fly-right';
         if (s.anims.currentAnim?.key !== wantAnim) s.play(wantAnim);
