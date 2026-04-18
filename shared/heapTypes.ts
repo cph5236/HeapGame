@@ -11,6 +11,7 @@ export interface HeapParams {
   spawnRateMult: number;
   coinMult: number;
   scoreMult: number;
+  isInfinite?: boolean;
 }
 
 export const DEFAULT_HEAP_PARAMS: HeapParams = {
