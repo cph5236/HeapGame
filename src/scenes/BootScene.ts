@@ -18,6 +18,7 @@ import { generateAllTextures } from '../entities/TextureGenerators';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced } from '../systems/SaveData';
+import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -70,6 +71,20 @@ export class BootScene extends Phaser.Scene {
 
     HeapClient.list()
       .then((summaries) => {
+        const infiniteEntry: HeapSummary = {
+          id: INFINITE_HEAP_ID,
+          version: 1,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          params: {
+            name: '∞ Infinite Heap',
+            difficulty: 5.0,
+            spawnRateMult: 1.0,
+            coinMult: 1.0,
+            scoreMult: 1.0,
+            isInfinite: true,
+          },
+        };
+        summaries.push(infiniteEntry);
         this.game.registry.set('heapCatalog', summaries);
 
         if (summaries.length === 0) {
