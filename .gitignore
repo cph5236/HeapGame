@@ -8,3 +8,4 @@ ios/
 server/.wrangler
 todo/
 .superpowers/
+.worktrees/
