@@ -14,6 +14,15 @@ import { Player } from '../entities/Player';
 
 export const enum PlacementState { Closed, Hotbar, Placing }
 
+/** Pure helper — exported for unit testing. */
+export function passesSurfaceCheck(
+  savedY: number,
+  surfaceY: number,
+  threshold: number,
+): boolean {
+  return Math.abs(savedY - surfaceY) <= threshold;
+}
+
 interface SpawnedBody {
   saveIndex: number;
   object:    Phaser.GameObjects.Image;
@@ -21,11 +30,13 @@ interface SpawnedBody {
 }
 
 export class PlaceableManager {
-  private readonly scene:         Phaser.Scene;
-  private readonly player:        Player;
-  private readonly walkableGroup: Phaser.Physics.Arcade.StaticGroup;
-  private readonly wallGroup:     Phaser.Physics.Arcade.StaticGroup;
-  private readonly _heapId:       string;
+  private readonly scene:             Phaser.Scene;
+  private readonly player:            Player;
+  private readonly walkableGroup:     Phaser.Physics.Arcade.StaticGroup;
+  private readonly wallGroup:         Phaser.Physics.Arcade.StaticGroup;
+  private readonly _heapId:           string;
+  private readonly _surfaceChecker?:  (x: number, savedY: number) => boolean;
+  private readonly _excludeCheckpoint: boolean;
 
   private state:          PlacementState = PlacementState.Closed;
   private placingItemId:  string = '';
@@ -52,17 +63,21 @@ export class PlaceableManager {
   private checkpointGroup!: Phaser.Physics.Arcade.StaticGroup;
 
   constructor(
-    scene:         Phaser.Scene,
-    player:        Player,
-    walkableGroup: Phaser.Physics.Arcade.StaticGroup,
-    wallGroup:     Phaser.Physics.Arcade.StaticGroup,
-    heapId:        string,
+    scene:              Phaser.Scene,
+    player:             Player,
+    walkableGroup:      Phaser.Physics.Arcade.StaticGroup,
+    wallGroup:          Phaser.Physics.Arcade.StaticGroup,
+    heapId:             string,
+    surfaceChecker?:    (x: number, savedY: number) => boolean,
+    excludeCheckpoint?: boolean,
   ) {
-    this.scene         = scene;
-    this.player        = player;
-    this.walkableGroup = walkableGroup;
-    this.wallGroup     = wallGroup;
-    this._heapId       = heapId;
+    this.scene               = scene;
+    this.player              = player;
+    this.walkableGroup       = walkableGroup;
+    this.wallGroup           = wallGroup;
+    this._heapId             = heapId;
+    this._surfaceChecker     = surfaceChecker;
+    this._excludeCheckpoint  = excludeCheckpoint ?? false;
 
     this.checkpointGroup = scene.physics.add.staticGroup();
     this.createUI();
@@ -152,6 +167,15 @@ export class PlaceableManager {
       this.hotbarQtys.push(qty);
     });
 
+    if (this._excludeCheckpoint) {
+      const cpIdx = ITEM_DEFS.findIndex(d => d.id === 'checkpoint');
+      if (cpIdx >= 0) {
+        this.hotbarItems[cpIdx]?.setVisible(false).disableInteractive();
+        this.hotbarLabels[cpIdx]?.setVisible(false);
+        this.hotbarQtys[cpIdx]?.setVisible(false);
+      }
+    }
+
     // Confirm button
     this.confirmBtn = scene.add.rectangle(
       GAME_WIDTH / 2 - 60, GAME_HEIGHT - 60, 110, 36, 0x0a3010,
@@ -184,10 +208,13 @@ export class PlaceableManager {
   private spawnSavedItems(): void {
     const placed = getPlaced(this._heapId);
     placed.forEach((save, index) => {
+      if (this._surfaceChecker && !this._surfaceChecker(save.x, save.y)) return;
       switch (save.id) {
-        case 'ladder':     this.spawnLadderBody(save, index); break;
-        case 'ibeam':      this.spawnIBeamBody(save, index);  break;
-        case 'checkpoint': this.spawnCheckpointBody(save, index); break;
+        case 'ladder':     this.spawnLadderBody(save, index);     break;
+        case 'ibeam':      this.spawnIBeamBody(save, index);      break;
+        case 'checkpoint':
+          if (!this._excludeCheckpoint) this.spawnCheckpointBody(save, index);
+          break;
       }
     });
   }
