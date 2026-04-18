@@ -7,6 +7,7 @@ import { ScoreScene } from './scenes/ScoreScene';
 import { UpgradeScene } from './scenes/UpgradeScene';
 import { StoreScene } from './scenes/StoreScene';
 import { TexturePreviewScene } from './scenes/TexturePreviewScene';
+import { InfiniteGameScene } from './scenes/InfiniteGameScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -32,7 +33,7 @@ const config: Phaser.Types.Core.GameConfig = {
     target: 60,
     smoothStep: true,
   },
-  scene: [BootScene, MenuScene, HeapSelectScene, GameScene, ScoreScene, UpgradeScene, StoreScene, TexturePreviewScene],
+  scene: [BootScene, MenuScene, HeapSelectScene, GameScene, ScoreScene, UpgradeScene, StoreScene, InfiniteGameScene, TexturePreviewScene],
   parent: 'game',
 };
 
