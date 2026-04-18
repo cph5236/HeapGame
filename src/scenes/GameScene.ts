@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
+import { CameraController } from '../systems/CameraController';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import type { Vertex } from '../systems/HeapPolygon';
 import {
@@ -215,12 +216,9 @@ export class GameScene extends Phaser.Scene {
       this,
     );
 
-    // Camera: follow player, clamped to world bounds
-    this.cameras.main.setBounds(0, 0, WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX);
-    this.cameras.main.startFollow(this.player.sprite, true, 1, 0.1);
     // Snap camera to player immediately so the first-frame cull threshold
     // is correct (otherwise camBottom ≈ 0 and all bottom-world chunks get culled).
-    this.cameras.main.centerOn(this.player.sprite.x, this.player.sprite.y);
+    CameraController.setup(this, this.player.sprite, WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX);
 
     // Background layers (sky colour set in main.ts; this adds ground dirt + parallax clouds)
     this.parallaxBg = new ParallaxBackground(this);
