@@ -43,6 +43,9 @@ export class Player {
    *  player is resting on a steep wall surface and should be ejected outward. */
   public inSlopeZone = false;
 
+  /** Override in scenes that use a wider world (e.g. InfiniteGameScene). */
+  public worldWidth: number = WORLD_WIDTH;
+
   private shieldActive: boolean = false;
   private shieldAura?: Phaser.GameObjects.Arc;
   private readonly syncAura = (): void => {
@@ -104,8 +107,8 @@ export class Player {
         this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
         this.coyoteTimer        = 120;
         // Still allow X-wrap so player doesn't get stuck at world edge on ladder
-        if (this.sprite.x < 0)           this.sprite.x = WORLD_WIDTH;
-        else if (this.sprite.x > WORLD_WIDTH) this.sprite.x = 0;
+        if (this.sprite.x < 0)                  this.sprite.x = this.worldWidth;
+        else if (this.sprite.x > this.worldWidth) this.sprite.x = 0;
         return; // skip all normal physics this frame
       }
     }
@@ -206,8 +209,8 @@ export class Player {
 
     // X wrap — seamless edge-to-edge teleport
     if (this.sprite.x < 0) {
-      this.sprite.x = WORLD_WIDTH;
-    } else if (this.sprite.x > WORLD_WIDTH) {
+      this.sprite.x = this.worldWidth;
+    } else if (this.sprite.x > this.worldWidth) {
       this.sprite.x = 0;
     }
 

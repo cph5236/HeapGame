@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { HeapEntry } from '../data/heapTypes';
 import { OBJECT_DEFS } from '../data/heapObjectDefs'; // used by addEntry for bounding box calc
-import { CHUNK_BAND_HEIGHT, HEAP_FILL_TEXTURE, ENEMY_CULL_DISTANCE } from '../constants';
+import { CHUNK_BAND_HEIGHT, HEAP_FILL_TEXTURE, ENEMY_CULL_DISTANCE, WORLD_WIDTH } from '../constants';
 import { computeBandScanlines, computeBandPolygon, Vertex } from './HeapPolygon';
 import { HEAP_TILE_COUNT } from '../data/heapTileUrls';
 
@@ -19,6 +19,8 @@ interface ChunkObjects {
 
 export class HeapChunkRenderer {
   private readonly scene: Phaser.Scene;
+  private readonly xOffset: number;
+  private readonly colWidth: number;
 
   /** entries bucketed by bandTop — an entry may appear in up to 2 buckets if it crosses a boundary. */
   private readonly buckets: Map<number, HeapEntry[]> = new Map();
@@ -26,8 +28,10 @@ export class HeapChunkRenderer {
   /** Live Phaser objects per rendered chunk, keyed by bandTop. */
   private readonly chunkObjects: Map<number, ChunkObjects> = new Map();
 
-  constructor(scene: Phaser.Scene) {
-    this.scene = scene;
+  constructor(scene: Phaser.Scene, xOffset = 0, colWidth = WORLD_WIDTH) {
+    this.scene    = scene;
+    this.xOffset  = xOffset;
+    this.colWidth = colWidth;
   }
 
   /**
@@ -125,7 +129,7 @@ export class HeapChunkRenderer {
     maskGfx.fillPoints(polygon, true);
 
     // --- RenderTexture ---
-    const rt = this.scene.add.renderTexture(0, bandTop, 960, CHUNK_BAND_HEIGHT);
+    const rt = this.scene.add.renderTexture(this.xOffset, bandTop, this.colWidth, CHUNK_BAND_HEIGHT);
     rt.setOrigin(0, 0);
     rt.setDepth(HEAP_VISUAL_DEPTH);
 

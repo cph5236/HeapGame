@@ -1,8 +1,9 @@
 export const GAME_WIDTH = 480;
 export const GAME_HEIGHT = 854;
 export const WORLD_WIDTH = 960;           // wider than the 480px canvas
-export const INFINITE_GAP_WIDTH   = 250;
-export const INFINITE_WORLD_WIDTH  = WORLD_WIDTH * 3 + INFINITE_GAP_WIDTH * 2;
+export const INFINITE_EDGE_PAD     = 100;  // open space on left/right edges before world wrap
+export const INFINITE_GAP_WIDTH    = 350;  // gap between each heap column
+export const INFINITE_WORLD_WIDTH  = WORLD_WIDTH * 3 + INFINITE_GAP_WIDTH * 2 + INFINITE_EDGE_PAD * 2;
 
 export const PLAYER_WIDTH = 40;
 export const PLAYER_HEIGHT = 46;

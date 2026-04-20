@@ -9,6 +9,7 @@ import { OBJECT_DEFS } from '../data/heapObjectDefs';
 
 const SURFACE_ANGLE_THRESHOLD = 30; // degrees — below this is a surface, above is a wall
 const RAT_IDLE_MS = 1000;
+const MIN_ENEMY_SPACING_PX = 100; // min horizontal gap between enemies spawned in the same band
 
 /**
  * Ray-casting point-in-polygon test.
@@ -104,7 +105,7 @@ export class EnemyManager {
    * entry is passed so we can derive platform width for rat patrol bounds.
    * blockPlaced guards against spawning enemies on the player's own summit block.
    */
-  onPlatformSpawned(x: number, platformTopY: number, blockPlaced: boolean, entry?: HeapEntry): void {
+  onPlatformSpawned(x: number, platformTopY: number, blockPlaced: boolean, entry?: HeapEntry, maxEnemies = Infinity): void {
     if (blockPlaced) return;
     let minX: number | undefined;
     let maxX: number | undefined;
@@ -115,8 +116,10 @@ export class EnemyManager {
         maxX = entry.x + def.width / 2;
       }
     }
+    let spawned = 0;
     for (const def of Object.values(ENEMY_DEFS)) {
-      this.trySpawn(def, x, platformTopY, 0, minX, maxX, platformTopY, platformTopY);
+      if (spawned >= maxEnemies) break;
+      if (this.trySpawn(def, x, platformTopY, 0, minX, maxX, platformTopY, platformTopY)) spawned++;
     }
   }
 
@@ -124,11 +127,14 @@ export class EnemyManager {
    * Call this when a band polygon is applied from the server path.
    * Iterates polygon edges to find spawnable surfaces.
    */
-  onBandLoaded(bandTopY: number, vertices: Vertex[]): void {
+  onBandLoaded(bandTopY: number, vertices: Vertex[], maxEnemies = Infinity): void {
     if (vertices.length < 2) return;
     const bandBottomY = bandTopY + CHUNK_BAND_HEIGHT;
     const EPS = 0.5;
+    let spawned = 0;
+    let lastSpawnX = -Infinity;
     for (let i = 0; i < vertices.length; i++) {
+      if (spawned >= maxEnemies) break;
       const v1 = vertices[i];
       const v2 = vertices[(i + 1) % vertices.length];
       // Skip artificial horizontal edges inserted at band-clip boundaries — these
@@ -138,6 +144,7 @@ export class EnemyManager {
       if (atTopCut || atBottomCut) continue;
       const angle = computeSurfaceAngle(v1, v2);
       const spawnX = (v1.x + v2.x) / 2;
+      if (Math.abs(spawnX - lastSpawnX) < MIN_ENEMY_SPACING_PX) continue;
       const spawnY = Math.min(v1.y, v2.y);
       // Use the edge extents as patrol bounds for rats
       const leftV  = v1.x <= v2.x ? v1 : v2;
@@ -147,7 +154,11 @@ export class EnemyManager {
       const minY = leftV.y;
       const maxY = rightV.y;
       for (const def of Object.values(ENEMY_DEFS)) {
-        this.trySpawn(def, spawnX, spawnY, angle, minX, maxX, minY, maxY);
+        if (spawned >= maxEnemies) break;
+        if (this.trySpawn(def, spawnX, spawnY, angle, minX, maxX, minY, maxY)) {
+          spawned++;
+          lastSpawnX = spawnX;
+        }
       }
     }
   }
@@ -240,22 +251,22 @@ export class EnemyManager {
     maxX?: number,
     minY?: number,
     maxY?: number,
-  ): void {
+  ): boolean {
     const isSurface = surfaceAngle < SURFACE_ANGLE_THRESHOLD;
     const isWall    = surfaceAngle >= SURFACE_ANGLE_THRESHOLD;
 
-    if (def.spawnOnHeapSurface && !isSurface) return;
-    if (def.spawnOnHeapWall    && !isWall)    return;
-    if (!def.spawnOnHeapSurface && !def.spawnOnHeapWall) return;
+    if (def.spawnOnHeapSurface && !isSurface) return false;
+    if (def.spawnOnHeapWall    && !isWall)    return false;
+    if (!def.spawnOnHeapSurface && !def.spawnOnHeapWall) return false;
 
     // Reject interior edges: the space just above an exterior surface is open air
     // (outside the polygon). Interior ledges and walls still have heap above them.
-    if (this.heapPolygon.length > 0 && isPointInsidePolygon(x, y - 1, this.heapPolygon)) return;
+    if (this.heapPolygon.length > 0 && isPointInsidePolygon(x, y - 1, this.heapPolygon)) return false;
 
     const rawChance = spawnChance(def, y);
-    if (rawChance === null) return;
+    if (rawChance === null) return false;
     const chance = scaleSpawnChance(rawChance, this._spawnRateMult);
-    if (Math.random() >= chance) return;
+    if (Math.random() >= chance) return false;
 
     const spawnY = y - def.height / 2;
     const enemy = new Enemy(this.scene, this.group, x, spawnY, def);
@@ -269,5 +280,6 @@ export class EnemyManager {
       enemy.sprite.setData('ratState', 'walk-right');
       enemy.sprite.setData('idleUntil', 0);
     }
+    return true;
   }
 }

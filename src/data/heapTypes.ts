@@ -2,6 +2,8 @@ export interface HeapEntry {
   x: number;     // center X in world coordinates
   y: number;     // center Y in world coordinates (Y=0 is summit, Y=max is base)
   keyid: number; // index into OBJECT_DEFS
+  w?: number;    // explicit width override (used by infinite mode — skips OBJECT_DEFS lookup)
+  h?: number;    // explicit height override
 }
 
 export interface HeapChunk {

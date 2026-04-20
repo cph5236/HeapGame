@@ -13,6 +13,7 @@ import { InputManager } from '../systems/InputManager';
 import { HUD } from '../ui/HUD';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { buildColumnEntries } from '../systems/InfiniteColumnGenerator';
+import type { ColumnExtendResponse } from '../workers/columnWorker';
 import { findSurfaceY } from '../systems/HeapSurface';
 import { buildRunScore } from '../systems/buildRunScore';
 import { getPlayerConfig, addBalance } from '../systems/SaveData';
@@ -33,6 +34,7 @@ import {
   GEN_LOOKAHEAD,
   INFINITE_WORLD_WIDTH,
   INFINITE_GAP_WIDTH,
+  INFINITE_EDGE_PAD,
   PLAYER_HEIGHT,
   PLAYER_JUMP_VELOCITY,
   PLAYER_INVINCIBLE_MS,
@@ -40,13 +42,18 @@ import {
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import type { EnemyKind } from '../entities/Enemy';
 
-const BLOCKS_PER_COLUMN = 300;
+const BLOCKS_PER_COLUMN  = 300;
+const EXTEND_BLOCKS      = 200;
+const EXTEND_THRESHOLD_PX = 3000; // extend when player is within this many px of the heap top
 
 function makeColBounds(): [number, number][] {
+  const p = INFINITE_EDGE_PAD;
+  const w = WORLD_WIDTH;
+  const g = INFINITE_GAP_WIDTH;
   return [
-    [0,                                        WORLD_WIDTH],
-    [WORLD_WIDTH + INFINITE_GAP_WIDTH,         WORLD_WIDTH * 2 + INFINITE_GAP_WIDTH],
-    [WORLD_WIDTH * 2 + INFINITE_GAP_WIDTH * 2, INFINITE_WORLD_WIDTH],
+    [p,             p + w],
+    [p + w + g,     p + w * 2 + g],
+    [p + w * 2 + g * 2, p + w * 3 + g * 2],
   ];
 }
 
@@ -69,8 +76,18 @@ export class InfiniteGameScene extends Phaser.Scene {
   private invincible:    boolean = false;
   private _runStartTime: number | null = null;
   private _runKills:     Partial<Record<EnemyKind, number>> = {};
-  private colBounds:     [number, number][] = [];
+  private colBounds:        [number, number][] = [];
+  private colSeeds:         number[] = [];
+  private colBlockCounts:   number[] = [];
+  private colExtending:     boolean[] = [];
+  private columnWorker!:    Worker;
+  private spawnedBands:     Set<number>[] = [];
   private playerConfig!: ReturnType<typeof getPlayerConfig>;
+  private debugMode = false;
+  private debugText?: Phaser.GameObjects.Text;
+  private noclipButton?: Phaser.GameObjects.Text;
+  private debugNoclip = false;
+  private heapColliders: Phaser.Physics.Arcade.Collider[] = [];
 
   constructor() { super({ key: 'InfiniteGameScene' }); }
 
@@ -82,31 +99,49 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.enemyManagers = [];
     this.walkableGroups = [];
     this.wallGroups     = [];
+    this.colExtending   = [false, false, false];
+    this.spawnedBands   = [new Set(), new Set(), new Set()];
 
-    this.physics.world.setBounds(0, 0, INFINITE_WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX);
+    this.columnWorker = new Worker(
+      new URL('../workers/columnWorker.ts', import.meta.url),
+      { type: 'module' },
+    );
+    this.columnWorker.onmessage = (e: MessageEvent<ColumnExtendResponse>) => {
+      const { colIndex, newEntries } = e.data;
+      this.generators[colIndex].appendEntries(newEntries);
+      this.colExtending[colIndex] = false;
+    };
+
+    // No left/right walls — manual wrap handles X. Keep top/bottom.
+    this.physics.world.setBounds(0, 0, INFINITE_WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX, false, false, true, true);
     this.colBounds    = makeColBounds();
     this.playerConfig = getPlayerConfig();
 
     // ── 3 heap columns ─────────────────────────────────────────────────────────
+    this.colSeeds       = [];
+    this.colBlockCounts = [];
+
     for (let i = 0; i < 3; i++) {
       const seed    = Math.floor(Math.random() * 1_000_000);
+      this.colSeeds.push(seed);
+      this.colBlockCounts.push(BLOCKS_PER_COLUMN);
       const [xMin, xMax] = this.colBounds[i];
       const walkable = this.physics.add.staticGroup();
       const wall     = this.physics.add.staticGroup();
-      const renderer = new HeapChunkRenderer(this);
+      const renderer = new HeapChunkRenderer(this, xMin, xMax - xMin);
       const edge     = new HeapEdgeCollider(this, this.playerConfig.maxWalkableSlopeDeg);
       const entries  = buildColumnEntries(seed, xMin, xMax, BLOCKS_PER_COLUMN);
       const gen      = new HeapGenerator(this, walkable, wall, entries, renderer, edge);
 
       const em = new EnemyManager(this, 1.0, xMin, xMax);
 
-      gen.onPlatformSpawned = (entry, platformTopY) => {
-        em.onPlatformSpawned(entry.x, platformTopY, false, entry);
-      };
-
       const colIdx = i;
       gen.onBandLoaded = (bandTopY, vertices) => {
-        em.onBandLoaded(bandTopY, vertices);
+        em.setPolygon(vertices);
+        if (!this.spawnedBands[colIdx].has(bandTopY)) {
+          this.spawnedBands[colIdx].add(bandTopY);
+          em.onBandLoaded(bandTopY, vertices);
+        }
         if (colIdx === 0) {
           this.bridgeSpawner?.onBandLoaded(bandTopY);
           this.portalManager?.onBandLoaded(bandTopY);
@@ -119,20 +154,21 @@ export class InfiniteGameScene extends Phaser.Scene {
       this.enemyManagers.push(em);
     }
 
-    // ── Player (center column) ──────────────────────────────────────────────────
-    const [cMin, cMax] = this.colBounds[1];
-    const centerX = (cMin + cMax) / 2;
-    this.spawnY   = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
-    this.player   = new Player(this, centerX, this.spawnY, this.playerConfig);
+    // ── Player (gap between col 0 and col 1 — no heap there) ───────────────────
+    const gapX = (this.colBounds[0][1] + this.colBounds[1][0]) / 2;
+    this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
+    this.player = new Player(this, gapX, this.spawnY, this.playerConfig);
+    this.player.worldWidth = INFINITE_WORLD_WIDTH;
 
     // ── Colliders ───────────────────────────────────────────────────────────────
+    this.heapColliders = [];
     type AP = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
     for (let i = 0; i < 3; i++) {
-      this.physics.add.collider(this.player.sprite, this.walkableGroups[i]);
-      this.physics.add.collider(
+      this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.walkableGroups[i]));
+      this.heapColliders.push(this.physics.add.collider(
         this.player.sprite, this.wallGroups[i],
         this.onHeapWallCollide as unknown as AP, undefined, this,
-      );
+      ));
     }
 
     // ── Bridge spawner ──────────────────────────────────────────────────────────
@@ -142,7 +178,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       this.colBounds,
       BRIDGE_DEF,
     );
-    this.physics.add.collider(this.player.sprite, this.bridgeSpawner.group);
+    this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.bridgeSpawner.group));
 
     // ── Portal manager ──────────────────────────────────────────────────────────
     this.portalManager = new PortalManager(
@@ -201,6 +237,18 @@ export class InfiniteGameScene extends Phaser.Scene {
 
     this.im = InputManager.getInstance();
     this.input.keyboard!.on('keydown-R', () => this.placeableManager.openHotbar());
+    this.input.keyboard!.on('keydown-F2', () => this.toggleDebugMode());
+
+    // ── Debug overlay ─────────────────────────────────────────────────────────────
+    this.debugText = this.add.text(8, 30, '', {
+      fontSize: '12px', color: '#00ff88', stroke: '#000000', strokeThickness: 2,
+    }).setScrollFactor(0).setDepth(30).setVisible(false);
+
+    this.noclipButton = this.add.text(8, 110, '[ NOCLIP: OFF ]', {
+      fontSize: '12px', color: '#ffff00', stroke: '#000000', strokeThickness: 2,
+      backgroundColor: '#333333', padding: { x: 4, y: 2 },
+    }).setScrollFactor(0).setDepth(30).setVisible(false).setInteractive()
+      .on('pointerdown', () => this.toggleNoclip());
 
     // ── Background ────────────────────────────────────────────────────────────────
     new ParallaxBackground(this);
@@ -218,17 +266,6 @@ export class InfiniteGameScene extends Phaser.Scene {
     }
     this.scoreText.setText(`${Math.floor(score / 100)} ft`);
 
-    // ── World wrap ────────────────────────────────────────────────────────────────
-    if (this.player.sprite.x < 0) {
-      this.player.sprite.setX(INFINITE_WORLD_WIDTH - 1);
-      (this.player.sprite.body as Phaser.Physics.Arcade.Body).reset(
-        INFINITE_WORLD_WIDTH - 1, this.player.sprite.y,
-      );
-    } else if (this.player.sprite.x > INFINITE_WORLD_WIDTH) {
-      this.player.sprite.setX(1);
-      (this.player.sprite.body as Phaser.Physics.Arcade.Body).reset(1, this.player.sprite.y);
-    }
-
     // ── Player + input ────────────────────────────────────────────────────────────
     this.im.update(delta, false);
     this.player.update(delta);
@@ -245,6 +282,25 @@ export class InfiniteGameScene extends Phaser.Scene {
       gen.flushWorkerResults();
     }
 
+    // ── Infinite extension — grow each column as the player approaches its top ──
+    for (let i = 0; i < this.generators.length; i++) {
+      const gen = this.generators[i];
+      if (!this.colExtending[i] && this.player.sprite.y - EXTEND_THRESHOLD_PX < gen.topY) {
+        this.colExtending[i] = true;
+        const [xMin, xMax] = this.colBounds[i];
+        this.columnWorker.postMessage({
+          colIndex: i,
+          seed: this.colSeeds[i],
+          xMin, xMax,
+          startIndex: this.colBlockCounts[i],
+          existingEntries: Array.from(gen.entries),
+          numBlocks: EXTEND_BLOCKS,
+          heapTopY: gen.topY,
+        });
+        this.colBlockCounts[i] += EXTEND_BLOCKS;
+      }
+    }
+
     // ── Difficulty ramp ───────────────────────────────────────────────────────────
     const elapsed = this._runStartTime !== null ? this.time.now - this._runStartTime : 0;
     const factor  = computeDifficultyFactor(score, elapsed);
@@ -258,6 +314,49 @@ export class InfiniteGameScene extends Phaser.Scene {
 
     this.trashWallManager.update(this.player.sprite.y, delta);
     this.portalManager.update();
+
+    // ── Noclip — refund air jump every frame so player has infinite jumps ─────────
+    if (this.debugNoclip) {
+      this.player.refundAirJump();
+    }
+
+    // ── Debug overlay ─────────────────────────────────────────────────────────────
+    if (this.debugMode && this.debugText) {
+      const px = Math.round(this.player.sprite.x);
+      const py = Math.round(this.player.sprite.y);
+      const col = this.colBounds.findIndex(([mn, mx]) => px >= mn && px <= mx);
+      const colLabel = col >= 0 ? `col ${col}` : 'gap';
+      const totalEnemies = this.enemyManagers.reduce((n, em) => n + em.group.getLength(), 0);
+      this.debugText.setText([
+        `Player: (${px}, ${py})  ${colLabel}`,
+        `Cam: (${Math.round(cam.scrollX)}, ${Math.round(cam.scrollY)})`,
+        `Score: ${Math.floor(score / 100)} ft  elapsed: ${Math.round(elapsed / 1000)}s`,
+        `Difficulty: ${factor.toFixed(2)}  spawnMult: ${spawnMult.toFixed(2)}`,
+        `Enemies: ${totalEnemies}`,
+      ].join('\n'));
+    }
+  }
+
+  private toggleDebugMode(): void {
+    this.debugMode = !this.debugMode;
+    this.debugText?.setVisible(this.debugMode);
+    this.noclipButton?.setVisible(this.debugMode);
+    if (this.debugMode) {
+      this.physics.world.createDebugGraphic();
+      this.physics.world.drawDebug = true;
+    } else {
+      if (this.debugNoclip) this.toggleNoclip();
+      this.physics.world.debugGraphic?.destroy();
+      this.physics.world.drawDebug = false;
+    }
+  }
+
+  private toggleNoclip(): void {
+    this.debugNoclip = !this.debugNoclip;
+    for (const c of this.heapColliders) {
+      c.active = !this.debugNoclip;
+    }
+    this.noclipButton?.setText(`[ NOCLIP: ${this.debugNoclip ? 'ON ' : 'OFF'} ]`);
   }
 
   // ── Death ────────────────────────────────────────────────────────────────────
@@ -290,7 +389,7 @@ export class InfiniteGameScene extends Phaser.Scene {
           isInfinite: true,
         },
       });
-      this.scene.pause();
+      this.scene.sleep();
     });
   }
 
@@ -308,7 +407,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   private readonly isDamaging = (
     player: Phaser.GameObjects.GameObject,
     enemy:  Phaser.GameObjects.GameObject,
-  ): boolean => !this.invincible && !this.isStomping(player, enemy);
+  ): boolean => !this.invincible && !this.debugNoclip && !this.isStomping(player, enemy);
 
   private readonly handleStomp = (
     _player: Phaser.GameObjects.GameObject,

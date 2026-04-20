@@ -84,10 +84,12 @@ export class BootScene extends Phaser.Scene {
             isInfinite: true,
           },
         };
-        summaries.push(infiniteEntry);
-        this.game.registry.set('heapCatalog', summaries);
+        // Remove any server-returned entry with the same GUID before injecting ours.
+        const deduped = summaries.filter(s => s.id !== INFINITE_HEAP_ID);
+        deduped.push(infiniteEntry);
+        this.game.registry.set('heapCatalog', deduped);
 
-        if (summaries.length === 0) {
+        if (deduped.length === 0) {
           this.game.registry.set('activeHeapId', '');
           this.game.registry.set('heapPolygon', [] as Vertex[]);
           this.game.registry.set('heapParams', DEFAULT_HEAP_PARAMS);
@@ -95,8 +97,8 @@ export class BootScene extends Phaser.Scene {
         }
 
         const stored = getSelectedHeapId();
-        const pick = summaries.find((s) => s.id === stored)
-                  ?? [...summaries].sort((a, b) => a.params.difficulty - b.params.difficulty
+        const pick = deduped.find((s) => s.id === stored)
+                  ?? [...deduped].sort((a, b) => a.params.difficulty - b.params.difficulty
                         || a.createdAt.localeCompare(b.createdAt))[0];
 
         setSelectedHeapId(pick.id);

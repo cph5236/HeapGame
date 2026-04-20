@@ -52,7 +52,7 @@ const PARAM_SEED      = process.env.SEED       ? Number(process.env.SEED)       
 
 function buildHeap(): HeapEntry[] {
   console.log(`Generating heap entries with seed ${PARAM_SEED}…`);
-  const state = new HeapState(MOCK_HEAP_HEIGHT_PX, PARAM_SEED);
+  const state = new HeapState(PARAM_SEED);
   const entries: HeapEntry[] = [];
 
   for (let i = 0; i < NUM_BLOCKS; i++) {

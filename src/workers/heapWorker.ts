@@ -1,10 +1,12 @@
-import { computeBandScanlines, computeBandPolygon, Vertex } from '../systems/HeapPolygon';
+import { computeBandScanlines, computeBandPolygon, simplifyPolygon, Vertex } from '../systems/HeapPolygon';
 import { CHUNK_BAND_HEIGHT } from '../constants';
 
 export interface WorkerEntry {
   x: number;
   y: number;
   keyid: number;
+  w?: number;
+  h?: number;
 }
 
 export interface WorkerBandInput {
@@ -38,7 +40,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>): void => {
       bandTop,
       bandTop + CHUNK_BAND_HEIGHT,
     );
-    const polygon = computeBandPolygon(rows);
+    const polygon = simplifyPolygon(computeBandPolygon(rows), 2);
     if (polygon.length >= 3) resultBands.push({ bandTop, polygon });
   }
 

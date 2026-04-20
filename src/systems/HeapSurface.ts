@@ -24,11 +24,13 @@ export function findSurfaceY(
 
   for (const entry of entries) {
     const def    = OBJECT_DEFS[entry.keyid] ?? OBJECT_DEFS[0];
-    const eLeft  = entry.x - def.width  / 2;
-    const eRight = entry.x + def.width  / 2;
+    const eW     = entry.w ?? def.width;
+    const eH     = entry.h ?? def.height;
+    const eLeft  = entry.x - eW / 2;
+    const eRight = entry.x + eW / 2;
 
     if (eRight > left && eLeft < right) {
-      const topEdge = entry.y - def.height / 2;
+      const topEdge = entry.y - eH / 2;
       if (topEdge < surfaceY) surfaceY = topEdge;
     }
   }

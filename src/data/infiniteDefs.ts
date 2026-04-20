@@ -1,6 +1,6 @@
 export const INFINITE_HEAP_ID = 'FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF';
 
-export const INFINITE_MAX_RAMP_HEIGHT  = 40_000;  // px climbed for full height difficulty
+export const INFINITE_MAX_RAMP_HEIGHT  = 400_000;  // px climbed for full height difficulty
 export const INFINITE_MAX_RAMP_TIME    = 600_000; // ms (10 min) for full time difficulty
 export const INFINITE_HEIGHT_WEIGHT    = 0.7;
 export const INFINITE_TIME_WEIGHT      = 0.3;

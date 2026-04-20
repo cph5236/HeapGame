@@ -764,7 +764,7 @@ export class ScoreScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0.4);
 
     const goMenu = () => {
-      this.scene.stop('GameScene');
+      this.scene.stop(this._heapParams.isInfinite ? 'InfiniteGameScene' : 'GameScene');
       this.scene.start('MenuScene');
     };
 
