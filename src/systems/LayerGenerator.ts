@@ -47,9 +47,10 @@ export class LayerGenerator {
       const driftMax  = lerp(INFINITE_CENTER_DRIFT_MAX, 350, t);
 
       const ny        = y / scale;
-      const centerX   = colMid + this.noise(0, ny) * driftMax;
-      const leftHalf  = lerp(minW / 2, INFINITE_MAX_WIDTH / 2, (this.noise(1, ny) + 1) / 2);
-      const rightHalf = lerp(minW / 2, INFINITE_MAX_WIDTH / 2, (this.noise(2, ny) + 1) / 2);
+      const ny2       = y / (scale * 0.35); // 4× frequency octave for jagged detail
+      const centerX   = colMid + this.noise(0, ny) * driftMax * 0.7 + this.noise(0, ny2) * driftMax * 0.3;
+      const leftHalf  = lerp(minW / 2, INFINITE_MAX_WIDTH / 2, ((this.noise(1, ny) * 0.7 + this.noise(1, ny2) * 0.3) + 1) / 2);
+      const rightHalf = lerp(minW / 2, INFINITE_MAX_WIDTH / 2, ((this.noise(2, ny) * 0.7 + this.noise(2, ny2) * 0.3) + 1) / 2);
 
       let leftX  = Math.max(this.colLeft,  centerX - leftHalf);
       let rightX = Math.min(this.colRight, centerX + rightHalf);

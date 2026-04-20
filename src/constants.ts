@@ -61,7 +61,7 @@ export const INFINITE_LOOKAHEAD_CHUNKS   = 10;      // chunks generated ahead of
 export const INFINITE_MIN_WIDTH          = 150;     // tightest squeeze (~4× player width)
 export const INFINITE_MAX_WIDTH          = 900;     // widest open section
 export const INFINITE_CENTER_DRIFT_MAX   = 200;     // max px center shifts from column midpoint
-export const INFINITE_NOISE_SCALE        = 800;     // Y pixels per noise wave (at start)
+export const INFINITE_NOISE_SCALE        = 300;     // Y pixels per noise wave (at start)
 export const INFINITE_DIFFICULTY_RANGE   = 40_000;  // Y pixels for easy→hard ramp
 export const HEAP_FILL_TEXTURE = 'composite-heap';
 
