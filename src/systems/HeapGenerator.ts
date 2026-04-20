@@ -4,7 +4,7 @@ import { OBJECT_DEFS } from '../data/heapObjectDefs';
 import { CHUNK_BAND_HEIGHT, MOCK_HEAP_HEIGHT_PX } from '../constants';
 import { HeapChunkRenderer } from './HeapChunkRenderer';
 import { HeapEdgeCollider } from './HeapEdgeCollider';
-import { Vertex } from './HeapPolygon';
+import { Vertex, ScanlineRow } from './HeapPolygon';
 import type { WorkerBandInput, WorkerRequest, WorkerResponse } from '../workers/heapWorker';
 
 export class HeapGenerator {
@@ -240,6 +240,10 @@ export class HeapGenerator {
     }
     this.sentCount      = newSent;
     this.nextLoadIndex  = newFlushed;
+  }
+
+  sendLayerBatch(bandTop: number, rows: ScanlineRow[]): void {
+    this.worker.postMessage({ type: 'layers', bands: [{ bandTop, rows }] });
   }
 
   /**
