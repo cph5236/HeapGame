@@ -56,6 +56,13 @@ export const SWIPE_DIRECTION_RATIO = 2.0; // |dx|/|dy| must exceed this to be a 
 
 // Heap visual chunking
 export const CHUNK_BAND_HEIGHT = 500; // px per visual silhouette band
+export const LAYER_STEP                  = 4;       // px between layer lines — matches SCAN_STEP
+export const INFINITE_LOOKAHEAD_CHUNKS   = 10;      // chunks generated ahead of player
+export const INFINITE_MIN_WIDTH          = 150;     // tightest squeeze (~4× player width)
+export const INFINITE_MAX_WIDTH          = 900;     // widest open section
+export const INFINITE_CENTER_DRIFT_MAX   = 200;     // max px center shifts from column midpoint
+export const INFINITE_NOISE_SCALE        = 800;     // Y pixels per noise wave (at start)
+export const INFINITE_DIFFICULTY_RANGE   = 40_000;  // Y pixels for easy→hard ramp
 export const HEAP_FILL_TEXTURE = 'composite-heap';
 
 // ── Parallax Background ───────────────────────────────────────────────────────
