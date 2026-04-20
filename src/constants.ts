@@ -57,6 +57,8 @@ export const SWIPE_DIRECTION_RATIO = 2.0; // |dx|/|dy| must exceed this to be a 
 // Heap visual chunking
 export const CHUNK_BAND_HEIGHT = 500; // px per visual silhouette band
 export const LAYER_STEP                  = 4;       // px between layer lines — matches SCAN_STEP
+export const LEDGE_STEP                  = 60;      // px per staircase step — controls ledge height and wall frequency
+export const LEDGE_BLEND                 = 0.60;    // 0 = fully smooth curves, 1 = fully blocky staircases
 export const INFINITE_LOOKAHEAD_CHUNKS   = 10;      // chunks generated ahead of player
 export const INFINITE_MIN_WIDTH          = 150;     // tightest squeeze (~4× player width)
 export const INFINITE_MAX_WIDTH          = 900;     // widest open section

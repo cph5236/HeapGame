@@ -176,7 +176,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     // ── Trash wall ───────────────────────────────────────────────────────────────
     this.trashWallManager = new TrashWallManager(this, TRASH_WALL_DEF, () => {
       this.handleDeath();
-    });
+    }, INFINITE_WORLD_WIDTH);
     this.trashWallManager.spawn(this.player.sprite.y);
 
     // ── Placeable manager ────────────────────────────────────────────────────────
@@ -220,6 +220,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     // ── Debug overlay ─────────────────────────────────────────────────────────────
     this.debugText = this.add.text(8, 30, '', {
       fontSize: '12px', color: '#00ff88', stroke: '#000000', strokeThickness: 2,
+      backgroundColor: '#00000099', padding: { x: 4, y: 3 },
     }).setScrollFactor(0).setDepth(30).setVisible(false);
 
     this.noclipButton = this.add.text(8, 110, '[ NOCLIP: OFF ]', {
