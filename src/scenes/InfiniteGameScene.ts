@@ -12,9 +12,8 @@ import { CameraController } from '../systems/CameraController';
 import { InputManager } from '../systems/InputManager';
 import { HUD } from '../ui/HUD';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
-import { buildColumnEntries } from '../systems/InfiniteColumnGenerator';
-import type { ColumnExtendResponse } from '../workers/columnWorker';
-import { findSurfaceY } from '../systems/HeapSurface';
+import { LayerGenerator } from '../systems/LayerGenerator';
+import { computeBandPolygon, simplifyPolygon } from '../systems/HeapPolygon';
 import { buildRunScore } from '../systems/buildRunScore';
 import { getPlayerConfig, addBalance } from '../systems/SaveData';
 import { ENEMY_DEFS } from '../data/enemyDefs';
@@ -23,7 +22,6 @@ import { PORTAL_DEF } from '../data/portalDefs';
 import { TRASH_WALL_DEF } from '../data/trashWallDef';
 import {
   INFINITE_HEAP_ID,
-  INFINITE_SURFACE_SNAP_THRESHOLD,
   INFINITE_MIN_SPAWN_MULT,
   INFINITE_MAX_SPAWN_MULT,
   computeDifficultyFactor,
@@ -38,13 +36,11 @@ import {
   PLAYER_HEIGHT,
   PLAYER_JUMP_VELOCITY,
   PLAYER_INVINCIBLE_MS,
+  CHUNK_BAND_HEIGHT,
+  INFINITE_LOOKAHEAD_CHUNKS,
 } from '../constants';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import type { EnemyKind } from '../entities/Enemy';
-
-const BLOCKS_PER_COLUMN  = 300;
-const EXTEND_BLOCKS      = 200;
-const EXTEND_THRESHOLD_PX = 3000; // extend when player is within this many px of the heap top
 
 function makeColBounds(): [number, number][] {
   const p = INFINITE_EDGE_PAD;
@@ -66,6 +62,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   private walkableGroups: Phaser.Physics.Arcade.StaticGroup[] = [];
   private wallGroups:     Phaser.Physics.Arcade.StaticGroup[] = [];
   private generators:     HeapGenerator[]  = [];
+  private layerGenerators: LayerGenerator[] = [];
   private enemyManagers:  EnemyManager[]   = [];
   private trashWallManager!: TrashWallManager;
   private placeableManager!: PlaceableManager;
@@ -78,9 +75,6 @@ export class InfiniteGameScene extends Phaser.Scene {
   private _runKills:     Partial<Record<EnemyKind, number>> = {};
   private colBounds:        [number, number][] = [];
   private colSeeds:         number[] = [];
-  private colBlockCounts:   number[] = [];
-  private colExtending:     boolean[] = [];
-  private columnWorker!:    Worker;
   private spawnedBands:     Set<number>[] = [];
   private playerConfig!: ReturnType<typeof getPlayerConfig>;
   private debugMode = false;
@@ -96,21 +90,11 @@ export class InfiniteGameScene extends Phaser.Scene {
     this._runStartTime = null;
     this.invincible    = false;
     this.generators    = [];
+    this.layerGenerators = [];
     this.enemyManagers = [];
     this.walkableGroups = [];
     this.wallGroups     = [];
-    this.colExtending   = [false, false, false];
     this.spawnedBands   = [new Set(), new Set(), new Set()];
-
-    this.columnWorker = new Worker(
-      new URL('../workers/columnWorker.ts', import.meta.url),
-      { type: 'module' },
-    );
-    this.columnWorker.onmessage = (e: MessageEvent<ColumnExtendResponse>) => {
-      const { colIndex, newEntries } = e.data;
-      this.generators[colIndex].appendEntries(newEntries);
-      this.colExtending[colIndex] = false;
-    };
 
     // No left/right walls — manual wrap handles X. Keep top/bottom.
     this.physics.world.setBounds(0, 0, INFINITE_WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX, false, false, true, true);
@@ -118,20 +102,20 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.playerConfig = getPlayerConfig();
 
     // ── 3 heap columns ─────────────────────────────────────────────────────────
-    this.colSeeds       = [];
-    this.colBlockCounts = [];
+    this.colSeeds = [];
 
     for (let i = 0; i < 3; i++) {
       const seed    = Math.floor(Math.random() * 1_000_000);
       this.colSeeds.push(seed);
-      this.colBlockCounts.push(BLOCKS_PER_COLUMN);
       const [xMin, xMax] = this.colBounds[i];
       const walkable = this.physics.add.staticGroup();
       const wall     = this.physics.add.staticGroup();
       const renderer = new HeapChunkRenderer(this, xMin, xMax - xMin);
       const edge     = new HeapEdgeCollider(this, this.playerConfig.maxWalkableSlopeDeg);
-      const entries  = buildColumnEntries(seed, xMin, xMax, BLOCKS_PER_COLUMN);
-      const gen      = new HeapGenerator(this, walkable, wall, entries, renderer, edge);
+      const gen      = new HeapGenerator(this, walkable, wall, [], renderer, edge);
+
+      const layerGen = new LayerGenerator(seed, xMin, xMax, MOCK_HEAP_HEIGHT_PX);
+      this.layerGenerators.push(layerGen);
 
       const em = new EnemyManager(this, 1.0, xMin, xMax);
 
@@ -199,13 +183,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.placeableManager = new PlaceableManager(
       this, this.player, this.walkableGroups[0], this.wallGroups[0],
       INFINITE_HEAP_ID,
-      (x, savedY) => {
-        for (const gen of this.generators) {
-          const surfY = findSurfaceY(x, 10, gen.entries);
-          if (Math.abs(surfY - savedY) <= INFINITE_SURFACE_SNAP_THRESHOLD) return true;
-        }
-        return false;
-      },
+      (_x, _savedY) => false,  // no surface restoration — no entries in LayerGenerator mode
       true, // excludeCheckpoint
     );
 
@@ -254,8 +232,15 @@ export class InfiniteGameScene extends Phaser.Scene {
     new ParallaxBackground(this);
 
     // ── Initial generation (sync so collision is ready frame 1) ──────────────────
-    for (const gen of this.generators) {
-      gen.generateUpToSync(this.spawnY - GEN_LOOKAHEAD);
+    for (let i = 0; i < 3; i++) {
+      const gen      = this.generators[i];
+      const layerGen = this.layerGenerators[i];
+      const targetY  = this.spawnY - GEN_LOOKAHEAD;
+      while (layerGen.nextBandTop > targetY) {
+        const { bandTop, rows } = layerGen.nextChunk();
+        const polygon = simplifyPolygon(computeBandPolygon(rows), 2);
+        if (polygon.length >= 3) gen.applyBandPolygon(bandTop, polygon);
+      }
     }
   }
 
@@ -277,28 +262,16 @@ export class InfiniteGameScene extends Phaser.Scene {
     const camTop = cam.worldView.top;
     const camBot = cam.worldView.bottom;
 
-    for (const gen of this.generators) {
-      gen.generateUpTo(camTop - GEN_LOOKAHEAD);
-      gen.flushWorkerResults();
-    }
-
-    // ── Infinite extension — grow each column as the player approaches its top ──
-    for (let i = 0; i < this.generators.length; i++) {
-      const gen = this.generators[i];
-      if (!this.colExtending[i] && this.player.sprite.y - EXTEND_THRESHOLD_PX < gen.topY) {
-        this.colExtending[i] = true;
-        const [xMin, xMax] = this.colBounds[i];
-        this.columnWorker.postMessage({
-          colIndex: i,
-          seed: this.colSeeds[i],
-          xMin, xMax,
-          startIndex: this.colBlockCounts[i],
-          existingEntries: Array.from(gen.entries),
-          numBlocks: EXTEND_BLOCKS,
-          heapTopY: gen.topY,
-        });
-        this.colBlockCounts[i] += EXTEND_BLOCKS;
+    // Layer generation — drive each column ahead of the player
+    const targetY = this.player.sprite.y - INFINITE_LOOKAHEAD_CHUNKS * CHUNK_BAND_HEIGHT;
+    for (let i = 0; i < 3; i++) {
+      const gen      = this.generators[i];
+      const layerGen = this.layerGenerators[i];
+      while (layerGen.nextBandTop > targetY) {
+        const { bandTop, rows } = layerGen.nextChunk();
+        gen.sendLayerBatch(bandTop, rows);
       }
+      gen.flushWorkerResults();
     }
 
     // ── Difficulty ramp ───────────────────────────────────────────────────────────
