@@ -512,10 +512,13 @@ export class GameScene extends Phaser.Scene {
    */
   private readonly onHeapWallCollide = (
     playerObj: Phaser.GameObjects.GameObject,
+    wallObj: Phaser.GameObjects.GameObject,
   ): void => {
     const body = (playerObj as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody).body;
     if (body.blocked.down) {
       this.player.inSlopeZone = true;
+      const side = (wallObj as Phaser.GameObjects.Image).getData('wallSide') as 'left' | 'right';
+      this.player.slopeEjectDir = side === 'left' ? -1 : 1;
     }
   };
 

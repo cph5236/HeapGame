@@ -42,6 +42,8 @@ export class Player {
   /** Set by GameScene's wall-group collision callback each frame. When true the
    *  player is resting on a steep wall surface and should be ejected outward. */
   public inSlopeZone = false;
+  /** Direction to eject when inSlopeZone: -1 = left (off left wall), 1 = right (off right wall). */
+  public slopeEjectDir: number = 0;
 
   /** Override in scenes that use a wider world (e.g. InfiniteGameScene). */
   public worldWidth: number = WORLD_WIDTH;
@@ -140,8 +142,7 @@ export class Player {
     if (this.dashActive === 0) {
       if (this.inSlopeZone && !goLeft && !goRight) {
         // Eject outward along the wall surface until the player slides off the edge
-        const ejectDir = this.sprite.x < WORLD_WIDTH / 2 ? -1 : 1;
-        this.sprite.setVelocityX(ejectDir * PLAYER_SPEED);
+        this.sprite.setVelocityX(this.slopeEjectDir * PLAYER_SPEED);
       } else if (goLeft) {
         this.sprite.setVelocityX(-PLAYER_SPEED);
         this.sprite.setFlipX(true);
@@ -214,8 +215,9 @@ export class Player {
       this.sprite.x = 0;
     }
 
-    // Reset per-frame flag set by the wall-group collision callback (physics runs before update)
-    this.inSlopeZone = false;
+    // Reset per-frame flags set by the wall-group collision callback (physics runs before update)
+    this.inSlopeZone    = false;
+    this.slopeEjectDir  = 0;
 
     // Y clamp — prevent falling through the world floor; treat floor as ground
     if (this.sprite.y >= floorY) {
