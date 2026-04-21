@@ -7,7 +7,7 @@ import { EnemyManager } from '../systems/EnemyManager';
 import { TrashWallManager } from '../systems/TrashWallManager';
 import { PlaceableManager } from '../systems/PlaceableManager';
 import { BridgeSpawner } from '../systems/BridgeSpawner';
-import { PortalManager } from '../systems/PortalManager';
+import { PortalManager, findPortalSurface } from '../systems/PortalManager';
 import { CameraController } from '../systems/CameraController';
 import { InputManager } from '../systems/InputManager';
 import { HUD } from '../ui/HUD';
@@ -128,7 +128,6 @@ export class InfiniteGameScene extends Phaser.Scene {
         }
         if (colIdx === 0) {
           this.bridgeSpawner?.onBandLoaded(bandTopY);
-          this.portalManager?.onBandLoaded(bandTopY);
         }
       };
 
@@ -170,6 +169,12 @@ export class InfiniteGameScene extends Phaser.Scene {
       (ms) => {
         this.invincible = true;
         this.time.delayedCall(ms, () => { this.invincible = false; });
+      },
+      (colIdx, x, nearY) => {
+        const layerGen = this.layerGenerators[colIdx];
+        const bandTop  = Math.floor(nearY / CHUNK_BAND_HEIGHT) * CHUNK_BAND_HEIGHT;
+        const rows     = layerGen.rowsForBand(bandTop);
+        return findPortalSurface(rows, x, PORTAL_DEF.clearanceRequired);
       },
     );
 
