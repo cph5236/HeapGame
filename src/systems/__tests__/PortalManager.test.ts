@@ -21,8 +21,8 @@ describe('findPortalSurface', () => {
 
   it('returns null when a row in the clearance zone contains x', () => {
     const rowsWithObstruction: ScanlineRow[] = [
-      { y: 50,  leftX: 50, rightX: 200 }, // inside clearance zone: 100 - 60 = 40 < 50 < 100
       { y: 100, leftX: 50, rightX: 200 }, // surface
+      { y: 50,  leftX: 50, rightX: 200 }, // inside clearance zone: 100 - 60 = 40 < 50 < 100
     ];
     // clearanceRequired=60 → clearTop=40; y=50 is in (40, 100) and contains x=125 → blocked
     expect(findPortalSurface(rowsWithObstruction, 125, 60)).toBeNull();
@@ -38,8 +38,8 @@ describe('findPortalSurface', () => {
 
   it('returns null when x is exactly on clearance boundary row', () => {
     const rows: ScanlineRow[] = [
-      { y: 41,  leftX: 50, rightX: 200 }, // y=41 > clearTop(40), < surface(100) → obstruction
       { y: 100, leftX: 50, rightX: 200 },
+      { y: 41,  leftX: 50, rightX: 200 }, // y=41 > clearTop(40), < surface(100) → obstruction
     ];
     expect(findPortalSurface(rows, 125, 60)).toBeNull();
   });
