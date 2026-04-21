@@ -19,6 +19,9 @@ import type { HeapSummary } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced } from '../systems/SaveData';
 import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
+import { PORTAL_DEF } from '../data/portalDefs';
+import { RECYCLE_ITEM_URLS } from '../data/portalRecycleUrls';
+import { RECYCLE_ITEM_COUNT } from '../constants';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -45,6 +48,12 @@ export class BootScene extends Phaser.Scene {
 
     // Rat (percher enemy) — 3×4 grid of 32×32 frames
     this.load.spritesheet('rat', ratUrl, { frameWidth: 32, frameHeight: 32 });
+
+    // Portal and recycle items
+    this.load.image(PORTAL_DEF.spriteKey, PORTAL_DEF.spritePath);
+    for (let i = 0; i < RECYCLE_ITEM_COUNT; i++) {
+      this.load.image(`recycle-item-${i}`, RECYCLE_ITEM_URLS[i]);
+    }
   }
 
   create(): void {
