@@ -13,19 +13,8 @@ export function findPortalSurface(
   x: number,
   clearanceRequired: number,
 ): number | null {
-  const containingRows = rows.filter(r => x >= r.leftX && x <= r.rightX);
-  if (containingRows.length === 0) return null;
-
-  const minY = Math.min(...containingRows.map(r => r.y));
-  const maxY = Math.max(...containingRows.map(r => r.y));
-  const range = maxY - minY;
-
-  // If containing rows span a distance larger than clearanceRequired,
-  // use the bottommost as the surface; otherwise use the topmost.
-  const surfaceRow = range > clearanceRequired
-    ? containingRows.find(r => r.y === minY)!
-    : containingRows.find(r => r.y === maxY)!;
-
+  const surfaceRow = rows.find(r => x >= r.leftX && x <= r.rightX);
+  if (!surfaceRow) return null;
   const clearTop = surfaceRow.y - clearanceRequired;
   const hasObstruction = rows.some(
     r => r.y > clearTop && r.y < surfaceRow.y && x >= r.leftX && x <= r.rightX,
