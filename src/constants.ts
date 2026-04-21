@@ -81,6 +81,7 @@ export const PLAYER_INVINCIBLE_MS       = 400;  // post-stomp / post-spawn invin
 export const FLOOR_BODY_HEIGHT = 8;   // short in Y
 export const MAX_WALKABLE_SLOPE_DEG  = 35;  // surfaces steeper than this are treated as walls
 export const MOUNTAIN_CLIMBER_INCREMENT = 3; // degrees added per upgrade level — set by designer
+export const RECYCLE_ITEM_COUNT = 16;
 
 // Place-Ables
 export const LADDER_HEIGHT  = 230;  // ~5× PLAYER_HEIGHT; designer-tunable
