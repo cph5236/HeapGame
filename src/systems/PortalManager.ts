@@ -1,22 +1,48 @@
 import Phaser from 'phaser';
 import type { Player } from '../entities/Player';
 import type { PortalDef } from '../data/portalDefs';
+import type { ScanlineRow } from './HeapPolygon';
+
+/**
+ * Scans `rows` (ordered top→bottom, ascending Y) to find the topmost row
+ * containing `x`, then verifies `clearanceRequired` px of clear air above it.
+ * Returns the surface Y, or null if no surface or clearance is blocked.
+ */
+export function findPortalSurface(
+  rows: ScanlineRow[],
+  x: number,
+  clearanceRequired: number,
+): number | null {
+  const containingRows = rows.filter(r => x >= r.leftX && x <= r.rightX);
+  if (containingRows.length === 0) return null;
+
+  const minY = Math.min(...containingRows.map(r => r.y));
+  const maxY = Math.max(...containingRows.map(r => r.y));
+  const range = maxY - minY;
+
+  // If containing rows span a distance larger than clearanceRequired,
+  // use the bottommost as the surface; otherwise use the topmost.
+  const surfaceRow = range > clearanceRequired
+    ? containingRows.find(r => r.y === minY)!
+    : containingRows.find(r => r.y === maxY)!;
+
+  const clearTop = surfaceRow.y - clearanceRequired;
+  const hasObstruction = rows.some(
+    r => r.y > clearTop && r.y < surfaceRow.y && x >= r.leftX && x <= r.rightX,
+  );
+  return hasObstruction ? null : surfaceRow.y;
+}
+
+/** Returns a random number in [range[0], range[1]]. Injectable rng for testing. */
+export function randBetween(range: [number, number], rng: () => number = Math.random): number {
+  return range[0] + rng() * (range[1] - range[0]);
+}
 
 interface PortalPair {
   aX: number; aY: number;
   bX: number; bY: number;
   aRect: Phaser.GameObjects.Rectangle;
   bRect: Phaser.GameObjects.Rectangle;
-}
-
-/** Pure helper — exported for unit testing. */
-export function pickDifferentColumn(
-  source: number,
-  numCols: number,
-  rng: () => number,
-): number {
-  const offset = 1 + Math.floor(rng() * (numCols - 1));
-  return (source + offset) % numCols;
 }
 
 export class PortalManager {
@@ -69,7 +95,8 @@ export class PortalManager {
   private spawnPair(bandTopY: number): void {
     const numCols  = this.colBounds.length;
     const aColIdx  = Math.floor(Math.random() * numCols);
-    const bColIdx  = pickDifferentColumn(aColIdx, numCols, Math.random);
+    const offset = 1 + Math.floor(Math.random() * (numCols - 1));
+    const bColIdx  = (aColIdx + offset) % numCols;
 
     const deltaY   = this.def.minHeightDelta +
       Math.random() * (this.def.maxHeightDelta - this.def.minHeightDelta);
