@@ -7,13 +7,13 @@ import { EnemyManager } from '../systems/EnemyManager';
 import { TrashWallManager } from '../systems/TrashWallManager';
 import { PlaceableManager } from '../systems/PlaceableManager';
 import { BridgeSpawner } from '../systems/BridgeSpawner';
-import { PortalManager, findPortalSurface } from '../systems/PortalManager';
+import { PortalManager, findPortalSurfaceFromPolygon } from '../systems/PortalManager';
 import { CameraController } from '../systems/CameraController';
 import { InputManager } from '../systems/InputManager';
 import { HUD } from '../ui/HUD';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { LayerGenerator } from '../systems/LayerGenerator';
-import { computeBandPolygon, simplifyPolygon } from '../systems/HeapPolygon';
+import { computeBandPolygon, simplifyPolygon, type Vertex } from '../systems/HeapPolygon';
 import { buildRunScore } from '../systems/buildRunScore';
 import { getPlayerConfig, addBalance } from '../systems/SaveData';
 import { ENEMY_DEFS } from '../data/enemyDefs';
@@ -64,6 +64,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   private generators:     HeapGenerator[]  = [];
   private layerGenerators: LayerGenerator[] = [];
   private enemyManagers:  EnemyManager[]   = [];
+  private colBandPolygons: Map<number, Vertex[]>[] = [];
   private trashWallManager!: TrashWallManager;
   private placeableManager!: PlaceableManager;
   private bridgeSpawner!:    BridgeSpawner;
@@ -94,7 +95,8 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.enemyManagers = [];
     this.walkableGroups = [];
     this.wallGroups     = [];
-    this.spawnedBands   = [new Set(), new Set(), new Set()];
+    this.spawnedBands      = [new Set(), new Set(), new Set()];
+    this.colBandPolygons   = [new Map(), new Map(), new Map()];
 
     // No left/right walls — manual wrap handles X. Keep top/bottom.
     this.physics.world.setBounds(0, 0, INFINITE_WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX, false, false, true, true);
@@ -122,6 +124,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       const colIdx = i;
       gen.onBandLoaded = (bandTopY, vertices) => {
         em.setPolygon(vertices);
+        this.colBandPolygons[colIdx].set(bandTopY, vertices);
         if (!this.spawnedBands[colIdx].has(bandTopY)) {
           this.spawnedBands[colIdx].add(bandTopY);
           em.onBandLoaded(bandTopY, vertices);
@@ -157,9 +160,9 @@ export class InfiniteGameScene extends Phaser.Scene {
     // ── Bridge spawner ──────────────────────────────────────────────────────────
     this.bridgeSpawner = new BridgeSpawner(
       this,
-      this.generators as [HeapGenerator, HeapGenerator, HeapGenerator],
       this.colBounds,
       BRIDGE_DEF,
+      (colIdx: number, bandTop: number) => this.colBandPolygons[colIdx].get(bandTop),
     );
     this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.bridgeSpawner.group));
 
@@ -171,11 +174,16 @@ export class InfiniteGameScene extends Phaser.Scene {
         this.time.delayedCall(ms, () => { this.invincible = false; });
       },
       (colIdx, x, nearY) => {
-        const layerGen = this.layerGenerators[colIdx];
         const bandTop  = Math.floor(nearY / CHUNK_BAND_HEIGHT) * CHUNK_BAND_HEIGHT;
-        const rows     = layerGen.rowsForBand(bandTop);
-        return findPortalSurface(rows, x, PORTAL_DEF.clearanceRequired);
+        const vertices = this.colBandPolygons[colIdx].get(bandTop);
+        if (this.debugMode) {
+          const loaded = this.colBandPolygons[colIdx].size;
+          console.log(`[Portal:surface] col=${colIdx} nearY=${Math.round(nearY)} bandTop=${bandTop} vertices=${vertices ? vertices.length : 'MISSING'} (${loaded} bands loaded)`);
+        }
+        if (!vertices || vertices.length < 2) return null;
+        return findPortalSurfaceFromPolygon(vertices, bandTop, x, PORTAL_DEF.clearanceRequired);
       },
+      (colIdx, bandTop) => this.colBandPolygons[colIdx].get(bandTop),
     );
 
     // ── Trash wall ───────────────────────────────────────────────────────────────
@@ -318,6 +326,8 @@ export class InfiniteGameScene extends Phaser.Scene {
 
   private toggleDebugMode(): void {
     this.debugMode = !this.debugMode;
+    this.portalManager.debug = this.debugMode;
+    this.bridgeSpawner.debug = this.debugMode;
     this.debugText?.setVisible(this.debugMode);
     this.noclipButton?.setVisible(this.debugMode);
     if (this.debugMode) {

@@ -1,4 +1,4 @@
-import portalUrl from '../sprites/Portal/Trashcan-portal.jpg?url';
+import portalUrl from '../sprites/Portal/Trashcan-portal.png?url';
 
 export interface PortalDef {
   spawnPortalEveryY:  [number, number];  // [min, max] px of climb between entrance spawns
