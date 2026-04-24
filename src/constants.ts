@@ -24,7 +24,7 @@ export const STACK_GAP_MAX = 16;
 export const GEN_LOOKAHEAD = 1200;
 
 // Mock global heap state — replace with backend later
-export const MOCK_HEAP_HEIGHT_PX = 50_000;
+export const MOCK_HEAP_HEIGHT_PX = 5_000_000;
 export const MOCK_SEED = 12;
 
 // How many pixels above the heap's topmost block that activates the placement zone
@@ -64,13 +64,13 @@ export const INFINITE_MIN_WIDTH          = 150;     // tightest squeeze (~4× pl
 export const INFINITE_MAX_WIDTH          = 900;     // widest open section
 export const INFINITE_CENTER_DRIFT_MAX   = 200;     // max px center shifts from column midpoint
 export const INFINITE_NOISE_SCALE        = 300;     // Y pixels per noise wave (at start)
-export const INFINITE_DIFFICULTY_RANGE   = 40_000;  // Y pixels for easy→hard ramp
+export const INFINITE_DIFFICULTY_RANGE   = 4_000_000;  // Y pixels for easy→hard ramp
 export const HEAP_FILL_TEXTURE = 'composite-heap';
 
 // ── Parallax Background ───────────────────────────────────────────────────────
 export const CLOUD_POOL_SIZE        = 14;     // max number of clouds at once; set based on density and screen height
 export const CLOUD_PARALLAX_FACTOR  = 0.15;   // clouds move at 30% of camera speed
-export const CLOUD_START_WORLD_Y    = 50_000; // show clouds everywhere; lower (e.g. 40_000) to gate by height
+export const CLOUD_START_WORLD_Y    = 5_000_000; // show clouds everywhere; lower to gate by height
 export const GROUND_LAYER_HEIGHT    = 180;    // total depth of dirt cross-section in px
 
 // Enemies

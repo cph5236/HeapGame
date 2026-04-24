@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { OBJECT_DEF_LIST } from '../data/heapObjectDefs';
 import { HEAP_PNG_URLS } from '../data/heapPngUrls';
-import { HEAP_FILL_TEXTURE } from '../constants';
+import { HEAP_FILL_TEXTURE, MOCK_HEAP_HEIGHT_PX } from '../constants';
 import { HEAP_TILE_URLS, HEAP_TILE_COUNT } from '../data/heapTileUrls';
 import trashbagUrl from '../sprites/player/trashbag.png?url';
 import ibeamUrl from '../sprites/Placeables/IBeam.png?url';
@@ -92,6 +92,7 @@ export class BootScene extends Phaser.Scene {
             spawnRateMult: 1.0,
             coinMult: 1.0,
             scoreMult: 1.0,
+            worldHeight: MOCK_HEAP_HEIGHT_PX,
             isInfinite: true,
           },
         };

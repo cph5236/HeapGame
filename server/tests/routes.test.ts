@@ -348,6 +348,7 @@ describe('POST /heaps with params', () => {
       spawnRateMult: 1.5,
       coinMult: 1.3,
       scoreMult: 2.0,
+      worldHeight: 50_000,
     });
   });
 
@@ -365,6 +366,7 @@ describe('POST /heaps with params', () => {
       spawnRateMult: 1.0,
       coinMult: 1.0,
       scoreMult: 1.0,
+      worldHeight: 50_000,
     });
   });
 
@@ -440,7 +442,58 @@ describe('GET /heaps/:id', () => {
     const body = await res.json() as GetHeapResponse;
     expect(body.changed).toBe(true);
     if (body.changed) {
-      expect(body.params).toEqual({ name: 'X', difficulty: 2, spawnRateMult: 1.1, coinMult: 1.2, scoreMult: 1.3 });
+      expect(body.params).toEqual({ name: 'X', difficulty: 2, spawnRateMult: 1.1, coinMult: 1.2, scoreMult: 1.3, worldHeight: 50_000 });
     }
+  });
+});
+
+// ── worldHeight ───────────────────────────────────────────────────────────────
+
+describe('worldHeight in heap params', () => {
+  it('defaults worldHeight to 50000 when not specified', async () => {
+    const app = makeApp();
+    await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const list = await (await app.request('/heaps')).json() as ListHeapsResponse;
+    expect(list.heaps[0].params.worldHeight).toBe(50_000);
+  });
+
+  it('stores and returns a custom worldHeight via GET /heaps', async () => {
+    const app = makeApp();
+    await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES, params: { worldHeight: 5_000_000 } }),
+    });
+    const list = await (await app.request('/heaps')).json() as ListHeapsResponse;
+    expect(list.heaps[0].params.worldHeight).toBe(5_000_000);
+  });
+
+  it('includes worldHeight in GET /:id changed:true response', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES, params: { worldHeight: 5_000_000 } }),
+    });
+    const created = await createRes.json() as CreateHeapResponse;
+
+    const res = await app.request(`/heaps/${created.id}?version=0`);
+    const body = await res.json() as GetHeapResponse;
+    expect(body.changed).toBe(true);
+    if (body.changed) {
+      expect(body.params.worldHeight).toBe(5_000_000);
+    }
+  });
+
+  it('seedHeap with worldHeight is reflected in GET /heaps', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 1, [], 'base-1', 0, { name: 'Old Heap', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 50_000 });
+    const res = await createApp(db, new MockScoreDB()).request('/heaps');
+    const body = await res.json() as ListHeapsResponse;
+    expect(body.heaps[0].params.worldHeight).toBe(50_000);
   });
 });

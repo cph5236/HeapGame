@@ -11,6 +11,7 @@ export interface HeapParams {
   spawnRateMult: number;
   coinMult: number;
   scoreMult: number;
+  worldHeight: number;     // px from Y=0 (summit) to Y=worldHeight (floor)
   isInfinite?: boolean;
 }
 
@@ -20,6 +21,7 @@ export const DEFAULT_HEAP_PARAMS: HeapParams = {
   spawnRateMult: 1.0,
   coinMult: 1.0,
   scoreMult: 1.0,
+  worldHeight: 50_000,
 };
 
 // ── Create ──────────────────────────────────────────────────────────────────

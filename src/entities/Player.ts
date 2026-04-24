@@ -47,6 +47,8 @@ export class Player {
 
   /** Override in scenes that use a wider world (e.g. InfiniteGameScene). */
   public worldWidth: number = WORLD_WIDTH;
+  /** Floor Y for the current heap — used as the ground fallback. */
+  public worldHeight: number = MOCK_HEAP_HEIGHT_PX;
 
   private shieldActive: boolean = false;
   private shieldAura?: Phaser.GameObjects.Arc;
@@ -118,7 +120,7 @@ export class Player {
     if (!this.controlsEnabled) return;
 
     const body     = this.sprite.body;
-    const floorY   = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2;
+    const floorY   = this.worldHeight - PLAYER_HEIGHT / 2;
     const onWall   = body.blocked.left || body.blocked.right;
     // Filter spurious blocked.down from wall bodies: while sliding (velocity.y > 10)
     // and touching a wall, a wall-face body can register as ground — ignore it.

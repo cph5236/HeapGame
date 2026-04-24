@@ -15,6 +15,7 @@ export interface HeapRow {
   spawn_rate_mult: number;
   coin_mult: number;
   score_mult: number;
+  world_height: number;
 }
 
 export interface HeapSummaryRow {
@@ -26,6 +27,7 @@ export interface HeapSummaryRow {
   spawn_rate_mult: number;
   coin_mult: number;
   score_mult: number;
+  world_height: number;
 }
 
 export interface HeapDB {
@@ -52,7 +54,7 @@ export class D1HeapDB implements HeapDB {
   async listHeaps(): Promise<HeapSummaryRow[]> {
     const result = await this.d1
       .prepare(
-        'SELECT id, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult FROM heap',
+        'SELECT id, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height FROM heap',
       )
       .all<HeapSummaryRow>();
     return result.results;
@@ -61,7 +63,7 @@ export class D1HeapDB implements HeapDB {
   async getHeap(id: string): Promise<HeapRow | null> {
     const row = await this.d1
       .prepare(
-        'SELECT id, base_id, live_zone, freeze_y, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult FROM heap WHERE id = ?1',
+        'SELECT id, base_id, live_zone, freeze_y, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height FROM heap WHERE id = ?1',
       )
       .bind(id)
       .first<HeapRow>();
@@ -85,13 +87,13 @@ export class D1HeapDB implements HeapDB {
       this.d1
         .prepare(
           `INSERT INTO heap (id, base_id, live_zone, freeze_y, version, created_at,
-                             name, difficulty, spawn_rate_mult, coin_mult, score_mult)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
+                             name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`,
         )
         .bind(
           heapId, baseId, '[]', 0, 1, now,
           params.name, params.difficulty,
-          params.spawnRateMult, params.coinMult, params.scoreMult,
+          params.spawnRateMult, params.coinMult, params.scoreMult, params.worldHeight,
         ),
     ]);
   }
@@ -106,10 +108,10 @@ export class D1HeapDB implements HeapDB {
   async updateHeapParams(id: string, params: HeapParams): Promise<void> {
     await this.d1
       .prepare(
-        `UPDATE heap SET name = ?1, difficulty = ?2, spawn_rate_mult = ?3, coin_mult = ?4, score_mult = ?5
-         WHERE id = ?6`,
+        `UPDATE heap SET name = ?1, difficulty = ?2, spawn_rate_mult = ?3, coin_mult = ?4, score_mult = ?5, world_height = ?6
+         WHERE id = ?7`,
       )
-      .bind(params.name, params.difficulty, params.spawnRateMult, params.coinMult, params.scoreMult, id)
+      .bind(params.name, params.difficulty, params.spawnRateMult, params.coinMult, params.scoreMult, params.worldHeight, id)
       .run();
   }
 

@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS heap (
   difficulty      REAL NOT NULL DEFAULT 1.0,
   spawn_rate_mult REAL NOT NULL DEFAULT 1.0,
   coin_mult       REAL NOT NULL DEFAULT 1.0,
-  score_mult      REAL NOT NULL DEFAULT 1.0
+  score_mult      REAL NOT NULL DEFAULT 1.0,
+  world_height    INTEGER NOT NULL DEFAULT 50000
 );
 
 -- High scores — one row per (heap, player), enforced by PRIMARY KEY

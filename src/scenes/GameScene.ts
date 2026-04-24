@@ -75,6 +75,7 @@ export class GameScene extends Phaser.Scene {
   private _runKills:     Partial<Record<EnemyKind, number>> = {};
   private _runStartTime: number | null = null;
   private _heapParams!: HeapParams;
+  private _worldHeight: number = MOCK_HEAP_HEIGHT_PX;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -100,8 +101,8 @@ export class GameScene extends Phaser.Scene {
     this._runKills     = {};
     this._runStartTime = null;
 
-    // World: Y=0 is the summit (top), Y=MOCK_HEAP_HEIGHT_PX is the base (bottom)
-    this.physics.world.setBounds(0, 0, WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX);
+    // World: Y=0 is the summit (top), Y=worldHeight is the base (bottom)
+    this.physics.world.setBounds(0, 0, WORLD_WIDTH, this._worldHeight);
 
     this.heapWalkableGroup = this.physics.add.staticGroup();
     this.heapWallGroup     = this.physics.add.staticGroup();
@@ -112,13 +113,14 @@ export class GameScene extends Phaser.Scene {
     this._heapId = heapId;
     this._liveZoneBottomY = HeapClient.getLiveZoneBottomY(heapId);
     this._heapParams = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
+    this._worldHeight = this._heapParams.worldHeight ?? MOCK_HEAP_HEIGHT_PX;
 
     // Enemies — constructed and wired BEFORE polygon/generation calls so that
     // onBandLoaded and onPlatformSpawned fire correctly during initial load.
     this.enemyManager = new EnemyManager(this, this._heapParams.spawnRateMult);
 
     // Spawn player at world floor (left clear zone) — player climbs up through the heap
-    this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
+    this.spawnY = this._worldHeight - PLAYER_HEIGHT / 2 - 1;
     this.playerConfig = getPlayerConfig();
     this.edgeCollider = new HeapEdgeCollider(this, this.playerConfig.maxWalkableSlopeDeg);
     this.heapGenerator = new HeapGenerator(
@@ -137,11 +139,12 @@ export class GameScene extends Phaser.Scene {
 
     if (polygon.length > 0) {
       this.enemyManager.setPolygon(polygon);
-      applyPolygonToGenerator(polygon, this.heapGenerator);
-      this.heapGenerator.setPolygonTopY(polygonTopY(polygon));
+      applyPolygonToGenerator(polygon, this.heapGenerator, this._worldHeight);
+      this.heapGenerator.setPolygonTopY(polygonTopY(polygon, this._worldHeight));
     }
 
     this.player = new Player(this, WORLD_WIDTH * 0.0625, this.spawnY, this.playerConfig);
+    this.player.worldHeight = this._worldHeight;
 
     // If restarted via checkpoint respawn, reposition player and consume one spawn
     if (this.checkpointRespawn) {
@@ -186,7 +189,7 @@ export class GameScene extends Phaser.Scene {
         });
         this.scene.pause();
       });
-    });
+    }, WORLD_WIDTH, this._worldHeight);
     this.trashWallManager.spawn(this.player.sprite.y);
 
     // Stream an initial chunk synchronously so collision is ready before the first frame
@@ -218,10 +221,10 @@ export class GameScene extends Phaser.Scene {
 
     // Snap camera to player immediately so the first-frame cull threshold
     // is correct (otherwise camBottom ≈ 0 and all bottom-world chunks get culled).
-    CameraController.setup(this, this.player.sprite, WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX);
+    CameraController.setup(this, this.player.sprite, WORLD_WIDTH, this._worldHeight);
 
     // Background layers (sky colour set in main.ts; this adds ground dirt + parallax clouds)
-    this.parallaxBg = new ParallaxBackground(this);
+    this.parallaxBg = new ParallaxBackground(this, this._worldHeight);
 
     // Debug overlay (F2 to toggle)
     this.debugText = this.add.text(8, 8, '', {

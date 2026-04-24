@@ -26,6 +26,7 @@ export class MockHeapDB implements HeapDB {
       spawn_rate_mult: row.spawn_rate_mult,
       coin_mult:       row.coin_mult,
       score_mult:      row.score_mult,
+      world_height:    row.world_height,
     }));
   }
 
@@ -60,6 +61,7 @@ export class MockHeapDB implements HeapDB {
       spawn_rate_mult: params.spawnRateMult,
       coin_mult:       params.coinMult,
       score_mult:      params.scoreMult,
+      world_height:    params.worldHeight,
     });
   }
 
@@ -79,6 +81,7 @@ export class MockHeapDB implements HeapDB {
       spawn_rate_mult: params.spawnRateMult,
       coin_mult:       params.coinMult,
       score_mult:      params.scoreMult,
+      world_height:    params.worldHeight,
     });
   }
 
@@ -116,6 +119,7 @@ export class MockHeapDB implements HeapDB {
       spawn_rate_mult: params.spawnRateMult,
       coin_mult:       params.coinMult,
       score_mult:      params.scoreMult,
+      world_height:    params.worldHeight,
     });
   }
 

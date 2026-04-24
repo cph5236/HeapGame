@@ -22,11 +22,13 @@ const CLOUD_DEPTH  = 1;
 
 export class ParallaxBackground {
   private readonly scene: Phaser.Scene;
+  private readonly worldHeight: number;
   private readonly clouds: Cloud[] = [];
   private prevScrollY = 0;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, worldHeight: number = MOCK_HEAP_HEIGHT_PX) {
     this.scene = scene;
+    this.worldHeight = worldHeight;
     this.createGroundLayer();
     this.createCloudPool();
     // Initialise to current camera position so the first update() has delta ≈ 0.
@@ -44,7 +46,7 @@ export class ParallaxBackground {
 
   private createGroundLayer(): void {
     const gfx    = this.scene.add.graphics().setDepth(GROUND_DEPTH);
-    const floorY = MOCK_HEAP_HEIGHT_PX;
+    const floorY = this.worldHeight;
 
     // Grass strip — sits above the world floor, visible beside the heap base
     gfx.fillStyle(0x4a7c3f).fillRect(0, floorY - 14, WORLD_WIDTH, 14);

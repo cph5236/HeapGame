@@ -111,6 +111,7 @@ export function heapRoutes(db: HeapDB): Hono {
           spawnRateMult: r.spawn_rate_mult,
           coinMult:      r.coin_mult,
           scoreMult:     r.score_mult,
+          worldHeight:   r.world_height,
         },
       })),
     } satisfies ListHeapsResponse);
@@ -153,6 +154,7 @@ export function heapRoutes(db: HeapDB): Hono {
         spawnRateMult: row.spawn_rate_mult,
         coinMult:      row.coin_mult,
         scoreMult:     row.score_mult,
+        worldHeight:   row.world_height,
       },
     } satisfies GetHeapResponse);
   });
@@ -176,6 +178,7 @@ export function heapRoutes(db: HeapDB): Hono {
         spawnRateMult: bodyParams.spawnRateMult  ?? row.spawn_rate_mult,
         coinMult:      bodyParams.coinMult       ?? row.coin_mult,
         scoreMult:     bodyParams.scoreMult      ?? row.score_mult,
+        worldHeight:   bodyParams.worldHeight    ?? row.world_height,
       };
       await db.updateHeapParams(id, merged);
     }

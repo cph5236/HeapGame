@@ -68,10 +68,11 @@ export class TrashWallManager {
   private readonly trashSprites:    OscImage[] = [];
 
   constructor(
-    private readonly scene:     Phaser.Scene,
-    private readonly def:       TrashWallDef,
-    private readonly onKill:    () => void,
+    private readonly scene:      Phaser.Scene,
+    private readonly def:        TrashWallDef,
+    private readonly onKill:     () => void,
     private readonly worldWidth: number = WORLD_WIDTH,
+    private readonly worldHeight: number = MOCK_HEAP_HEIGHT_PX,
   ) {
     this.body = scene.add.graphics();
     this.body.setDepth(5);
@@ -102,7 +103,7 @@ export class TrashWallManager {
 
     const speed = computeWallSpeed(
       this.wallY, this.def.speedMin, this.def.speedMax,
-      this.def.yForMaxSpeed, MOCK_HEAP_HEIGHT_PX,
+      this.def.yForMaxSpeed, this.worldHeight,
     );
     this.wallY -= speed * (delta / 1000); // move up (Y decreases)
     this.wallY  = clampWallY(this.wallY, playerY, this.def.maxLaggingDistance);
@@ -162,7 +163,7 @@ export class TrashWallManager {
     // Body: solid dark-brown fill from wallY downward — covers items (depth 2) below the surface
     this.body.clear();
     this.body.fillStyle(0x3B1F0A, 1);
-    this.body.fillRect(0, this.wallY, this.worldWidth, MOCK_HEAP_HEIGHT_PX - this.wallY);
+    this.body.fillRect(0, this.wallY, this.worldWidth, this.worldHeight - this.wallY);
 
     for (const img of this.trashSprites) {
       // Advance phase; swap texture at the start of each new cycle

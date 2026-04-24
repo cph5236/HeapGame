@@ -28,7 +28,7 @@ export const TRASH_WALL_DEF: TrashWallDef = {
   maxLaggingDistance:       2200,  // slightly above ENEMY_CULL_DISTANCE (2000)
   speedMin:                   40,  // px/s near world floor
   speedMax:                  120,  // px/s at high altitude
-  yForMaxSpeed:             5000,  // world Y (small = near heap summit)
+  yForMaxSpeed:           500_000,  // world Y (small = near heap summit)
   warningDistance:           600,
   warningSound:   'trashwall-warning', // placeholder — no audio hooked up yet
   killZoneHeight:             30,
