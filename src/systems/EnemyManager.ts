@@ -184,11 +184,11 @@ export class EnemyManager {
         const maxY: number  = s.getData('maxY') ?? s.y;
         const state: string = s.getData('ratState') ?? 'walk-right';
 
-        // Follow the slope: interpolate Y based on current X position
+        // Follow the slope: interpolate Y based on current body X (post-step).
+        // body.center.x reflects physics movement this frame; s.x is one frame stale.
         if (maxX > minX) {
-          const t = (s.x - minX) / (maxX - minX);
+          const t = Phaser.Math.Clamp((body.center.x - minX) / (maxX - minX), 0, 1);
           const targetY = minY + t * (maxY - minY);
-          s.y = targetY;
           body.position.y = targetY - body.halfHeight;
         }
 

@@ -127,7 +127,7 @@ export class PortalManager {
     }
 
     // Spawn trigger — fires once per Y interval as player climbs
-    if (this.player.sprite.y <= this.nextPortalY) {
+    if (this.player.sprite.y <= this.nextPortalY + screenHeight) {
       if (this.debug) console.log(`[Portal] spawn trigger at playerY=${Math.round(this.player.sprite.y)} nextPortalY=${Math.round(this.nextPortalY)}`);
       this.attemptSpawnPair(this.nextPortalY);
       this.nextPortalY -= randBetween(this.def.spawnPortalEveryY);

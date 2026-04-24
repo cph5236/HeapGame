@@ -157,7 +157,11 @@ export class HeapGenerator {
     for (const response of this.pendingBandResults) {
       // Apply visuals + colliders for each computed band
       for (const band of response.bands) {
-        this.applyBandPolygon(band.bandTop, band.polygon);
+        if (band.rows && band.rows.length >= 2) {
+          this.applyBandWithRows(band.bandTop, band.rows, band.polygon);
+        } else {
+          this.applyBandPolygon(band.bandTop, band.polygon);
+        }
       }
 
       // Register each entry in chunkRenderer's buckets (keeps them accurate for
@@ -252,6 +256,12 @@ export class HeapGenerator {
    */
   applyBandPolygon(bandTop: number, vertices: Vertex[]): void {
     this.edgeCollider?.buildFromVertices(bandTop, vertices, this.walkableGroup, this.wallGroup);
+    this.chunkRenderer?.renderFromPolygon(bandTop, vertices);
+    this.onBandLoaded?.(bandTop, vertices);
+  }
+
+  applyBandWithRows(bandTop: number, rows: ScanlineRow[], vertices: Vertex[]): void {
+    this.edgeCollider?.buildFromScanlines(bandTop, rows, this.walkableGroup, this.wallGroup);
     this.chunkRenderer?.renderFromPolygon(bandTop, vertices);
     this.onBandLoaded?.(bandTop, vertices);
   }

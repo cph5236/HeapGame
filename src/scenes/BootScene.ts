@@ -9,6 +9,7 @@ import ibeamUrl from '../sprites/Placeables/IBeam.png?url';
 import ladderUrl from '../sprites/Placeables/Ladder.png?url';
 import tombstone1Url from '../sprites/Placeables/TombStone (1).png?url';
 import tombstone2Url from '../sprites/Placeables/TombStone (2).png?url';
+import bridgeUrl from '../sprites/Bridge/Bridge.png?url';
 import vultureFlyLeftUrl  from '../sprites/Enemies/vulture/vulture-fly-left.png?url';
 import vultureFlyRightUrl from '../sprites/Enemies/vulture/vulture-fly-right.png?url';
 import ratUrl from '../sprites/Enemies/Rat/rat.png?url';
@@ -37,6 +38,7 @@ export class BootScene extends Phaser.Scene {
     this.load.image('item-ladder', ladderUrl);
     this.load.image('item-checkpoint-1', tombstone1Url);
     this.load.image('item-checkpoint-2', tombstone2Url);
+    this.load.image('bridge', bridgeUrl);
 
     for (const def of OBJECT_DEF_LIST) {
       this.load.image(def.textureKey, HEAP_PNG_URLS[def.textureKey]);

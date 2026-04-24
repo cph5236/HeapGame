@@ -80,6 +80,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   private playerConfig!: ReturnType<typeof getPlayerConfig>;
   private debugMode = false;
   private debugText?: Phaser.GameObjects.Text;
+  private bridgePenetration = 0;
   private noclipButton?: Phaser.GameObjects.Text;
   private debugNoclip = false;
   private heapColliders: Phaser.Physics.Arcade.Collider[] = [];
@@ -129,9 +130,7 @@ export class InfiniteGameScene extends Phaser.Scene {
           this.spawnedBands[colIdx].add(bandTopY);
           em.onBandLoaded(bandTopY, vertices);
         }
-        if (colIdx === 0) {
-          this.bridgeSpawner?.onBandLoaded(bandTopY);
-        }
+        this.bridgeSpawner?.onBandLoaded(bandTopY);
       };
 
       this.walkableGroups.push(walkable);
@@ -164,7 +163,28 @@ export class InfiniteGameScene extends Phaser.Scene {
       BRIDGE_DEF,
       (colIdx: number, bandTop: number) => this.colBandPolygons[colIdx].get(bandTop),
     );
-    this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.bridgeSpawner.group));
+    this.heapColliders.push(this.physics.add.collider(
+      this.player.sprite, this.bridgeSpawner.group,
+      undefined,
+      (_player, _bridge) => (this.player.sprite.body as Phaser.Physics.Arcade.Body).velocity.y >= 0,
+    ));
+    // Side-entry slope push: left/right faces are disabled on segments so the
+    // player doesn't catch on risers, but that means they clip through when
+    // walking in from the side. This overlap handler corrects that by pushing
+    // the player up by the penetration depth each frame they're inside a segment.
+    this.physics.add.overlap(
+      this.player.sprite,
+      this.bridgeSpawner.group,
+      (playerGO, bridgeGO) => {
+        const pb = (playerGO as Phaser.Physics.Arcade.Sprite).body as Phaser.Physics.Arcade.Body;
+        const sb = (bridgeGO as Phaser.Physics.Arcade.Sprite).body as Phaser.Physics.Arcade.StaticBody;
+        if (pb.velocity.y < 0) return;
+        const penetration = pb.bottom - sb.top;
+        if (penetration > 0 && pb.top < sb.top) {
+          this.bridgePenetration = Math.max(this.bridgePenetration, penetration);
+        }
+      },
+    );
 
     // ── Portal manager ──────────────────────────────────────────────────────────
     this.portalManager = new PortalManager(
@@ -253,7 +273,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       while (layerGen.nextBandTop > targetY) {
         const { bandTop, rows } = layerGen.nextChunk();
         const polygon = simplifyPolygon(computeBandPolygon(rows), 2);
-        if (polygon.length >= 3) gen.applyBandPolygon(bandTop, polygon);
+        if (rows.length >= 2 && polygon.length >= 3) gen.applyBandWithRows(bandTop, rows, polygon);
       }
     }
   }
@@ -264,6 +284,14 @@ export class InfiniteGameScene extends Phaser.Scene {
       this._runStartTime = this.time.now;
     }
     this.scoreText.setText(`${Math.floor(score / 100)} ft`);
+
+    // ── Bridge slope correction ───────────────────────────────────────────────────
+    if (this.bridgePenetration > 0) {
+      const body = this.player.sprite.body as Phaser.Physics.Arcade.Body;
+      body.y -= this.bridgePenetration;
+      body.velocity.y = Math.min(body.velocity.y, 0);
+      this.bridgePenetration = 0;
+    }
 
     // ── Player + input ────────────────────────────────────────────────────────────
     this.im.update(delta, false);

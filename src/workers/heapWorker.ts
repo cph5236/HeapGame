@@ -22,6 +22,7 @@ export interface WorkerRequest {
 export interface WorkerBandResult {
   bandTop: number;
   polygon: Vertex[];
+  rows?: ScanlineRow[];
 }
 
 export interface WorkerResponse {
@@ -45,7 +46,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest | LayersWorkerRequest>): void =>
     const resultBands: WorkerBandResult[] = [];
     for (const { bandTop, rows } of req.bands) {
       const polygon = simplifyPolygon(computeBandPolygon(rows), 2);
-      if (polygon.length >= 3) resultBands.push({ bandTop, polygon });
+      if (polygon.length >= 3) resultBands.push({ bandTop, polygon, rows });
     }
     (self as unknown as Worker).postMessage({
       bands: resultBands,
