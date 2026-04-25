@@ -1,6 +1,6 @@
 // server/src/db.ts
 
-import { HeapParams, Vertex } from '../../shared/heapTypes';
+import { HeapParams, Vertex, HeapEnemyParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 
 export interface HeapRow {
@@ -46,6 +46,8 @@ export interface HeapDB {
   deleteHeap(id: string): Promise<void>;
   getBaseVerticesById(baseId: string): Promise<Vertex[] | null>;
   createBase(id: string, heapId: string, vertices: Vertex[], vertexHash: string, now: string): Promise<void>;
+  getEnemyParams(heapId: string): Promise<HeapEnemyParams>;
+  upsertEnemyParams(heapId: string, params: HeapEnemyParams): Promise<void>;
 }
 
 export class D1HeapDB implements HeapDB {
@@ -134,6 +136,29 @@ export class D1HeapDB implements HeapDB {
     await this.d1
       .prepare('INSERT INTO heap_base (id, heap_id, vertices, vertex_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5)')
       .bind(id, heapId, JSON.stringify(vertices), vertexHash, now)
+      .run();
+  }
+
+  async getEnemyParams(heapId: string): Promise<HeapEnemyParams> {
+    const row = await this.d1
+      .prepare('SELECT enemy_params FROM heap_parameters WHERE heap_id = ?1')
+      .bind(heapId)
+      .first<{ enemy_params: string }>();
+    if (row) return JSON.parse(row.enemy_params) as HeapEnemyParams;
+
+    const sentinel = await this.d1
+      .prepare("SELECT enemy_params FROM heap_parameters WHERE heap_id = '00000000-0000-0000-0000-000000000000'")
+      .first<{ enemy_params: string }>();
+    return sentinel ? (JSON.parse(sentinel.enemy_params) as HeapEnemyParams) : {};
+  }
+
+  async upsertEnemyParams(heapId: string, params: HeapEnemyParams): Promise<void> {
+    await this.d1
+      .prepare(
+        `INSERT INTO heap_parameters (heap_id, enemy_params) VALUES (?1, ?2)
+         ON CONFLICT (heap_id) DO UPDATE SET enemy_params = excluded.enemy_params`,
+      )
+      .bind(heapId, JSON.stringify(params))
       .run();
   }
 }
