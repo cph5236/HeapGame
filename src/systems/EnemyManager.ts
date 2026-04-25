@@ -2,6 +2,7 @@
 import Phaser from 'phaser';
 import { Enemy } from '../entities/Enemy';
 import { ENEMY_DEFS, EnemyDef } from '../data/enemyDefs';
+import type { HeapEnemyParams } from '../../shared/heapTypes';
 import { CHUNK_BAND_HEIGHT, ENEMY_CULL_DISTANCE, MOCK_HEAP_HEIGHT_PX, WORLD_WIDTH } from '../constants';
 import type { Vertex } from './HeapPolygon';
 import type { HeapEntry } from '../data/heapTypes';
@@ -30,6 +31,7 @@ export class EnemyManager {
   private readonly _xMin: number;
   private readonly _xMax: number;
   private readonly _worldHeight: number;
+  private _enemyParams: HeapEnemyParams = {};
 
   constructor(
     scene: Phaser.Scene,
@@ -48,6 +50,10 @@ export class EnemyManager {
 
   setSpawnRateMult(mult: number): void {
     this._spawnRateMult = mult;
+  }
+
+  setEnemyParams(params: HeapEnemyParams): void {
+    this._enemyParams = params;
   }
 
   /** Update the heap polygon used for interior-spawn rejection. Call after every polygon load. */
@@ -218,7 +224,10 @@ export class EnemyManager {
     // (outside the polygon). Interior ledges and walls still have heap above them.
     if (this.heapPolygon.length > 0 && isPointInsidePolygon(x, y - 1, this.heapPolygon)) return false;
 
-    const rawChance = spawnChance(def, y, this._worldHeight);
+    const spawnParams = this._enemyParams[def.kind];
+    if (!spawnParams) return false;
+    const pxAboveFloor = this._worldHeight - y;
+    const rawChance = spawnChance(spawnParams, pxAboveFloor);
     if (rawChance === null) return false;
     const chance = scaleSpawnChance(rawChance, this._spawnRateMult);
     if (Math.random() >= chance) return false;
