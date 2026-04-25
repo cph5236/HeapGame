@@ -623,4 +623,21 @@ describe('PUT /heaps/:id/enemy-params', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('returns 400 for null body', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as { id: string };
+
+    const res = await app.request(`/heaps/${id}/enemy-params`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(null),
+    });
+    expect(res.status).toBe(400);
+  });
 });
