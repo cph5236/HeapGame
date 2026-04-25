@@ -117,7 +117,7 @@ export class GameScene extends Phaser.Scene {
 
     // Enemies — constructed and wired BEFORE polygon/generation calls so that
     // onBandLoaded and onPlatformSpawned fire correctly during initial load.
-    this.enemyManager = new EnemyManager(this, this._heapParams.spawnRateMult);
+    this.enemyManager = new EnemyManager(this, this._heapParams.spawnRateMult, 0, WORLD_WIDTH, this._worldHeight);
 
     // Spawn player at world floor (left clear zone) — player climbs up through the heap
     this.spawnY = this._worldHeight - PLAYER_HEIGHT / 2 - 1;

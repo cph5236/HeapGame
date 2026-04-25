@@ -14,14 +14,12 @@ export interface EnemyDef {
   spawnOnHeapSurface: boolean;  // spawn on roughly horizontal surfaces (angle < 30°)
   spawnOnHeapWall: boolean;     // spawn on steep surfaces (angle ≥ 30°)
 
-  // Geographic spawn zone (world Y; lower Y = higher on heap)
-  spawnStartY: number;    // enemy does not appear below this Y value
-  spawnEndY: number;      // enemy does not appear above this Y value; -1 = no ceiling
-
-  // Spawn chance linear ramp
-  spawnChanceMin: number; // probability at spawnStartY (0–1)
-  spawnChanceMax: number; // probability at spawnRampEndY (0–1)
-  spawnRampEndY: number;  // Y at which spawnChanceMax is reached; -1 = ramp never arrives
+  // Geographic spawn zone — fractions of worldHeight (0=summit, 1=floor)
+  spawnStartFrac: number;   // enemy does not appear below this fraction; 1.0 = world floor
+  spawnEndFrac: number;     // enemy does not appear above this fraction; -1 = no ceiling
+  spawnChanceMin: number;   // probability at spawnStartFrac (0–1)
+  spawnChanceMax: number;   // probability at spawnRampEndFrac (0–1)
+  spawnRampEndFrac: number; // fraction at which spawnChanceMax is reached; -1 = ramp never arrives
 
   // Score tracking
   displayName: string;  // human-readable name shown in score breakdown
@@ -37,11 +35,11 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
     speed: 55,
     spawnOnHeapSurface: true,
     spawnOnHeapWall: false,
-    spawnStartY: 5_000_000,
-    spawnEndY: -1,
+    spawnStartFrac: 1.0,
+    spawnEndFrac: -1,
     spawnChanceMin: 0.15,
     spawnChanceMax: 0.45,
-    spawnRampEndY: 3_000_000,
+    spawnRampEndFrac: 0.6,
     displayName: 'RAT',
     scoreValue: 100,
   },
@@ -53,11 +51,11 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
     speed: 320,
     spawnOnHeapSurface: true,
     spawnOnHeapWall: false,
-    spawnStartY: 4_500_000,
-    spawnEndY: -1,
+    spawnStartFrac: 0.9,
+    spawnEndFrac: -1,
     spawnChanceMin: 0.10,
     spawnChanceMax: 0.35,
-    spawnRampEndY: 500_000,
+    spawnRampEndFrac: 0.1,
     displayName: 'VULTURE',
     scoreValue: 200,
   },

@@ -2,76 +2,23 @@
 import Phaser from 'phaser';
 import { Enemy } from '../entities/Enemy';
 import { ENEMY_DEFS, EnemyDef } from '../data/enemyDefs';
-import { CHUNK_BAND_HEIGHT, ENEMY_CULL_DISTANCE, WORLD_WIDTH } from '../constants';
+import { CHUNK_BAND_HEIGHT, ENEMY_CULL_DISTANCE, MOCK_HEAP_HEIGHT_PX, WORLD_WIDTH } from '../constants';
 import type { Vertex } from './HeapPolygon';
 import type { HeapEntry } from '../data/heapTypes';
 import { OBJECT_DEFS } from '../data/heapObjectDefs';
+import {
+  isPointInsidePolygon,
+  computeSurfaceAngle,
+  spawnChance,
+  scaleSpawnChance,
+  computeGhostFlip,
+} from './EnemySpawnMath';
+
+export { isPointInsidePolygon, computeSurfaceAngle, spawnChance, scaleSpawnChance, computeGhostFlip };
 
 const SURFACE_ANGLE_THRESHOLD = 30; // degrees — below this is a surface, above is a wall
 const RAT_IDLE_MS = 1000;
 const MIN_ENEMY_SPACING_PX = 100; // min horizontal gap between enemies spawned in the same band
-
-/**
- * Ray-casting point-in-polygon test.
- * Returns true if (x, y) is strictly inside the polygon.
- * Points exactly on the boundary may return either value — avoid testing boundary points.
- */
-export function isPointInsidePolygon(x: number, y: number, polygon: Vertex[]): boolean {
-  if (polygon.length < 3) return false;
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].x, yi = polygon[i].y;
-    const xj = polygon[j].x, yj = polygon[j].y;
-    const crosses = (yi > y) !== (yj > y) &&
-      x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
-    if (crosses) inside = !inside;
-  }
-  return inside;
-}
-
-/** Returns degrees from horizontal for edge v1→v2 (0 = flat, 90 = vertical). */
-export function computeSurfaceAngle(v1: Vertex, v2: Vertex): number {
-  const dx = Math.abs(v2.x - v1.x);
-  const dy = Math.abs(v2.y - v1.y);
-  return (Math.atan2(dy, dx) * 180) / Math.PI;
-}
-
-/**
- * Returns spawn probability for the given def at world Y.
- * Returns null if Y is outside the enemy's spawn zone.
- */
-export function spawnChance(def: EnemyDef, y: number): number | null {
-  if (y > def.spawnStartY) return null;
-  if (def.spawnEndY !== -1 && y < def.spawnEndY) return null;
-
-  if (def.spawnRampEndY === -1) return def.spawnChanceMin;
-
-  const t = Math.min(1, Math.max(0,
-    (def.spawnStartY - y) / (def.spawnStartY - def.spawnRampEndY)
-  ));
-  return def.spawnChanceMin + t * (def.spawnChanceMax - def.spawnChanceMin);
-}
-
-/** Scales a spawn chance by a multiplier, clamping to [0, 1]. */
-export function scaleSpawnChance(chance: number, mult: number): number {
-  return Math.max(0, Math.min(1, chance * mult));
-}
-
-/**
- * Returns the new velocity X for a ghost based on world X bounds.
- * Extracted for unit testing.
- */
-export function computeGhostFlip(
-  x: number,
-  velocityX: number,
-  speed: number,
-  xMin: number,
-  xMax: number,
-): number {
-  if (x <= xMin && velocityX < 0) return speed;
-  if (x >= xMax && velocityX > 0) return -speed;
-  return velocityX;
-}
 
 export class EnemyManager {
   /** Arcade group — use this for overlap registration in GameScene */
@@ -82,13 +29,21 @@ export class EnemyManager {
   private _spawnRateMult: number;
   private readonly _xMin: number;
   private readonly _xMax: number;
+  private readonly _worldHeight: number;
 
-  constructor(scene: Phaser.Scene, spawnRateMult: number = 1.0, xMin: number = 0, xMax: number = WORLD_WIDTH) {
+  constructor(
+    scene: Phaser.Scene,
+    spawnRateMult: number = 1.0,
+    xMin: number = 0,
+    xMax: number = WORLD_WIDTH,
+    worldHeight: number = MOCK_HEAP_HEIGHT_PX,
+  ) {
     this.scene = scene;
     this.group = scene.physics.add.group();
     this._spawnRateMult = spawnRateMult;
     this._xMin = xMin;
     this._xMax = xMax;
+    this._worldHeight = worldHeight;
   }
 
   setSpawnRateMult(mult: number): void {
@@ -263,7 +218,7 @@ export class EnemyManager {
     // (outside the polygon). Interior ledges and walls still have heap above them.
     if (this.heapPolygon.length > 0 && isPointInsidePolygon(x, y - 1, this.heapPolygon)) return false;
 
-    const rawChance = spawnChance(def, y);
+    const rawChance = spawnChance(def, y, this._worldHeight);
     if (rawChance === null) return false;
     const chance = scaleSpawnChance(rawChance, this._spawnRateMult);
     if (Math.random() >= chance) return false;

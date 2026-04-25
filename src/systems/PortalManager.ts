@@ -3,7 +3,7 @@ import type { Player } from '../entities/Player';
 import type { PortalDef } from '../data/portalDefs';
 import type { ScanlineRow, Vertex } from './HeapPolygon';
 import { RECYCLE_ITEM_COUNT, CHUNK_BAND_HEIGHT } from '../constants';
-import { isPointInsidePolygon } from './EnemyManager';
+import { isPointInsidePolygon } from './EnemySpawnMath';
 
 /**
  * Scans `rows` (ordered top→bottom, ascending Y) to find the topmost row

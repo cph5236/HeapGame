@@ -5,6 +5,7 @@
  *   npm run seed                                                                    # create new heap (random seed)
  *   NAME="Downtown Dump" DIFFICULTY=3 SPAWN_MULT=1.5 COIN_MULT=1.25 SCORE_MULT=1.25 npm run seed
  *   SEED=42 NAME="Horder's Heap" DIFFICULTY=2 npm run seed                         # fixed map seed
+ *   WORLD_HEIGHT=50000 npm run seed                                                 # 50 k-px world (default 5 000 000)
  *   VITE_HEAP_SERVER_URL=https://heap-server.workers.dev npm run seed              # target prod
  *   OVERWRITE=true TARGET_HEAP_ID=<guid> npm run seed                              # reset existing heap
  *   VERBOSE=true npm run seed                                                       # show polygon details
@@ -15,7 +16,7 @@
         3. Use that heap id for TARGET_HEAP_ID in future runs to overwrite the same heap.
         
         --Script example:
-        NAME="Downtown Dump" DIFFICULTY=3.0 SPAWN_MULT=1.5 COIN_MULT=1.25 SCORE_MULT=1.25 OVERWRITE=true TARGET_HEAP_ID=<guid> npm run seed
+        NAME="Downtown Dump" WORLD_HEIGHT=5000000 DIFFICULTY=3.0 SPAWN_MULT=1.5 COIN_MULT=1.25 SCORE_MULT=1.25 OVERWRITE=true TARGET_HEAP_ID=<guid> npm run seed
 
 */
 
@@ -34,19 +35,20 @@ import type { CreateHeapResponse, ResetHeapResponse } from '../shared/heapTypes'
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const SERVER_URL = process.env.VITE_HEAP_SERVER_URL ?? 'http://localhost:8787';
-const NUM_BLOCKS = 400;
+const NUM_BLOCKS = 1200;
 const SIMPLIFY_EPSILON = 2;
 const OVERWRITE = process.env.OVERWRITE === 'true';
 const TARGET_HEAP_ID = process.env.TARGET_HEAP_ID ?? '';
 const VERBOSE = process.env.VERBOSE === 'true';
 
 // Heap params from env
-const PARAM_NAME      = process.env.NAME       ?? '';
-const PARAM_DIFF      = process.env.DIFFICULTY ? Number(process.env.DIFFICULTY) : 1.0;
-const PARAM_SPAWN     = process.env.SPAWN_MULT ? Number(process.env.SPAWN_MULT) : 1.0;
-const PARAM_COIN      = process.env.COIN_MULT  ? Number(process.env.COIN_MULT)  : 1.0;
-const PARAM_SCORE     = process.env.SCORE_MULT ? Number(process.env.SCORE_MULT) : 1.0;
-const PARAM_SEED      = process.env.SEED       ? Number(process.env.SEED)       : Math.floor(Math.random() * 1_000_000);
+const PARAM_NAME         = process.env.NAME         ?? '';
+const PARAM_DIFF         = process.env.DIFFICULTY   ? Number(process.env.DIFFICULTY)   : 1.0;
+const PARAM_SPAWN        = process.env.SPAWN_MULT   ? Number(process.env.SPAWN_MULT)   : 1.0;
+const PARAM_COIN         = process.env.COIN_MULT    ? Number(process.env.COIN_MULT)    : 1.0;
+const PARAM_SCORE        = process.env.SCORE_MULT   ? Number(process.env.SCORE_MULT)   : 1.0;
+const PARAM_WORLD_HEIGHT = process.env.WORLD_HEIGHT ? Number(process.env.WORLD_HEIGHT) : MOCK_HEAP_HEIGHT_PX;
+const PARAM_SEED         = process.env.SEED         ? Number(process.env.SEED)         : Math.floor(Math.random() * 1_000_000);
 
 // ── Generate HeapEntry[] via seeded PRNG ──────────────────────────────────────
 
@@ -112,6 +114,7 @@ async function seed(): Promise<void> {
       spawnRateMult: PARAM_SPAWN,
       coinMult:      PARAM_COIN,
       scoreMult:     PARAM_SCORE,
+      worldHeight:   PARAM_WORLD_HEIGHT,
     };
     const res = await fetch(url, {
       method: 'PUT',
@@ -158,6 +161,7 @@ async function seed(): Promise<void> {
     spawnRateMult: PARAM_SPAWN,
     coinMult:      PARAM_COIN,
     scoreMult:     PARAM_SCORE,
+    worldHeight:   PARAM_WORLD_HEIGHT,
   };
   console.log('Heap params:', params);
 
