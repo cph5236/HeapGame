@@ -172,7 +172,11 @@ export function heapRoutes(db: HeapDB): Hono {
       return c.json({ changed: false, version: row.version } satisfies GetHeapResponse);
     }
 
-    const liveZone: Vertex[] = JSON.parse(row.live_zone);
+    const [liveZone, enemyParams] = await Promise.all([
+      Promise.resolve(JSON.parse(row.live_zone) as Vertex[]),
+      db.getEnemyParams(id),
+    ]);
+
     return c.json({
       changed: true,
       version: row.version,
@@ -186,6 +190,7 @@ export function heapRoutes(db: HeapDB): Hono {
         scoreMult:     row.score_mult,
         worldHeight:   row.world_height,
       },
+      enemyParams,
     } satisfies GetHeapResponse);
   });
 

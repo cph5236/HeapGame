@@ -427,6 +427,26 @@ describe('POST /heaps with params', () => {
 });
 
 describe('GET /heaps/:id', () => {
+  it('includes enemyParams in changed: true response', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as CreateHeapResponse;
+
+    const res = await app.request(`/heaps/${id}?version=0`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as GetHeapResponse;
+    expect(body.changed).toBe(true);
+    if (body.changed) {
+      expect(body.enemyParams).toBeDefined();
+      expect(body.enemyParams.percher).toBeDefined();
+      expect(body.enemyParams.ghost).toBeDefined();
+    }
+  });
+
   it('includes params on the changed: true branch', async () => {
     const app = makeApp();
     const createRes = await app.request('/heaps', {
