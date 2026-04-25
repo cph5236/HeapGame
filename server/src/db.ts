@@ -1,7 +1,6 @@
 // server/src/db.ts
 
-import { HeapParams, Vertex, HeapEnemyParams } from '../../shared/heapTypes';
-import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
+import { HeapParams, Vertex, HeapEnemyParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 
 export interface HeapRow {
   id: string;
