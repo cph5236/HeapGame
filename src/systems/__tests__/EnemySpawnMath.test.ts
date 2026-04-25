@@ -6,7 +6,7 @@ import {
   scaleSpawnChance,
   computeGhostFlip,
 } from '../EnemySpawnMath';
-import type { EnemyDef } from '../../data/enemyDefs';
+import type { EnemySpawnParams } from '../../../shared/heapTypes';
 
 // ---------------------------------------------------------------------------
 // isPointInsidePolygon
@@ -79,69 +79,51 @@ describe('computeSurfaceAngle', () => {
 });
 
 // ---------------------------------------------------------------------------
-// spawnChance — fraction-based with worldHeight
-// Defs use spawnStartFrac/spawnEndFrac/spawnRampEndFrac (0=summit, 1=floor).
+// spawnChance — absolute px-above-floor values
+// pxAboveFloor = worldHeight - y  (computed at call site)
 // ---------------------------------------------------------------------------
 
-const baseDef: EnemyDef = {
-  kind: 'percher',
-  textureKey: 'enemy-percher',
-  width: 24,
-  height: 24,
-  speed: 0,
-  spawnOnHeapSurface: true,
-  spawnOnHeapWall: false,
-  spawnStartFrac: 1.0,    // world floor
-  spawnEndFrac: -1,
+const baseParams: EnemySpawnParams = {
+  spawnStartPxAboveFloor: 0,      // can spawn from floor upward
+  spawnEndPxAboveFloor: -1,       // no ceiling
+  spawnRampPxAboveFloor: 40000,   // reaches max at 40000 px above floor
   spawnChanceMin: 0.1,
   spawnChanceMax: 0.5,
-  spawnRampEndFrac: 0.2,  // 20% from summit
-  displayName: 'TEST',
-  scoreValue: 50,
 };
 
 describe('spawnChance', () => {
-  it('returns null when player Y is below floor (worldHeight=50000)', () => {
-    expect(spawnChance(baseDef, 60_000, 50_000)).toBeNull();
+  it('returns null below spawnStartPxAboveFloor', () => {
+    const params = { ...baseParams, spawnStartPxAboveFloor: 1000 };
+    expect(spawnChance(params, 500)).toBeNull();   // 500 px < 1000 px start
   });
 
-  it('returns spawnChanceMin at the world floor (worldHeight=50000)', () => {
-    expect(spawnChance(baseDef, 50_000, 50_000)).toBeCloseTo(0.1);
+  it('returns spawnChanceMin at spawnStartPxAboveFloor', () => {
+    expect(spawnChance(baseParams, 0)).toBeCloseTo(0.1);
   });
 
-  it('returns spawnChanceMax at ramp-end fraction (worldHeight=50000)', () => {
-    // spawnRampEndFrac=0.2 → rampEndY = 0.2 * 50000 = 10000
-    expect(spawnChance(baseDef, 10_000, 50_000)).toBeCloseTo(0.5);
+  it('returns spawnChanceMax at spawnRampPxAboveFloor', () => {
+    expect(spawnChance(baseParams, 40000)).toBeCloseTo(0.5);
   });
 
-  it('clamps to spawnChanceMax above the ramp end (worldHeight=50000)', () => {
-    expect(spawnChance(baseDef, 5_000, 50_000)).toBeCloseTo(0.5);
+  it('clamps to spawnChanceMax above the ramp', () => {
+    expect(spawnChance(baseParams, 50000)).toBeCloseTo(0.5);
   });
 
-  it('returns interpolated value between start and ramp end', () => {
-    // midpoint Y = (50000 + 10000) / 2 = 30000, t=0.5, chance = lerp(0.1, 0.5, 0.5) = 0.3
-    const result = spawnChance(baseDef, 30_000, 50_000);
-    expect(result).not.toBeNull();
-    expect(result!).toBeCloseTo(0.3);
+  it('interpolates at midpoint of ramp', () => {
+    // t = 20000/40000 = 0.5 → lerp(0.1, 0.5, 0.5) = 0.3
+    expect(spawnChance(baseParams, 20000)).toBeCloseTo(0.3);
   });
 
-  it('scales correctly to worldHeight=5000000', () => {
-    // spawnStartFrac=1.0 → startY=5_000_000; spawnRampEndFrac=0.2 → rampEndY=1_000_000
-    expect(spawnChance(baseDef, 6_000_000, 5_000_000)).toBeNull();
-    expect(spawnChance(baseDef, 5_000_000, 5_000_000)).toBeCloseTo(0.1);
-    expect(spawnChance(baseDef, 1_000_000, 5_000_000)).toBeCloseTo(0.5);
+  it('returns null above spawnEndPxAboveFloor ceiling', () => {
+    const params = { ...baseParams, spawnEndPxAboveFloor: 30000 };
+    expect(spawnChance(params, 35000)).toBeNull();   // 35000 > ceiling 30000
+    expect(spawnChance(params, 20000)).not.toBeNull(); // 20000 < ceiling — ok
   });
 
-  it('respects spawnEndFrac ceiling (worldHeight=50000)', () => {
-    const def = { ...baseDef, spawnEndFrac: 0.4 }; // ceiling at Y=20000
-    expect(spawnChance(def, 15_000, 50_000)).toBeNull();  // above ceiling
-    expect(spawnChance(def, 25_000, 50_000)).not.toBeNull();
-  });
-
-  it('returns flat spawnChanceMin when spawnRampEndFrac is -1', () => {
-    const def = { ...baseDef, spawnRampEndFrac: -1 };
-    expect(spawnChance(def, 30_000, 50_000)).toBeCloseTo(0.1);
-    expect(spawnChance(def, 5_000, 50_000)).toBeCloseTo(0.1);
+  it('returns flat spawnChanceMin when spawnRampPxAboveFloor is -1', () => {
+    const params = { ...baseParams, spawnRampPxAboveFloor: -1 };
+    expect(spawnChance(params, 0)).toBeCloseTo(0.1);
+    expect(spawnChance(params, 50000)).toBeCloseTo(0.1);
   });
 });
 

@@ -1,4 +1,4 @@
-import type { EnemyDef } from '../data/enemyDefs';
+import type { EnemySpawnParams } from '../../shared/heapTypes';
 import type { Vertex } from './HeapPolygon';
 
 export function isPointInsidePolygon(x: number, y: number, polygon: Vertex[]): boolean {
@@ -21,20 +21,17 @@ export function computeSurfaceAngle(v1: Vertex, v2: Vertex): number {
 }
 
 /**
- * Returns spawn probability for the given def at world Y, resolved against worldHeight.
- * Returns null if Y is outside the enemy's spawn zone.
+ * Returns spawn probability for the given params at the given height above floor.
+ * Returns null if the point is outside the enemy's spawn zone.
+ * pxAboveFloor = worldHeight - y  (computed at call site).
  */
-export function spawnChance(def: EnemyDef, y: number, worldHeight: number): number | null {
-  const startY   = def.spawnStartFrac * worldHeight;
-  const endY     = def.spawnEndFrac   === -1 ? -1 : def.spawnEndFrac   * worldHeight;
-  const rampEndY = def.spawnRampEndFrac === -1 ? -1 : def.spawnRampEndFrac * worldHeight;
-
-  if (y > startY) return null;
-  if (endY !== -1 && y < endY) return null;
-  if (rampEndY === -1) return def.spawnChanceMin;
-
-  const t = Math.min(1, Math.max(0, (startY - y) / (startY - rampEndY)));
-  return def.spawnChanceMin + t * (def.spawnChanceMax - def.spawnChanceMin);
+export function spawnChance(params: EnemySpawnParams, pxAboveFloor: number): number | null {
+  if (pxAboveFloor < params.spawnStartPxAboveFloor) return null;
+  if (params.spawnEndPxAboveFloor !== -1 && pxAboveFloor > params.spawnEndPxAboveFloor) return null;
+  if (params.spawnRampPxAboveFloor === -1) return params.spawnChanceMin;
+  const range = params.spawnRampPxAboveFloor - params.spawnStartPxAboveFloor;
+  const t = range <= 0 ? 1 : Math.min(1, (pxAboveFloor - params.spawnStartPxAboveFloor) / range);
+  return params.spawnChanceMin + t * (params.spawnChanceMax - params.spawnChanceMin);
 }
 
 export function scaleSpawnChance(chance: number, mult: number): number {

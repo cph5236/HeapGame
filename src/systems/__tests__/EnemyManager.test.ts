@@ -10,7 +10,7 @@ import {
   scaleSpawnChance,
   computeGhostFlip,
 } from '../EnemySpawnMath';
-import type { EnemyDef } from '../../data/enemyDefs';
+import type { EnemySpawnParams } from '../../../shared/heapTypes';
 
 const square = [
   { x: 0, y: 0 },
@@ -74,55 +74,31 @@ describe('computeSurfaceAngle', () => {
   });
 });
 
-const baseDef: EnemyDef = {
-  kind: 'percher',
-  textureKey: 'enemy-percher',
-  width: 24,
-  height: 24,
-  speed: 0,
-  spawnOnHeapSurface: true,
-  spawnOnHeapWall: false,
-  spawnStartFrac: 1.0,
-  spawnEndFrac: -1,
+const baseParams: EnemySpawnParams = {
+  spawnStartPxAboveFloor: 0,
+  spawnEndPxAboveFloor: -1,
+  spawnRampPxAboveFloor: 40000,
   spawnChanceMin: 0.1,
   spawnChanceMax: 0.5,
-  spawnRampEndFrac: 0.2,
-  displayName: 'TEST',
-  scoreValue: 50,
 };
 
-describe('spawnChance', () => {
-  it('returns null below spawnStartFrac (too low on heap)', () => {
-    expect(spawnChance(baseDef, 60_000, 50_000)).toBeNull();
+describe('spawnChance (via EnemyManager barrel re-export)', () => {
+  it('returns null below start', () => {
+    const params = { ...baseParams, spawnStartPxAboveFloor: 1000 };
+    expect(spawnChance(params, 500)).toBeNull();
   });
 
-  it('returns spawnChanceMin at the world floor', () => {
-    expect(spawnChance(baseDef, 50_000, 50_000)).toBeCloseTo(0.1);
+  it('returns spawnChanceMin at floor', () => {
+    expect(spawnChance(baseParams, 0)).toBeCloseTo(0.1);
   });
 
-  it('returns spawnChanceMax at ramp-end fraction', () => {
-    expect(spawnChance(baseDef, 10_000, 50_000)).toBeCloseTo(0.5);
+  it('returns spawnChanceMax at ramp end', () => {
+    expect(spawnChance(baseParams, 40000)).toBeCloseTo(0.5);
   });
 
-  it('returns spawnChanceMax (clamped) above the ramp end', () => {
-    expect(spawnChance(baseDef, 5_000, 50_000)).toBeCloseTo(0.5);
-  });
-
-  it('returns interpolated value between start and ramp end', () => {
-    const result = spawnChance(baseDef, 30_000, 50_000);
-    expect(result).not.toBeNull();
-    expect(result!).toBeCloseTo(0.3);
-  });
-
-  it('returns null above spawnEndFrac ceiling when set', () => {
-    const def = { ...baseDef, spawnEndFrac: 0.4 };
-    expect(spawnChance(def, 15_000, 50_000)).toBeNull();
-  });
-
-  it('returns flat spawnChanceMin when spawnRampEndFrac is -1', () => {
-    const def = { ...baseDef, spawnRampEndFrac: -1 };
-    expect(spawnChance(def, 30_000, 50_000)).toBeCloseTo(0.1);
-    expect(spawnChance(def, 5_000, 50_000)).toBeCloseTo(0.1);
+  it('returns flat min when ramp is -1', () => {
+    const params = { ...baseParams, spawnRampPxAboveFloor: -1 };
+    expect(spawnChance(params, 30000)).toBeCloseTo(0.1);
   });
 });
 
