@@ -11,6 +11,7 @@ import type {
   PlaceResponse,
   ResetHeapResponse,
   DeleteHeapResponse,
+  HeapEnemyParams,
 } from '../../shared/heapTypes';
 
 const VERTICES = [
@@ -495,5 +496,131 @@ describe('worldHeight in heap params', () => {
     const res = await createApp(db, new MockScoreDB()).request('/heaps');
     const body = await res.json() as ListHeapsResponse;
     expect(body.heaps[0].params.worldHeight).toBe(50_000);
+  });
+});
+
+// ── GET /heaps/:id/enemy-params ──────────────────────────────────────────────
+
+describe('GET /heaps/:id/enemy-params', () => {
+  it('returns 404 for unknown heap', async () => {
+    const res = await makeApp().request('/heaps/nonexistent/enemy-params');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns sentinel params when no heap-specific row exists', async () => {
+    const app = makeApp();
+    // Create a heap (MockHeapDB seeds sentinel automatically)
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as { id: string };
+
+    const res = await app.request(`/heaps/${id}/enemy-params`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as HeapEnemyParams;
+    expect(body.percher).toBeDefined();
+    expect(body.ghost).toBeDefined();
+    expect(body.percher.spawnChanceMin).toBeCloseTo(0.15);
+  });
+
+  it('returns heap-specific params when set', async () => {
+    const db = new MockHeapDB();
+    const app = createApp(db, new MockScoreDB());
+
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as { id: string };
+
+    const customParams: HeapEnemyParams = {
+      percher: { spawnStartPxAboveFloor: 100, spawnEndPxAboveFloor: -1, spawnRampPxAboveFloor: 5000, spawnChanceMin: 0.5, spawnChanceMax: 0.9 },
+    };
+    db.seedEnemyParams(id, customParams);
+
+    const res = await app.request(`/heaps/${id}/enemy-params`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as HeapEnemyParams;
+    expect(body.percher.spawnChanceMin).toBeCloseTo(0.5);
+    expect(body.ghost).toBeUndefined(); // only percher was set
+  });
+});
+
+// ── PUT /heaps/:id/enemy-params ──────────────────────────────────────────────
+
+describe('PUT /heaps/:id/enemy-params', () => {
+  it('returns 404 for unknown heap', async () => {
+    const res = await makeApp().request('/heaps/nonexistent/enemy-params', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('upserts and returns ok:true', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as { id: string };
+
+    const params: HeapEnemyParams = {
+      percher: { spawnStartPxAboveFloor: 0, spawnEndPxAboveFloor: -1, spawnRampPxAboveFloor: 8000, spawnChanceMin: 0.2, spawnChanceMax: 0.6 },
+    };
+
+    const res = await app.request(`/heaps/${id}/enemy-params`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { ok: boolean };
+    expect(body.ok).toBe(true);
+  });
+
+  it('subsequent GET returns the PUT value', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as { id: string };
+
+    const params: HeapEnemyParams = {
+      ghost: { spawnStartPxAboveFloor: 1000, spawnEndPxAboveFloor: -1, spawnRampPxAboveFloor: 10000, spawnChanceMin: 0.05, spawnChanceMax: 0.3 },
+    };
+    await app.request(`/heaps/${id}/enemy-params`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+
+    const res = await app.request(`/heaps/${id}/enemy-params`);
+    const body = await res.json() as HeapEnemyParams;
+    expect(body.ghost.spawnStartPxAboveFloor).toBe(1000);
+  });
+
+  it('returns 400 for non-object body', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as { id: string };
+
+    const res = await app.request(`/heaps/${id}/enemy-params`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([1, 2, 3]),
+    });
+    expect(res.status).toBe(400);
   });
 });

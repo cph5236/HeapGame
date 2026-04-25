@@ -14,6 +14,7 @@ import type {
   DeleteHeapResponse,
   Vertex,
   HeapParams,
+  HeapEnemyParams,
 } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
 
@@ -128,6 +129,35 @@ export function heapRoutes(db: HeapDB): Hono {
     if (!vertices) return c.json({ error: 'Base not found' }, 404);
 
     return c.json(vertices);
+  });
+
+  // GET /heaps/:id/enemy-params — returns heap's enemy spawn config (or sentinel default)
+  app.get('/:id/enemy-params', async (c) => {
+    const id = c.req.param('id');
+    const row = await db.getHeap(id);
+    if (!row) return c.json({ error: 'Heap not found' }, 404);
+    const params = await db.getEnemyParams(id);
+    return c.json(params);
+  });
+
+  // PUT /heaps/:id/enemy-params — upsert heap's enemy spawn config (full replacement)
+  app.put('/:id/enemy-params', async (c) => {
+    const id = c.req.param('id');
+    const row = await db.getHeap(id);
+    if (!row) return c.json({ error: 'Heap not found' }, 404);
+
+    let body: HeapEnemyParams;
+    try {
+      body = await c.req.json<HeapEnemyParams>();
+    } catch {
+      return c.json({ error: 'Invalid JSON' }, 400);
+    }
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return c.json({ error: 'body must be an object' }, 400);
+    }
+
+    await db.upsertEnemyParams(id, body);
+    return c.json({ ok: true });
   });
 
   // GET /heaps/:id?version=N — read heap state (delta-aware)
