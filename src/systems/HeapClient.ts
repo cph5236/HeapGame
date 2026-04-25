@@ -1,5 +1,6 @@
 import type {
   GetHeapResponse,
+  HeapEnemyParams,
   ListHeapsResponse,
   Vertex,
 } from '../../shared/heapTypes';
@@ -16,6 +17,7 @@ interface HeapCache {
   version: number;
   baseId: string;
   liveZone: Vertex[];
+  enemyParams?: HeapEnemyParams;
 }
 
 function loadCache(heapId: string): HeapCache | null {
@@ -99,6 +101,7 @@ export class HeapClient {
           version: data.version,
           baseId: data.baseId,
           liveZone: data.liveZone,
+          enemyParams: data.enemyParams,
         };
         saveCache(heapId, newCache);
         return reconstructPolygonFromPoints(await buildPolygon(heapId, newCache));
@@ -136,6 +139,11 @@ export class HeapClient {
     } catch {
       // Silently drop — game never depends on server for local progression
     }
+  }
+
+  static getEnemyParams(heapId: string): HeapEnemyParams | null {
+    const cache = loadCache(heapId);
+    return cache?.enemyParams ?? null;
   }
 
   /**

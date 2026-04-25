@@ -35,7 +35,7 @@ import { TrashWallManager } from '../systems/TrashWallManager';
 import { TRASH_WALL_DEF } from '../data/trashWallDef';
 import type { EnemyKind } from '../entities/Enemy';
 import { buildRunScore } from '../systems/buildRunScore';
-import { ENEMY_DEFS } from '../data/enemyDefs';
+import { ENEMY_DEFS, DEFAULT_ENEMY_PARAMS } from '../data/enemyDefs';
 import type { HeapParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 
@@ -118,6 +118,8 @@ export class GameScene extends Phaser.Scene {
     // Enemies — constructed and wired BEFORE polygon/generation calls so that
     // onBandLoaded and onPlatformSpawned fire correctly during initial load.
     this.enemyManager = new EnemyManager(this, this._heapParams.spawnRateMult, 0, WORLD_WIDTH, this._worldHeight);
+    const cachedEnemyParams = HeapClient.getEnemyParams(this._heapId);
+    this.enemyManager.setEnemyParams(cachedEnemyParams ?? DEFAULT_ENEMY_PARAMS);
 
     // Spawn player at world floor (left clear zone) — player climbs up through the heap
     this.spawnY = this._worldHeight - PLAYER_HEIGHT / 2 - 1;

@@ -16,7 +16,7 @@ import { LayerGenerator } from '../systems/LayerGenerator';
 import { computeBandPolygon, simplifyPolygon, type Vertex } from '../systems/HeapPolygon';
 import { buildRunScore } from '../systems/buildRunScore';
 import { getPlayerConfig, addBalance } from '../systems/SaveData';
-import { ENEMY_DEFS } from '../data/enemyDefs';
+import { ENEMY_DEFS, DEFAULT_ENEMY_PARAMS } from '../data/enemyDefs';
 import { BRIDGE_DEF } from '../data/bridgeDefs';
 import { PORTAL_DEF } from '../data/portalDefs';
 import { TRASH_WALL_DEF } from '../data/trashWallDef';
@@ -121,6 +121,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       this.layerGenerators.push(layerGen);
 
       const em = new EnemyManager(this, 1.0, xMin, xMax);
+      em.setEnemyParams(DEFAULT_ENEMY_PARAMS);
 
       const colIdx = i;
       gen.onBandLoaded = (bandTopY, vertices) => {
