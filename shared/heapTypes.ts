@@ -24,6 +24,18 @@ export const DEFAULT_HEAP_PARAMS: HeapParams = {
   worldHeight: 50_000,
 };
 
+// ── Enemy spawn params (served per-heap, replaces EnemyDef fraction fields) ──
+
+export type EnemySpawnParams = {
+  spawnStartPxAboveFloor: number;  // enemy does not appear below this many px above floor
+  spawnEndPxAboveFloor: number;    // enemy does not appear above this height; -1 = no ceiling
+  spawnRampPxAboveFloor: number;   // height at which spawnChanceMax is reached; -1 = flat at min
+  spawnChanceMin: number;
+  spawnChanceMax: number;
+};
+
+export type HeapEnemyParams = Record<string, EnemySpawnParams>;
+
 // ── Create ──────────────────────────────────────────────────────────────────
 
 export interface CreateHeapRequest {
@@ -55,7 +67,7 @@ export interface ListHeapsResponse {
 
 export type GetHeapResponse =
   | { changed: false; version: number }
-  | { changed: true; version: number; baseId: string; liveZone: Vertex[]; params: HeapParams };
+  | { changed: true; version: number; baseId: string; liveZone: Vertex[]; params: HeapParams; enemyParams: HeapEnemyParams };
 
 // ── Place ─────────────────────────────────────────────────────────────────────
 
