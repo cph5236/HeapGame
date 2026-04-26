@@ -13,8 +13,9 @@ A Cloudflare Worker that serves as the backend for Heap. Built with [Hono](https
 | `src/routes/heap.ts` | Heap routes: create, list, get, place block, reset, delete |
 | `src/routes/scores.ts` | Score routes: submit score, leaderboard context, paginated leaderboard |
 | `src/polygon.ts` | Point-in-polygon check used by the place-block route |
-| `schema.sql` | D1 schema — all `CREATE TABLE IF NOT EXISTS` and index definitions |
-| `wrangler.toml` | Worker config — name, D1 binding, compatibility flags |
+| `schema.sql` | D1 schema — full intended state, used as reference and for fresh installs |
+| `migrations/` | Incremental SQL migration files applied by Wrangler in order |
+| `wrangler.toml` | Worker config — name, D1 binding, migrations dir, compatibility flags |
 | `API_README.md` | Full API reference for all routes |
 
 ---
@@ -22,8 +23,8 @@ A Cloudflare Worker that serves as the backend for Heap. Built with [Hono](https
 ## Local Development
 
 ```bash
-# From server/ — apply schema to local D1 replica first
-npx wrangler d1 execute heap --local --file=schema.sql
+# From server/ — apply all pending migrations to local D1 replica first
+npx wrangler d1 migrations apply heap-db --local
 
 # Then start the worker
 npm run dev
@@ -33,36 +34,38 @@ Starts the worker locally at `http://localhost:8787` using `wrangler dev`. Uses 
 
 ---
 
-## Deploying the D1 Database
+## Database Migrations
 
-The schema must be applied to the remote D1 instance before or after deploying the worker. The schema is fully idempotent (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`) so it is safe to re-run.
+Schema changes are managed as numbered SQL files in `migrations/`. Wrangler tracks which files have been applied in a `d1_migrations` table — each file runs exactly once.
 
-### Apply schema to remote D1
-
-```bash
-# From server/
-npx wrangler d1 execute heap --remote --file=schema.sql
-```
-
-- `heap` is the database name from `wrangler.toml` (`database_name = "heap"`)
-- `--remote` targets the live Cloudflare D1 instance (omit to target the local replica)
-- `--file=schema.sql` points at the schema file relative to the current directory
-
-### Apply schema to local D1 (for resetting dev state)
+### Applying migrations
 
 ```bash
-npx wrangler d1 execute heap --local --file=schema.sql
+# Local dev
+npx wrangler d1 migrations apply heap-db --local
+
+# Production
+npx wrangler d1 migrations apply heap-db --remote
 ```
 
-### Drop and recreate tables (destructive — dev only)
+Running the command again on an already-migrated database is safe — already-applied files are skipped.
 
-The `DROP TABLE` statements at the top of `schema.sql` are commented out. Uncomment them temporarily if you need to wipe and rebuild from scratch:
+### Making a schema change
 
-```sql
--- Uncomment these two lines in schema.sql, run the command, then recomment them
-DROP TABLE IF EXISTS heap;
-DROP TABLE IF EXISTS heap_base;
-```
+1. **Create a new migration file** with the next sequential number:
+   ```
+   migrations/0003_describe_your_change.sql
+   ```
+2. **Write only the incremental SQL** — the new `CREATE TABLE`, `ALTER TABLE`, `INSERT`, etc. Do not copy the full schema.
+3. **Also update `schema.sql`** to reflect the final intended state. This file is used as a reference and for setting up fresh environments.
+4. **Never edit an already-applied migration.** Write a new one instead.
+
+### Setting up a fresh environment
+
+1. Create the D1 database: `wrangler d1 create heap` (or via the Cloudflare dashboard)
+2. Copy the `database_id` into `wrangler.toml`
+3. Apply all migrations: `npx wrangler d1 migrations apply heap-db --remote`
+4. Deploy the worker: `npm run deploy`
 
 ---
 
@@ -74,13 +77,6 @@ npm run deploy
 ```
 
 Equivalent to `wrangler deploy`. Bundles `src/index.ts` and pushes to Cloudflare Workers. The D1 binding (`DB`) is resolved automatically via `wrangler.toml`.
-
-### Order of operations for a fresh environment
-
-1. Create the D1 database in the Cloudflare dashboard (or `wrangler d1 create heap`)
-2. Copy the `database_id` into `wrangler.toml`
-3. Apply the schema: `npx wrangler d1 execute heap --remote --file=schema.sql`
-4. Deploy the worker: `npm run deploy`
 
 ---
 
