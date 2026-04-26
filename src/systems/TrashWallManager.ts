@@ -68,9 +68,11 @@ export class TrashWallManager {
   private readonly trashSprites:    OscImage[] = [];
 
   constructor(
-    private readonly scene:   Phaser.Scene,
-    private readonly def:     TrashWallDef,
-    private readonly onKill:  () => void,
+    private readonly scene:      Phaser.Scene,
+    private readonly def:        TrashWallDef,
+    private readonly onKill:     () => void,
+    private readonly worldWidth: number = WORLD_WIDTH,
+    private readonly worldHeight: number = MOCK_HEAP_HEIGHT_PX,
   ) {
     this.body = scene.add.graphics();
     this.body.setDepth(5);
@@ -101,7 +103,7 @@ export class TrashWallManager {
 
     const speed = computeWallSpeed(
       this.wallY, this.def.speedMin, this.def.speedMax,
-      this.def.yForMaxSpeed, MOCK_HEAP_HEIGHT_PX,
+      this.def.yForMaxSpeed, this.worldHeight,
     );
     this.wallY -= speed * (delta / 1000); // move up (Y decreases)
     this.wallY  = clampWallY(this.wallY, playerY, this.def.maxLaggingDistance);
@@ -132,7 +134,7 @@ export class TrashWallManager {
    */
   private _buildSpritePool(): void {
     const count = this.def.undulateCount;
-    const slotW = WORLD_WIDTH / count;
+    const slotW = this.worldWidth / count;
     for (let i = 0; i < count; i++) {
       const key = SPRITE_KEYS[Math.floor(Math.random() * SPRITE_KEYS.length)];
       const img = this.scene.add.image(
@@ -161,7 +163,7 @@ export class TrashWallManager {
     // Body: solid dark-brown fill from wallY downward — covers items (depth 2) below the surface
     this.body.clear();
     this.body.fillStyle(0x3B1F0A, 1);
-    this.body.fillRect(0, this.wallY, WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX - this.wallY);
+    this.body.fillRect(0, this.wallY, this.worldWidth, this.worldHeight - this.wallY);
 
     for (const img of this.trashSprites) {
       // Advance phase; swap texture at the start of each new cycle
@@ -191,7 +193,7 @@ export class TrashWallManager {
       const t     = (steps - i) / steps; // 1 at bottom (wallY), ~0 at top
       const alpha = t * t * t;            // cubic — fully opaque at surface, rapid falloff above
       this.gradientOverlay.fillStyle(0x3B1F0A, alpha); 
-      this.gradientOverlay.fillRect(0, this.wallY - (i + 1) * stepH, WORLD_WIDTH, stepH + 1);
+      this.gradientOverlay.fillRect(0, this.wallY - (i + 1) * stepH, this.worldWidth, stepH + 1);
     }
   }
 }

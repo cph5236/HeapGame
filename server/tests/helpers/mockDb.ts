@@ -1,7 +1,7 @@
 // server/tests/helpers/mockDb.ts
 
 import type { HeapDB, HeapRow, HeapSummaryRow } from '../../src/db';
-import type { HeapParams, Vertex } from '../../../shared/heapTypes';
+import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
 
 interface BaseRecord {
@@ -15,6 +15,16 @@ interface BaseRecord {
 export class MockHeapDB implements HeapDB {
   private heaps = new Map<string, Omit<HeapRow, 'id'>>();
   private bases = new Map<string, BaseRecord>();
+  private enemyParams = new Map<string, string>();
+
+  constructor() {
+    const SENTINEL = '00000000-0000-0000-0000-000000000000';
+    const sentinelParams: HeapEnemyParams = {
+      percher: { spawnStartPxAboveFloor: 0, spawnEndPxAboveFloor: -1, spawnRampPxAboveFloor: 15000, spawnChanceMin: 0.15, spawnChanceMax: 0.45 },
+      ghost:   { spawnStartPxAboveFloor: 5000, spawnEndPxAboveFloor: -1, spawnRampPxAboveFloor: 20000, spawnChanceMin: 0.10, spawnChanceMax: 0.35 },
+    };
+    this.enemyParams.set(SENTINEL, JSON.stringify(sentinelParams));
+  }
 
   async listHeaps(): Promise<HeapSummaryRow[]> {
     return Array.from(this.heaps.entries()).map(([id, row]) => ({
@@ -26,6 +36,7 @@ export class MockHeapDB implements HeapDB {
       spawn_rate_mult: row.spawn_rate_mult,
       coin_mult:       row.coin_mult,
       score_mult:      row.score_mult,
+      world_height:    row.world_height,
     }));
   }
 
@@ -60,6 +71,7 @@ export class MockHeapDB implements HeapDB {
       spawn_rate_mult: params.spawnRateMult,
       coin_mult:       params.coinMult,
       score_mult:      params.scoreMult,
+      world_height:    params.worldHeight,
     });
   }
 
@@ -79,6 +91,7 @@ export class MockHeapDB implements HeapDB {
       spawn_rate_mult: params.spawnRateMult,
       coin_mult:       params.coinMult,
       score_mult:      params.scoreMult,
+      world_height:    params.worldHeight,
     });
   }
 
@@ -116,6 +129,7 @@ export class MockHeapDB implements HeapDB {
       spawn_rate_mult: params.spawnRateMult,
       coin_mult:       params.coinMult,
       score_mult:      params.scoreMult,
+      world_height:    params.worldHeight,
     });
   }
 
@@ -127,5 +141,20 @@ export class MockHeapDB implements HeapDB {
       vertex_hash: 'test-hash',
       created_at: '2026-01-01T00:00:00.000Z',
     });
+  }
+
+  async getEnemyParams(heapId: string): Promise<HeapEnemyParams> {
+    const SENTINEL = '00000000-0000-0000-0000-000000000000';
+    const raw = this.enemyParams.get(heapId) ?? this.enemyParams.get(SENTINEL) ?? '{}';
+    return JSON.parse(raw) as HeapEnemyParams;
+  }
+
+  async upsertEnemyParams(heapId: string, params: HeapEnemyParams): Promise<void> {
+    this.enemyParams.set(heapId, JSON.stringify(params));
+  }
+
+  /** Test helper — seed enemy params directly. */
+  seedEnemyParams(heapId: string, params: HeapEnemyParams): void {
+    this.enemyParams.set(heapId, JSON.stringify(params));
   }
 }

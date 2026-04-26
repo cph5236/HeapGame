@@ -11,6 +11,7 @@ import type {
   PlaceResponse,
   ResetHeapResponse,
   DeleteHeapResponse,
+  HeapEnemyParams,
 } from '../../shared/heapTypes';
 
 const VERTICES = [
@@ -152,6 +153,46 @@ describe('GET /heaps/:id', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as GetHeapResponse;
     expect(body.changed).toBe(true);  // version 1 > 0
+  });
+
+  it('includes enemyParams in changed: true response', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as CreateHeapResponse;
+
+    const res = await app.request(`/heaps/${id}?version=0`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as GetHeapResponse;
+    expect(body.changed).toBe(true);
+    if (body.changed) {
+      expect(body.enemyParams).toBeDefined();
+      expect(body.enemyParams.percher).toBeDefined();
+      expect(body.enemyParams.ghost).toBeDefined();
+    }
+  });
+
+  it('includes params on the changed: true branch', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertices: VERTICES,
+        params: { name: 'X', difficulty: 2, spawnRateMult: 1.1, coinMult: 1.2, scoreMult: 1.3 },
+      }),
+    });
+    const created = await createRes.json() as CreateHeapResponse;
+
+    const res = await app.request(`/heaps/${created.id}?version=0`);
+    const body = await res.json() as GetHeapResponse;
+    expect(body.changed).toBe(true);
+    if (body.changed) {
+      expect(body.params).toEqual({ name: 'X', difficulty: 2, spawnRateMult: 1.1, coinMult: 1.2, scoreMult: 1.3, worldHeight: 50_000 });
+    }
   });
 });
 
@@ -348,6 +389,7 @@ describe('POST /heaps with params', () => {
       spawnRateMult: 1.5,
       coinMult: 1.3,
       scoreMult: 2.0,
+      worldHeight: 50_000,
     });
   });
 
@@ -365,6 +407,7 @@ describe('POST /heaps with params', () => {
       spawnRateMult: 1.0,
       coinMult: 1.0,
       scoreMult: 1.0,
+      worldHeight: 50_000,
     });
   });
 
@@ -423,16 +466,37 @@ describe('POST /heaps with params', () => {
   });
 });
 
-describe('GET /heaps/:id', () => {
-  it('includes params on the changed: true branch', async () => {
+// ── worldHeight ───────────────────────────────────────────────────────────────
+
+describe('worldHeight in heap params', () => {
+  it('defaults worldHeight to 50000 when not specified', async () => {
+    const app = makeApp();
+    await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const list = await (await app.request('/heaps')).json() as ListHeapsResponse;
+    expect(list.heaps[0].params.worldHeight).toBe(50_000);
+  });
+
+  it('stores and returns a custom worldHeight via GET /heaps', async () => {
+    const app = makeApp();
+    await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES, params: { worldHeight: 5_000_000 } }),
+    });
+    const list = await (await app.request('/heaps')).json() as ListHeapsResponse;
+    expect(list.heaps[0].params.worldHeight).toBe(5_000_000);
+  });
+
+  it('includes worldHeight in GET /:id changed:true response', async () => {
     const app = makeApp();
     const createRes = await app.request('/heaps', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        vertices: VERTICES,
-        params: { name: 'X', difficulty: 2, spawnRateMult: 1.1, coinMult: 1.2, scoreMult: 1.3 },
-      }),
+      body: JSON.stringify({ vertices: VERTICES, params: { worldHeight: 5_000_000 } }),
     });
     const created = await createRes.json() as CreateHeapResponse;
 
@@ -440,7 +504,158 @@ describe('GET /heaps/:id', () => {
     const body = await res.json() as GetHeapResponse;
     expect(body.changed).toBe(true);
     if (body.changed) {
-      expect(body.params).toEqual({ name: 'X', difficulty: 2, spawnRateMult: 1.1, coinMult: 1.2, scoreMult: 1.3 });
+      expect(body.params.worldHeight).toBe(5_000_000);
     }
+  });
+
+  it('seedHeap with worldHeight is reflected in GET /heaps', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 1, [], 'base-1', 0, { name: 'Old Heap', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 50_000 });
+    const res = await createApp(db, new MockScoreDB()).request('/heaps');
+    const body = await res.json() as ListHeapsResponse;
+    expect(body.heaps[0].params.worldHeight).toBe(50_000);
+  });
+});
+
+// ── GET /heaps/:id/enemy-params ──────────────────────────────────────────────
+
+describe('GET /heaps/:id/enemy-params', () => {
+  it('returns 404 for unknown heap', async () => {
+    const res = await makeApp().request('/heaps/nonexistent/enemy-params');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns sentinel params when no heap-specific row exists', async () => {
+    const app = makeApp();
+    // Create a heap (MockHeapDB seeds sentinel automatically)
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as { id: string };
+
+    const res = await app.request(`/heaps/${id}/enemy-params`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as HeapEnemyParams;
+    expect(body.percher).toBeDefined();
+    expect(body.ghost).toBeDefined();
+    expect(body.percher.spawnChanceMin).toBeCloseTo(0.15);
+  });
+
+  it('returns heap-specific params when set', async () => {
+    const db = new MockHeapDB();
+    const app = createApp(db, new MockScoreDB());
+
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as { id: string };
+
+    const customParams: HeapEnemyParams = {
+      percher: { spawnStartPxAboveFloor: 100, spawnEndPxAboveFloor: -1, spawnRampPxAboveFloor: 5000, spawnChanceMin: 0.5, spawnChanceMax: 0.9 },
+    };
+    db.seedEnemyParams(id, customParams);
+
+    const res = await app.request(`/heaps/${id}/enemy-params`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as HeapEnemyParams;
+    expect(body.percher.spawnChanceMin).toBeCloseTo(0.5);
+    expect(body.ghost).toBeUndefined(); // only percher was set
+  });
+});
+
+// ── PUT /heaps/:id/enemy-params ──────────────────────────────────────────────
+
+describe('PUT /heaps/:id/enemy-params', () => {
+  it('returns 404 for unknown heap', async () => {
+    const res = await makeApp().request('/heaps/nonexistent/enemy-params', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('upserts and returns ok:true', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as { id: string };
+
+    const params: HeapEnemyParams = {
+      percher: { spawnStartPxAboveFloor: 0, spawnEndPxAboveFloor: -1, spawnRampPxAboveFloor: 8000, spawnChanceMin: 0.2, spawnChanceMax: 0.6 },
+    };
+
+    const res = await app.request(`/heaps/${id}/enemy-params`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { ok: boolean };
+    expect(body.ok).toBe(true);
+  });
+
+  it('subsequent GET returns the PUT value', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as { id: string };
+
+    const params: HeapEnemyParams = {
+      ghost: { spawnStartPxAboveFloor: 1000, spawnEndPxAboveFloor: -1, spawnRampPxAboveFloor: 10000, spawnChanceMin: 0.05, spawnChanceMax: 0.3 },
+    };
+    await app.request(`/heaps/${id}/enemy-params`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+
+    const res = await app.request(`/heaps/${id}/enemy-params`);
+    const body = await res.json() as HeapEnemyParams;
+    expect(body.ghost.spawnStartPxAboveFloor).toBe(1000);
+  });
+
+  it('returns 400 for non-object body', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as { id: string };
+
+    const res = await app.request(`/heaps/${id}/enemy-params`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([1, 2, 3]),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for null body', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as { id: string };
+
+    const res = await app.request(`/heaps/${id}/enemy-params`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(null),
+    });
+    expect(res.status).toBe(400);
   });
 });

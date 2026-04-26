@@ -7,3 +7,4 @@ compatibility_flags = ["nodejs_compat"]
 binding = "DB"
 database_name = "heap"
 database_id = "2806bb3d-bd95-4780-ae16-ee479eacede9"
+migrations_dir = "migrations"

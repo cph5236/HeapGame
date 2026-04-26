@@ -4,7 +4,7 @@ import { OBJECT_DEFS } from '../data/heapObjectDefs';
 import { CHUNK_BAND_HEIGHT, MOCK_HEAP_HEIGHT_PX } from '../constants';
 import { HeapChunkRenderer } from './HeapChunkRenderer';
 import { HeapEdgeCollider } from './HeapEdgeCollider';
-import { Vertex } from './HeapPolygon';
+import { Vertex, ScanlineRow } from './HeapPolygon';
 import type { WorkerBandInput, WorkerRequest, WorkerResponse } from '../workers/heapWorker';
 
 export class HeapGenerator {
@@ -33,6 +33,9 @@ export class HeapGenerator {
 
   /** Set by GameScene when using the server polygon path. Overrides entry-based topY. */
   private _polygonTopY: number | null = null;
+
+  /** Cached minimum top-edge Y across all entries — updated incrementally. */
+  private _cachedTopY: number = MOCK_HEAP_HEIGHT_PX;
 
   // ── Worker state ────────────────────────────────────────────────────────────
 
@@ -87,14 +90,13 @@ export class HeapGenerator {
    * Used to define the player placement zone.
    */
   get topY(): number {
-    if (this._polygonTopY !== null) return this._polygonTopY;
-    let min = MOCK_HEAP_HEIGHT_PX;
-    for (const e of this.data) {
-      const def = OBJECT_DEFS[e.keyid] ?? OBJECT_DEFS[0];
-      const top = e.y - def.height / 2;
-      if (top < min) min = top;
-    }
-    return min;
+    return this._polygonTopY ?? this._cachedTopY;
+  }
+
+  private _trackTopY(entry: HeapEntry): void {
+    const h = entry.h ?? (OBJECT_DEFS[entry.keyid] ?? OBJECT_DEFS[0]).height;
+    const top = entry.y - h / 2;
+    if (top < this._cachedTopY) this._cachedTopY = top;
   }
 
   /** Override topY for server polygon path (no entries to compute from). */
@@ -155,7 +157,11 @@ export class HeapGenerator {
     for (const response of this.pendingBandResults) {
       // Apply visuals + colliders for each computed band
       for (const band of response.bands) {
-        this.applyBandPolygon(band.bandTop, band.polygon);
+        if (band.rows && band.rows.length >= 2) {
+          this.applyBandWithRows(band.bandTop, band.rows, band.polygon);
+        } else {
+          this.applyBandPolygon(band.bandTop, band.polygon);
+        }
       }
 
       // Register each entry in chunkRenderer's buckets (keeps them accurate for
@@ -182,6 +188,7 @@ export class HeapGenerator {
       // Fire onPlatformSpawned once per entry (enemies, etc.)
       for (const entry of response.entries) {
         const he = entry as HeapEntry;
+        this._trackTopY(he);
         const def = OBJECT_DEFS[he.keyid] ?? OBJECT_DEFS[0];
         const platformTopY = he.y - def.height / 2;
         this.onPlatformSpawned?.(he, platformTopY);
@@ -217,11 +224,44 @@ export class HeapGenerator {
   }
 
   /**
+   * Append new entries generated above the current heap top.
+   * They will be picked up by the next generateUpTo() call as the player climbs.
+   */
+  appendEntries(newEntries: HeapEntry[]): void {
+    // Track already-processed entries by object identity BEFORE re-sort.
+    // Extension blocks can interleave anywhere in the sorted order (some land
+    // below initTopY), so sentCount/nextLoadIndex must be recomputed after sort.
+    const processed = new Set<HeapEntry>(this.data.slice(0, this.sentCount));
+    const flushed   = new Set<HeapEntry>(this.data.slice(0, this.nextLoadIndex));
+    for (const e of newEntries) this.data.push(e);
+    this.data.sort((a, b) => b.y - a.y);
+    // Walk sorted array to find where processed/flushed entries end.
+    let newSent    = 0;
+    let newFlushed = 0;
+    for (let i = 0; i < this.data.length; i++) {
+      if (processed.has(this.data[i])) newSent    = i + 1;
+      if (flushed.has(this.data[i]))   newFlushed = i + 1;
+    }
+    this.sentCount      = newSent;
+    this.nextLoadIndex  = newFlushed;
+  }
+
+  sendLayerBatch(bandTop: number, rows: ScanlineRow[]): void {
+    this.worker.postMessage({ type: 'layers', bands: [{ bandTop, rows }] });
+  }
+
+  /**
    * Server path: apply a pre-computed polygon for a band directly.
    * Builds edge colliders and visuals without needing raw entries.
    */
   applyBandPolygon(bandTop: number, vertices: Vertex[]): void {
     this.edgeCollider?.buildFromVertices(bandTop, vertices, this.walkableGroup, this.wallGroup);
+    this.chunkRenderer?.renderFromPolygon(bandTop, vertices);
+    this.onBandLoaded?.(bandTop, vertices);
+  }
+
+  applyBandWithRows(bandTop: number, rows: ScanlineRow[], vertices: Vertex[]): void {
+    this.edgeCollider?.buildFromScanlines(bandTop, rows, this.walkableGroup, this.wallGroup);
     this.chunkRenderer?.renderFromPolygon(bandTop, vertices);
     this.onBandLoaded?.(bandTop, vertices);
   }
@@ -268,6 +308,7 @@ export class HeapGenerator {
   }
 
   private spawnEntry(entry: HeapEntry): void {
+    this._trackTopY(entry);
     const def = OBJECT_DEFS[entry.keyid] ?? OBJECT_DEFS[0];
 
     // Bucket the entry for edge collider rebuilds

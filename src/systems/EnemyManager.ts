@@ -2,59 +2,24 @@
 import Phaser from 'phaser';
 import { Enemy } from '../entities/Enemy';
 import { ENEMY_DEFS, EnemyDef } from '../data/enemyDefs';
-import { CHUNK_BAND_HEIGHT, ENEMY_CULL_DISTANCE, WORLD_WIDTH } from '../constants';
+import type { HeapEnemyParams } from '../../shared/heapTypes';
+import { CHUNK_BAND_HEIGHT, ENEMY_CULL_DISTANCE, MOCK_HEAP_HEIGHT_PX, WORLD_WIDTH } from '../constants';
 import type { Vertex } from './HeapPolygon';
 import type { HeapEntry } from '../data/heapTypes';
 import { OBJECT_DEFS } from '../data/heapObjectDefs';
+import {
+  isPointInsidePolygon,
+  computeSurfaceAngle,
+  spawnChance,
+  scaleSpawnChance,
+  computeGhostFlip,
+} from './EnemySpawnMath';
+
+export { isPointInsidePolygon, computeSurfaceAngle, spawnChance, scaleSpawnChance, computeGhostFlip };
 
 const SURFACE_ANGLE_THRESHOLD = 30; // degrees — below this is a surface, above is a wall
 const RAT_IDLE_MS = 1000;
-
-/**
- * Ray-casting point-in-polygon test.
- * Returns true if (x, y) is strictly inside the polygon.
- * Points exactly on the boundary may return either value — avoid testing boundary points.
- */
-export function isPointInsidePolygon(x: number, y: number, polygon: Vertex[]): boolean {
-  if (polygon.length < 3) return false;
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].x, yi = polygon[i].y;
-    const xj = polygon[j].x, yj = polygon[j].y;
-    const crosses = (yi > y) !== (yj > y) &&
-      x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
-    if (crosses) inside = !inside;
-  }
-  return inside;
-}
-
-/** Returns degrees from horizontal for edge v1→v2 (0 = flat, 90 = vertical). */
-export function computeSurfaceAngle(v1: Vertex, v2: Vertex): number {
-  const dx = Math.abs(v2.x - v1.x);
-  const dy = Math.abs(v2.y - v1.y);
-  return (Math.atan2(dy, dx) * 180) / Math.PI;
-}
-
-/**
- * Returns spawn probability for the given def at world Y.
- * Returns null if Y is outside the enemy's spawn zone.
- */
-export function spawnChance(def: EnemyDef, y: number): number | null {
-  if (y > def.spawnStartY) return null;
-  if (def.spawnEndY !== -1 && y < def.spawnEndY) return null;
-
-  if (def.spawnRampEndY === -1) return def.spawnChanceMin;
-
-  const t = Math.min(1, Math.max(0,
-    (def.spawnStartY - y) / (def.spawnStartY - def.spawnRampEndY)
-  ));
-  return def.spawnChanceMin + t * (def.spawnChanceMax - def.spawnChanceMin);
-}
-
-/** Scales a spawn chance by a multiplier, clamping to [0, 1]. */
-export function scaleSpawnChance(chance: number, mult: number): number {
-  return Math.max(0, Math.min(1, chance * mult));
-}
+const MIN_ENEMY_SPACING_PX = 100; // min horizontal gap between enemies spawned in the same band
 
 export class EnemyManager {
   /** Arcade group — use this for overlap registration in GameScene */
@@ -63,11 +28,32 @@ export class EnemyManager {
   private readonly scene: Phaser.Scene;
   private heapPolygon: Vertex[] = [];
   private _spawnRateMult: number;
+  private readonly _xMin: number;
+  private readonly _xMax: number;
+  private readonly _worldHeight: number;
+  private _enemyParams: HeapEnemyParams = {};
 
-  constructor(scene: Phaser.Scene, spawnRateMult: number = 1.0) {
+  constructor(
+    scene: Phaser.Scene,
+    spawnRateMult: number = 1.0,
+    xMin: number = 0,
+    xMax: number = WORLD_WIDTH,
+    worldHeight: number = MOCK_HEAP_HEIGHT_PX,
+  ) {
     this.scene = scene;
     this.group = scene.physics.add.group();
     this._spawnRateMult = spawnRateMult;
+    this._xMin = xMin;
+    this._xMax = xMax;
+    this._worldHeight = worldHeight;
+  }
+
+  setSpawnRateMult(mult: number): void {
+    this._spawnRateMult = mult;
+  }
+
+  setEnemyParams(params: HeapEnemyParams): void {
+    this._enemyParams = params;
   }
 
   /** Update the heap polygon used for interior-spawn rejection. Call after every polygon load. */
@@ -80,7 +66,7 @@ export class EnemyManager {
    * entry is passed so we can derive platform width for rat patrol bounds.
    * blockPlaced guards against spawning enemies on the player's own summit block.
    */
-  onPlatformSpawned(x: number, platformTopY: number, blockPlaced: boolean, entry?: HeapEntry): void {
+  onPlatformSpawned(x: number, platformTopY: number, blockPlaced: boolean, entry?: HeapEntry, maxEnemies = Infinity): void {
     if (blockPlaced) return;
     let minX: number | undefined;
     let maxX: number | undefined;
@@ -91,8 +77,10 @@ export class EnemyManager {
         maxX = entry.x + def.width / 2;
       }
     }
+    let spawned = 0;
     for (const def of Object.values(ENEMY_DEFS)) {
-      this.trySpawn(def, x, platformTopY, 0, minX, maxX, platformTopY, platformTopY);
+      if (spawned >= maxEnemies) break;
+      if (this.trySpawn(def, x, platformTopY, 0, minX, maxX, platformTopY, platformTopY)) spawned++;
     }
   }
 
@@ -100,11 +88,14 @@ export class EnemyManager {
    * Call this when a band polygon is applied from the server path.
    * Iterates polygon edges to find spawnable surfaces.
    */
-  onBandLoaded(bandTopY: number, vertices: Vertex[]): void {
+  onBandLoaded(bandTopY: number, vertices: Vertex[], maxEnemies = Infinity): void {
     if (vertices.length < 2) return;
     const bandBottomY = bandTopY + CHUNK_BAND_HEIGHT;
     const EPS = 0.5;
+    let spawned = 0;
+    let lastSpawnX = -Infinity;
     for (let i = 0; i < vertices.length; i++) {
+      if (spawned >= maxEnemies) break;
       const v1 = vertices[i];
       const v2 = vertices[(i + 1) % vertices.length];
       // Skip artificial horizontal edges inserted at band-clip boundaries — these
@@ -114,6 +105,7 @@ export class EnemyManager {
       if (atTopCut || atBottomCut) continue;
       const angle = computeSurfaceAngle(v1, v2);
       const spawnX = (v1.x + v2.x) / 2;
+      if (Math.abs(spawnX - lastSpawnX) < MIN_ENEMY_SPACING_PX) continue;
       const spawnY = Math.min(v1.y, v2.y);
       // Use the edge extents as patrol bounds for rats
       const leftV  = v1.x <= v2.x ? v1 : v2;
@@ -123,7 +115,11 @@ export class EnemyManager {
       const minY = leftV.y;
       const maxY = rightV.y;
       for (const def of Object.values(ENEMY_DEFS)) {
-        this.trySpawn(def, spawnX, spawnY, angle, minX, maxX, minY, maxY);
+        if (spawned >= maxEnemies) break;
+        if (this.trySpawn(def, spawnX, spawnY, angle, minX, maxX, minY, maxY)) {
+          spawned++;
+          lastSpawnX = spawnX;
+        }
       }
     }
   }
@@ -149,11 +145,11 @@ export class EnemyManager {
         const maxY: number  = s.getData('maxY') ?? s.y;
         const state: string = s.getData('ratState') ?? 'walk-right';
 
-        // Follow the slope: interpolate Y based on current X position
+        // Follow the slope: interpolate Y based on current body X (post-step).
+        // body.center.x reflects physics movement this frame; s.x is one frame stale.
         if (maxX > minX) {
-          const t = (s.x - minX) / (maxX - minX);
+          const t = Phaser.Math.Clamp((body.center.x - minX) / (maxX - minX), 0, 1);
           const targetY = minY + t * (maxY - minY);
-          s.y = targetY;
           body.position.y = targetY - body.halfHeight;
         }
 
@@ -195,12 +191,9 @@ export class EnemyManager {
         const body = s.body as Phaser.Physics.Arcade.Body;
         const speed: number = s.getData('speed');
 
-        // Manually flip at world edges — avoids the oscillation that setBounce causes
-        if (s.x <= 0 && body.velocity.x < 0) {
-          body.setVelocityX(speed);
-        } else if (s.x >= WORLD_WIDTH && body.velocity.x > 0) {
-          body.setVelocityX(-speed);
-        }
+        // Manually flip at column edges — avoids the oscillation that setBounce causes
+        const newVx = computeGhostFlip(s.x, body.velocity.x, speed, this._xMin, this._xMax);
+        if (newVx !== body.velocity.x) body.setVelocityX(newVx);
 
         const wantAnim = body.velocity.x < 0 ? 'vulture-fly-left' : 'vulture-fly-right';
         if (s.anims.currentAnim?.key !== wantAnim) s.play(wantAnim);
@@ -219,22 +212,25 @@ export class EnemyManager {
     maxX?: number,
     minY?: number,
     maxY?: number,
-  ): void {
+  ): boolean {
     const isSurface = surfaceAngle < SURFACE_ANGLE_THRESHOLD;
     const isWall    = surfaceAngle >= SURFACE_ANGLE_THRESHOLD;
 
-    if (def.spawnOnHeapSurface && !isSurface) return;
-    if (def.spawnOnHeapWall    && !isWall)    return;
-    if (!def.spawnOnHeapSurface && !def.spawnOnHeapWall) return;
+    if (def.spawnOnHeapSurface && !isSurface) return false;
+    if (def.spawnOnHeapWall    && !isWall)    return false;
+    if (!def.spawnOnHeapSurface && !def.spawnOnHeapWall) return false;
 
     // Reject interior edges: the space just above an exterior surface is open air
     // (outside the polygon). Interior ledges and walls still have heap above them.
-    if (this.heapPolygon.length > 0 && isPointInsidePolygon(x, y - 1, this.heapPolygon)) return;
+    if (this.heapPolygon.length > 0 && isPointInsidePolygon(x, y - 1, this.heapPolygon)) return false;
 
-    const rawChance = spawnChance(def, y);
-    if (rawChance === null) return;
+    const spawnParams = this._enemyParams[def.kind];
+    if (!spawnParams) return false;
+    const pxAboveFloor = this._worldHeight - y;
+    const rawChance = spawnChance(spawnParams, pxAboveFloor);
+    if (rawChance === null) return false;
     const chance = scaleSpawnChance(rawChance, this._spawnRateMult);
-    if (Math.random() >= chance) return;
+    if (Math.random() >= chance) return false;
 
     const spawnY = y - def.height / 2;
     const enemy = new Enemy(this.scene, this.group, x, spawnY, def);
@@ -248,5 +244,6 @@ export class EnemyManager {
       enemy.sprite.setData('ratState', 'walk-right');
       enemy.sprite.setData('idleUntil', 0);
     }
+    return true;
   }
 }

@@ -82,6 +82,39 @@ Superpowers skills override default behavior. Check for a relevant skill **befor
 
 ---
 
+## D1 Database Migrations
+
+Any change to the database schema **requires a migration file**. Never modify `server/schema.sql` alone.
+
+### Creating a migration
+
+1. Add a new file in `server/migrations/` with the next sequential number:
+   ```
+   server/migrations/0003_description_of_change.sql
+   ```
+2. Write only the incremental SQL (the new `CREATE TABLE`, `ALTER TABLE`, `INSERT`, etc.) — not the full schema.
+3. Also update `server/schema.sql` to reflect the final intended state (used for reference and fresh installs).
+
+### Applying migrations
+
+```bash
+# Local dev
+cd server && npx wrangler d1 migrations apply heap-db --local
+
+# Production
+cd server && npx wrangler d1 migrations apply heap-db --remote
+```
+
+Wrangler tracks applied migrations in a `d1_migrations` table — each file is only ever run once. Running the command again on an already-migrated DB is safe.
+
+### Rules
+
+- **One migration per schema change.** Don't bundle unrelated changes.
+- **Never edit an already-applied migration.** Write a new one instead.
+- `server/migrations/` is committed to git. The `.wrangler/state/` local DB state is not.
+
+---
+
 ## Project Conventions
 
 - Feature work happens on branches off `main`; current active branch is `feature/HeapServer`

@@ -14,6 +14,7 @@ import type {
   DeleteHeapResponse,
   Vertex,
   HeapParams,
+  HeapEnemyParams,
 } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
 
@@ -111,6 +112,7 @@ export function heapRoutes(db: HeapDB): Hono {
           spawnRateMult: r.spawn_rate_mult,
           coinMult:      r.coin_mult,
           scoreMult:     r.score_mult,
+          worldHeight:   r.world_height,
         },
       })),
     } satisfies ListHeapsResponse);
@@ -129,6 +131,35 @@ export function heapRoutes(db: HeapDB): Hono {
     return c.json(vertices);
   });
 
+  // GET /heaps/:id/enemy-params — returns heap's enemy spawn config (or sentinel default)
+  app.get('/:id/enemy-params', async (c) => {
+    const id = c.req.param('id');
+    const row = await db.getHeap(id);
+    if (!row) return c.json({ error: 'Heap not found' }, 404);
+    const params = await db.getEnemyParams(id);
+    return c.json(params);
+  });
+
+  // PUT /heaps/:id/enemy-params — upsert heap's enemy spawn config (full replacement)
+  app.put('/:id/enemy-params', async (c) => {
+    const id = c.req.param('id');
+    const row = await db.getHeap(id);
+    if (!row) return c.json({ error: 'Heap not found' }, 404);
+
+    let body: HeapEnemyParams;
+    try {
+      body = await c.req.json<HeapEnemyParams>();
+    } catch {
+      return c.json({ error: 'Invalid JSON' }, 400);
+    }
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return c.json({ error: 'body must be an object' }, 400);
+    }
+
+    await db.upsertEnemyParams(id, body);
+    return c.json({ ok: true });
+  });
+
   // GET /heaps/:id?version=N — read heap state (delta-aware)
   app.get('/:id', async (c) => {
     const id = c.req.param('id');
@@ -141,7 +172,11 @@ export function heapRoutes(db: HeapDB): Hono {
       return c.json({ changed: false, version: row.version } satisfies GetHeapResponse);
     }
 
-    const liveZone: Vertex[] = JSON.parse(row.live_zone);
+    const [liveZone, enemyParams] = await Promise.all([
+      Promise.resolve(JSON.parse(row.live_zone) as Vertex[]),
+      db.getEnemyParams(id),
+    ]);
+
     return c.json({
       changed: true,
       version: row.version,
@@ -153,7 +188,9 @@ export function heapRoutes(db: HeapDB): Hono {
         spawnRateMult: row.spawn_rate_mult,
         coinMult:      row.coin_mult,
         scoreMult:     row.score_mult,
+        worldHeight:   row.world_height,
       },
+      enemyParams,
     } satisfies GetHeapResponse);
   });
 
@@ -176,6 +213,7 @@ export function heapRoutes(db: HeapDB): Hono {
         spawnRateMult: bodyParams.spawnRateMult  ?? row.spawn_rate_mult,
         coinMult:      bodyParams.coinMult       ?? row.coin_mult,
         scoreMult:     bodyParams.scoreMult      ?? row.score_mult,
+        worldHeight:   bodyParams.worldHeight    ?? row.world_height,
       };
       await db.updateHeapParams(id, merged);
     }

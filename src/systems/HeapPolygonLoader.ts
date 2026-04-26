@@ -50,10 +50,10 @@ export function clipPolygonToBand(polygon: Vertex[], bandTop: number, bandBottom
  *   left-edge vertices (Y ascending) then right-edge vertices (Y descending).
  * Filtering by Y while preserving array order yields a closed per-band polygon.
  */
-export function applyPolygonToGenerator(polygon: Vertex[], generator: HeapGenerator): void {
+export function applyPolygonToGenerator(polygon: Vertex[], generator: HeapGenerator, worldHeight: number = MOCK_HEAP_HEIGHT_PX): void {
   if (polygon.length === 0) return;
 
-  let minY = MOCK_HEAP_HEIGHT_PX;
+  let minY = worldHeight;
   let maxY = 0;
   for (const v of polygon) {
     if (v.y < minY) minY = v.y;
@@ -76,9 +76,9 @@ export function applyPolygonToGenerator(polygon: Vertex[], generator: HeapGenera
  * Returns MOCK_HEAP_HEIGHT_PX if the polygon is empty (world floor fallback).
  * Uses an explicit loop to avoid spread-operator stack overflow on large arrays.
  */
-export function polygonTopY(polygon: Vertex[]): number {
-  if (polygon.length === 0) return MOCK_HEAP_HEIGHT_PX;
-  let min = MOCK_HEAP_HEIGHT_PX;
+export function polygonTopY(polygon: Vertex[], worldHeight: number = MOCK_HEAP_HEIGHT_PX): number {
+  if (polygon.length === 0) return worldHeight;
+  let min = worldHeight;
   for (const v of polygon) {
     if (v.y < min) min = v.y;
   }
@@ -160,10 +160,10 @@ export function reconstructPolygonFromPoints(points: Vertex[]): Vertex[] {
  * Finds the topmost surface Y within the X span [cx - width/2, cx + width/2].
  * Returns MOCK_HEAP_HEIGHT_PX if no vertices overlap (world floor fallback).
  */
-export function findSurfaceYFromPolygon(cx: number, width: number, polygon: Vertex[]): number {
+export function findSurfaceYFromPolygon(cx: number, width: number, polygon: Vertex[], worldHeight: number = MOCK_HEAP_HEIGHT_PX): number {
   const left = cx - width / 2;
   const right = cx + width / 2;
-  let surfaceY = MOCK_HEAP_HEIGHT_PX;
+  let surfaceY = worldHeight;
 
   for (const v of polygon) {
     if (v.x >= left && v.x <= right && v.y < surfaceY) {

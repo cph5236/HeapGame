@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { OBJECT_DEF_LIST } from '../data/heapObjectDefs';
 import { HEAP_PNG_URLS } from '../data/heapPngUrls';
-import { HEAP_FILL_TEXTURE } from '../constants';
+import { HEAP_FILL_TEXTURE, MOCK_HEAP_HEIGHT_PX } from '../constants';
 import { HEAP_TILE_URLS, HEAP_TILE_COUNT } from '../data/heapTileUrls';
 import trashbagUrl from '../sprites/player/trashbag.png?url';
 import ibeamUrl from '../sprites/Placeables/IBeam.png?url';
@@ -9,6 +9,7 @@ import ibeamUrl from '../sprites/Placeables/IBeam.png?url';
 import ladderUrl from '../sprites/Placeables/Ladder.png?url';
 import tombstone1Url from '../sprites/Placeables/TombStone (1).png?url';
 import tombstone2Url from '../sprites/Placeables/TombStone (2).png?url';
+import bridgeUrl from '../sprites/Bridge/Bridge.png?url';
 import vultureFlyLeftUrl  from '../sprites/Enemies/vulture/vulture-fly-left.png?url';
 import vultureFlyRightUrl from '../sprites/Enemies/vulture/vulture-fly-right.png?url';
 import ratUrl from '../sprites/Enemies/Rat/rat.png?url';
@@ -18,6 +19,10 @@ import { generateAllTextures } from '../entities/TextureGenerators';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced } from '../systems/SaveData';
+import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
+import { PORTAL_DEF } from '../data/portalDefs';
+import { RECYCLE_ITEM_URLS } from '../data/portalRecycleUrls';
+import { RECYCLE_ITEM_COUNT } from '../constants';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -33,6 +38,7 @@ export class BootScene extends Phaser.Scene {
     this.load.image('item-ladder', ladderUrl);
     this.load.image('item-checkpoint-1', tombstone1Url);
     this.load.image('item-checkpoint-2', tombstone2Url);
+    this.load.image('bridge', bridgeUrl);
 
     for (const def of OBJECT_DEF_LIST) {
       this.load.image(def.textureKey, HEAP_PNG_URLS[def.textureKey]);
@@ -44,6 +50,12 @@ export class BootScene extends Phaser.Scene {
 
     // Rat (percher enemy) — 3×4 grid of 32×32 frames
     this.load.spritesheet('rat', ratUrl, { frameWidth: 32, frameHeight: 32 });
+
+    // Portal and recycle items
+    this.load.image(PORTAL_DEF.spriteKey, PORTAL_DEF.spritePath);
+    for (let i = 0; i < RECYCLE_ITEM_COUNT; i++) {
+      this.load.image(`recycle-item-${i}`, RECYCLE_ITEM_URLS[i]);
+    }
   }
 
   create(): void {
@@ -70,9 +82,26 @@ export class BootScene extends Phaser.Scene {
 
     HeapClient.list()
       .then((summaries) => {
-        this.game.registry.set('heapCatalog', summaries);
+        const infiniteEntry: HeapSummary = {
+          id: INFINITE_HEAP_ID,
+          version: 1,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          params: {
+            name: '∞ Infinite Heap',
+            difficulty: 5.0,
+            spawnRateMult: 1.0,
+            coinMult: 1.0,
+            scoreMult: 1.0,
+            worldHeight: MOCK_HEAP_HEIGHT_PX,
+            isInfinite: true,
+          },
+        };
+        // Remove any server-returned entry with the same GUID before injecting ours.
+        const deduped = summaries.filter(s => s.id !== INFINITE_HEAP_ID);
+        deduped.push(infiniteEntry);
+        this.game.registry.set('heapCatalog', deduped);
 
-        if (summaries.length === 0) {
+        if (deduped.length === 0) {
           this.game.registry.set('activeHeapId', '');
           this.game.registry.set('heapPolygon', [] as Vertex[]);
           this.game.registry.set('heapParams', DEFAULT_HEAP_PARAMS);
@@ -80,8 +109,8 @@ export class BootScene extends Phaser.Scene {
         }
 
         const stored = getSelectedHeapId();
-        const pick = summaries.find((s) => s.id === stored)
-                  ?? [...summaries].sort((a, b) => a.params.difficulty - b.params.difficulty
+        const pick = deduped.find((s) => s.id === stored)
+                  ?? [...deduped].sort((a, b) => a.params.difficulty - b.params.difficulty
                         || a.createdAt.localeCompare(b.createdAt))[0];
 
         setSelectedHeapId(pick.id);

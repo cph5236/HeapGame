@@ -7,15 +7,11 @@ const TEST_DEFS: Record<EnemyKind, EnemyDef> = {
   percher: {
     kind: 'percher', textureKey: 'rat', width: 32, height: 32, speed: 55,
     spawnOnHeapSurface: true, spawnOnHeapWall: false,
-    spawnStartY: 50000, spawnEndY: -1,
-    spawnChanceMin: 0.15, spawnChanceMax: 0.35, spawnRampEndY: 10000,
     displayName: 'RAT', scoreValue: 100,
   },
   ghost: {
     kind: 'ghost', textureKey: 'vulture-fly-left', width: 51, height: 43, speed: 320,
     spawnOnHeapSurface: true, spawnOnHeapWall: false,
-    spawnStartY: 50000, spawnEndY: -1,
-    spawnChanceMin: 0.25, spawnChanceMax: 0.5, spawnRampEndY: 5000,
     displayName: 'VULTURE', scoreValue: 200,
   },
 };

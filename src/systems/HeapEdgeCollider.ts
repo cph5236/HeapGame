@@ -101,24 +101,25 @@ export class HeapEdgeCollider {
     const bodies: Phaser.Physics.Arcade.Image[] = [];
 
     for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
+      const row      = rows[i];
+      const rowBelow = i + 1 < rows.length ? rows[i + 1] : null;
 
       const leftIsWall  = computeRowSlopeAngleDeg(rows, i, 'left')  > this.walkableSlopeDeg;
       const rightIsWall = computeRowSlopeAngleDeg(rows, i, 'right') > this.walkableSlopeDeg;
 
-      // Gentle edges → one wide flat body spanning the full row width
-      const centerX   = (row.leftX + row.rightX) / 2;
-      const spanleft = Math.abs(row.leftX - centerX); //get width of span on the left side of heap
-      const spanright = Math.abs(row.rightX - centerX); //get width of span on the right side of heap
-      
-      //Get the center of each side of the heap and create a body for each side. If the side is a wall, use the wall group and set the body to only collide on the left or right (respectively); otherwise, use the walkable group and leave it as a full-width body. This allows for different collision responses on walls vs walkable surfaces while still preventing diagonal gaps.
-      const middleLeft = centerX - spanleft / 2;
+      // Overhang: this row extends further out than the row below (heap gets wider going up).
+      // Overhang undersides should block the player jumping from below.
+      const leftIsOverhang  = rowBelow !== null && row.leftX  < rowBelow.leftX;
+      const rightIsOverhang = rowBelow !== null && row.rightX > rowBelow.rightX;
+
+      const centerX     = (row.leftX + row.rightX) / 2;
+      const spanleft    = Math.abs(row.leftX  - centerX);
+      const spanright   = Math.abs(row.rightX - centerX);
+      const middleLeft  = centerX - spanleft  / 2;
       const middleRight = centerX + spanright / 2;
 
-      //2 spans 1 for each side of the heap
-      bodies.push(this.createSpan(leftIsWall ? wallGroup : walkableGroup, middleLeft, row.y, spanleft, leftIsWall));
-      bodies.push(this.createSpan(rightIsWall ? wallGroup : walkableGroup, middleRight, row.y, spanright, rightIsWall));
-    
+      bodies.push(this.createSpan(leftIsWall  ? wallGroup : walkableGroup, middleLeft,  row.y, spanleft,  leftIsWall,  'left',  leftIsOverhang));
+      bodies.push(this.createSpan(rightIsWall ? wallGroup : walkableGroup, middleRight, row.y, spanright, rightIsWall, 'right', rightIsOverhang));
     }
 
     this.bandBodies.set(bandTop, bodies);
@@ -130,6 +131,8 @@ export class HeapEdgeCollider {
     y: number,
     width: number,
     isWall: boolean = false,
+    wallSide?: 'left' | 'right',
+    isOverhang: boolean = false,
   ): Phaser.Physics.Arcade.Image {
     const img = group.create(x, y) as Phaser.Types.Physics.Arcade.ImageWithStaticBody;
     img.setVisible(false);
@@ -138,7 +141,8 @@ export class HeapEdgeCollider {
     img.refreshBody();
     if (isWall) {
       const staticBody = img.body as Phaser.Physics.Arcade.StaticBody;
-      staticBody.checkCollision.down = false;
+      if (!isOverhang) staticBody.checkCollision.down = false;
+      if (wallSide) img.setData('wallSide', wallSide);
     }
     return img as unknown as Phaser.Physics.Arcade.Image;
   }

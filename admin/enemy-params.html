@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Heap Enemy Params Admin</title>
+  <style>
+    body { font-family: monospace; max-width: 700px; margin: 40px auto; padding: 0 16px; background: #111; color: #ddd; }
+    h1 { color: #0f0; margin-bottom: 4px; }
+    label { display: block; margin: 6px 0 2px; font-size: 13px; color: #aaa; }
+    input[type="number"], input[type="text"], select { width: 100%; padding: 6px; background: #222; border: 1px solid #444; color: #ddd; font-family: monospace; box-sizing: border-box; }
+    select { cursor: pointer; }
+    .section { border: 1px solid #333; padding: 12px; margin: 12px 0; border-radius: 4px; }
+    .section h2 { margin: 0 0 10px; font-size: 14px; color: #0cf; text-transform: uppercase; }
+    button { margin-top: 16px; padding: 10px 24px; background: #0f0; color: #000; border: none; font-family: monospace; font-size: 14px; font-weight: bold; cursor: pointer; }
+    button:hover { background: #0d0; }
+    #status { margin-top: 12px; font-size: 13px; }
+    .ok { color: #0f0; }
+    .err { color: #f44; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Enemy Params Admin</h1>
+
+  <label>Server URL</label>
+  <input type="text" id="serverUrl" value="http://localhost:8787" />
+
+  <label>Heap</label>
+  <select id="heapSelect"><option value="">— select a heap —</option></select>
+
+  <div id="editor" style="display:none">
+    <div class="section" id="section-percher">
+      <h2>Percher (RAT)</h2>
+      <div class="row">
+        <div><label>spawnStartPxAboveFloor</label><input type="number" id="percher-spawnStartPxAboveFloor" /></div>
+        <div><label>spawnEndPxAboveFloor (-1 = none)</label><input type="number" id="percher-spawnEndPxAboveFloor" /></div>
+      </div>
+      <div class="row">
+        <div><label>spawnRampPxAboveFloor (-1 = flat)</label><input type="number" id="percher-spawnRampPxAboveFloor" /></div>
+        <div></div>
+      </div>
+      <div class="row">
+        <div><label>spawnChanceMin (0–1)</label><input type="number" step="0.01" id="percher-spawnChanceMin" /></div>
+        <div><label>spawnChanceMax (0–1)</label><input type="number" step="0.01" id="percher-spawnChanceMax" /></div>
+      </div>
+    </div>
+
+    <div class="section" id="section-ghost">
+      <h2>Ghost (VULTURE)</h2>
+      <div class="row">
+        <div><label>spawnStartPxAboveFloor</label><input type="number" id="ghost-spawnStartPxAboveFloor" /></div>
+        <div><label>spawnEndPxAboveFloor (-1 = none)</label><input type="number" id="ghost-spawnEndPxAboveFloor" /></div>
+      </div>
+      <div class="row">
+        <div><label>spawnRampPxAboveFloor (-1 = flat)</label><input type="number" id="ghost-spawnRampPxAboveFloor" /></div>
+        <div></div>
+      </div>
+      <div class="row">
+        <div><label>spawnChanceMin (0–1)</label><input type="number" step="0.01" id="ghost-spawnChanceMin" /></div>
+        <div><label>spawnChanceMax (0–1)</label><input type="number" step="0.01" id="ghost-spawnChanceMax" /></div>
+      </div>
+    </div>
+
+    <button id="saveBtn">Save Changes</button>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const KINDS = ['percher', 'ghost'];
+    const FIELDS = ['spawnStartPxAboveFloor', 'spawnEndPxAboveFloor', 'spawnRampPxAboveFloor', 'spawnChanceMin', 'spawnChanceMax'];
+
+    function serverUrl() { return document.getElementById('serverUrl').value.replace(/\/$/, ''); }
+
+    async function loadHeaps() {
+      try {
+        const res = await fetch(`${serverUrl()}/heaps`);
+        const data = await res.json();
+        const sel = document.getElementById('heapSelect');
+        sel.innerHTML = '<option value="">— select a heap —</option>';
+        for (const h of data.heaps) {
+          const opt = document.createElement('option');
+          opt.value = h.id;
+          opt.textContent = `${h.params.name} (${h.id.slice(0, 8)}…) world=${h.params.worldHeight}px`;
+          sel.appendChild(opt);
+        }
+      } catch (e) {
+        setStatus('Failed to load heaps: ' + e.message, false);
+      }
+    }
+
+    async function loadParams(heapId) {
+      try {
+        const res = await fetch(`${serverUrl()}/heaps/${heapId}/enemy-params`);
+        if (!res.ok) throw new Error(`${res.status}`);
+        const params = await res.json();
+        for (const kind of KINDS) {
+          const kp = params[kind] ?? {};
+          for (const field of FIELDS) {
+            const el = document.getElementById(`${kind}-${field}`);
+            if (el) el.value = kp[field] ?? '';
+          }
+        }
+        document.getElementById('editor').style.display = 'block';
+        setStatus('', true);
+      } catch (e) {
+        setStatus('Failed to load params: ' + e.message, false);
+      }
+    }
+
+    async function saveParams() {
+      const heapId = document.getElementById('heapSelect').value;
+      if (!heapId) return;
+      const params = {};
+      for (const kind of KINDS) {
+        params[kind] = {};
+        for (const field of FIELDS) {
+          const val = parseFloat(document.getElementById(`${kind}-${field}`).value);
+          params[kind][field] = isNaN(val) ? -1 : val;
+        }
+      }
+      try {
+        const res = await fetch(`${serverUrl()}/heaps/${heapId}/enemy-params`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(params),
+        });
+        const body = await res.json();
+        setStatus(res.ok ? '✓ Saved' : `Error: ${JSON.stringify(body)}`, res.ok);
+      } catch (e) {
+        setStatus('Save failed: ' + e.message, false);
+      }
+    }
+
+    function setStatus(msg, ok) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = ok ? 'ok' : 'err';
+    }
+
+    document.getElementById('heapSelect').addEventListener('change', e => {
+      if (e.target.value) loadParams(e.target.value);
+      else document.getElementById('editor').style.display = 'none';
+    });
+    document.getElementById('saveBtn').addEventListener('click', saveParams);
+    document.getElementById('serverUrl').addEventListener('change', loadHeaps);
+
+    loadHeaps();
+  </script>
+</body>
+</html>

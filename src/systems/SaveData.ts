@@ -3,7 +3,11 @@ import { ITEM_DEFS } from '../data/itemDefs';
 import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT } from '../constants';
 
 const SAVE_KEY = 'heap_save';
-const CURRENT_SCHEMA = 2;
+const CURRENT_SCHEMA = 3;
+
+// World height at each schema version — used to remap placed item Y values.
+const WORLD_HEIGHT_V2 = 50_000;
+const WORLD_HEIGHT_V3 = 5_000_000;
 
 export interface PlacedItemSave {
   id:    string;
@@ -46,9 +50,20 @@ function freshSave(): RawSave {
   };
 }
 
+function remapPlacedY(placed: Record<string, PlacedItemSave[]>, oldHeight: number, newHeight: number): Record<string, PlacedItemSave[]> {
+  const result: Record<string, PlacedItemSave[]> = {};
+  for (const [heapId, items] of Object.entries(placed)) {
+    result[heapId] = items.map(item => ({
+      ...item,
+      y: newHeight - (oldHeight - item.y),
+    }));
+  }
+  return result;
+}
+
 function migrate(parsed: any): RawSave {
-  // v1 has no schemaVersion and `placed` is an array.
   const version = parsed?.schemaVersion ?? 1;
+
   if (version === CURRENT_SCHEMA && !Array.isArray(parsed.placed)) {
     return {
       schemaVersion: CURRENT_SCHEMA,
@@ -64,19 +79,37 @@ function migrate(parsed: any): RawSave {
     };
   }
 
-  // v1 migration.
-  const legacyArray: PlacedItemSave[] = Array.isArray(parsed?.placed) ? parsed.placed : [];
+  // v1: `placed` is a flat array, no schemaVersion.
+  if (version === 1) {
+    const legacyArray: PlacedItemSave[] = Array.isArray(parsed?.placed) ? parsed.placed : [];
+    return {
+      schemaVersion: CURRENT_SCHEMA,
+      balance:        parsed.balance    ?? 0,
+      upgrades:       parsed.upgrades   ?? {},
+      inventory:      parsed.inventory  ?? {},
+      placed:         {},
+      selectedHeapId: '',
+      playerGuid:     parsed.playerGuid ?? crypto.randomUUID(),
+      playerName:     parsed.playerName ?? generateDefaultName(),
+      highScores:     parsed.highScores ?? {},
+      // v1 items have no world-height context — leave Y as-is; can't safely remap
+      _legacyPlaced:  legacyArray.length > 0 ? legacyArray : undefined,
+    };
+  }
+
+  // v2 → v3: remap placed item Y values from 50 000-tall world to 5 000 000-tall world.
+  const placed: Record<string, PlacedItemSave[]> = parsed.placed ?? {};
   return {
     schemaVersion: CURRENT_SCHEMA,
-    balance:        parsed.balance    ?? 0,
-    upgrades:       parsed.upgrades   ?? {},
-    inventory:      parsed.inventory  ?? {},
-    placed:         {},
-    selectedHeapId: '',
-    playerGuid:     parsed.playerGuid ?? crypto.randomUUID(),
-    playerName:     parsed.playerName ?? generateDefaultName(),
-    highScores:     parsed.highScores ?? {},
-    _legacyPlaced:  legacyArray.length > 0 ? legacyArray : undefined,
+    balance:        parsed.balance        ?? 0,
+    upgrades:       parsed.upgrades       ?? {},
+    inventory:      parsed.inventory      ?? {},
+    placed:         remapPlacedY(placed, WORLD_HEIGHT_V2, WORLD_HEIGHT_V3),
+    selectedHeapId: parsed.selectedHeapId ?? '',
+    playerGuid:     parsed.playerGuid     ?? crypto.randomUUID(),
+    playerName:     parsed.playerName     ?? generateDefaultName(),
+    highScores:     parsed.highScores     ?? {},
+    _legacyPlaced:  parsed._legacyPlaced,
   };
 }
 

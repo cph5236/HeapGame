@@ -42,6 +42,13 @@ export class Player {
   /** Set by GameScene's wall-group collision callback each frame. When true the
    *  player is resting on a steep wall surface and should be ejected outward. */
   public inSlopeZone = false;
+  /** Direction to eject when inSlopeZone: -1 = left (off left wall), 1 = right (off right wall). */
+  public slopeEjectDir: number = 0;
+
+  /** Override in scenes that use a wider world (e.g. InfiniteGameScene). */
+  public worldWidth: number = WORLD_WIDTH;
+  /** Floor Y for the current heap — used as the ground fallback. */
+  public worldHeight: number = MOCK_HEAP_HEIGHT_PX;
 
   private shieldActive: boolean = false;
   private shieldAura?: Phaser.GameObjects.Arc;
@@ -104,8 +111,8 @@ export class Player {
         this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
         this.coyoteTimer        = 120;
         // Still allow X-wrap so player doesn't get stuck at world edge on ladder
-        if (this.sprite.x < 0)           this.sprite.x = WORLD_WIDTH;
-        else if (this.sprite.x > WORLD_WIDTH) this.sprite.x = 0;
+        if (this.sprite.x < 0)                  this.sprite.x = this.worldWidth;
+        else if (this.sprite.x > this.worldWidth) this.sprite.x = 0;
         return; // skip all normal physics this frame
       }
     }
@@ -113,7 +120,7 @@ export class Player {
     if (!this.controlsEnabled) return;
 
     const body     = this.sprite.body;
-    const floorY   = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2;
+    const floorY   = this.worldHeight - PLAYER_HEIGHT / 2;
     const onWall   = body.blocked.left || body.blocked.right;
     // Filter spurious blocked.down from wall bodies: while sliding (velocity.y > 10)
     // and touching a wall, a wall-face body can register as ground — ignore it.
@@ -137,8 +144,7 @@ export class Player {
     if (this.dashActive === 0) {
       if (this.inSlopeZone && !goLeft && !goRight) {
         // Eject outward along the wall surface until the player slides off the edge
-        const ejectDir = this.sprite.x < WORLD_WIDTH / 2 ? -1 : 1;
-        this.sprite.setVelocityX(ejectDir * PLAYER_SPEED);
+        this.sprite.setVelocityX(this.slopeEjectDir * PLAYER_SPEED);
       } else if (goLeft) {
         this.sprite.setVelocityX(-PLAYER_SPEED);
         this.sprite.setFlipX(true);
@@ -206,13 +212,14 @@ export class Player {
 
     // X wrap — seamless edge-to-edge teleport
     if (this.sprite.x < 0) {
-      this.sprite.x = WORLD_WIDTH;
-    } else if (this.sprite.x > WORLD_WIDTH) {
+      this.sprite.x = this.worldWidth;
+    } else if (this.sprite.x > this.worldWidth) {
       this.sprite.x = 0;
     }
 
-    // Reset per-frame flag set by the wall-group collision callback (physics runs before update)
-    this.inSlopeZone = false;
+    // Reset per-frame flags set by the wall-group collision callback (physics runs before update)
+    this.inSlopeZone    = false;
+    this.slopeEjectDir  = 0;
 
     // Y clamp — prevent falling through the world floor; treat floor as ground
     if (this.sprite.y >= floorY) {

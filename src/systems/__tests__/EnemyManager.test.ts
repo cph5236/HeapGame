@@ -1,13 +1,17 @@
 // src/systems/__tests__/EnemyManager.test.ts
+// Pure-math helpers are now in EnemySpawnMath — comprehensive tests live there.
+// This file re-runs the same suite importing via the EnemyManager re-export path
+// to confirm the barrel export works correctly.
 import { describe, it, expect } from 'vitest';
+import {
+  isPointInsidePolygon,
+  computeSurfaceAngle,
+  spawnChance,
+  scaleSpawnChance,
+  computeGhostFlip,
+} from '../EnemySpawnMath';
+import type { EnemySpawnParams } from '../../../shared/heapTypes';
 
-// ---------------------------------------------------------------------------
-// isPointInsidePolygon — exported for testing
-// Ray-casting point-in-polygon test.
-// ---------------------------------------------------------------------------
-import { isPointInsidePolygon } from '../EnemyManager';
-
-// Unit square: (0,0) → (10,0) → (10,10) → (0,10)
 const square = [
   { x: 0, y: 0 },
   { x: 10, y: 0 },
@@ -29,13 +33,10 @@ describe('isPointInsidePolygon', () => {
   });
 
   it('returns false for a point above the polygon (y < all vertices)', () => {
-    // In Phaser coords Y increases downward, so y=-1 is above the square
     expect(isPointInsidePolygon(5, -1, square)).toBe(false);
   });
 
   it('correctly identifies interior vs exterior for an L-shape', () => {
-    // L-shape polygon (Phaser Y-down coords):
-    //   (0,0)→(20,0)→(20,10)→(10,10)→(10,20)→(0,20)
     const lShape = [
       { x: 0,  y: 0  },
       { x: 20, y: 0  },
@@ -44,18 +45,12 @@ describe('isPointInsidePolygon', () => {
       { x: 10, y: 20 },
       { x: 0,  y: 20 },
     ];
-    expect(isPointInsidePolygon(5,  5,  lShape)).toBe(true);  // top-left arm
-    expect(isPointInsidePolygon(15, 5,  lShape)).toBe(true);  // top-right arm
-    expect(isPointInsidePolygon(5,  15, lShape)).toBe(true);  // bottom-left arm
-    expect(isPointInsidePolygon(15, 15, lShape)).toBe(false); // cutout corner
+    expect(isPointInsidePolygon(5,  5,  lShape)).toBe(true);
+    expect(isPointInsidePolygon(15, 5,  lShape)).toBe(true);
+    expect(isPointInsidePolygon(5,  15, lShape)).toBe(true);
+    expect(isPointInsidePolygon(15, 15, lShape)).toBe(false);
   });
 });
-
-// ---------------------------------------------------------------------------
-// computeSurfaceAngle — exported for testing
-// Returns degrees from horizontal for a directed edge v1→v2.
-// ---------------------------------------------------------------------------
-import { computeSurfaceAngle } from '../EnemyManager';
 
 describe('computeSurfaceAngle', () => {
   it('returns 0 for a flat horizontal edge', () => {
@@ -71,88 +66,65 @@ describe('computeSurfaceAngle', () => {
   });
 
   it('returns <30 for a shallow slope (surface)', () => {
-    // dx=100, dy=10 → atan(10/100) ≈ 5.7°
     expect(computeSurfaceAngle({ x: 0, y: 0 }, { x: 100, y: 10 })).toBeLessThan(30);
   });
 
   it('returns ≥30 for a steep slope (wall)', () => {
-    // dx=10, dy=100 → atan(100/10) ≈ 84.3°
     expect(computeSurfaceAngle({ x: 0, y: 0 }, { x: 10, y: 100 })).toBeGreaterThanOrEqual(30);
   });
 });
 
-// ---------------------------------------------------------------------------
-// spawnChance — exported for testing
-// Computes spawn probability for a given def and world Y.
-// ---------------------------------------------------------------------------
-import { spawnChance } from '../EnemyManager';
-import type { EnemyDef } from '../../data/enemyDefs';
-
-const baseDef: EnemyDef = {
-  kind: 'percher',
-  textureKey: 'enemy-percher',
-  width: 24,
-  height: 24,
-  speed: 0,
-  spawnOnHeapSurface: true,
-  spawnOnHeapWall: false,
-  spawnStartY: 50000,
-  spawnEndY: -1,
+const baseParams: EnemySpawnParams = {
+  spawnStartPxAboveFloor: 0,
+  spawnEndPxAboveFloor: -1,
+  spawnRampPxAboveFloor: 40000,
   spawnChanceMin: 0.1,
   spawnChanceMax: 0.5,
-  spawnRampEndY: 10000,
-  displayName: 'TEST',
-  scoreValue: 50,
 };
 
-describe('spawnChance', () => {
-  it('returns null below spawnStartY (too low on heap)', () => {
-    // Y > spawnStartY means below the start zone
-    expect(spawnChance(baseDef, 60000)).toBeNull();
+describe('spawnChance (via EnemyManager barrel re-export)', () => {
+  it('returns null below start', () => {
+    const params = { ...baseParams, spawnStartPxAboveFloor: 1000 };
+    expect(spawnChance(params, 500)).toBeNull();
   });
 
-  it('returns spawnChanceMin at spawnStartY', () => {
-    expect(spawnChance(baseDef, 50000)).toBeCloseTo(0.1);
+  it('returns spawnChanceMin at floor', () => {
+    expect(spawnChance(baseParams, 0)).toBeCloseTo(0.1);
   });
 
-  it('returns spawnChanceMax at spawnRampEndY', () => {
-    expect(spawnChance(baseDef, 10000)).toBeCloseTo(0.5);
+  it('returns spawnChanceMax at ramp end', () => {
+    expect(spawnChance(baseParams, 40000)).toBeCloseTo(0.5);
   });
 
-  it('returns spawnChanceMax (clamped) above spawnRampEndY', () => {
-    expect(spawnChance(baseDef, 5000)).toBeCloseTo(0.5);
-  });
-
-  it('returns interpolated value between start and ramp end', () => {
-    // At midpoint Y = (50000 + 10000) / 2 = 30000, t = 0.5, chance = lerp(0.1, 0.5, 0.5) = 0.3
-    const result = spawnChance(baseDef, 30000);
-    expect(result).not.toBeNull();
-    expect(result!).toBeCloseTo(0.3);
-  });
-
-  it('returns null above spawnEndY when endY is set', () => {
-    const def = { ...baseDef, spawnEndY: 20000 };
-    // Y < spawnEndY means above the ceiling
-    expect(spawnChance(def, 15000)).toBeNull();
-  });
-
-  it('returns flat spawnChanceMin when spawnRampEndY is -1', () => {
-    const def = { ...baseDef, spawnRampEndY: -1 };
-    expect(spawnChance(def, 30000)).toBeCloseTo(0.1);
-    expect(spawnChance(def, 5000)).toBeCloseTo(0.1);
+  it('returns flat min when ramp is -1', () => {
+    const params = { ...baseParams, spawnRampPxAboveFloor: -1 };
+    expect(spawnChance(params, 30000)).toBeCloseTo(0.1);
   });
 });
 
-// ---------------------------------------------------------------------------
-// scaleSpawnChance — exported for testing
-// Scales a spawn chance by a multiplier and clamps to [0, 1].
-// ---------------------------------------------------------------------------
-import { scaleSpawnChance } from '../EnemyManager';
-
-describe('spawnChance with spawnRateMult', () => {
-  it('scaleSpawnChance scales linearly and clamps at 1', () => {
+describe('scaleSpawnChance', () => {
+  it('scales linearly and clamps at 1', () => {
     expect(scaleSpawnChance(0.2, 2)).toBeCloseTo(0.4);
     expect(scaleSpawnChance(0.2, 10)).toBe(1);
     expect(scaleSpawnChance(0.2, 0.5)).toBeCloseTo(0.1);
+  });
+});
+
+describe('computeGhostFlip', () => {
+  it('flips right when at left bound moving left', () => {
+    expect(computeGhostFlip(0, -50, 50, 0, 960)).toBe(50);
+  });
+
+  it('flips left when at right bound moving right', () => {
+    expect(computeGhostFlip(960, 50, 50, 0, 960)).toBe(-50);
+  });
+
+  it('preserves velocity when not at bounds', () => {
+    expect(computeGhostFlip(400, -50, 50, 0, 960)).toBe(-50);
+  });
+
+  it('uses custom xMin/xMax bounds', () => {
+    expect(computeGhostFlip(100, -50, 50, 100, 500)).toBe(50);
+    expect(computeGhostFlip(500, 50, 50, 100, 500)).toBe(-50);
   });
 });

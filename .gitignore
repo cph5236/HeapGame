@@ -8,3 +8,5 @@ ios/
 server/.wrangler
 todo/
 .superpowers/
+.worktrees/
+.claude/env.md

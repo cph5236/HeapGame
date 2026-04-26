@@ -561,7 +561,12 @@ export class MenuScene extends Phaser.Scene {
   private registerInput(): void {
     this.time.delayedCall(100, () => {
       const startGame = (): void => {
-        const activeHeapId = (this.game.registry.get('activeHeapId') as string) ?? '';
+        const activeHeapId  = (this.game.registry.get('activeHeapId') as string) ?? '';
+        const activeParams  = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
+        if (activeParams.isInfinite) {
+          this.scene.start('InfiniteGameScene');
+          return;
+        }
         const hasCheckpoint = getPlaced(activeHeapId).some(
           p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
         );

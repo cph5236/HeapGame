@@ -1,10 +1,12 @@
-import { computeBandScanlines, computeBandPolygon, Vertex } from '../systems/HeapPolygon';
+import { computeBandScanlines, computeBandPolygon, simplifyPolygon, Vertex, ScanlineRow } from '../systems/HeapPolygon';
 import { CHUNK_BAND_HEIGHT } from '../constants';
 
 export interface WorkerEntry {
   x: number;
   y: number;
   keyid: number;
+  w?: number;
+  h?: number;
 }
 
 export interface WorkerBandInput {
@@ -20,6 +22,7 @@ export interface WorkerRequest {
 export interface WorkerBandResult {
   bandTop: number;
   polygon: Vertex[];
+  rows?: ScanlineRow[];
 }
 
 export interface WorkerResponse {
@@ -29,8 +32,32 @@ export interface WorkerResponse {
   processedCount: number;
 }
 
-self.onmessage = (e: MessageEvent<WorkerRequest>): void => {
-  const { bands, newEntries } = e.data;
+export interface LayersWorkerRequest {
+  type: 'layers';
+  bands: { bandTop: number; rows: ScanlineRow[] }[];
+}
+
+self.onmessage = (e: MessageEvent<WorkerRequest | LayersWorkerRequest>): void => {
+  const msg = e.data;
+
+  // Pre-computed scanlines path — skip computeBandScanlines entirely
+  if ((msg as LayersWorkerRequest).type === 'layers') {
+    const req = msg as LayersWorkerRequest;
+    const resultBands: WorkerBandResult[] = [];
+    for (const { bandTop, rows } of req.bands) {
+      const polygon = simplifyPolygon(computeBandPolygon(rows), 2);
+      if (polygon.length >= 3) resultBands.push({ bandTop, polygon, rows });
+    }
+    (self as unknown as Worker).postMessage({
+      bands: resultBands,
+      entries: [],
+      processedCount: 0,
+    } satisfies WorkerResponse);
+    return;
+  }
+
+  // Existing entries path (no type field on legacy messages)
+  const { bands, newEntries } = e.data as WorkerRequest;
   const resultBands: WorkerBandResult[] = [];
   for (const { bandTop, entries } of bands) {
     const rows = computeBandScanlines(
@@ -38,7 +65,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>): void => {
       bandTop,
       bandTop + CHUNK_BAND_HEIGHT,
     );
-    const polygon = computeBandPolygon(rows);
+    const polygon = simplifyPolygon(computeBandPolygon(rows), 2);
     if (polygon.length >= 3) resultBands.push({ bandTop, polygon });
   }
 

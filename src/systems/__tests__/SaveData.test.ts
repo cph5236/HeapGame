@@ -321,7 +321,7 @@ describe('SaveData v1→v2 migration', () => {
 
     expect(getPlaced('any-heap')).toEqual([]);                 // fresh key is empty
     expect(getLegacyPlacedForTests()).toEqual([{ id: 'ibeam', x: 10, y: 20 }]);
-    expect(getSchemaVersionForTests()).toBe(2);
+    expect(getSchemaVersionForTests()).toBe(3);
   });
 
   it('finalizeLegacyPlaced moves items onto a heap id', () => {

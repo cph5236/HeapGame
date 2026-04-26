@@ -15,7 +15,8 @@
   "dependencies": {
     "@capacitor/android": "8.2.0",
     "@capacitor/core": "8.2.0",
-    "phaser": "3.90.0"
+    "phaser": "3.90.0",
+    "simplex-noise": "^4.0.3"
   },
   "devDependencies": {
     "@capacitor/cli": "8.2.0",

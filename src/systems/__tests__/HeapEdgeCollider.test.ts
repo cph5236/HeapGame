@@ -9,6 +9,7 @@ function makeMockImg() {
     setVisible:        vi.fn().mockReturnThis(),
     setDisplaySize:    vi.fn().mockReturnThis(),
     setDebugBodyColor: vi.fn().mockReturnThis(),
+    setData:           vi.fn().mockReturnThis(),
     refreshBody:       vi.fn(),
     body: { checkCollision: { down: true } },
   };

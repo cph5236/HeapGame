@@ -1,6 +1,9 @@
 export const GAME_WIDTH = 480;
 export const GAME_HEIGHT = 854;
 export const WORLD_WIDTH = 960;           // wider than the 480px canvas
+export const INFINITE_EDGE_PAD     = 100;  // open space on left/right edges before world wrap
+export const INFINITE_GAP_WIDTH    = 350;  // gap between each heap column
+export const INFINITE_WORLD_WIDTH  = WORLD_WIDTH * 3 + INFINITE_GAP_WIDTH * 2 + INFINITE_EDGE_PAD * 2;
 
 export const PLAYER_WIDTH = 40;
 export const PLAYER_HEIGHT = 46;
@@ -21,7 +24,7 @@ export const STACK_GAP_MAX = 16;
 export const GEN_LOOKAHEAD = 1200;
 
 // Mock global heap state — replace with backend later
-export const MOCK_HEAP_HEIGHT_PX = 50_000;
+export const MOCK_HEAP_HEIGHT_PX = 5_000_000;
 export const MOCK_SEED = 12;
 
 // How many pixels above the heap's topmost block that activates the placement zone
@@ -53,12 +56,21 @@ export const SWIPE_DIRECTION_RATIO = 2.0; // |dx|/|dy| must exceed this to be a 
 
 // Heap visual chunking
 export const CHUNK_BAND_HEIGHT = 500; // px per visual silhouette band
+export const LAYER_STEP                  = 4;       // px between layer lines — matches SCAN_STEP
+export const LEDGE_STEP                  = 60;      // px per staircase step — controls ledge height and wall frequency
+export const LEDGE_BLEND                 = 0.60;    // 0 = fully smooth curves, 1 = fully blocky staircases
+export const INFINITE_LOOKAHEAD_CHUNKS   = 10;      // chunks generated ahead of player
+export const INFINITE_MIN_WIDTH          = 150;     // tightest squeeze (~4× player width)
+export const INFINITE_MAX_WIDTH          = 900;     // widest open section
+export const INFINITE_CENTER_DRIFT_MAX   = 200;     // max px center shifts from column midpoint
+export const INFINITE_NOISE_SCALE        = 300;     // Y pixels per noise wave (at start)
+export const INFINITE_DIFFICULTY_RANGE   = 4_000_000;  // Y pixels for easy→hard ramp
 export const HEAP_FILL_TEXTURE = 'composite-heap';
 
 // ── Parallax Background ───────────────────────────────────────────────────────
 export const CLOUD_POOL_SIZE        = 14;     // max number of clouds at once; set based on density and screen height
 export const CLOUD_PARALLAX_FACTOR  = 0.15;   // clouds move at 30% of camera speed
-export const CLOUD_START_WORLD_Y    = 50_000; // show clouds everywhere; lower (e.g. 40_000) to gate by height
+export const CLOUD_START_WORLD_Y    = 5_000_000; // show clouds everywhere; lower to gate by height
 export const GROUND_LAYER_HEIGHT    = 180;    // total depth of dirt cross-section in px
 
 // Enemies
@@ -76,6 +88,9 @@ export const LADDER_WIDTH   = 35;
 export const IBEAM_WIDTH    = 120;  // designer-tunable
 export const IBEAM_HEIGHT   = 16;
 export const SNAP_RADIUS    = 80;   // px below pointer to search for a walkable surface
+
+// Portals
+export const RECYCLE_ITEM_COUNT = 16;
 
 // ── High scores ───────────────────────────────────────────────────────────────
 

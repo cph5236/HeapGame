@@ -32,11 +32,13 @@ export function computeBandScanlines(
   // Pre-compute bounding rects
   const rects = entries.map(e => {
     const def = OBJECT_DEFS[e.keyid] ?? OBJECT_DEFS[0];
+    const eW  = e.w ?? def.width;
+    const eH  = e.h ?? def.height;
     return {
-      left:   e.x - def.width  / 2,
-      right:  e.x + def.width  / 2,
-      top:    e.y - def.height / 2,
-      bottom: e.y + def.height / 2,
+      left:   e.x - eW / 2,
+      right:  e.x + eW / 2,
+      top:    e.y - eH / 2,
+      bottom: e.y + eH / 2,
     };
   });
 

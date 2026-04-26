@@ -280,6 +280,37 @@ describe('HeapClient workflow: append then load', () => {
   });
 });
 
+// ── getEnemyParams() ─────────────────────────────────────────────────────────
+
+describe('HeapClient.getEnemyParams', () => {
+  it('getEnemyParams returns enemyParams from the last changed:true response', async () => {
+    const heapId = 'heap-enemy-params-001';
+    const baseId = 'base-enemy-params-001';
+    const baseVertices = [{ x: 0, y: 500 }, { x: 100, y: 700 }, { x: 200, y: 500 }];
+    const liveZone: { x: number; y: number }[] = [];
+    const enemyParams = {
+      percher: { spawnStartPxAboveFloor: 0, spawnEndPxAboveFloor: -1, spawnRampPxAboveFloor: 12000, spawnChanceMin: 0.2, spawnChanceMax: 0.5 },
+    };
+
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ changed: true, version: 1, baseId, liveZone, params: {}, enemyParams }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => baseVertices,
+      }),
+    );
+
+    await HeapClient.load(heapId);
+
+    const cached = HeapClient.getEnemyParams(heapId);
+    expect(cached).not.toBeNull();
+    expect(cached!.percher.spawnRampPxAboveFloor).toBe(12000);
+  });
+});
+
 // ── getLiveZoneBottomY() ──────────────────────────────────────────────────────
 
 describe('HeapClient.getLiveZoneBottomY', () => {

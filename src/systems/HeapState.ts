@@ -4,11 +4,9 @@
  * it is a local mock with configurable height and seed.
  */
 export class HeapState {
-  readonly totalHeightPx: number;
   readonly seed: number;
 
-  constructor(totalHeightPx: number, seed: number) {
-    this.totalHeightPx = totalHeightPx;
+  constructor(seed: number) {
     this.seed = seed;
   }
 
