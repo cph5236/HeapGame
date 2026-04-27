@@ -404,30 +404,37 @@ describe('InputManager — pendingJumpVx', () => {
     const { im, fire } = await makeMobileIM();
     fire('touchstart', { touches: [{ clientX: 100, clientY: 300 }] });
     fire('touchend', { changedTouches: [{ clientX: 100, clientY: 230 }] }); // dy=-70, dx=0
-    expect(im.pendingJumpVx).toBe(0);
+    expect((im as any).pendingJumpVx).toBe(0);
   });
 
-  it('is positive for a swipe up-right at ~45 degrees', async () => {
+  it('is positive for a swipe up-right (ady > adx)', async () => {
     const { im, fire } = await makeMobileIM();
     fire('touchstart', { touches: [{ clientX: 100, clientY: 300 }] });
-    // dx=50 right, dy=-50 up → 45 deg → normalizedHx = 50/sqrt(5000) ≈ 0.707
-    fire('touchend', { changedTouches: [{ clientX: 150, clientY: 250 }] });
-    expect(im.pendingJumpVx).toBeGreaterThan(0);
+    // dx=30 right, dy=-70 up → ady=70 > adx=30, ady >= SWIPE_MIN_DISTANCE_PX(60)
+    fire('touchend', { changedTouches: [{ clientX: 130, clientY: 230 }] });
+    expect((im as any).pendingJumpVx).toBeGreaterThan(0);
   });
 
-  it('is negative for a swipe up-left', async () => {
+  it('is negative for a swipe up-left (ady > adx)', async () => {
     const { im, fire } = await makeMobileIM();
     fire('touchstart', { touches: [{ clientX: 100, clientY: 300 }] });
-    fire('touchend', { changedTouches: [{ clientX: 50, clientY: 250 }] });
-    expect(im.pendingJumpVx).toBeLessThan(0);
+    // dx=-30 left, dy=-70 up → ady=70 > adx=30, ady >= SWIPE_MIN_DISTANCE_PX(60)
+    fire('touchend', { changedTouches: [{ clientX: 70, clientY: 230 }] });
+    expect((im as any).pendingJumpVx).toBeLessThan(0);
   });
 
-  it('is cleared to 0 by update()', async () => {
+  it('transfers to jumpVx and clears pendingJumpVx on update()', async () => {
     const { im, fire } = await makeMobileIM();
     fire('touchstart', { touches: [{ clientX: 100, clientY: 300 }] });
-    fire('touchend', { changedTouches: [{ clientX: 150, clientY: 250 }] });
+    // dx=30 right, dy=-70 up → qualifies as swipe-up (ady > adx, ady >= 60)
+    fire('touchend', { changedTouches: [{ clientX: 130, clientY: 230 }] });
+    // Before update: pendingJumpVx is set, jumpVx is still 0
+    expect((im as any).pendingJumpVx).toBeGreaterThan(0);
+    expect(im.jumpVx).toBe(0);
     im.update(16, false);
-    expect(im.pendingJumpVx).toBe(0);
+    // After update: jumpVx received the value, pendingJumpVx cleared
+    expect(im.jumpVx).toBeGreaterThan(0);
+    expect((im as any).pendingJumpVx).toBe(0);
   });
 
   it('is set from a fast flick that crossed the drag threshold', async () => {
@@ -437,7 +444,7 @@ describe('InputManager — pendingJumpVx', () => {
     fire('touchmove', { touches: [{ clientX: 105, clientY: 280 }] });
     // Lift fast with enough travel (ady >= SWIPE_MIN_DISTANCE_PX=60, dx=15 right)
     fire('touchend', { changedTouches: [{ clientX: 115, clientY: 230 }] });
-    expect(im.pendingJumpVx).toBeGreaterThan(0);
+    expect((im as any).pendingJumpVx).toBeGreaterThan(0);
   });
 });
 

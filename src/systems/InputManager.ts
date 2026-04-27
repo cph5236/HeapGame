@@ -47,7 +47,7 @@ export class InputManager {
 
   // Pending impulse flags — set by touch handlers, consumed each frame
   private pendingJump     = false;
-  pendingJumpVx           = 0;
+  private pendingJumpVx   = 0;
   private pendingDash     = false;
   private pendingDashDir: 1 | -1 = 1;
   private pendingDive     = false;
@@ -247,10 +247,8 @@ export class InputManager {
       this.pendingJump   = true;
       this.pendingJumpVx = (dx / Math.sqrt(dx * dx + dy * dy)) * SWIPE_JUMP_HORIZONTAL_MAX;
     } else {
-      // Tap — still seed horizontal momentum from gesture direction if there is movement
+      // Tap
       this.pendingJump = true;
-      const mag = Math.sqrt(dx * dx + dy * dy);
-      this.pendingJumpVx = mag > 0 ? (dx / mag) * SWIPE_JUMP_HORIZONTAL_MAX : 0;
     }
 
     this.touchState = 'idle';
