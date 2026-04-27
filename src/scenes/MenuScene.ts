@@ -501,7 +501,7 @@ export class MenuScene extends Phaser.Scene {
     const by = 22;
 
     // Circle background
-    const btnGfx = this.add.graphics().setDepth(12);
+    const btnGfx = this.add.graphics().setScrollFactor(0).setDepth(12);
     btnGfx.fillStyle(0x000000, 0.65);
     btnGfx.fillCircle(bx, by, 14);
     btnGfx.lineStyle(2, 0x8899bb, 1);
@@ -511,19 +511,19 @@ export class MenuScene extends Phaser.Scene {
     this.add.text(bx, by, '?', {
       fontSize: '16px', color: '#ffffff', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5).setDepth(13);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(13);
 
     // Invisible hit zone
-    const hitZone = this.add.zone(bx, by, 36, 36).setDepth(13);
+    const hitZone = this.add.zone(bx, by, 36, 36).setScrollFactor(0).setDepth(13);
     hitZone.setInteractive({ useHandCursor: true });
 
     // Overlay background
     const overlayBg = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.72)
-      .setDepth(14).setVisible(false).setInteractive();
+      .setScrollFactor(0).setDepth(14).setVisible(false).setInteractive();
 
     // Panel
     const panel = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, 380, 320, 0x0d0d20)
-      .setDepth(15).setVisible(false).setStrokeStyle(2, 0x4455aa);
+      .setScrollFactor(0).setDepth(15).setVisible(false).setStrokeStyle(2, 0x4455aa);
 
     // Controls text — show mobile or desktop lines based on platform
     const mobileLines = [
@@ -533,8 +533,8 @@ export class MenuScene extends Phaser.Scene {
       'Jump     Tap or swipe up',
       'Dash     Swipe left / right',
       'Dive     Swipe down',
-      'Ladder   Drag up / down',
       'Place    PLACE BLOCK button',
+      'Ladder   Drag up / down',
       '',
       'TIP',
       '',
@@ -562,7 +562,7 @@ export class MenuScene extends Phaser.Scene {
         stroke: '#000000', strokeThickness: 1,
         lineSpacing: 5,
       },
-    ).setDepth(16).setVisible(false);
+    ).setScrollFactor(0).setDepth(16).setVisible(false);
 
     const parts = [overlayBg, panel, overlayText];
     let open = false;
