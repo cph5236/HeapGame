@@ -397,6 +397,50 @@ describe('InputManager — drag state machine', () => {
   });
 });
 
+// ── pendingJumpVx ─────────────────────────────────────────────────────────────
+
+describe('InputManager — pendingJumpVx', () => {
+  it('is 0 for a straight-up swipe (dx=0)', async () => {
+    const { im, fire } = await makeMobileIM();
+    fire('touchstart', { touches: [{ clientX: 100, clientY: 300 }] });
+    fire('touchend', { changedTouches: [{ clientX: 100, clientY: 230 }] }); // dy=-70, dx=0
+    expect(im.pendingJumpVx).toBe(0);
+  });
+
+  it('is positive for a swipe up-right at ~45 degrees', async () => {
+    const { im, fire } = await makeMobileIM();
+    fire('touchstart', { touches: [{ clientX: 100, clientY: 300 }] });
+    // dx=50 right, dy=-50 up → 45 deg → normalizedHx = 50/sqrt(5000) ≈ 0.707
+    fire('touchend', { changedTouches: [{ clientX: 150, clientY: 250 }] });
+    expect(im.pendingJumpVx).toBeGreaterThan(0);
+  });
+
+  it('is negative for a swipe up-left', async () => {
+    const { im, fire } = await makeMobileIM();
+    fire('touchstart', { touches: [{ clientX: 100, clientY: 300 }] });
+    fire('touchend', { changedTouches: [{ clientX: 50, clientY: 250 }] });
+    expect(im.pendingJumpVx).toBeLessThan(0);
+  });
+
+  it('is cleared to 0 by update()', async () => {
+    const { im, fire } = await makeMobileIM();
+    fire('touchstart', { touches: [{ clientX: 100, clientY: 300 }] });
+    fire('touchend', { changedTouches: [{ clientX: 150, clientY: 250 }] });
+    im.update(16, false);
+    expect(im.pendingJumpVx).toBe(0);
+  });
+
+  it('is set from a fast flick that crossed the drag threshold', async () => {
+    const { im, fire } = await makeMobileIM();
+    fire('touchstart', { touches: [{ clientX: 100, clientY: 300 }] });
+    // Move enough to enter drag state (ady > DRAG_THRESHOLD_PX=15)
+    fire('touchmove', { touches: [{ clientX: 105, clientY: 280 }] });
+    // Lift fast with enough travel (ady >= SWIPE_MIN_DISTANCE_PX=60, dx=15 right)
+    fire('touchend', { changedTouches: [{ clientX: 115, clientY: 230 }] });
+    expect(im.pendingJumpVx).toBeGreaterThan(0);
+  });
+});
+
 // ── diveJustFired consumed per frame ─────────────────────────────────────────
 
 describe('InputManager — diveJustFired lifecycle', () => {

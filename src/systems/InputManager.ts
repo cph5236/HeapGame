@@ -4,6 +4,7 @@ import {
   SWIPE_MIN_DISTANCE_PX,
   SWIPE_MAX_TIME_MS,
   DRAG_THRESHOLD_PX,
+  SWIPE_JUMP_HORIZONTAL_MAX,
 } from '../constants';
 
 export class InputManager {
@@ -19,6 +20,7 @@ export class InputManager {
 
   // Consumed-per-frame impulse flags (cleared at start of each update)
   jumpJustPressed = false;
+  jumpVx          = 0;   // horizontal component of swipe-up gesture, 0 for tap
   dashJustFired   = false;
   dashDir: 1 | -1 = 1;
   diveJustFired   = false;
@@ -45,6 +47,7 @@ export class InputManager {
 
   // Pending impulse flags — set by touch handlers, consumed each frame
   private pendingJump     = false;
+  pendingJumpVx           = 0;
   private pendingDash     = false;
   private pendingDashDir: 1 | -1 = 1;
   private pendingDive     = false;
@@ -73,12 +76,14 @@ export class InputManager {
   update(_delta: number, _inLiveZone: boolean): void {
     // Transfer pending touch impulses from last frame into active flags
     this.jumpJustPressed = this.pendingJump;
+    this.jumpVx          = this.pendingJumpVx;
     this.dashJustFired   = this.pendingDash;
     this.diveJustFired   = this.pendingDive;
     if (this.pendingDash) this.dashDir = this.pendingDashDir;
-    this.pendingJump = false;
-    this.pendingDash = false;
-    this.pendingDive = false;
+    this.pendingJump   = false;
+    this.pendingJumpVx = 0;
+    this.pendingDash   = false;
+    this.pendingDive   = false;
 
     // Compute analog tilt factor and derive binary booleans
     if (this.tiltListenerAttached) {
@@ -195,7 +200,22 @@ export class InputManager {
     }
 
     if (this.touchState === 'drag') {
-      // Clear drag outputs and return without firing swipe/tap
+      // A fast flick that crossed the drag threshold should still fire as a swipe
+      const td = e.changedTouches[0];
+      if (td) {
+        const dx  = td.clientX - this.touchStartX;
+        const dy  = td.clientY - this.touchStartY;
+        const ady = Math.abs(dy);
+        const dt  = performance.now() - this.touchStartTime;
+        if (ady >= SWIPE_MIN_DISTANCE_PX && dt < SWIPE_MAX_TIME_MS) {
+          if (dy < 0) {
+            this.pendingJump   = true;
+            this.pendingJumpVx = (dx / Math.sqrt(dx * dx + dy * dy)) * SWIPE_JUMP_HORIZONTAL_MAX;
+          } else {
+            this.pendingDive = true;
+          }
+        }
+      }
       this.dragUp    = false;
       this.dragDown  = false;
       this.touchState = 'idle';
@@ -223,11 +243,14 @@ export class InputManager {
       // Swipe down → dive
       this.pendingDive = true;
     } else if (ady > adx && ady >= SWIPE_MIN_DISTANCE_PX && dt < SWIPE_MAX_TIME_MS && dy < 0) {
-      // Swipe up → jump
-      this.pendingJump = true;
+      // Swipe up → jump; extract horizontal component for momentum seed
+      this.pendingJump   = true;
+      this.pendingJumpVx = (dx / Math.sqrt(dx * dx + dy * dy)) * SWIPE_JUMP_HORIZONTAL_MAX;
     } else {
-      // Tap
+      // Tap — still seed horizontal momentum from gesture direction if there is movement
       this.pendingJump = true;
+      const mag = Math.sqrt(dx * dx + dy * dy);
+      this.pendingJumpVx = mag > 0 ? (dx / mag) * SWIPE_JUMP_HORIZONTAL_MAX : 0;
     }
 
     this.touchState = 'idle';
