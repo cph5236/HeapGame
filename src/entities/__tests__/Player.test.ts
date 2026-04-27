@@ -275,6 +275,28 @@ describe('Player — analog walk', () => {
 
     expect(spy.setFlipX).toContain(true);
   });
+
+  it('goLeft is not used in walk block (tiltFactor is sole source of truth)', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    imState.tiltFactor = 0;
+    imState.goLeft = true;
+
+    player.update(16);
+
+    const lastVx = spy.setVelocityX[spy.setVelocityX.length - 1];
+    expect(lastVx).toBe(0);
+  });
+
+  it('goRight is not used in walk block (tiltFactor is sole source of truth)', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    imState.tiltFactor = 0;
+    imState.goRight = true;
+
+    player.update(16);
+
+    const lastVx = spy.setVelocityX[spy.setVelocityX.length - 1];
+    expect(lastVx).toBe(0);
+  });
 });
 
 // ── 2. Keyboard overrides tilt ────────────────────────────────────────────────
@@ -518,5 +540,22 @@ describe('Player — ladder drag', () => {
     player.update(16);
 
     expect(player.isOnLadder).toBe(false);
+  });
+});
+
+// ── 6. Slope eject ────────────────────────────────────────────────────────
+
+describe('Player — slope eject', () => {
+  it('slope eject is suppressed when tilting (tiltFactor non-zero)', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    // Inject inSlopeZone state
+    (player as any).inSlopeZone = true;
+    imState.tiltFactor = 0.5;
+
+    player.update(16);
+
+    // When tilting, vx should reflect the tilt (0.5 * PLAYER_SPEED), not the slope eject velocity
+    const lastVx = spy.setVelocityX[spy.setVelocityX.length - 1];
+    expect(lastVx).toBeCloseTo(PLAYER_SPEED * 0.5, 5);
   });
 });
