@@ -1,24 +1,31 @@
 import {
   TILT_DEAD_ZONE_DEG,
+  TILT_MAX_DEG,
   SWIPE_MIN_DISTANCE_PX,
   SWIPE_MAX_TIME_MS,
-  SWIPE_DIRECTION_RATIO,
+  DRAG_THRESHOLD_PX,
 } from '../constants';
 
 export class InputManager {
   private static instance: InputManager;
 
   // Continuous tilt state
-  goLeft  = false;
-  goRight = false;
+  tiltFactor = 0;   // normalized [-1, 1]
+  goLeft     = false;
+  goRight    = false;
 
   // Continuous placement state
   placeHeld = false;
 
   // Consumed-per-frame impulse flags (cleared at start of each update)
-  jumpJustPressed  = false;
-  dashJustFired    = false;
-  dashDir: 1 | -1  = 1;
+  jumpJustPressed = false;
+  dashJustFired   = false;
+  dashDir: 1 | -1 = 1;
+  diveJustFired   = false;
+
+  // Live drag outputs — updated by touchmove, cleared on touchend drag exit
+  dragUp   = false;
+  dragDown = false;
 
   // Platform
   readonly isMobile: boolean;
@@ -29,15 +36,18 @@ export class InputManager {
   private tiltListenerAttached = false;
   private requiresPermissionGesture = false;
 
-  // Internal touch tracking
+  // Touch state machine
+  private touchState: 'idle' | 'tracking' | 'drag' = 'idle';
   private touchStartX    = 0;
   private touchStartY    = 0;
   private touchStartTime = 0;
+  private currentTouchY  = 0;
 
   // Pending impulse flags — set by touch handlers, consumed each frame
   private pendingJump     = false;
   private pendingDash     = false;
   private pendingDashDir: 1 | -1 = 1;
+  private pendingDive     = false;
 
   private constructor() {
     this.isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
@@ -45,6 +55,7 @@ export class InputManager {
     if (this.isMobile) {
       this.setupTilt();
       window.addEventListener('touchstart', this.onTouchStart, { passive: true });
+      window.addEventListener('touchmove',  this.onTouchMove,  { passive: true });
       window.addEventListener('touchend',   this.onTouchEnd,   { passive: true });
     }
   }
@@ -60,16 +71,30 @@ export class InputManager {
   // _inLiveZone reserved for future mobile UI gating (e.g. showing/hiding placement button inside InputManager)
   update(_delta: number, _inLiveZone: boolean): void {
     // Transfer pending touch impulses from last frame into active flags
-    this.jumpJustPressed  = this.pendingJump;
-    this.dashJustFired    = this.pendingDash;
+    this.jumpJustPressed = this.pendingJump;
+    this.dashJustFired   = this.pendingDash;
+    this.diveJustFired   = this.pendingDive;
     if (this.pendingDash) this.dashDir = this.pendingDashDir;
-    this.pendingJump  = false;
-    this.pendingDash  = false;
+    this.pendingJump = false;
+    this.pendingDash = false;
+    this.pendingDive = false;
 
-    // Update directional state from tilt
+    // Compute analog tilt factor and derive binary booleans
     if (this.tiltListenerAttached) {
-      this.goLeft  = this.gamma < -TILT_DEAD_ZONE_DEG;
-      this.goRight = this.gamma >  TILT_DEAD_ZONE_DEG;
+      const g   = this.gamma;
+      const abs = Math.abs(g);
+
+      if (abs < TILT_DEAD_ZONE_DEG) {
+        this.tiltFactor = 0;
+      } else if (abs >= TILT_MAX_DEG) {
+        this.tiltFactor = g > 0 ? 1 : -1;
+      } else {
+        const raw = (Math.sign(g) * (abs - TILT_DEAD_ZONE_DEG)) / (TILT_MAX_DEG - TILT_DEAD_ZONE_DEG);
+        this.tiltFactor = Math.max(-1, Math.min(1, raw));
+      }
+
+      this.goLeft  = this.tiltFactor < -0.01;
+      this.goRight = this.tiltFactor >  0.01;
     }
   }
 
@@ -125,28 +150,79 @@ export class InputManager {
     this.touchStartX    = t.clientX;
     this.touchStartY    = t.clientY;
     this.touchStartTime = performance.now();
+    this.currentTouchY  = t.clientY;
+    this.touchState     = 'tracking';
+  };
+
+  private onTouchMove = (e: TouchEvent): void => {
+    if (this.touchState !== 'tracking' && this.touchState !== 'drag') return;
+
+    const t = e.touches[0];
+    if (!t) return;
+
+    const currentX = t.clientX;
+    const currentY = t.clientY;
+
+    if (this.touchState === 'tracking') {
+      const adx = Math.abs(currentX - this.touchStartX);
+      const ady = Math.abs(currentY - this.touchStartY);
+
+      if (ady > adx && ady >= DRAG_THRESHOLD_PX) {
+        this.touchState = 'drag';
+      }
+    }
+
+    this.currentTouchY = currentY;
+
+    // Update live drag outputs
+    if (this.touchState === 'drag') {
+      this.dragUp   = this.currentTouchY < this.touchStartY - DRAG_THRESHOLD_PX;
+      this.dragDown = this.currentTouchY > this.touchStartY + DRAG_THRESHOLD_PX;
+    }
   };
 
   private onTouchEnd = (e: TouchEvent): void => {
-    const t = e.changedTouches[0];
-    if (!t) return;
+    if (this.touchState === 'idle') {
+      // Spurious event — ignore
+      return;
+    }
 
-    const dx = t.clientX - this.touchStartX;
-    const dy = t.clientY - this.touchStartY;
-    const dt = performance.now() - this.touchStartTime;
+    if (this.touchState === 'drag') {
+      // Clear drag outputs and return without firing swipe/tap
+      this.dragUp    = false;
+      this.dragDown  = false;
+      this.touchState = 'idle';
+      return;
+    }
+
+    // State was 'tracking' — run swipe classifier
+    const t = e.changedTouches[0];
+    if (!t) {
+      this.touchState = 'idle';
+      return;
+    }
+
+    const dx  = t.clientX - this.touchStartX;
+    const dy  = t.clientY - this.touchStartY;
     const adx = Math.abs(dx);
     const ady = Math.abs(dy);
+    const dt  = performance.now() - this.touchStartTime;
 
-    const isSwipe =
-      dt < SWIPE_MAX_TIME_MS &&
-      adx > SWIPE_MIN_DISTANCE_PX &&
-      (ady === 0 || adx / ady > SWIPE_DIRECTION_RATIO);
-
-    if (isSwipe) {
+    if (adx > ady && adx >= SWIPE_MIN_DISTANCE_PX && dt < SWIPE_MAX_TIME_MS) {
+      // Horizontal swipe → dash
       this.pendingDash    = true;
       this.pendingDashDir = dx > 0 ? 1 : -1;
+    } else if (ady > adx && ady >= SWIPE_MIN_DISTANCE_PX && dt < SWIPE_MAX_TIME_MS && dy > 0) {
+      // Swipe down → dive
+      this.pendingDive = true;
+    } else if (ady > adx && ady >= SWIPE_MIN_DISTANCE_PX && dt < SWIPE_MAX_TIME_MS && dy < 0) {
+      // Swipe up → jump
+      this.pendingJump = true;
     } else {
+      // Tap
       this.pendingJump = true;
     }
+
+    this.touchState = 'idle';
   };
 }
