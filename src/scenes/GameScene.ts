@@ -589,7 +589,7 @@ export class GameScene extends Phaser.Scene {
     overlayBg.on('pointerup', () => this.toggleInfoOverlay());
 
     // Panel
-    const panel = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, 380, 300, 0x0d0d20)
+    const panel = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, 380, 320, 0x0d0d20)
       .setScrollFactor(0).setDepth(29).setVisible(false)
       .setStrokeStyle(2, 0x4455aa);
 
@@ -613,6 +613,7 @@ export class GameScene extends Phaser.Scene {
       'Move     \u2190 \u2192  /  A  D',
       'Jump     \u2191  /  W',
       'Dash     SHIFT',
+      'Dive     \u2193  /  S  (airborne)',
       'Place    SPACE',
       '',
       'TIP',
