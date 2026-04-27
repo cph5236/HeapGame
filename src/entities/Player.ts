@@ -37,6 +37,7 @@ export class Player {
   private wallJumpsRemaining: number = 0;
   private dashCooldown:       number = 0; // ms remaining
   private dashActive:         number = 0; // ms remaining of active dash
+  private diveActive:         number = 0; // ms remaining of mobile dive burst
   private coyoteTimer:        number = 0; // ms remaining of coyote-time grace
 
   /** Set by GameScene's wall-group collision callback each frame. When true the
@@ -102,8 +103,8 @@ export class Player {
         this.exitLadder();
         // fall through to normal physics this frame
       } else {
-        const goUp   = this.jumpKeys.some(k => k.isDown)  || im.jumpJustPressed;
-        const goDown = this.downKeys.some(k => k.isDown);
+        const goUp   = this.jumpKeys.some(k => k.isDown)  || im.jumpJustPressed || im.dragUp;
+        const goDown = this.downKeys.some(k => k.isDown) || im.dragDown;
         this.sprite.setVelocityX(0);
         this.sprite.setVelocityY(goUp ? -PLAYER_SPEED * 0.65 : goDown ? PLAYER_SPEED * 0.65 : 0);
         // Ladder counts as grounded: keep jump charges full and coyote window fresh
@@ -138,21 +139,26 @@ export class Player {
 
     // Horizontal movement — either scheme (skipped during active dash)
     const im = InputManager.getInstance();
-    const goLeft  = this.leftKeys.some(k => k.isDown)  || im.goLeft;
-    const goRight = this.rightKeys.some(k => k.isDown) || im.goRight;
+    const keyboardLeft  = this.leftKeys.some(k => k.isDown);
+    const keyboardRight = this.rightKeys.some(k => k.isDown);
     this.dashActive = Math.max(0, this.dashActive - delta);
     if (this.dashActive === 0) {
-      if (this.inSlopeZone && !goLeft && !goRight) {
+      if (this.inSlopeZone && !keyboardLeft && !keyboardRight && im.tiltFactor === 0) {
         // Eject outward along the wall surface until the player slides off the edge
         this.sprite.setVelocityX(this.slopeEjectDir * PLAYER_SPEED);
-      } else if (goLeft) {
+      } else if (keyboardLeft) {
         this.sprite.setVelocityX(-PLAYER_SPEED);
         this.sprite.setFlipX(true);
-      } else if (goRight) {
+      } else if (keyboardRight) {
         this.sprite.setVelocityX(PLAYER_SPEED);
         this.sprite.setFlipX(false);
       } else {
-        this.sprite.setVelocityX(0);
+        // Analog tilt (includes zero when phone is level)
+        const tiltVx = im.tiltFactor * PLAYER_SPEED;
+        this.sprite.setVelocityX(tiltVx);
+        if (tiltVx < 0) this.sprite.setFlipX(true);
+        else if (tiltVx > 0) this.sprite.setFlipX(false);
+        // tiltVx === 0: preserve current flip direction
       }
     }
 
@@ -161,7 +167,7 @@ export class Player {
       this.dashCooldown = Math.max(0, this.dashCooldown - delta);
       const dashTriggered = Phaser.Input.Keyboard.JustDown(this.dashKey) || im.dashJustFired;
       if (dashTriggered && this.dashCooldown === 0) {
-        const dir = im.dashJustFired ? im.dashDir : (goLeft ? -1 : goRight ? 1 : (this.sprite.flipX ? -1 : 1));
+        const dir = im.dashJustFired ? im.dashDir : (keyboardLeft ? -1 : keyboardRight ? 1 : (this.sprite.flipX ? -1 : 1));
         this.sprite.setVelocityX(dir * PLAYER_DASH_VELOCITY);
         this.dashCooldown = DASH_COOLDOWN_MS;
         this.dashActive   = DASH_DURATION_MS;
@@ -174,9 +180,11 @@ export class Player {
     if (jumpPressed) {
       const onWallForJump = this.wallJumpEnabled && (body.blocked.left || body.blocked.right);
       if (canGroundJump) {
+        if (im.isMobile) this.sprite.setVelocityX(im.tiltFactor * PLAYER_SPEED);
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.coyoteTimer = 0; // consume coyote window so it can't be reused
       } else if (!onWallForJump && this.airJumpsRemaining > 0) {
+        if (im.isMobile) this.sprite.setVelocityX(im.tiltFactor * PLAYER_SPEED);
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.airJumpsRemaining--;
       }
@@ -199,7 +207,15 @@ export class Player {
 
     // Dive — slam downward while airborne; release to return to normal fall speed
     if (this.diveEnabled && !onGround) {
-      if (this.downKeys.some(k => k.isDown)) {
+      const holdingDown = this.downKeys.some(k => k.isDown);
+      this.diveActive = Math.max(0, this.diveActive - delta);
+
+      if (im.diveJustFired && !holdingDown) {
+        // Mobile: swipe-down fires a sustained burst
+        this.diveActive = DASH_DURATION_MS; // reuse same ~200ms window
+      }
+
+      if (holdingDown || this.diveActive > 0) {
         body.setMaxVelocityY(PLAYER_DIVE_SPEED);
         this.sprite.setVelocityY(PLAYER_DIVE_SPEED);
       } else {
