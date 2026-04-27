@@ -572,9 +572,10 @@ export class GameScene extends Phaser.Scene {
     btnGfx.lineStyle(2, 0x8899bb, 1);
     btnGfx.strokeCircle(bx, by, 14);
 
-    // "i" label
-    this.add.text(bx, by, 'i', {
-      fontSize: '16px', color: '#ddddff', fontStyle: 'bold',
+    // "?" label
+    this.add.text(bx, by, '?', {
+      fontSize: '16px', color: '#ffffff', fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(27);
 
     // Invisible interactive hit zone
@@ -597,9 +598,11 @@ export class GameScene extends Phaser.Scene {
       'CONTROLS',
       '',
       'Move     Tilt phone left / right',
-      'Jump     Tap screen',
-      'Dash     Swipe horizontally',
+      'Jump     Tap or swipe up',
+      'Dash     Swipe left / right',
+      'Dive     Swipe down',
       'Place    PLACE BLOCK button',
+      'Ladder   Drag up / down',
       '',
       'TIP',
       '',

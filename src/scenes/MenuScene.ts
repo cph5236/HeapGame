@@ -52,6 +52,7 @@ export class MenuScene extends Phaser.Scene {
     this.createPrompts(im);
     this.createHeapPicker();
     this.createSettingsButton();
+    this.createInfoButton();
     if (!im.isMobile) this.createHotkeyLegend();
     this.runEntranceSequence();
     this.registerInput();
@@ -492,6 +493,87 @@ export class MenuScene extends Phaser.Scene {
         this.scene.restart();
       }
     });
+  }
+
+  private createInfoButton(): void {
+    const im = InputManager.getInstance();
+    const bx = GAME_WIDTH - 22;
+    const by = 22;
+
+    // Circle background
+    const btnGfx = this.add.graphics().setDepth(12);
+    btnGfx.fillStyle(0x000000, 0.65);
+    btnGfx.fillCircle(bx, by, 14);
+    btnGfx.lineStyle(2, 0x8899bb, 1);
+    btnGfx.strokeCircle(bx, by, 14);
+
+    // '?' label
+    this.add.text(bx, by, '?', {
+      fontSize: '16px', color: '#ffffff', fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(13);
+
+    // Invisible hit zone
+    const hitZone = this.add.zone(bx, by, 36, 36).setDepth(13);
+    hitZone.setInteractive({ useHandCursor: true });
+
+    // Overlay background
+    const overlayBg = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.72)
+      .setDepth(14).setVisible(false).setInteractive();
+
+    // Panel
+    const panel = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, 380, 320, 0x0d0d20)
+      .setDepth(15).setVisible(false).setStrokeStyle(2, 0x4455aa);
+
+    // Controls text — show mobile or desktop lines based on platform
+    const mobileLines = [
+      'CONTROLS',
+      '',
+      'Move     Tilt phone left / right',
+      'Jump     Tap or swipe up',
+      'Dash     Swipe left / right',
+      'Dive     Swipe down',
+      'Ladder   Drag up / down',
+      'Place    PLACE BLOCK button',
+      '',
+      'TIP',
+      '',
+      'Left & right edges wrap around!',
+    ];
+    const desktopLines = [
+      'CONTROLS',
+      '',
+      'Move     ← →  /  A  D',
+      'Jump     ↑  /  W',
+      'Dash     SHIFT',
+      'Dive     ↓  /  S  (airborne)',
+      'Place    SPACE',
+      '',
+      'TIP',
+      '',
+      'Left & right edges wrap around!',
+    ];
+
+    const overlayText = this.add.text(
+      GAME_WIDTH / 2 - 160, GAME_HEIGHT / 2 - 130,
+      (im.isMobile ? mobileLines : desktopLines).join('\n'),
+      {
+        fontSize: '17px', color: '#ccccdd',
+        stroke: '#000000', strokeThickness: 1,
+        lineSpacing: 5,
+      },
+    ).setDepth(16).setVisible(false);
+
+    const parts = [overlayBg, panel, overlayText];
+    let open = false;
+
+    const toggle = () => {
+      open = !open;
+      for (const p of parts) p.setVisible(open);
+    };
+
+    hitZone.on('pointerup', toggle);
+    overlayBg.on('pointerup', toggle);
   }
 
   // ── Entrance animation ───────────────────────────────────────────────────────
