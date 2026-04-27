@@ -629,6 +629,19 @@ describe('Player — air momentum', () => {
     expect((player as any).momentumX).toBe(0);
   });
 
+  it('zeroes momentumX when dash fires', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    (player as any).momentumX = 150;
+    imState.dashJustFired = true;
+    imState.dashDir = 1;
+    player.update(16);
+    expect((player as any).momentumX).toBe(0);
+  });
+
   it('seeds momentumX from jumpVx on swipe-jump', async () => {
     const { player } = await makePlayer({
       onGround: true,
