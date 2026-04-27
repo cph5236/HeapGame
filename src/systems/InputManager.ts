@@ -54,9 +54,10 @@ export class InputManager {
 
     if (this.isMobile) {
       this.setupTilt();
-      window.addEventListener('touchstart', this.onTouchStart, { passive: true });
-      window.addEventListener('touchmove',  this.onTouchMove,  { passive: true });
-      window.addEventListener('touchend',   this.onTouchEnd,   { passive: true });
+      window.addEventListener('touchstart',  this.onTouchStart,  { passive: true });
+      window.addEventListener('touchmove',   this.onTouchMove,   { passive: true });
+      window.addEventListener('touchend',    this.onTouchEnd,    { passive: true });
+      window.addEventListener('touchcancel', this.onTouchCancel, { passive: true });
     }
   }
 
@@ -179,6 +180,12 @@ export class InputManager {
       this.dragUp   = this.currentTouchY < this.touchStartY - DRAG_THRESHOLD_PX;
       this.dragDown = this.currentTouchY > this.touchStartY + DRAG_THRESHOLD_PX;
     }
+  };
+
+  private onTouchCancel = (): void => {
+    this.touchState = 'idle';
+    this.dragUp     = false;
+    this.dragDown   = false;
   };
 
   private onTouchEnd = (e: TouchEvent): void => {

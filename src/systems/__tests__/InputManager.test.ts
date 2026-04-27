@@ -142,11 +142,12 @@ describe('InputManager — swipe classifier', () => {
   it('horizontal swipe right sets dashJustFired and dashDir=1', async () => {
     const { im, fire } = await makeMobileIM();
 
+    vi.spyOn(performance, 'now').mockReturnValueOnce(0); // for touchstart
     fire('touchstart', {
       touches: [{ clientX: 100, clientY: 300 }],
     });
     // fast horizontal swipe
-    vi.spyOn(performance, 'now').mockReturnValue(100);
+    vi.spyOn(performance, 'now').mockReturnValue(100); // for touchend
     fire('touchend', {
       changedTouches: [{ clientX: 200, clientY: 305 }],
     });
@@ -160,10 +161,11 @@ describe('InputManager — swipe classifier', () => {
   it('horizontal swipe left sets dashJustFired and dashDir=-1', async () => {
     const { im, fire } = await makeMobileIM();
 
+    vi.spyOn(performance, 'now').mockReturnValueOnce(0); // for touchstart
     fire('touchstart', {
       touches: [{ clientX: 200, clientY: 300 }],
     });
-    vi.spyOn(performance, 'now').mockReturnValue(100);
+    vi.spyOn(performance, 'now').mockReturnValue(100); // for touchend
     fire('touchend', {
       changedTouches: [{ clientX: 100, clientY: 305 }],
     });
@@ -177,10 +179,11 @@ describe('InputManager — swipe classifier', () => {
   it('swipe-down sets diveJustFired', async () => {
     const { im, fire } = await makeMobileIM();
 
+    vi.spyOn(performance, 'now').mockReturnValueOnce(0); // for touchstart
     fire('touchstart', {
       touches: [{ clientX: 150, clientY: 100 }],
     });
-    vi.spyOn(performance, 'now').mockReturnValue(100);
+    vi.spyOn(performance, 'now').mockReturnValue(100); // for touchend
     // dy > dx, dy >= SWIPE_MIN_DISTANCE_PX (60), dy positive = down
     fire('touchend', {
       changedTouches: [{ clientX: 152, clientY: 180 }],
@@ -194,10 +197,11 @@ describe('InputManager — swipe classifier', () => {
   it('swipe-up sets jumpJustPressed', async () => {
     const { im, fire } = await makeMobileIM();
 
+    vi.spyOn(performance, 'now').mockReturnValueOnce(0); // for touchstart
     fire('touchstart', {
       touches: [{ clientX: 150, clientY: 200 }],
     });
-    vi.spyOn(performance, 'now').mockReturnValue(100);
+    vi.spyOn(performance, 'now').mockReturnValue(100); // for touchend
     // dy negative = up, ady >= 60, ady > adx
     fire('touchend', {
       changedTouches: [{ clientX: 152, clientY: 120 }],
@@ -346,6 +350,37 @@ describe('InputManager — drag state machine', () => {
 
     expect(im.dragDown).toBe(false);
     expect(im.dragUp).toBe(false);
+  });
+
+  it('touchcancel resets state to idle and clears drag flags', async () => {
+    const { im, fire } = await makeMobileIM();
+
+    fire('touchstart', {
+      touches: [{ clientX: 150, clientY: 300 }],
+    });
+    fire('touchmove', {
+      touches: [{ clientX: 151, clientY: 320 }],
+    });
+    expect(im.dragDown).toBe(true);
+
+    fire('touchcancel', {});
+
+    expect(im.dragDown).toBe(false);
+    expect(im.dragUp).toBe(false);
+
+    // Confirm next touchstart begins cleanly (no stale tracking state)
+    vi.spyOn(performance, 'now').mockReturnValueOnce(0);
+    fire('touchstart', {
+      touches: [{ clientX: 200, clientY: 200 }],
+    });
+    vi.spyOn(performance, 'now').mockReturnValue(50);
+    fire('touchend', {
+      changedTouches: [{ clientX: 300, clientY: 205 }],
+    });
+    vi.restoreAllMocks();
+
+    im.update(16, false);
+    expect(im.dashJustFired).toBe(true);
   });
 
   it('spurious touchend when idle is ignored', async () => {
