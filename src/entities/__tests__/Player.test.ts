@@ -17,7 +17,6 @@ import {
   PLAYER_JUMP_VELOCITY,
   PLAYER_DIVE_SPEED,
   PLAYER_MAX_FALL_SPEED,
-  DASH_DURATION_MS,
 } from '../../constants';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -54,6 +53,7 @@ const imState = {
   goRight: false,
   isMobile: false,
   jumpJustPressed: false,
+  jumpVx: 0,
   dashJustFired: false,
   dashDir: 1 as 1 | -1,
   diveJustFired: false,
@@ -202,6 +202,7 @@ beforeEach(() => {
   imState.goRight        = false;
   imState.isMobile       = false;
   imState.jumpJustPressed = false;
+  imState.jumpVx         = 0;
   imState.dashJustFired  = false;
   imState.dashDir        = 1;
   imState.diveJustFired  = false;
@@ -307,7 +308,7 @@ describe('Player — keyboard overrides tilt', () => {
     imState.tiltFactor = 0.8; // tilting right
 
     // Make the left keyboard key appear pressed
-    const { Player } = await import('../Player');
+    await import('../Player');
     // We need to reach into the private leftKeys to set isDown.
     // Cast player to any to access private fields in tests.
     (player as any).leftKeys[0].isDown = true;
@@ -365,8 +366,8 @@ describe('Player — tilt-kick jump', () => {
     expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
   });
 
-  it('air jump on mobile applies tilt-kick vx', async () => {
-    const { player, spy } = await makePlayer({
+  it('air jump seeds momentumX from jumpVx (swipe-jump)', async () => {
+    const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
       config: { maxAirJumps: 1, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
@@ -375,14 +376,12 @@ describe('Player — tilt-kick jump', () => {
     (player as any).coyoteTimer = 0;
     (player as any).airJumpsRemaining = 1;
 
-    imState.isMobile        = true;
-    imState.tiltFactor      = -0.75;
-    imState.jumpJustPressed  = true;
+    imState.jumpJustPressed = true;
+    imState.jumpVx = -120;
 
     player.update(16);
 
-    expect(spy.setVelocityX).toContain(PLAYER_SPEED * -0.75);
-    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+    expect((player as any).momentumX).toBe(-120);
   });
 
   it('wall jump sets correct wall-jump vx and jump vy (no tilt-kick from isMobile jump block)', async () => {
@@ -432,7 +431,7 @@ describe('Player — mobile dive', () => {
   });
 
   it('diveActive sustains dive for DASH_DURATION_MS before expiring', async () => {
-    const { player, spy, sprite } = await makePlayer({
+    const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
       config: { maxAirJumps: 0, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
@@ -557,5 +556,99 @@ describe('Player — slope eject', () => {
     // When tilting, vx should reflect the tilt (0.5 * PLAYER_SPEED), not the slope eject velocity
     const lastVx = spy.setVelocityX[spy.setVelocityX.length - 1];
     expect(lastVx).toBeCloseTo(PLAYER_SPEED * 0.5, 5);
+  });
+});
+
+// ── 7. Air momentum ───────────────────────────────────────────────────────
+
+describe('Player — air momentum', () => {
+  it('accumulates rightward momentum while airborne with full right tilt', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    imState.tiltFactor = 1;
+    player.update(16);
+    const vx = (player as any).momentumX;
+    expect(vx).toBeGreaterThan(0);
+    expect(vx).toBeLessThan(PLAYER_SPEED);
+  });
+
+  it('applies stop-advantage factor when tilt opposes momentum', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    // Seed positive momentum
+    (player as any).momentumX = 100;
+    // Tilt left (opposing)
+    imState.tiltFactor = -1;
+    player.update(16);
+    const delta = 100 - (player as any).momentumX; // how much it dropped
+    // Without advantage: drop = 1 * AIR_TILT_FORCE * 16 = 12.8
+    // With advantage (×1.5): drop = 19.2
+    expect(delta).toBeCloseTo(19.2, 0);
+  });
+
+  it('decays toward zero when tilt is zero', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).momentumX = 100;
+    imState.tiltFactor = 0;
+    player.update(16);
+    expect((player as any).momentumX).toBeLessThan(100);
+    expect((player as any).momentumX).toBeGreaterThan(0);
+  });
+
+  it('zeroes momentumX on landing', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).momentumX = 150;
+    // Now simulate landing
+    (player as any).sprite.body.blocked.down = true;
+    player.update(16);
+    expect((player as any).momentumX).toBe(0);
+  });
+
+  it('zeroes momentumX on wall contact', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).momentumX = 150;
+    player.update(16);
+    expect((player as any).momentumX).toBe(0);
+  });
+
+  it('seeds momentumX from jumpVx on swipe-jump', async () => {
+    const { player } = await makePlayer({
+      onGround: true,
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    imState.jumpJustPressed = true;
+    imState.jumpVx = 120;
+    player.update(16);
+    expect((player as any).momentumX).toBe(120);
+  });
+
+  it('seeds momentumX from body.velocity.x on tap-jump (jumpVx=0)', async () => {
+    const { player } = await makePlayer({
+      onGround: true,
+      bodyOverrides: { blocked: { left: false, right: false, down: true }, velocity: { x: 150, y: 0 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    imState.jumpJustPressed = true;
+    imState.jumpVx = 0;
+    player.update(16);
+    expect((player as any).momentumX).toBe(150);
   });
 });

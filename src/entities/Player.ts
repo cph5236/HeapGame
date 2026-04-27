@@ -12,6 +12,9 @@ import {
   PLAYER_MAX_FALL_SPEED,
   PLAYER_DIVE_SPEED,
   WALL_SLIDE_SPEED,
+  AIR_TILT_FORCE,
+  AIR_MOMENTUM_DECAY,
+  MOMENTUM_STOP_ADV_FACTOR,
 } from '../constants';
 import { PlayerConfig } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
@@ -39,6 +42,7 @@ export class Player {
   private dashActive:         number = 0; // ms remaining of active dash
   private diveActive:         number = 0; // ms remaining of mobile dive burst
   private coyoteTimer:        number = 0; // ms remaining of coyote-time grace
+  private momentumX:          number = 0; // airborne horizontal momentum (px/s)
 
   /** Set by GameScene's wall-group collision callback each frame. When true the
    *  player is resting on a steep wall surface and should be ejected outward. */
@@ -142,23 +146,42 @@ export class Player {
     const keyboardLeft  = this.leftKeys.some(k => k.isDown);
     const keyboardRight = this.rightKeys.some(k => k.isDown);
     this.dashActive = Math.max(0, this.dashActive - delta);
+
     if (this.dashActive === 0) {
       if (this.inSlopeZone && !keyboardLeft && !keyboardRight && im.tiltFactor === 0) {
         // Eject outward along the wall surface until the player slides off the edge
         this.sprite.setVelocityX(this.slopeEjectDir * PLAYER_SPEED);
-      } else if (keyboardLeft) {
-        this.sprite.setVelocityX(-PLAYER_SPEED);
-        this.sprite.setFlipX(true);
-      } else if (keyboardRight) {
-        this.sprite.setVelocityX(PLAYER_SPEED);
-        this.sprite.setFlipX(false);
+        this.momentumX = 0;
+      } else if (onGround || this.inSlopeZone) {
+        // Ground (or slope zone with active input): direct velocity control (unchanged feel)
+        this.momentumX = 0;
+        if (keyboardLeft) {
+          this.sprite.setVelocityX(-PLAYER_SPEED);
+          this.sprite.setFlipX(true);
+        } else if (keyboardRight) {
+          this.sprite.setVelocityX(PLAYER_SPEED);
+          this.sprite.setFlipX(false);
+        } else {
+          const tiltVx = im.tiltFactor * PLAYER_SPEED;
+          this.sprite.setVelocityX(tiltVx);
+          if (tiltVx < 0) this.sprite.setFlipX(true);
+          else if (tiltVx > 0) this.sprite.setFlipX(false);
+        }
       } else {
-        // Analog tilt (includes zero when phone is level)
-        const tiltVx = im.tiltFactor * PLAYER_SPEED;
-        this.sprite.setVelocityX(tiltVx);
-        if (tiltVx < 0) this.sprite.setFlipX(true);
-        else if (tiltVx > 0) this.sprite.setFlipX(false);
-        // tiltVx === 0: preserve current flip direction
+        // Airborne: impulse-based momentum
+        const inputDir = keyboardLeft ? -1 : keyboardRight ? 1 : im.tiltFactor;
+        if (Math.abs(inputDir) > 0.01) {
+          const force = inputDir * AIR_TILT_FORCE * delta;
+          const opposing = this.momentumX !== 0 && Math.sign(force) !== Math.sign(this.momentumX);
+          this.momentumX += opposing ? force * MOMENTUM_STOP_ADV_FACTOR : force;
+        } else {
+          this.momentumX *= Math.pow(AIR_MOMENTUM_DECAY, delta);
+          if (Math.abs(this.momentumX) < 0.5) this.momentumX = 0;
+        }
+        this.momentumX = Math.max(-PLAYER_SPEED, Math.min(PLAYER_SPEED, this.momentumX));
+        this.sprite.setVelocityX(this.momentumX);
+        if (this.momentumX < 0) this.sprite.setFlipX(true);
+        else if (this.momentumX > 0) this.sprite.setFlipX(false);
       }
     }
 
@@ -168,6 +191,7 @@ export class Player {
       const dashTriggered = Phaser.Input.Keyboard.JustDown(this.dashKey) || im.dashJustFired;
       if (dashTriggered && this.dashCooldown === 0) {
         const dir = im.dashJustFired ? im.dashDir : (keyboardLeft ? -1 : keyboardRight ? 1 : (this.sprite.flipX ? -1 : 1));
+        this.momentumX = 0;
         this.sprite.setVelocityX(dir * PLAYER_DASH_VELOCITY);
         this.dashCooldown = DASH_COOLDOWN_MS;
         this.dashActive   = DASH_DURATION_MS;
@@ -180,11 +204,13 @@ export class Player {
     if (jumpPressed) {
       const onWallForJump = this.wallJumpEnabled && (body.blocked.left || body.blocked.right);
       if (canGroundJump) {
-        if (im.isMobile) this.sprite.setVelocityX(im.tiltFactor * PLAYER_SPEED);
+        this.momentumX = im.jumpVx !== 0 ? im.jumpVx : body.velocity.x;
+        this.sprite.setVelocityX(this.momentumX);
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.coyoteTimer = 0; // consume coyote window so it can't be reused
       } else if (!onWallForJump && this.airJumpsRemaining > 0) {
-        if (im.isMobile) this.sprite.setVelocityX(im.tiltFactor * PLAYER_SPEED);
+        this.momentumX = im.jumpVx !== 0 ? im.jumpVx : body.velocity.x;
+        this.sprite.setVelocityX(this.momentumX);
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.airJumpsRemaining--;
       }
@@ -194,7 +220,8 @@ export class Player {
     if (this.wallJumpEnabled && !onGround && jumpPressed && this.wallJumpsRemaining > 0) {
       if (onWall) {
         const dir = body.blocked.left ? 1 : -1; // jump away from wall
-        this.sprite.setVelocityX(dir * PLAYER_SPEED * 1.5);
+        this.momentumX = dir * PLAYER_SPEED * 1.5;
+        this.sprite.setVelocityX(this.momentumX);
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.wallJumpsRemaining--;
       }
@@ -203,6 +230,7 @@ export class Player {
     // Wall slide — cap downward velocity when touching a wall while falling
     if (!onGround && onWall && body.velocity.y > WALL_SLIDE_SPEED) {
       this.sprite.setVelocityY(WALL_SLIDE_SPEED);
+      this.momentumX = 0;
     }
 
     // Dive — slam downward while airborne; release to return to normal fall speed
