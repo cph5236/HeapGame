@@ -48,11 +48,11 @@ export const PEAK_COIN_MULTIPLIER = 1.25; // coin multiplier for placing at the 
 export const PLACE_HOLD_DURATION_MS = 1000; // ms player must hold to confirm placement
 
 // Mobile controls tuning
-export const TILT_DEAD_ZONE_DEG    = 5;   // gamma degrees to ignore near center
+export const TILT_DEAD_ZONE_DEG    = 2;   // gamma degrees to ignore near center
 export const TILT_MAX_DEG          = 25;  // gamma at which full speed is applied
 export const SWIPE_MIN_DISTANCE_PX = 60;  // min horizontal travel to register a dash swipe
 export const SWIPE_MAX_TIME_MS     = 350; // swipes faster than this trigger a dash
-export const SWIPE_DIRECTION_RATIO = 2.0; // |dx|/|dy| must exceed this to be a horizontal swipe
+export const DRAG_THRESHOLD_PX     = 15;  // min vertical displacement to commit touch to drag mode
 
 // Heap visual chunking
 export const CHUNK_BAND_HEIGHT = 500; // px per visual silhouette band
