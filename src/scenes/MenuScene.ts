@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
-import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName } from '../systems/SaveData';
+
+
+import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
@@ -84,7 +85,7 @@ export class MenuScene extends Phaser.Scene {
     const g = this.add.graphics().setDepth(0);
     for (const [y, h, color] of bands) {
       g.fillStyle(color, 1);
-      g.fillRect(0, y, GAME_WIDTH, h);
+      g.fillRect(0, y, this.scale.width, h);
     }
   }
 
@@ -94,7 +95,7 @@ export class MenuScene extends Phaser.Scene {
     const staticG = this.add.graphics().setDepth(1);
 
     for (let i = 0; i < 68; i++) {
-      const x = Phaser.Math.Between(0, GAME_WIDTH);
+      const x = Phaser.Math.Between(0, this.scale.width);
       const y = Phaser.Math.Between(0, 514);
       const roll = Phaser.Math.Between(0, 9);
       const r = roll < 6 ? 0.7 : roll < 9 ? 1.2 : 2.0;
@@ -105,7 +106,7 @@ export class MenuScene extends Phaser.Scene {
 
     for (let i = 0; i < 12; i++) {
       const g = this.add.graphics().setDepth(1);
-      const x = Phaser.Math.Between(0, GAME_WIDTH);
+      const x = Phaser.Math.Between(0, this.scale.width);
       const y = Phaser.Math.Between(0, 514);
       g.fillStyle(0xffffff, 1);
       g.fillCircle(x, y, 1.2);
@@ -153,11 +154,11 @@ export class MenuScene extends Phaser.Scene {
   private createHorizonGlow(): void {
     this.horizonGlow = this.add.graphics().setDepth(3).setAlpha(0);
     this.horizonGlow.fillStyle(0xff8833, 0.12);
-    this.horizonGlow.fillEllipse(GAME_WIDTH / 2, 450, 460, 60);
+    this.horizonGlow.fillEllipse(this.scale.width / 2, 450, 460, 60);
     this.horizonGlow.fillStyle(0xff6611, 0.07);
-    this.horizonGlow.fillEllipse(GAME_WIDTH / 2, 445, 360, 40);
+    this.horizonGlow.fillEllipse(this.scale.width / 2, 445, 360, 40);
     this.horizonGlow.fillStyle(0xffaa44, 0.05);
-    this.horizonGlow.fillEllipse(GAME_WIDTH / 2, 455, 300, 25);
+    this.horizonGlow.fillEllipse(this.scale.width / 2, 455, 300, 25);
   }
 
   // ── Player figure ────────────────────────────────────────────────────────────
@@ -193,7 +194,7 @@ export class MenuScene extends Phaser.Scene {
   // ── Tagline ──────────────────────────────────────────────────────────────────
 
   private createTagline(): void {
-    this.taglineText = this.add.text(GAME_WIDTH / 2, 368, 'How high can you climb?', {
+    this.taglineText = this.add.text(this.scale.width / 2, 368, 'How high can you climb?', {
       fontSize: '18px',
       fontStyle: 'italic',
       color: '#cc9966',
@@ -230,8 +231,8 @@ export class MenuScene extends Phaser.Scene {
 
     // Cloud shape spans ~120px wide — ensure it fully clears the screen edge
     const offscreen = 130 * scaleVal;
-    const targetX = goLeft ? -offscreen : GAME_WIDTH + offscreen;
-    const startX  = goLeft ? GAME_WIDTH + offscreen : -offscreen;
+    const targetX = goLeft ? -offscreen : this.scale.width + offscreen;
+    const startX  = goLeft ? this.scale.width + offscreen : -offscreen;
 
     this.tweens.add({
       targets: gfx,
@@ -246,7 +247,7 @@ export class MenuScene extends Phaser.Scene {
   // ── Balance ──────────────────────────────────────────────────────────────────
 
   private createBalanceText(): void {
-    this.balanceText = this.add.text(GAME_WIDTH / 2, 720, `${getBalance()} coins`, {
+    this.balanceText = this.add.text(this.scale.width / 2, 720, `${getBalance()} coins`, {
       fontSize: '16px',
       color: '#ffdd77',
       stroke: '#000000',
@@ -257,7 +258,7 @@ export class MenuScene extends Phaser.Scene {
   private createPlayerName(): void {
     const name = getPlayerName();
     this.playerNameText = this.add.text(
-      GAME_WIDTH / 2, 748,
+      this.scale.width / 2, 748,
       `${name}  [edit]`,
       {
         fontSize:        '13px',
@@ -288,11 +289,11 @@ export class MenuScene extends Phaser.Scene {
     // Start button
     this.startBg = this.add.graphics().setDepth(8).setAlpha(0);
     this.startBg.fillStyle(0x000000, 0.5);
-    this.startBg.fillRoundedRect(GAME_WIDTH / 2 - 160, 540, 320, 56, 12);
+    this.startBg.fillRoundedRect(this.scale.width / 2 - 160, 540, 320, 56, 12);
     this.startBg.lineStyle(2, 0x8899bb, 0.8);
-    this.startBg.strokeRoundedRect(GAME_WIDTH / 2 - 160, 540, 320, 56, 12);
+    this.startBg.strokeRoundedRect(this.scale.width / 2 - 160, 540, 320, 56, 12);
 
-    this.startText = this.add.text(GAME_WIDTH / 2, 570, 'START RUN', {
+    this.startText = this.add.text(this.scale.width / 2, 570, 'START RUN', {
       fontSize: '24px',
       fontStyle: 'bold',
       color: '#ffffff',
@@ -305,7 +306,7 @@ export class MenuScene extends Phaser.Scene {
     const subBtnW  = 156;
     const subBtnH  = 56;
     const subBtnGap = 8;
-    const subLeft  = GAME_WIDTH / 2 - 160;        // same left edge as Start Run
+    const subLeft  = this.scale.width / 2 - 160;        // same left edge as Start Run
     const subY     = 612;
     const subCY    = subY + subBtnH / 2;           // = 640
 
@@ -336,7 +337,7 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0).setDepth(9);
 
     if (im.isMobile && !im.tiltPermissionGranted) {
-      const tiltBtn = this.add.text(GAME_WIDTH / 2, 760, 'Enable Tilt Controls', {
+      const tiltBtn = this.add.text(this.scale.width / 2, 760, 'Enable Tilt Controls', {
         fontSize: '17px',
         color: '#88aaff',
         stroke: '#000000',
@@ -358,9 +359,9 @@ export class MenuScene extends Phaser.Scene {
 
     this.heapPickerBg = this.add.graphics().setDepth(8).setAlpha(0);
     this.heapPickerBg.fillStyle(0x000000, 0.5);
-    this.heapPickerBg.fillRoundedRect(GAME_WIDTH / 2 - 160, 480, 320, 48, 10);
+    this.heapPickerBg.fillRoundedRect(this.scale.width / 2 - 160, 480, 320, 48, 10);
     this.heapPickerBg.lineStyle(1, 0x8899bb, 0.6);
-    this.heapPickerBg.strokeRoundedRect(GAME_WIDTH / 2 - 160, 480, 320, 48, 10);
+    this.heapPickerBg.strokeRoundedRect(this.scale.width / 2 - 160, 480, 320, 48, 10);
 
     const nameLabel  = `\u25BE ${params.name}  `;
     const starsLabel = formatDifficulty(params.difficulty);
@@ -377,7 +378,7 @@ export class MenuScene extends Phaser.Scene {
 
     // Center both texts together on the button
     const totalW = this.heapPickerText.width + this.heapPickerStars.width;
-    const startX = GAME_WIDTH / 2 - totalW / 2;
+    const startX = this.scale.width / 2 - totalW / 2;
     this.heapPickerText.setX(startX);
     this.heapPickerStars.setX(startX + this.heapPickerText.width);
 
@@ -398,7 +399,7 @@ export class MenuScene extends Phaser.Scene {
       { key: 'H',     label: 'Heap'      },
     ];
     const parts = keys.map(k => `${k.key}: ${k.label}`).join('   ');
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 52, parts, {
+    this.add.text(this.scale.width / 2, this.scale.height - 52, parts, {
       fontSize:      '11px',
       fontFamily:    'monospace',
       color:         '#667799',
@@ -407,8 +408,8 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private createSettingsButton(): void {
-    const bx = GAME_WIDTH - 22;
-    const by = GAME_HEIGHT - 22;
+    const bx = this.scale.width - 22;
+    const by = this.scale.height - 22;
 
     const btnGfx = this.add.graphics().setDepth(20);
     btnGfx.fillStyle(0x000000, 0.65);
@@ -425,41 +426,57 @@ export class MenuScene extends Phaser.Scene {
 
     // Overlay
     const overlayBg = this.add.rectangle(
-      GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.72,
+      this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x000000, 0.72,
     ).setDepth(30).setVisible(false).setInteractive();
 
     const panel = this.add.rectangle(
-      GAME_WIDTH / 2, GAME_HEIGHT / 2, 360, 280, 0x0d0d20,
+      this.scale.width / 2, this.scale.height / 2, 360, 280, 0x0d0d20,
     ).setDepth(31).setVisible(false).setStrokeStyle(2, 0x4455aa);
 
-    const title = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 105, 'SETTINGS', {
+    const title = this.add.text(this.scale.width / 2, this.scale.height / 2 - 105, 'SETTINGS', {
       fontSize: '28px', color: '#ffffff',
       stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(32).setVisible(false);
 
     // Close button
-    const closeBtn = this.add.text(GAME_WIDTH / 2 + 155, GAME_HEIGHT / 2 - 120, '\u2715', {
+    const closeBtn = this.add.text(this.scale.width / 2 + 155, this.scale.height / 2 - 120, '\u2715', {
       fontSize: '20px', color: '#aaaaaa',
     }).setOrigin(0.5).setDepth(32).setVisible(false).setInteractive({ useHandCursor: true });
 
+    // Give coins button (dev shortcut)
+    const coinBg = this.add.rectangle(
+      this.scale.width / 2, this.scale.height / 2 - 52, 260, 44, 0x1a5c1a,
+    ).setDepth(32).setVisible(false).setStrokeStyle(2, 0x44ff44)
+      .setInteractive({ useHandCursor: true });
+
+    const coinLabel = this.add.text(this.scale.width / 2, this.scale.height / 2 - 52, '+ 500 Coins', {
+      fontSize: '18px', color: '#aaffaa', fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(33).setVisible(false);
+
+    coinBg.on('pointerup', () => {
+      addBalance(500);
+      this.balanceText.setText(`${getBalance()} coins`);
+    });
+
     // Reset button
     const resetBg = this.add.rectangle(
-      GAME_WIDTH / 2, GAME_HEIGHT / 2, 260, 52, 0x881111,
+      this.scale.width / 2, this.scale.height / 2 + 16, 260, 52, 0x881111,
     ).setDepth(32).setVisible(false).setStrokeStyle(2, 0xff4444)
       .setInteractive({ useHandCursor: true });
 
-    const resetLabel = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'Reset All Data', {
+    const resetLabel = this.add.text(this.scale.width / 2, this.scale.height / 2 + 16, 'Reset All Data', {
       fontSize: '20px', color: '#ffffff', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(33).setVisible(false);
 
     const resetWarning = this.add.text(
-      GAME_WIDTH / 2, GAME_HEIGHT / 2 + 56,
+      this.scale.width / 2, this.scale.height / 2 + 72,
       'Clears all coins, upgrades\nand placed blocks.',
       { fontSize: '14px', color: '#aa8888', align: 'center' },
     ).setOrigin(0.5).setDepth(32).setVisible(false);
 
-    const overlayParts = [overlayBg, panel, title, closeBtn, resetBg, resetLabel, resetWarning];
+    const overlayParts = [overlayBg, panel, title, closeBtn, coinBg, coinLabel, resetBg, resetLabel, resetWarning];
     const open  = () => overlayParts.forEach(p => p.setVisible(true));
     const close = () => {
       overlayParts.forEach(p => p.setVisible(false));
@@ -497,7 +514,7 @@ export class MenuScene extends Phaser.Scene {
 
   private createInfoButton(): void {
     const im = InputManager.getInstance();
-    const bx = GAME_WIDTH - 22;
+    const bx = this.scale.width - 22;
     const by = 22;
 
     // Circle background
@@ -518,11 +535,11 @@ export class MenuScene extends Phaser.Scene {
     hitZone.setInteractive({ useHandCursor: true });
 
     // Overlay background
-    const overlayBg = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.72)
+    const overlayBg = this.add.rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x000000, 0.72)
       .setScrollFactor(0).setDepth(14).setVisible(false).setInteractive();
 
     // Panel
-    const panel = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, 380, 320, 0x0d0d20)
+    const panel = this.add.rectangle(this.scale.width / 2, this.scale.height / 2, 380, 320, 0x0d0d20)
       .setScrollFactor(0).setDepth(15).setVisible(false).setStrokeStyle(2, 0x4455aa);
 
     // Controls text — show mobile or desktop lines based on platform
@@ -555,7 +572,7 @@ export class MenuScene extends Phaser.Scene {
     ];
 
     const overlayText = this.add.text(
-      GAME_WIDTH / 2 - 160, GAME_HEIGHT / 2 - 130,
+      this.scale.width / 2 - 160, this.scale.height / 2 - 130,
       (im.isMobile ? mobileLines : desktopLines).join('\n'),
       {
         fontSize: '17px', color: '#ccccdd',
