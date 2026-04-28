@@ -11,8 +11,6 @@ import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpir
 import { HUD } from '../ui/HUD';
 import { InputManager } from '../systems/InputManager';
 import {
-  GAME_WIDTH,
-  GAME_HEIGHT,
   WORLD_WIDTH,
   MOCK_HEAP_HEIGHT_PX,
   GEN_LOOKAHEAD,
@@ -244,13 +242,13 @@ export class GameScene extends Phaser.Scene {
     this._holdBar = this.add.graphics().setScrollFactor(0).setDepth(26);
 
     // HUD: score (always visible)
-    this.scoreText = this.add.text(GAME_WIDTH / 2, 30, 'Score: 0', {
+    this.scoreText = this.add.text(this.scale.width / 2, 30, 'Score: 0', {
       fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
 
     if (im.isMobile) {
       // Mobile placement button — replaces the text hint, appears in top zone
-      this.placeBtnBg = this.add.rectangle(GAME_WIDTH / 2, 82, 280, 56, 0x1155aa, 0.88)
+      this.placeBtnBg = this.add.rectangle(this.scale.width / 2, 82, 280, 56, 0x1155aa, 0.88)
         .setScrollFactor(0).setDepth(24).setVisible(false)
         .setStrokeStyle(2, 0x4488dd);
       this.placeBtnBg.setInteractive({ useHandCursor: true });
@@ -258,7 +256,7 @@ export class GameScene extends Phaser.Scene {
       this.placeBtnBg.on('pointerup', () => im.endPlace());
       this.placeBtnBg.on('pointerout', () => im.endPlace());
 
-      this.placeBtnLabel = this.add.text(GAME_WIDTH / 2, 82, 'PLACE BLOCK', {
+      this.placeBtnLabel = this.add.text(this.scale.width / 2, 82, 'PLACE BLOCK', {
         fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
         stroke: '#000000', strokeThickness: 3,
       }).setOrigin(0.5).setScrollFactor(0).setDepth(25).setVisible(false);
@@ -267,7 +265,7 @@ export class GameScene extends Phaser.Scene {
       this.topZoneText = this.add.text(0, 0, '').setVisible(false);
     } else {
       // Desktop placement hint
-      this.topZoneText = this.add.text(GAME_WIDTH / 2, 82, 'SPACE \u2014 add to heap', {
+      this.topZoneText = this.add.text(this.scale.width / 2, 82, 'SPACE \u2014 add to heap', {
         fontSize: '18px', color: '#ffdd44', stroke: '#000000', strokeThickness: 3,
       }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
     }
@@ -364,11 +362,11 @@ export class GameScene extends Phaser.Scene {
       const holdActive = canPlace && holdInputActive;
       if (im.isMobile) {
         this.placeBtnBg?.setStrokeStyle(2, holdActive ? 0x88ddff : 0x4488dd);
-        // Bar anchored to bottom of button: center=(GAME_WIDTH/2, 82), size=(280, 56)
-        this._drawHoldBar(progress, GAME_WIDTH / 2 - 134, 96, 268, 8);
+        // Bar anchored to bottom of button: center=(this.scale.width/2, 82), size=(280, 56)
+        this._drawHoldBar(progress, this.scale.width / 2 - 134, 96, 268, 8);
       } else {
-        // Bar anchored below topZoneText at (GAME_WIDTH/2, 82)
-        this._drawHoldBar(progress, GAME_WIDTH / 2 - 100, 97, 200, 6);
+        // Bar anchored below topZoneText at (this.scale.width/2, 82)
+        this._drawHoldBar(progress, this.scale.width / 2 - 100, 97, 200, 6);
       }
     } else {
       if (im.isMobile) this.placeBtnBg?.setStrokeStyle(2, 0x4488dd);
@@ -562,7 +560,7 @@ export class GameScene extends Phaser.Scene {
   };
 
   private createInfoButton(isMobile: boolean): void {
-    const bx = GAME_WIDTH - 22;
+    const bx = this.scale.width - 22;
     const by = 22;
 
     // Circle background
@@ -584,12 +582,12 @@ export class GameScene extends Phaser.Scene {
     hitZone.on('pointerup', () => this.toggleInfoOverlay());
 
     // Overlay background (full-screen dim)
-    const overlayBg = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.72)
+    const overlayBg = this.add.rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x000000, 0.72)
       .setScrollFactor(0).setDepth(28).setVisible(false).setInteractive();
     overlayBg.on('pointerup', () => this.toggleInfoOverlay());
 
     // Panel
-    const panel = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, 380, 320, 0x0d0d20)
+    const panel = this.add.rectangle(this.scale.width / 2, this.scale.height / 2, 380, 320, 0x0d0d20)
       .setScrollFactor(0).setDepth(29).setVisible(false)
       .setStrokeStyle(2, 0x4455aa);
 
@@ -621,7 +619,7 @@ export class GameScene extends Phaser.Scene {
       'Left & right edges wrap around!',
     ];
 
-    const overlayText = this.add.text(GAME_WIDTH / 2 - 160, GAME_HEIGHT / 2 - 120, lines.join('\n'), {
+    const overlayText = this.add.text(this.scale.width / 2 - 160, this.scale.height / 2 - 120, lines.join('\n'), {
       fontSize: '17px', color: '#ccccdd',
       stroke: '#000000', strokeThickness: 1,
       lineSpacing: 5,
