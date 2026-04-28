@@ -1,7 +1,5 @@
 import Phaser from 'phaser';
 import {
-  GAME_WIDTH,
-  GAME_HEIGHT,
   WORLD_WIDTH,
   MOCK_HEAP_HEIGHT_PX,
   CLOUD_POOL_SIZE,
@@ -73,8 +71,8 @@ export class ParallaxBackground {
 
       const cloud: Cloud = {
         gfx,
-        virtualX: Phaser.Math.Between(-80, GAME_WIDTH + 80),
-        virtualY: Phaser.Math.Between(-GAME_HEIGHT, GAME_HEIGHT),
+        virtualX: Phaser.Math.Between(-80, this.scene.scale.width + 80),
+        virtualY: Phaser.Math.Between(-this.scene.scale.height, this.scene.scale.height),
         scale,
       };
 
@@ -87,8 +85,8 @@ export class ParallaxBackground {
 
   private updateClouds(dy: number, scrollY: number): void {
     // Hide clouds when the player is below the cloud-start altitude.
-    // scrollY + GAME_HEIGHT is the world Y of the camera bottom edge.
-    const inCloudZone = scrollY + GAME_HEIGHT <= CLOUD_START_WORLD_Y;
+    // scrollY + this.scene.scale.height is the world Y of the camera bottom edge.
+    const inCloudZone = scrollY + this.scene.scale.height <= CLOUD_START_WORLD_Y;
 
     for (const cloud of this.clouds) {
       if (!inCloudZone) {
@@ -102,15 +100,15 @@ export class ParallaxBackground {
       cloud.virtualY += -dy * (1 - CLOUD_PARALLAX_FACTOR);
 
       // Recycle: drifted below screen bottom
-      if (cloud.virtualY > GAME_HEIGHT + 200) {
-        cloud.virtualX = Phaser.Math.Between(-60, GAME_WIDTH + 60);
+      if (cloud.virtualY > this.scene.scale.height + 200) {
+        cloud.virtualX = Phaser.Math.Between(-60, this.scene.scale.width + 60);
         cloud.virtualY = Phaser.Math.Between(-300, -80);
       }
 
       // Recycle: drifted above screen top (player fell fast)
       if (cloud.virtualY < -400) {
-        cloud.virtualX = Phaser.Math.Between(-60, GAME_WIDTH + 60);
-        cloud.virtualY = GAME_HEIGHT + Phaser.Math.Between(20, 200);
+        cloud.virtualX = Phaser.Math.Between(-60, this.scene.scale.width + 60);
+        cloud.virtualY = this.scene.scale.height + Phaser.Math.Between(20, 200);
       }
 
       cloud.gfx.setPosition(cloud.virtualX, cloud.virtualY);
