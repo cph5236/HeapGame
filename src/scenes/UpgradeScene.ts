@@ -1,5 +1,4 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
 import { UPGRADE_DEFS } from '../data/upgradeDefs';
 import { getBalance, getUpgradeLevel, purchaseUpgrade } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
@@ -8,7 +7,6 @@ const ROW_START_Y   = 130;
 const ROW_SPACING   = 98;
 const ROW_HEIGHT    = 86;
 const COL_LEFT      = 28;
-const COL_RIGHT     = GAME_WIDTH - 16;
 const FOOTER_HEIGHT = 50;
 const HEADER_BOTTOM = 115;
 
@@ -76,14 +74,14 @@ export class UpgradeScene extends Phaser.Scene {
     const g = this.add.graphics().setDepth(0).setScrollFactor(0);
     for (const [y, h, color] of bands) {
       g.fillStyle(color, 1);
-      g.fillRect(0, y, GAME_WIDTH, h);
+      g.fillRect(0, y, this.scale.width, h);
     }
   }
 
   private createStarField(): void {
     const staticG = this.add.graphics().setDepth(1).setScrollFactor(0);
     for (let i = 0; i < 68; i++) {
-      const x    = Phaser.Math.Between(0, GAME_WIDTH);
+      const x    = Phaser.Math.Between(0, this.scale.width);
       const y    = Phaser.Math.Between(0, 514);
       const roll = Phaser.Math.Between(0, 9);
       const r    = roll < 6 ? 0.7 : roll < 9 ? 1.2 : 2.0;
@@ -93,7 +91,7 @@ export class UpgradeScene extends Phaser.Scene {
     }
     for (let i = 0; i < 12; i++) {
       const g = this.add.graphics().setDepth(1).setScrollFactor(0);
-      const x = Phaser.Math.Between(0, GAME_WIDTH);
+      const x = Phaser.Math.Between(0, this.scale.width);
       const y = Phaser.Math.Between(0, 514);
       g.fillStyle(0xffffff, 1);
       g.fillCircle(x, y, 1.2);
@@ -116,8 +114,8 @@ export class UpgradeScene extends Phaser.Scene {
     const cloud = this.add.image(x, y, 'cloud')
       .setScale(scaleVal).setAlpha(alpha).setDepth(3).setScrollFactor(0);
     const offscreen = 32 * scaleVal + 10;
-    const targetX   = goLeft ? -offscreen : GAME_WIDTH + offscreen;
-    const startX    = goLeft ? GAME_WIDTH + offscreen : -offscreen;
+    const targetX   = goLeft ? -offscreen : this.scale.width + offscreen;
+    const startX    = goLeft ? this.scale.width + offscreen : -offscreen;
     const doTween   = () => {
       this.tweens.add({
         targets: cloud, x: targetX, duration, ease: 'Linear',
@@ -131,7 +129,7 @@ export class UpgradeScene extends Phaser.Scene {
 
   private createHeader(): void {
     // Cover panel — rows scroll behind this
-    this.add.rectangle(GAME_WIDTH / 2, HEADER_BOTTOM / 2, GAME_WIDTH, HEADER_BOTTOM, 0x000000, 0)
+    this.add.rectangle(this.scale.width / 2, HEADER_BOTTOM / 2, this.scale.width, HEADER_BOTTOM, 0x000000, 0)
       .setDepth(9).setScrollFactor(0);
     const headerCover = this.add.graphics().setDepth(9).setScrollFactor(0);
     headerCover.fillStyle(0x000000, 0);
@@ -143,7 +141,7 @@ export class UpgradeScene extends Phaser.Scene {
     ];
     for (const [y, h, color] of bands) {
       headerCover.fillStyle(color, 1);
-      headerCover.fillRect(0, y, GAME_WIDTH, h);
+      headerCover.fillRect(0, y, this.scale.width, h);
     }
 
     // Back button — top-left, transparent hit area, both platforms
@@ -166,7 +164,7 @@ export class UpgradeScene extends Phaser.Scene {
       color: '#ff9922', stroke: '#1a0800', strokeThickness: 6,
     }).setOrigin(0.5).setAlpha(0).setDepth(10).setScrollFactor(0);
 
-    this.balanceText = this.add.text(GAME_WIDTH / 2, 96, '', {
+    this.balanceText = this.add.text(this.scale.width / 2, 96, '', {
       fontSize: '18px', color: '#ffdd77',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setAlpha(0).setDepth(10).setScrollFactor(0);
@@ -197,21 +195,21 @@ export class UpgradeScene extends Phaser.Scene {
     const im = InputManager.getInstance();
 
     // Footer background panel — covers scrolling rows
-    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT - FOOTER_HEIGHT / 2, GAME_WIDTH, FOOTER_HEIGHT, 0x111118, 0.88)
+    this.add.rectangle(this.scale.width / 2, this.scale.height - FOOTER_HEIGHT / 2, this.scale.width, FOOTER_HEIGHT, 0x111118, 0.88)
       .setDepth(9).setScrollFactor(0);
 
     // Scroll fade gradient above footer
     const fadeG = this.add.graphics().setDepth(9).setScrollFactor(0);
     fadeG.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0, 0, 0.65, 0.65);
-    fadeG.fillRect(0, GAME_HEIGHT - FOOTER_HEIGHT - 28, GAME_WIDTH, 28);
+    fadeG.fillRect(0, this.scale.height - FOOTER_HEIGHT - 28, this.scale.width, 28);
 
     if (im.isMobile) {
       const backBtnBg = this.add.rectangle(
-        GAME_WIDTH / 2, GAME_HEIGHT - 24, 200, 36, 0x1a0800,
+        this.scale.width / 2, this.scale.height - 24, 200, 36, 0x1a0800,
       ).setStrokeStyle(1, 0xff9922).setInteractive({ useHandCursor: true })
        .setDepth(10).setScrollFactor(0);
 
-      this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 24, '\u2190 Back to Menu', {
+      this.add.text(this.scale.width / 2, this.scale.height - 24, '\u2190 Back to Menu', {
         fontSize: '15px', color: '#ff9922',
         stroke: '#000000', strokeThickness: 1,
       }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
@@ -219,7 +217,7 @@ export class UpgradeScene extends Phaser.Scene {
       backBtnBg.on('pointerup', () => this.scene.start('MenuScene'));
     } else {
       this.add.text(
-        GAME_WIDTH / 2, GAME_HEIGHT - 28,
+        this.scale.width / 2, this.scale.height - 28,
         '\u2191\u2193 navigate   ENTER / click BUY   ESC menu',
         { fontSize: '16px', color: '#b1abab' },
       ).setOrigin(0.5).setDepth(10).setScrollFactor(0);
@@ -230,7 +228,7 @@ export class UpgradeScene extends Phaser.Scene {
 
   private setupScroll(): void {
     const contentH = ROW_START_Y + UPGRADE_DEFS.length * ROW_SPACING;
-    this.maxScroll  = Math.max(0, contentH - (GAME_HEIGHT - FOOTER_HEIGHT));
+    this.maxScroll  = Math.max(0, contentH - (this.scale.height - FOOTER_HEIGHT));
 
     this.input.on('wheel', (_p: unknown, _g: unknown, _dx: unknown, dy: number) => {
       this.scrollBy(dy * 0.6);
@@ -258,12 +256,12 @@ export class UpgradeScene extends Phaser.Scene {
     const rowBot = rowTop + ROW_HEIGHT;
     const cam    = this.cameras.main;
     const visTop = cam.scrollY + HEADER_BOTTOM;
-    const visBot = cam.scrollY + GAME_HEIGHT - FOOTER_HEIGHT;
+    const visBot = cam.scrollY + this.scale.height - FOOTER_HEIGHT;
 
     if (rowTop < visTop) {
       cam.scrollY = Phaser.Math.Clamp(rowTop - HEADER_BOTTOM, 0, this.maxScroll);
     } else if (rowBot > visBot) {
-      cam.scrollY = Phaser.Math.Clamp(rowBot - (GAME_HEIGHT - FOOTER_HEIGHT), 0, this.maxScroll);
+      cam.scrollY = Phaser.Math.Clamp(rowBot - (this.scale.height - FOOTER_HEIGHT), 0, this.maxScroll);
     }
   }
 
@@ -362,7 +360,7 @@ class UpgradeRow {
   constructor(scene: Phaser.Scene, name: string, y: number, accentColor: number) {
     this.scene = scene;
 
-    this.bg = scene.add.rectangle(GAME_WIDTH / 2, y + ROW_HEIGHT / 2, GAME_WIDTH - 20, ROW_HEIGHT, 0x0a0818)
+    this.bg = scene.add.rectangle(scene.scale.width / 2, y + ROW_HEIGHT / 2, scene.scale.width - 20, ROW_HEIGHT, 0x0a0818)
       .setFillStyle(0x0a0818, 0.92)
       .setStrokeStyle(1, 0x2a2240)
       .setDepth(6)
@@ -377,7 +375,7 @@ class UpgradeRow {
       stroke: '#000000', strokeThickness: 2,
     }).setDepth(7).setAlpha(0);
 
-    this.levelText = scene.add.text(COL_RIGHT, y + 7, '', {
+    this.levelText = scene.add.text(scene.scale.width - 16, y + 7, '', {
       fontSize: '16px', color: '#ffdd77',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(1, 0).setDepth(7).setAlpha(0);
@@ -393,7 +391,7 @@ class UpgradeRow {
     }).setDepth(7).setAlpha(0);
 
     // BUY button — right side, stacked below level text
-    const btnX = GAME_WIDTH - 52;
+    const btnX = scene.scale.width - 52;
     const btnY = y + 63;
     this.buyBtnBg = scene.add.rectangle(btnX, btnY, 72, 22, 0x1a0800)
       .setStrokeStyle(1, 0xff9922)
