@@ -144,6 +144,8 @@ export class ScoreScene extends Phaser.Scene {
       g.fillStyle(color, 1);
       g.fillRect(0, y, this.scale.width, h);
     }
+    g.fillStyle(0x2a1060, 1);
+    g.fillRect(0, 854, this.scale.width, Math.max(0, this.scale.height - 854));
   }
 
   private createStarField(): void {

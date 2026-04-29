@@ -30,6 +30,8 @@ export class HeapSelectScene extends Phaser.Scene {
       bg.fillStyle(color, 1);
       bg.fillRect(0, y, this.scale.width, h);
     }
+    bg.fillStyle(0x3e280e, 1);
+    bg.fillRect(0, 854, this.scale.width, Math.max(0, this.scale.height - 854));
 
     this.add.text(this.scale.width / 2, 34, 'SELECT A HEAP', {
       fontSize: '20px', fontStyle: 'bold', color: '#ffffff',

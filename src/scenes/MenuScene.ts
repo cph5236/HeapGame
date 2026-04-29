@@ -87,6 +87,8 @@ export class MenuScene extends Phaser.Scene {
       g.fillStyle(color, 1);
       g.fillRect(0, y, this.scale.width, h);
     }
+    g.fillStyle(0x3e280e, 1);
+    g.fillRect(0, 854, this.scale.width, Math.max(0, this.scale.height - 854));
   }
 
   // ── Stars ────────────────────────────────────────────────────────────────────
