@@ -7,6 +7,7 @@ import {
   WORLD_WIDTH,
   MOCK_HEAP_HEIGHT_PX,
   PLAYER_DASH_VELOCITY,
+  PLAYER_AIR_MAX_SPEED,
   DASH_COOLDOWN_MS,
   DASH_DURATION_MS,
   PLAYER_MAX_FALL_SPEED,
@@ -173,12 +174,16 @@ export class Player {
         if (Math.abs(inputDir) > 0.01) {
           const force = inputDir * AIR_TILT_FORCE * delta;
           const opposing = this.momentumX !== 0 && Math.sign(force) !== Math.sign(this.momentumX);
-          this.momentumX += opposing ? force * MOMENTUM_STOP_ADV_FACTOR : force;
+          // Input can decelerate freely, but can only accelerate up to PLAYER_SPEED;
+          // higher speeds (from dash or swipe-jump) must decay naturally.
+          if (opposing || Math.abs(this.momentumX) < PLAYER_SPEED) {
+            this.momentumX += opposing ? force * MOMENTUM_STOP_ADV_FACTOR : force;
+          }
         } else {
           this.momentumX *= Math.pow(AIR_MOMENTUM_DECAY, delta);
           if (Math.abs(this.momentumX) < 0.5) this.momentumX = 0;
         }
-        this.momentumX = Math.max(-PLAYER_SPEED, Math.min(PLAYER_SPEED, this.momentumX));
+        this.momentumX = Math.max(-PLAYER_AIR_MAX_SPEED, Math.min(PLAYER_AIR_MAX_SPEED, this.momentumX));
         this.sprite.setVelocityX(this.momentumX);
         if (this.momentumX < 0) this.sprite.setFlipX(true);
         else if (this.momentumX > 0) this.sprite.setFlipX(false);

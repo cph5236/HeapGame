@@ -33,6 +33,11 @@ export class MenuScene extends Phaser.Scene {
     super({ key: 'MenuScene' });
   }
 
+  // On short screens, shift the button group up so coins/name/settings fit below
+  private get layoutShift(): number {
+    return Math.min(Math.max(0, 780 - this.scale.height), 60);
+  }
+
   create(): void {
     this.twinkleStars = [];
     this.resetConfirmed = false;
@@ -120,12 +125,12 @@ export class MenuScene extends Phaser.Scene {
 
   private createFarSilhouette(): void {
     const points = [
-      { x: -20, y: 854 }, { x: -20, y: 700 }, { x: 10,  y: 660 }, { x: 40,  y: 680 },
+      { x: -20, y: this.scale.height }, { x: -20, y: 700 }, { x: 10,  y: 660 }, { x: 40,  y: 680 },
       { x: 60,  y: 620 }, { x: 90,  y: 590 }, { x: 115, y: 610 }, { x: 140, y: 570 },
       { x: 170, y: 540 }, { x: 195, y: 560 }, { x: 220, y: 510 }, { x: 240, y: 440 },
       { x: 265, y: 480 }, { x: 290, y: 455 }, { x: 320, y: 490 }, { x: 345, y: 520 },
       { x: 370, y: 500 }, { x: 395, y: 540 }, { x: 420, y: 580 }, { x: 440, y: 555 },
-      { x: 460, y: 610 }, { x: 490, y: 640 }, { x: 500, y: 700 }, { x: 500, y: 854 },
+      { x: 460, y: 610 }, { x: 490, y: 640 }, { x: 500, y: 700 }, { x: 500, y: this.scale.height },
     ];
     this.farSilhouette = this.add.graphics().setDepth(2).setAlpha(0);
     this.farSilhouette.fillStyle(0x1a1225, 1);
@@ -134,7 +139,7 @@ export class MenuScene extends Phaser.Scene {
 
   private createNearSilhouette(): void {
     const points = [
-      { x: 0,   y: 854 }, { x: 0,   y: 720 }, { x: 18,  y: 695 }, { x: 35,  y: 710 },
+      { x: 0,   y: this.scale.height }, { x: 0,   y: 720 }, { x: 18,  y: 695 }, { x: 35,  y: 710 },
       { x: 50,  y: 670 }, { x: 68,  y: 640 }, { x: 82,  y: 655 }, { x: 100, y: 615 },
       { x: 118, y: 595 }, { x: 130, y: 610 }, { x: 148, y: 575 }, { x: 162, y: 548 },
       { x: 175, y: 565 }, { x: 192, y: 530 }, { x: 208, y: 505 }, { x: 220, y: 520 },
@@ -144,7 +149,7 @@ export class MenuScene extends Phaser.Scene {
       { x: 328, y: 440 }, { x: 340, y: 465 }, { x: 355, y: 490 }, { x: 368, y: 475 },
       { x: 382, y: 505 }, { x: 395, y: 530 }, { x: 408, y: 515 }, { x: 422, y: 545 },
       { x: 438, y: 570 }, { x: 450, y: 555 }, { x: 462, y: 590 }, { x: 472, y: 625 },
-      { x: 480, y: 660 }, { x: 480, y: 854 },
+      { x: 480, y: 660 }, { x: 480, y: this.scale.height },
     ];
     this.nearSilhouette = this.add.graphics().setDepth(4).setAlpha(0);
     this.nearSilhouette.fillStyle(0x0d0910, 1);
@@ -166,7 +171,7 @@ export class MenuScene extends Phaser.Scene {
   // ── Player figure ────────────────────────────────────────────────────────────
 
   private createPlayerFigure(): void {
-    this.playerFigure = this.add.image(284, 388, 'trashbag')
+    this.playerFigure = this.add.image(this.scale.width / 2, 388, 'trashbag')
       .setOrigin(0.5, 1.0)
       .setScale(0.9)
       .setDepth(5)
@@ -176,7 +181,7 @@ export class MenuScene extends Phaser.Scene {
   // ── Title ────────────────────────────────────────────────────────────────────
 
   private createTitle(): void {
-    this.titleShadow = this.add.text(244, 306, 'HEAP', {
+    this.titleShadow = this.add.text(this.scale.width / 2 + 4, 306, 'HEAP', {
       fontSize: '96px',
       fontStyle: 'bold',
       color: '#000000',
@@ -184,7 +189,7 @@ export class MenuScene extends Phaser.Scene {
       strokeThickness: 12,
     }).setOrigin(0.5).setAlpha(0).setDepth(6);
 
-    this.titleText = this.add.text(240, 300, 'HEAP', {
+    this.titleText = this.add.text(this.scale.width / 2, 300, 'HEAP', {
       fontSize: '96px',
       fontStyle: 'bold',
       color: '#ff9922',
@@ -249,7 +254,9 @@ export class MenuScene extends Phaser.Scene {
   // ── Balance ──────────────────────────────────────────────────────────────────
 
   private createBalanceText(): void {
-    this.balanceText = this.add.text(this.scale.width / 2, 720, `${getBalance()} coins`, {
+    const shift = this.layoutShift;
+    const y = Math.max(688 - shift, Math.min(this.scale.height - 134, 756));
+    this.balanceText = this.add.text(this.scale.width / 2, y, `${getBalance()} coins`, {
       fontSize: '16px',
       color: '#ffdd77',
       stroke: '#000000',
@@ -259,8 +266,10 @@ export class MenuScene extends Phaser.Scene {
 
   private createPlayerName(): void {
     const name = getPlayerName();
+    const shift = this.layoutShift;
+    const nameY = Math.max(710 - shift, Math.min(this.scale.height - 106, 778));
     this.playerNameText = this.add.text(
-      this.scale.width / 2, 748,
+      this.scale.width / 2, nameY,
       `${name}  [edit]`,
       {
         fontSize:        '13px',
@@ -288,14 +297,16 @@ export class MenuScene extends Phaser.Scene {
   // ── Start / Upgrade prompts ──────────────────────────────────────────────────
 
   private createPrompts(im: InputManager): void {
+    const shift = this.layoutShift;
+
     // Start button
     this.startBg = this.add.graphics().setDepth(8).setAlpha(0);
     this.startBg.fillStyle(0x000000, 0.5);
-    this.startBg.fillRoundedRect(this.scale.width / 2 - 160, 540, 320, 56, 12);
+    this.startBg.fillRoundedRect(this.scale.width / 2 - 160, 540 - shift, 320, 56, 12);
     this.startBg.lineStyle(2, 0x8899bb, 0.8);
-    this.startBg.strokeRoundedRect(this.scale.width / 2 - 160, 540, 320, 56, 12);
+    this.startBg.strokeRoundedRect(this.scale.width / 2 - 160, 540 - shift, 320, 56, 12);
 
-    this.startText = this.add.text(this.scale.width / 2, 570, 'START RUN', {
+    this.startText = this.add.text(this.scale.width / 2, 570 - shift, 'START RUN', {
       fontSize: '24px',
       fontStyle: 'bold',
       color: '#ffffff',
@@ -309,8 +320,8 @@ export class MenuScene extends Phaser.Scene {
     const subBtnH  = 56;
     const subBtnGap = 8;
     const subLeft  = this.scale.width / 2 - 160;        // same left edge as Start Run
-    const subY     = 612;
-    const subCY    = subY + subBtnH / 2;           // = 640
+    const subY     = 612 - shift;
+    const subCY    = subY + subBtnH / 2;
 
     this.upgradeBg = this.add.graphics().setDepth(8).setAlpha(0);
     this.upgradeBg.fillStyle(0x000000, 0.5);
@@ -339,7 +350,7 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0).setDepth(9);
 
     if (im.isMobile && !im.tiltPermissionGranted) {
-      const tiltBtn = this.add.text(this.scale.width / 2, 760, 'Enable Tilt Controls', {
+      const tiltBtn = this.add.text(this.scale.width / 2, this.scale.height - 94, 'Enable Tilt Controls', {
         fontSize: '17px',
         color: '#88aaff',
         stroke: '#000000',
@@ -357,23 +368,24 @@ export class MenuScene extends Phaser.Scene {
   // ── Heap picker ──────────────────────────────────────────────────────────
 
   private createHeapPicker(): void {
+    const shift = this.layoutShift;
     const params = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
 
     this.heapPickerBg = this.add.graphics().setDepth(8).setAlpha(0);
     this.heapPickerBg.fillStyle(0x000000, 0.5);
-    this.heapPickerBg.fillRoundedRect(this.scale.width / 2 - 160, 480, 320, 48, 10);
+    this.heapPickerBg.fillRoundedRect(this.scale.width / 2 - 160, 480 - shift, 320, 48, 10);
     this.heapPickerBg.lineStyle(1, 0x8899bb, 0.6);
-    this.heapPickerBg.strokeRoundedRect(this.scale.width / 2 - 160, 480, 320, 48, 10);
+    this.heapPickerBg.strokeRoundedRect(this.scale.width / 2 - 160, 480 - shift, 320, 48, 10);
 
     const nameLabel  = `\u25BE ${params.name}  `;
     const starsLabel = formatDifficulty(params.difficulty);
 
-    this.heapPickerText = this.add.text(0, 504, nameLabel, {
+    this.heapPickerText = this.add.text(0, 504 - shift, nameLabel, {
       fontSize: '16px', color: '#ffffff',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0, 0.5).setAlpha(0).setDepth(9);
 
-    this.heapPickerStars = this.add.text(0, 504, starsLabel, {
+    this.heapPickerStars = this.add.text(0, 504 - shift, starsLabel, {
       fontSize: '16px', color: '#ff9922',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0, 0.5).setAlpha(0).setDepth(9);

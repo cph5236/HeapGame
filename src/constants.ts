@@ -1,106 +1,98 @@
-export const GAME_WIDTH = 480;
+// ── Canvas / World ──────────────────────────────────────────────────────────────
+export const GAME_WIDTH  = 480;
 export const GAME_HEIGHT = 854;
 export const WORLD_WIDTH = 960;           // wider than the 480px canvas
-export const INFINITE_EDGE_PAD     = 100;  // open space on left/right edges before world wrap
-export const INFINITE_GAP_WIDTH    = 350;  // gap between each heap column
-export const INFINITE_WORLD_WIDTH  = WORLD_WIDTH * 3 + INFINITE_GAP_WIDTH * 2 + INFINITE_EDGE_PAD * 2;
 
-export const PLAYER_WIDTH = 40;
+export const MOCK_HEAP_HEIGHT_PX = 5_000_000;
+export const MOCK_SEED           = 12;
+
+// ── Infinite mode ──────────────────────────────────────────────────────────────
+export const INFINITE_EDGE_PAD         = 100;         // open space on left/right edges before world wrap
+export const INFINITE_GAP_WIDTH        = 350;         // gap between each heap column
+export const INFINITE_WORLD_WIDTH      = WORLD_WIDTH * 3 + INFINITE_GAP_WIDTH * 2 + INFINITE_EDGE_PAD * 2;
+export const INFINITE_LOOKAHEAD_CHUNKS = 10;          // chunks generated ahead of player
+export const INFINITE_MIN_WIDTH        = 150;         // tightest squeeze (~4× player width)
+export const INFINITE_MAX_WIDTH        = 900;         // widest open section
+export const INFINITE_CENTER_DRIFT_MAX = 200;         // max px center shifts from column midpoint
+export const INFINITE_NOISE_SCALE      = 300;         // Y pixels per noise wave (at start)
+export const INFINITE_DIFFICULTY_RANGE = 4_000_000;   // Y pixels for easy→hard ramp
+
+// ── Player ─────────────────────────────────────────────────────────────────────
+export const PLAYER_WIDTH  = 40;
 export const PLAYER_HEIGHT = 46;
-export const PLAYER_SPEED = 200;          // px/sec horizontal
-export const PLAYER_JUMP_VELOCITY = -550; // px/sec vertical (negative = up)
+export const PLAYER_SPEED         = 250;  // px/s ground horizontal
+export const PLAYER_JUMP_VELOCITY = -550; // px/s vertical (negative = up)
+export const PLAYER_DASH_VELOCITY = 500;  // px/s horizontal burst
+export const PLAYER_AIR_MAX_SPEED = 500;  // px/s max horizontal speed while airborne (allows dash/swipe-jump to exceed PLAYER_SPEED)
+export const PLAYER_MAX_FALL_SPEED = 800; // px/s; reached after ~1.5 s at gravity 800
+export const PLAYER_DIVE_SPEED    = 1200; // px/s; instant downward velocity while diving
+export const WALL_SLIDE_SPEED     = 80;   // px/s downward cap while touching a wall
+export const PLAYER_INVINCIBLE_MS = 400;  // post-stomp / post-spawn invincibility
+export const MAX_AIR_JUMPS        = 1;    // base value — actual value comes from SaveData/upgrades
+export const DASH_COOLDOWN_MS     = 800;  // ms between dashes
+export const DASH_DURATION_MS     = 200;  // ms the dash velocity is protected from movement override
 
-export const PLATFORM_MIN_WIDTH = 80;
-export const PLATFORM_MAX_WIDTH = 200;
+// ── Air momentum ───────────────────────────────────────────────────────────────
+export const AIR_TILT_FORCE           = 0.8;  // px/s added per ms at full tilt — reach PLAYER_SPEED in ~250ms
+export const AIR_MOMENTUM_DECAY       = 0.999; // per-ms decay factor when input is ~zero
+export const MOMENTUM_STOP_ADV_FACTOR = 1.5;  // multiplier when input opposes current momentum
+
+// ── Mobile controls ────────────────────────────────────────────────────────────
+export const TILT_DEAD_ZONE_DEG        = 2;   // gamma degrees to ignore near center
+export const TILT_MAX_DEG              = 25;  // gamma at which full speed is applied
+export const SWIPE_MIN_DISTANCE_PX     = 60;  // min travel to register a swipe
+export const SWIPE_MAX_TIME_MS         = 350; // swipes faster than this are recognized
+export const DRAG_THRESHOLD_PX         = 15;  // min vertical displacement to commit to drag mode
+export const SWIPE_JUMP_HORIZONTAL_MAX = 400; // max horizontal px/s seeded by a diagonal swipe-up
+
+// ── Heap generation ────────────────────────────────────────────────────────────
+export const NUM_HEAP_COLUMNS  = 16;    // 960 / 16 = 60px per column
+export const STACK_GAP_MIN     = 2;    // px gap between stacked blocks
+export const STACK_GAP_MAX     = 16;
+export const GEN_LOOKAHEAD     = 1200; // px above camera top to keep generated
+export const HEAP_TOP_ZONE_PX  = 300;  // px above topmost block that activates placement zone
+export const CHUNK_BAND_HEIGHT = 500;  // px per visual silhouette band
+export const LAYER_STEP        = 4;    // px between layer lines — matches SCAN_STEP
+export const LEDGE_STEP        = 60;   // px per staircase step — controls ledge height and wall frequency
+export const LEDGE_BLEND       = 0.60; // 0 = fully smooth curves, 1 = fully blocky staircases
+export const HEAP_FILL_TEXTURE = 'composite-heap';
+
+export const PLATFORM_MIN_WIDTH  = 80;
+export const PLATFORM_MAX_WIDTH  = 200;
 export const PLATFORM_MIN_HEIGHT = 16;
 export const PLATFORM_MAX_HEIGHT = 56;
 
-// Column-based heap generation
-export const NUM_HEAP_COLUMNS = 16;       // 960 / 16 = 60px per column
-export const STACK_GAP_MIN = 2;           // px gap between stacked blocks
-export const STACK_GAP_MAX = 16;
+// ── Collision ──────────────────────────────────────────────────────────────────
+export const FLOOR_BODY_HEIGHT          = 8;  // short in Y
+export const MAX_WALKABLE_SLOPE_DEG     = 35; // surfaces steeper than this are walls
+export const MOUNTAIN_CLIMBER_INCREMENT = 3;  // degrees added per upgrade level
 
-// How many pixels above the camera top edge to keep generated
-export const GEN_LOOKAHEAD = 1200;
-
-// Mock global heap state — replace with backend later
-export const MOCK_HEAP_HEIGHT_PX = 5_000_000;
-export const MOCK_SEED = 12;
-
-// How many pixels above the heap's topmost block that activates the placement zone
-export const HEAP_TOP_ZONE_PX = 300;
-
-// Air jumps available before landing; base value — actual value comes from SaveData/upgrades
-export const MAX_AIR_JUMPS = 1;
-
-// Score-to-coins conversion and upgrade tuning
-export const SCORE_TO_COINS_DIVISOR = 100;
-export const PLAYER_DASH_VELOCITY   = 500; // px/sec horizontal burst
-export const DASH_COOLDOWN_MS       = 800; // ms between dashes
-export const DASH_DURATION_MS       = 200; // ms the dash velocity is protected from movement override
-export const PLAYER_MAX_FALL_SPEED  = 800; // px/s; reached after ~1.5 s at gravity 800
-export const PLAYER_DIVE_SPEED      = 1200; // px/s; instant downward velocity while diving
-export const WALL_SLIDE_SPEED       = 80;  // px/s downward cap while touching a wall
-
-// Placement rules
-export const PEAK_BONUS_ZONE_PX   = 80;   // px above heap topY that qualifies for peak bonus
-export const PEAK_COIN_MULTIPLIER = 1.25; // coin multiplier for placing at the peak
+// ── Placement ─────────────────────────────────────────────────────────────────
+export const PEAK_BONUS_ZONE_PX    = 80;    // px above heap topY that qualifies for peak bonus
+export const PEAK_COIN_MULTIPLIER  = 1.25;  // coin multiplier for placing at the peak
 export const PLACE_HOLD_DURATION_MS = 1000; // ms player must hold to confirm placement
+export const SNAP_RADIUS           = 80;    // px below pointer to search for a walkable surface
 
-// Mobile controls tuning
-export const TILT_DEAD_ZONE_DEG    = 2;   // gamma degrees to ignore near center
-export const TILT_MAX_DEG          = 25;  // gamma at which full speed is applied
-export const SWIPE_MIN_DISTANCE_PX = 60;  // min horizontal travel to register a dash swipe
-export const SWIPE_MAX_TIME_MS     = 350; // swipes faster than this trigger a dash
-export const DRAG_THRESHOLD_PX     = 15;  // min vertical displacement to commit touch to drag mode
+// ── Place-Ables ────────────────────────────────────────────────────────────────
+export const LADDER_HEIGHT = 230;  // ~5× PLAYER_HEIGHT; designer-tunable
+export const LADDER_WIDTH  = 35;
+export const IBEAM_WIDTH   = 120;  // designer-tunable
+export const IBEAM_HEIGHT  = 16;
 
-// Air momentum
-export const AIR_TILT_FORCE          = 0.8;  // px/s added per ms at full tilt — reach PLAYER_SPEED in ~250ms
-export const AIR_MOMENTUM_DECAY      = 0.994; // per-ms decay factor when input is ~zero (0.994^16 ≈ 0.906 per frame)
-export const MOMENTUM_STOP_ADV_FACTOR = 1.5;  // multiplier when input opposes current momentum
-export const SWIPE_JUMP_HORIZONTAL_MAX = 160; // max horizontal px/s seeded by a diagonal swipe jump
+// ── Parallax Background ────────────────────────────────────────────────────────
+export const CLOUD_POOL_SIZE       = 14;        // max number of clouds at once
+export const CLOUD_PARALLAX_FACTOR = 0.15;      // clouds move at 15% of camera speed
+export const CLOUD_START_WORLD_Y   = 5_000_000; // show clouds everywhere; lower to gate by height
+export const GROUND_LAYER_HEIGHT   = 180;       // total depth of dirt cross-section in px
 
-// Heap visual chunking
-export const CHUNK_BAND_HEIGHT = 500; // px per visual silhouette band
-export const LAYER_STEP                  = 4;       // px between layer lines — matches SCAN_STEP
-export const LEDGE_STEP                  = 60;      // px per staircase step — controls ledge height and wall frequency
-export const LEDGE_BLEND                 = 0.60;    // 0 = fully smooth curves, 1 = fully blocky staircases
-export const INFINITE_LOOKAHEAD_CHUNKS   = 10;      // chunks generated ahead of player
-export const INFINITE_MIN_WIDTH          = 150;     // tightest squeeze (~4× player width)
-export const INFINITE_MAX_WIDTH          = 900;     // widest open section
-export const INFINITE_CENTER_DRIFT_MAX   = 200;     // max px center shifts from column midpoint
-export const INFINITE_NOISE_SCALE        = 300;     // Y pixels per noise wave (at start)
-export const INFINITE_DIFFICULTY_RANGE   = 4_000_000;  // Y pixels for easy→hard ramp
-export const HEAP_FILL_TEXTURE = 'composite-heap';
+// ── Enemies ────────────────────────────────────────────────────────────────────
+export const ENEMY_CULL_DISTANCE = 2000; // px below camera before destroy
 
-// ── Parallax Background ───────────────────────────────────────────────────────
-export const CLOUD_POOL_SIZE        = 14;     // max number of clouds at once; set based on density and screen height
-export const CLOUD_PARALLAX_FACTOR  = 0.15;   // clouds move at 30% of camera speed
-export const CLOUD_START_WORLD_Y    = 5_000_000; // show clouds everywhere; lower to gate by height
-export const GROUND_LAYER_HEIGHT    = 180;    // total depth of dirt cross-section in px
+// ── Score / Economy ────────────────────────────────────────────────────────────
+export const SCORE_TO_COINS_DIVISOR = 100;
+export const PACE_BONUS_CONST       = 10; // multiplier on px/s pace component
+export const SCORE_DISPLAY_DIVISOR  = 10; // px ÷ 10 = ft for HUD display
+export const LEADERBOARD_TOP_N      = 5;  // number of top entries shown in leaderboard panel
 
-// Enemies
-export const ENEMY_CULL_DISTANCE        = 2000; // px below camera before destroy
-export const PLAYER_INVINCIBLE_MS       = 400;  // post-stomp / post-spawn invincibility
-
-// Heap edge collider slabs
-export const FLOOR_BODY_HEIGHT = 8;   // short in Y
-export const MAX_WALKABLE_SLOPE_DEG  = 35;  // surfaces steeper than this are treated as walls
-export const MOUNTAIN_CLIMBER_INCREMENT = 3; // degrees added per upgrade level — set by designer
-
-// Place-Ables
-export const LADDER_HEIGHT  = 230;  // ~5× PLAYER_HEIGHT; designer-tunable
-export const LADDER_WIDTH   = 35;
-export const IBEAM_WIDTH    = 120;  // designer-tunable
-export const IBEAM_HEIGHT   = 16;
-export const SNAP_RADIUS    = 80;   // px below pointer to search for a walkable surface
-
-// Portals
+// ── Portals ────────────────────────────────────────────────────────────────────
 export const RECYCLE_ITEM_COUNT = 16;
-
-// ── High scores ───────────────────────────────────────────────────────────────
-
-export const LEADERBOARD_TOP_N = 5;   // number of top entries shown in leaderboard panel
-
-export const PACE_BONUS_CONST    = 10;  // multiplier on px/s pace component
-export const SCORE_DISPLAY_DIVISOR = 10; // px ÷ 10 = ft for HUD display
