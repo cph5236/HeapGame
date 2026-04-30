@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
-import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName } from '../systems/SaveData';
+
+
+import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
@@ -32,6 +33,11 @@ export class MenuScene extends Phaser.Scene {
     super({ key: 'MenuScene' });
   }
 
+  // On short screens, shift the button group up so coins/name/settings fit below
+  private get layoutShift(): number {
+    return Math.min(Math.max(0, 780 - this.scale.height), 60);
+  }
+
   create(): void {
     this.twinkleStars = [];
     this.resetConfirmed = false;
@@ -52,6 +58,7 @@ export class MenuScene extends Phaser.Scene {
     this.createPrompts(im);
     this.createHeapPicker();
     this.createSettingsButton();
+    this.createInfoButton();
     if (!im.isMobile) this.createHotkeyLegend();
     this.runEntranceSequence();
     this.registerInput();
@@ -83,8 +90,10 @@ export class MenuScene extends Phaser.Scene {
     const g = this.add.graphics().setDepth(0);
     for (const [y, h, color] of bands) {
       g.fillStyle(color, 1);
-      g.fillRect(0, y, GAME_WIDTH, h);
+      g.fillRect(0, y, this.scale.width, h);
     }
+    g.fillStyle(0x3e280e, 1);
+    g.fillRect(0, 854, this.scale.width, Math.max(0, this.scale.height - 854));
   }
 
   // ── Stars ────────────────────────────────────────────────────────────────────
@@ -93,7 +102,7 @@ export class MenuScene extends Phaser.Scene {
     const staticG = this.add.graphics().setDepth(1);
 
     for (let i = 0; i < 68; i++) {
-      const x = Phaser.Math.Between(0, GAME_WIDTH);
+      const x = Phaser.Math.Between(0, this.scale.width);
       const y = Phaser.Math.Between(0, 514);
       const roll = Phaser.Math.Between(0, 9);
       const r = roll < 6 ? 0.7 : roll < 9 ? 1.2 : 2.0;
@@ -104,7 +113,7 @@ export class MenuScene extends Phaser.Scene {
 
     for (let i = 0; i < 12; i++) {
       const g = this.add.graphics().setDepth(1);
-      const x = Phaser.Math.Between(0, GAME_WIDTH);
+      const x = Phaser.Math.Between(0, this.scale.width);
       const y = Phaser.Math.Between(0, 514);
       g.fillStyle(0xffffff, 1);
       g.fillCircle(x, y, 1.2);
@@ -116,12 +125,12 @@ export class MenuScene extends Phaser.Scene {
 
   private createFarSilhouette(): void {
     const points = [
-      { x: -20, y: 854 }, { x: -20, y: 700 }, { x: 10,  y: 660 }, { x: 40,  y: 680 },
+      { x: -20, y: this.scale.height }, { x: -20, y: 700 }, { x: 10,  y: 660 }, { x: 40,  y: 680 },
       { x: 60,  y: 620 }, { x: 90,  y: 590 }, { x: 115, y: 610 }, { x: 140, y: 570 },
       { x: 170, y: 540 }, { x: 195, y: 560 }, { x: 220, y: 510 }, { x: 240, y: 440 },
       { x: 265, y: 480 }, { x: 290, y: 455 }, { x: 320, y: 490 }, { x: 345, y: 520 },
       { x: 370, y: 500 }, { x: 395, y: 540 }, { x: 420, y: 580 }, { x: 440, y: 555 },
-      { x: 460, y: 610 }, { x: 490, y: 640 }, { x: 500, y: 700 }, { x: 500, y: 854 },
+      { x: 460, y: 610 }, { x: 490, y: 640 }, { x: 500, y: 700 }, { x: 500, y: this.scale.height },
     ];
     this.farSilhouette = this.add.graphics().setDepth(2).setAlpha(0);
     this.farSilhouette.fillStyle(0x1a1225, 1);
@@ -130,7 +139,7 @@ export class MenuScene extends Phaser.Scene {
 
   private createNearSilhouette(): void {
     const points = [
-      { x: 0,   y: 854 }, { x: 0,   y: 720 }, { x: 18,  y: 695 }, { x: 35,  y: 710 },
+      { x: 0,   y: this.scale.height }, { x: 0,   y: 720 }, { x: 18,  y: 695 }, { x: 35,  y: 710 },
       { x: 50,  y: 670 }, { x: 68,  y: 640 }, { x: 82,  y: 655 }, { x: 100, y: 615 },
       { x: 118, y: 595 }, { x: 130, y: 610 }, { x: 148, y: 575 }, { x: 162, y: 548 },
       { x: 175, y: 565 }, { x: 192, y: 530 }, { x: 208, y: 505 }, { x: 220, y: 520 },
@@ -140,7 +149,7 @@ export class MenuScene extends Phaser.Scene {
       { x: 328, y: 440 }, { x: 340, y: 465 }, { x: 355, y: 490 }, { x: 368, y: 475 },
       { x: 382, y: 505 }, { x: 395, y: 530 }, { x: 408, y: 515 }, { x: 422, y: 545 },
       { x: 438, y: 570 }, { x: 450, y: 555 }, { x: 462, y: 590 }, { x: 472, y: 625 },
-      { x: 480, y: 660 }, { x: 480, y: 854 },
+      { x: 480, y: 660 }, { x: 480, y: this.scale.height },
     ];
     this.nearSilhouette = this.add.graphics().setDepth(4).setAlpha(0);
     this.nearSilhouette.fillStyle(0x0d0910, 1);
@@ -152,17 +161,17 @@ export class MenuScene extends Phaser.Scene {
   private createHorizonGlow(): void {
     this.horizonGlow = this.add.graphics().setDepth(3).setAlpha(0);
     this.horizonGlow.fillStyle(0xff8833, 0.12);
-    this.horizonGlow.fillEllipse(GAME_WIDTH / 2, 450, 460, 60);
+    this.horizonGlow.fillEllipse(this.scale.width / 2, 450, 460, 60);
     this.horizonGlow.fillStyle(0xff6611, 0.07);
-    this.horizonGlow.fillEllipse(GAME_WIDTH / 2, 445, 360, 40);
+    this.horizonGlow.fillEllipse(this.scale.width / 2, 445, 360, 40);
     this.horizonGlow.fillStyle(0xffaa44, 0.05);
-    this.horizonGlow.fillEllipse(GAME_WIDTH / 2, 455, 300, 25);
+    this.horizonGlow.fillEllipse(this.scale.width / 2, 455, 300, 25);
   }
 
   // ── Player figure ────────────────────────────────────────────────────────────
 
   private createPlayerFigure(): void {
-    this.playerFigure = this.add.image(284, 388, 'trashbag')
+    this.playerFigure = this.add.image(this.scale.width / 2, 388, 'trashbag')
       .setOrigin(0.5, 1.0)
       .setScale(0.9)
       .setDepth(5)
@@ -172,7 +181,7 @@ export class MenuScene extends Phaser.Scene {
   // ── Title ────────────────────────────────────────────────────────────────────
 
   private createTitle(): void {
-    this.titleShadow = this.add.text(244, 306, 'HEAP', {
+    this.titleShadow = this.add.text(this.scale.width / 2 + 4, 306, 'HEAP', {
       fontSize: '96px',
       fontStyle: 'bold',
       color: '#000000',
@@ -180,7 +189,7 @@ export class MenuScene extends Phaser.Scene {
       strokeThickness: 12,
     }).setOrigin(0.5).setAlpha(0).setDepth(6);
 
-    this.titleText = this.add.text(240, 300, 'HEAP', {
+    this.titleText = this.add.text(this.scale.width / 2, 300, 'HEAP', {
       fontSize: '96px',
       fontStyle: 'bold',
       color: '#ff9922',
@@ -192,7 +201,7 @@ export class MenuScene extends Phaser.Scene {
   // ── Tagline ──────────────────────────────────────────────────────────────────
 
   private createTagline(): void {
-    this.taglineText = this.add.text(GAME_WIDTH / 2, 368, 'How high can you climb?', {
+    this.taglineText = this.add.text(this.scale.width / 2, 368, 'How high can you climb?', {
       fontSize: '18px',
       fontStyle: 'italic',
       color: '#cc9966',
@@ -229,8 +238,8 @@ export class MenuScene extends Phaser.Scene {
 
     // Cloud shape spans ~120px wide — ensure it fully clears the screen edge
     const offscreen = 130 * scaleVal;
-    const targetX = goLeft ? -offscreen : GAME_WIDTH + offscreen;
-    const startX  = goLeft ? GAME_WIDTH + offscreen : -offscreen;
+    const targetX = goLeft ? -offscreen : this.scale.width + offscreen;
+    const startX  = goLeft ? this.scale.width + offscreen : -offscreen;
 
     this.tweens.add({
       targets: gfx,
@@ -245,7 +254,9 @@ export class MenuScene extends Phaser.Scene {
   // ── Balance ──────────────────────────────────────────────────────────────────
 
   private createBalanceText(): void {
-    this.balanceText = this.add.text(GAME_WIDTH / 2, 720, `${getBalance()} coins`, {
+    const shift = this.layoutShift;
+    const y = Math.max(688 - shift, Math.min(this.scale.height - 134, 756));
+    this.balanceText = this.add.text(this.scale.width / 2, y, `${getBalance()} coins`, {
       fontSize: '16px',
       color: '#ffdd77',
       stroke: '#000000',
@@ -255,8 +266,10 @@ export class MenuScene extends Phaser.Scene {
 
   private createPlayerName(): void {
     const name = getPlayerName();
+    const shift = this.layoutShift;
+    const nameY = Math.max(710 - shift, Math.min(this.scale.height - 106, 778));
     this.playerNameText = this.add.text(
-      GAME_WIDTH / 2, 748,
+      this.scale.width / 2, nameY,
       `${name}  [edit]`,
       {
         fontSize:        '13px',
@@ -284,14 +297,16 @@ export class MenuScene extends Phaser.Scene {
   // ── Start / Upgrade prompts ──────────────────────────────────────────────────
 
   private createPrompts(im: InputManager): void {
+    const shift = this.layoutShift;
+
     // Start button
     this.startBg = this.add.graphics().setDepth(8).setAlpha(0);
     this.startBg.fillStyle(0x000000, 0.5);
-    this.startBg.fillRoundedRect(GAME_WIDTH / 2 - 160, 540, 320, 56, 12);
+    this.startBg.fillRoundedRect(this.scale.width / 2 - 160, 540 - shift, 320, 56, 12);
     this.startBg.lineStyle(2, 0x8899bb, 0.8);
-    this.startBg.strokeRoundedRect(GAME_WIDTH / 2 - 160, 540, 320, 56, 12);
+    this.startBg.strokeRoundedRect(this.scale.width / 2 - 160, 540 - shift, 320, 56, 12);
 
-    this.startText = this.add.text(GAME_WIDTH / 2, 570, 'START RUN', {
+    this.startText = this.add.text(this.scale.width / 2, 570 - shift, 'START RUN', {
       fontSize: '24px',
       fontStyle: 'bold',
       color: '#ffffff',
@@ -304,9 +319,9 @@ export class MenuScene extends Phaser.Scene {
     const subBtnW  = 156;
     const subBtnH  = 56;
     const subBtnGap = 8;
-    const subLeft  = GAME_WIDTH / 2 - 160;        // same left edge as Start Run
-    const subY     = 612;
-    const subCY    = subY + subBtnH / 2;           // = 640
+    const subLeft  = this.scale.width / 2 - 160;        // same left edge as Start Run
+    const subY     = 612 - shift;
+    const subCY    = subY + subBtnH / 2;
 
     this.upgradeBg = this.add.graphics().setDepth(8).setAlpha(0);
     this.upgradeBg.fillStyle(0x000000, 0.5);
@@ -335,7 +350,7 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0).setDepth(9);
 
     if (im.isMobile && !im.tiltPermissionGranted) {
-      const tiltBtn = this.add.text(GAME_WIDTH / 2, 760, 'Enable Tilt Controls', {
+      const tiltBtn = this.add.text(this.scale.width / 2, this.scale.height - 94, 'Enable Tilt Controls', {
         fontSize: '17px',
         color: '#88aaff',
         stroke: '#000000',
@@ -353,30 +368,31 @@ export class MenuScene extends Phaser.Scene {
   // ── Heap picker ──────────────────────────────────────────────────────────
 
   private createHeapPicker(): void {
+    const shift = this.layoutShift;
     const params = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
 
     this.heapPickerBg = this.add.graphics().setDepth(8).setAlpha(0);
     this.heapPickerBg.fillStyle(0x000000, 0.5);
-    this.heapPickerBg.fillRoundedRect(GAME_WIDTH / 2 - 160, 480, 320, 48, 10);
+    this.heapPickerBg.fillRoundedRect(this.scale.width / 2 - 160, 480 - shift, 320, 48, 10);
     this.heapPickerBg.lineStyle(1, 0x8899bb, 0.6);
-    this.heapPickerBg.strokeRoundedRect(GAME_WIDTH / 2 - 160, 480, 320, 48, 10);
+    this.heapPickerBg.strokeRoundedRect(this.scale.width / 2 - 160, 480 - shift, 320, 48, 10);
 
     const nameLabel  = `\u25BE ${params.name}  `;
     const starsLabel = formatDifficulty(params.difficulty);
 
-    this.heapPickerText = this.add.text(0, 504, nameLabel, {
+    this.heapPickerText = this.add.text(0, 504 - shift, nameLabel, {
       fontSize: '16px', color: '#ffffff',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0, 0.5).setAlpha(0).setDepth(9);
 
-    this.heapPickerStars = this.add.text(0, 504, starsLabel, {
+    this.heapPickerStars = this.add.text(0, 504 - shift, starsLabel, {
       fontSize: '16px', color: '#ff9922',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0, 0.5).setAlpha(0).setDepth(9);
 
     // Center both texts together on the button
     const totalW = this.heapPickerText.width + this.heapPickerStars.width;
-    const startX = GAME_WIDTH / 2 - totalW / 2;
+    const startX = this.scale.width / 2 - totalW / 2;
     this.heapPickerText.setX(startX);
     this.heapPickerStars.setX(startX + this.heapPickerText.width);
 
@@ -397,7 +413,7 @@ export class MenuScene extends Phaser.Scene {
       { key: 'H',     label: 'Heap'      },
     ];
     const parts = keys.map(k => `${k.key}: ${k.label}`).join('   ');
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 52, parts, {
+    this.add.text(this.scale.width / 2, this.scale.height - 52, parts, {
       fontSize:      '11px',
       fontFamily:    'monospace',
       color:         '#667799',
@@ -406,8 +422,8 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private createSettingsButton(): void {
-    const bx = GAME_WIDTH - 22;
-    const by = GAME_HEIGHT - 22;
+    const bx = this.scale.width - 22;
+    const by = this.scale.height - 22;
 
     const btnGfx = this.add.graphics().setDepth(20);
     btnGfx.fillStyle(0x000000, 0.65);
@@ -424,41 +440,57 @@ export class MenuScene extends Phaser.Scene {
 
     // Overlay
     const overlayBg = this.add.rectangle(
-      GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.72,
+      this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x000000, 0.72,
     ).setDepth(30).setVisible(false).setInteractive();
 
     const panel = this.add.rectangle(
-      GAME_WIDTH / 2, GAME_HEIGHT / 2, 360, 280, 0x0d0d20,
+      this.scale.width / 2, this.scale.height / 2, 360, 280, 0x0d0d20,
     ).setDepth(31).setVisible(false).setStrokeStyle(2, 0x4455aa);
 
-    const title = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 105, 'SETTINGS', {
+    const title = this.add.text(this.scale.width / 2, this.scale.height / 2 - 105, 'SETTINGS', {
       fontSize: '28px', color: '#ffffff',
       stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(32).setVisible(false);
 
     // Close button
-    const closeBtn = this.add.text(GAME_WIDTH / 2 + 155, GAME_HEIGHT / 2 - 120, '\u2715', {
+    const closeBtn = this.add.text(this.scale.width / 2 + 155, this.scale.height / 2 - 120, '\u2715', {
       fontSize: '20px', color: '#aaaaaa',
     }).setOrigin(0.5).setDepth(32).setVisible(false).setInteractive({ useHandCursor: true });
 
+    // Give coins button (dev shortcut)
+    const coinBg = this.add.rectangle(
+      this.scale.width / 2, this.scale.height / 2 - 52, 260, 44, 0x1a5c1a,
+    ).setDepth(32).setVisible(false).setStrokeStyle(2, 0x44ff44)
+      .setInteractive({ useHandCursor: true });
+
+    const coinLabel = this.add.text(this.scale.width / 2, this.scale.height / 2 - 52, '+ 500 Coins', {
+      fontSize: '18px', color: '#aaffaa', fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(33).setVisible(false);
+
+    coinBg.on('pointerup', () => {
+      addBalance(500);
+      this.balanceText.setText(`${getBalance()} coins`);
+    });
+
     // Reset button
     const resetBg = this.add.rectangle(
-      GAME_WIDTH / 2, GAME_HEIGHT / 2, 260, 52, 0x881111,
+      this.scale.width / 2, this.scale.height / 2 + 16, 260, 52, 0x881111,
     ).setDepth(32).setVisible(false).setStrokeStyle(2, 0xff4444)
       .setInteractive({ useHandCursor: true });
 
-    const resetLabel = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'Reset All Data', {
+    const resetLabel = this.add.text(this.scale.width / 2, this.scale.height / 2 + 16, 'Reset All Data', {
       fontSize: '20px', color: '#ffffff', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(33).setVisible(false);
 
     const resetWarning = this.add.text(
-      GAME_WIDTH / 2, GAME_HEIGHT / 2 + 56,
+      this.scale.width / 2, this.scale.height / 2 + 72,
       'Clears all coins, upgrades\nand placed blocks.',
       { fontSize: '14px', color: '#aa8888', align: 'center' },
     ).setOrigin(0.5).setDepth(32).setVisible(false);
 
-    const overlayParts = [overlayBg, panel, title, closeBtn, resetBg, resetLabel, resetWarning];
+    const overlayParts = [overlayBg, panel, title, closeBtn, coinBg, coinLabel, resetBg, resetLabel, resetWarning];
     const open  = () => overlayParts.forEach(p => p.setVisible(true));
     const close = () => {
       overlayParts.forEach(p => p.setVisible(false));
@@ -492,6 +524,87 @@ export class MenuScene extends Phaser.Scene {
         this.scene.restart();
       }
     });
+  }
+
+  private createInfoButton(): void {
+    const im = InputManager.getInstance();
+    const bx = this.scale.width - 22;
+    const by = 22;
+
+    // Circle background
+    const btnGfx = this.add.graphics().setScrollFactor(0).setDepth(12);
+    btnGfx.fillStyle(0x000000, 0.65);
+    btnGfx.fillCircle(bx, by, 14);
+    btnGfx.lineStyle(2, 0x8899bb, 1);
+    btnGfx.strokeCircle(bx, by, 14);
+
+    // '?' label
+    this.add.text(bx, by, '?', {
+      fontSize: '16px', color: '#ffffff', fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(13);
+
+    // Invisible hit zone
+    const hitZone = this.add.zone(bx, by, 36, 36).setScrollFactor(0).setDepth(13);
+    hitZone.setInteractive({ useHandCursor: true });
+
+    // Overlay background
+    const overlayBg = this.add.rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x000000, 0.72)
+      .setScrollFactor(0).setDepth(14).setVisible(false).setInteractive();
+
+    // Panel
+    const panel = this.add.rectangle(this.scale.width / 2, this.scale.height / 2, 380, 320, 0x0d0d20)
+      .setScrollFactor(0).setDepth(15).setVisible(false).setStrokeStyle(2, 0x4455aa);
+
+    // Controls text — show mobile or desktop lines based on platform
+    const mobileLines = [
+      'CONTROLS',
+      '',
+      'Move     Tilt phone left / right',
+      'Jump     Tap or swipe up',
+      'Dash     Swipe left / right',
+      'Dive     Swipe down',
+      'Place    PLACE BLOCK button',
+      'Ladder   Drag up / down',
+      '',
+      'TIP',
+      '',
+      'Left & right edges wrap around!',
+    ];
+    const desktopLines = [
+      'CONTROLS',
+      '',
+      'Move     ← →  /  A  D',
+      'Jump     ↑  /  W',
+      'Dash     SHIFT',
+      'Dive     ↓  /  S  (airborne)',
+      'Place    SPACE',
+      '',
+      'TIP',
+      '',
+      'Left & right edges wrap around!',
+    ];
+
+    const overlayText = this.add.text(
+      this.scale.width / 2 - 160, this.scale.height / 2 - 130,
+      (im.isMobile ? mobileLines : desktopLines).join('\n'),
+      {
+        fontSize: '17px', color: '#ccccdd',
+        stroke: '#000000', strokeThickness: 1,
+        lineSpacing: 5,
+      },
+    ).setScrollFactor(0).setDepth(16).setVisible(false);
+
+    const parts = [overlayBg, panel, overlayText];
+    let open = false;
+
+    const toggle = () => {
+      open = !open;
+      for (const p of parts) p.setVisible(open);
+    };
+
+    hitZone.on('pointerup', toggle);
+    overlayBg.on('pointerup', toggle);
   }
 
   // ── Entrance animation ───────────────────────────────────────────────────────

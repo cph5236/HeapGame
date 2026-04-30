@@ -117,6 +117,7 @@ Wrangler tracks applied migrations in a `d1_migrations` table — each file is o
 
 ## Project Conventions
 
+- **Do not use git worktrees.** Use regular feature branches instead. Check out branches in the main working directory.
 - Feature work happens on branches off `main`; current active branch is `feature/HeapServer`
 - Server code lives in `server/`; game client in `src/`; shared types in `shared/`
 - Tests live alongside server code in `server/tests/`

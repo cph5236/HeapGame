@@ -11,8 +11,6 @@ import { InfiniteGameScene } from './scenes/InfiniteGameScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: 480,
-  height: 854,
   backgroundColor: '#5B8FC9',
   physics: {
     default: 'arcade',
@@ -22,8 +20,8 @@ const config: Phaser.Types.Core.GameConfig = {
     },
   },
   scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
+    mode: Phaser.Scale.RESIZE,
+    autoCenter: Phaser.Scale.NO_CENTER,
   },
   render: {
     antialias: true,

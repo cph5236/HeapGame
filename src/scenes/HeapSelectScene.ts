@@ -1,5 +1,4 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { setSelectedHeapId, finalizeLegacyPlaced } from '../systems/SaveData';
 import { HeapClient } from '../systems/HeapClient';
@@ -29,19 +28,21 @@ export class HeapSelectScene extends Phaser.Scene {
     ];
     for (const [y, h, color] of bands) {
       bg.fillStyle(color, 1);
-      bg.fillRect(0, y, GAME_WIDTH, h);
+      bg.fillRect(0, y, this.scale.width, h);
     }
+    bg.fillStyle(0x3e280e, 1);
+    bg.fillRect(0, 854, this.scale.width, Math.max(0, this.scale.height - 854));
 
-    this.add.text(GAME_WIDTH / 2, 34, 'SELECT A HEAP', {
+    this.add.text(this.scale.width / 2, 34, 'SELECT A HEAP', {
       fontSize: '20px', fontStyle: 'bold', color: '#ffffff',
       stroke: '#000000', strokeThickness: 3,
       letterSpacing: 2,
     }).setOrigin(0.5);
 
     // Header underline
-    this.add.rectangle(GAME_WIDTH / 2, 58, GAME_WIDTH - 2 * ROW_PAD_X, 1, 0x334466);
+    this.add.rectangle(this.scale.width / 2, 58, this.scale.width - 2 * ROW_PAD_X, 1, 0x334466);
 
-    const close = this.add.text(GAME_WIDTH - 20, 34, '\u2715', {
+    const close = this.add.text(this.scale.width - 20, 34, '\u2715', {
       fontSize: '20px', color: '#667799',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     close.on('pointerover', () => close.setColor('#ffffff'));
@@ -51,11 +52,11 @@ export class HeapSelectScene extends Phaser.Scene {
     const catalog = (this.game.registry.get('heapCatalog') as HeapSummary[] | undefined) ?? [];
 
     if (catalog.length === 0) {
-      this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2,
+      this.add.text(this.scale.width / 2, this.scale.height / 2,
         'No heaps available — check connection', {
         fontSize: '16px', color: '#8899aa',
         stroke: '#000000', strokeThickness: 2,
-        align: 'center', wordWrap: { width: GAME_WIDTH - 40 },
+        align: 'center', wordWrap: { width: this.scale.width - 40 },
       }).setOrigin(0.5);
       return;
     }
@@ -87,8 +88,8 @@ export class HeapSelectScene extends Phaser.Scene {
   private drawRow(heap: HeapSummary, y: number, active: boolean, rowIndex: number): Phaser.GameObjects.Rectangle {
     const bgColor = active ? 0x1a2040 : (rowIndex % 2 === 0 ? 0x141629 : 0x0f1020);
     const rowBg = this.add.rectangle(
-      GAME_WIDTH / 2, y + ROW_H / 2,
-      GAME_WIDTH - 2 * ROW_PAD_X, ROW_H - 6,
+      this.scale.width / 2, y + ROW_H / 2,
+      this.scale.width - 2 * ROW_PAD_X, ROW_H - 6,
       bgColor,
     ).setStrokeStyle(active ? 2 : 1, active ? 0xff9922 : 0x1e2a44)
      .setInteractive({ useHandCursor: true });
@@ -102,7 +103,7 @@ export class HeapSelectScene extends Phaser.Scene {
     drawDifficulty(this, lx, y + 58, heap.params.difficulty, 20);
 
     // Right: three stats stacked — label right-aligned, value right-aligned
-    const rx       = GAME_WIDTH - ROW_PAD_X - 14;  // right edge = 450
+    const rx       = this.scale.width - ROW_PAD_X - 14;  // right edge
     const valX     = rx;                             // value right edge
     const lblX     = rx - 50;                        // label right edge (gap before value)
     const divX     = rx - 118;                       // divider x
@@ -154,9 +155,9 @@ export class HeapSelectScene extends Phaser.Scene {
     const im = InputManager.getInstance();
     if (im.isMobile) return;
 
-    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT - 25, GAME_WIDTH, 50, 0x111118, 0.88)
+    this.add.rectangle(this.scale.width / 2, this.scale.height - 25, this.scale.width, 50, 0x111118, 0.88)
       .setDepth(9);
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 25,
+    this.add.text(this.scale.width / 2, this.scale.height - 25,
       '\u2191\u2193 navigate   ENTER select   ESC back',
       { fontSize: '16px', color: '#b1abab' },
     ).setOrigin(0.5).setDepth(10);

@@ -1,6 +1,5 @@
 ## FEATURES
--   Mobile controls
--   Heap selector height displayed as FT would need to either add DB column or calculate based on results. 
+-   Heap selector height displayed as FT When the server gets a new placed point. Shown on the heap selector and in the admin UI. shown in the UI as calculated ft or question marks (???) if the value isnt set in the db.
 - Live heap section - dont just apply the updates to the live section without the player seeing them allow the player to see them in action or at least some of them. 
 
 ### ENEMIES

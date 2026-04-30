@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N } from '../constants';
+import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N } from '../constants';
 import {
   addBalance,
   getBalance,
@@ -19,7 +19,6 @@ import type { LeaderboardContext } from '../../shared/scoreTypes';
 import type { HeapParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 
-const CX = GAME_WIDTH / 2;
 
 export class ScoreScene extends Phaser.Scene {
   private score:               number  = 0;
@@ -143,8 +142,10 @@ export class ScoreScene extends Phaser.Scene {
     ];
     for (const [y, h, color] of bands) {
       g.fillStyle(color, 1);
-      g.fillRect(0, y, GAME_WIDTH, h);
+      g.fillRect(0, y, this.scale.width, h);
     }
+    g.fillStyle(0x2a1060, 1);
+    g.fillRect(0, 854, this.scale.width, Math.max(0, this.scale.height - 854));
   }
 
   private createStarField(): void {
@@ -158,7 +159,7 @@ export class ScoreScene extends Phaser.Scene {
     const g = this.add.graphics();
     for (const [xf, yf, r, a] of stars) {
       g.fillStyle(0xaaddff, a);
-      g.fillCircle(xf * GAME_WIDTH, yf * GAME_HEIGHT, r);
+      g.fillCircle(xf * this.scale.width, yf * this.scale.height, r);
     }
   }
 
@@ -178,15 +179,15 @@ export class ScoreScene extends Phaser.Scene {
     ];
     for (const [y, h, color, alpha] of bands) {
       g.fillStyle(color, alpha);
-      g.fillRect(0, y, GAME_WIDTH, h);
+      g.fillRect(0, y, this.scale.width, h);
     }
   }
 
   private createConfetti(): void {
     const colors = [0xffdd44, 0x44ff88, 0xff88cc, 0x44ddff, 0xcc44ff, 0xff8844];
     for (let i = 0; i < 20; i++) {
-      const x     = CX + Phaser.Math.Between(-60, 60);
-      const y     = GAME_HEIGHT * 0.22;
+      const x     = this.scale.width / 2 + Phaser.Math.Between(-60, 60);
+      const y     = this.scale.height * 0.22;
       const color = colors[i % colors.length];
       const size  = Phaser.Math.Between(3, 6);
       const g = this.add.graphics();
@@ -214,7 +215,7 @@ export class ScoreScene extends Phaser.Scene {
   private createTitle(): void {
     const text  = this.isFailure ? 'HEAP FAILURE' : 'HEAP SUCCESSFUL';
     const color = this.isFailure ? '#ff5555' : '#44ffaa';
-    this.add.text(CX, GAME_HEIGHT * 0.18, text, {
+    this.add.text(this.scale.width / 2, this.scale.height * 0.18, text, {
       fontSize:        '36px',
       fontFamily:      'monospace',
       color,
@@ -223,7 +224,7 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   private createScoreDisplay(): void {
-    const scoreText = this.add.text(CX, GAME_HEIGHT * 0.28, '0', {
+    const scoreText = this.add.text(this.scale.width / 2, this.scale.height * 0.28, '0', {
       fontSize:   '52px',
       fontFamily: 'monospace',
       color:      '#ffdd44',
@@ -236,10 +237,10 @@ export class ScoreScene extends Phaser.Scene {
     // Glow ellipse behind score
     const glow = this.add.graphics();
     glow.fillStyle(0xffdd44, 0.08);
-    glow.fillEllipse(CX, GAME_HEIGHT * 0.28, 160, 60);
+    glow.fillEllipse(this.scale.width / 2, this.scale.height * 0.28, 160, 60);
     this.children.moveBelow(glow as Phaser.GameObjects.GameObject, scoreText as Phaser.GameObjects.GameObject);
 
-    this.add.text(CX, GAME_HEIGHT * 0.28 + 34, 'SCORE', {
+    this.add.text(this.scale.width / 2, this.scale.height * 0.28 + 34, 'SCORE', {
       fontSize:      '9px',
       fontFamily:    'monospace',
       color:         '#ffdd44',
@@ -267,7 +268,7 @@ export class ScoreScene extends Phaser.Scene {
 
   private createHighScoreBadge(): void {
     const color = '#ffdd44';
-    this.add.text(CX, GAME_HEIGHT * 0.36, 'NEW HIGH SCORE!', {
+    this.add.text(this.scale.width / 2, this.scale.height * 0.36, 'NEW HIGH SCORE!', {
       fontSize:      '18px',
       fontFamily:    'monospace',
       color,
@@ -290,9 +291,9 @@ export class ScoreScene extends Phaser.Scene {
     if (this._breakdownOpen) return;
     this._breakdownOpen = true;
 
-    const PANEL_W   = GAME_WIDTH * 0.88;
-    const PANEL_X   = CX;
-    const PANEL_TOP = GAME_HEIGHT * 0.32;
+    const PANEL_W   = this.scale.width * 0.88;
+    const PANEL_X   = this.scale.width / 2;
+    const PANEL_TOP = this.scale.height * 0.32;
     const ROW_H     = 24;
     const PAD_X     = 14;
     const left      = PANEL_X - PANEL_W / 2 + PAD_X;
@@ -384,7 +385,7 @@ export class ScoreScene extends Phaser.Scene {
     this._breakdownObjects.push(totLbl, totVal);
 
     // Tap-outside-to-close transparent overlay (behind panel)
-    const blocker = this.add.rectangle(PANEL_X, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0)
+    const blocker = this.add.rectangle(PANEL_X, this.scale.height / 2, this.scale.width, this.scale.height, 0x000000, 0)
       .setDepth(59)
       .setInteractive();
     blocker.once('pointerup', () => this.closeScoreBreakdown());
@@ -423,9 +424,9 @@ export class ScoreScene extends Phaser.Scene {
   // ── Coins Panel ───────────────────────────────────────────────────────────────
 
   private createCoinsPanel(rows: BreakdownRow[], finalCoins: number): number {
-    const PANEL_X    = CX;
-    const PANEL_TOP  = GAME_HEIGHT * 0.42;
-    const PANEL_W    = GAME_WIDTH * 0.88;
+    const PANEL_X    = this.scale.width / 2;
+    const PANEL_TOP  = this.scale.height * 0.42;
+    const PANEL_W    = this.scale.width * 0.88;
     const ROW_H      = 26;
     const PAD_X      = 14;
 
@@ -601,8 +602,8 @@ export class ScoreScene extends Phaser.Scene {
     if (!this.heapId) return;
 
     const PANEL_TOP = topY;
-    const PANEL_W   = GAME_WIDTH * 0.88;
-    const PANEL_X   = CX;
+    const PANEL_W   = this.scale.width * 0.88;
+    const PANEL_X   = this.scale.width / 2;
     const ROW_H     = 20;
 
     // Loading placeholder
@@ -642,8 +643,8 @@ export class ScoreScene extends Phaser.Scene {
     rowH:     number,
   ): void {
     const PAD_X  = 14;
-    const left   = CX - panelW / 2 + PAD_X;
-    const right  = CX + panelW / 2 - PAD_X;
+    const left   = this.scale.width / 2 - panelW / 2 + PAD_X;
+    const right  = this.scale.width / 2 + panelW / 2 - PAD_X;
 
     // "HIGH SCORES" label above the panel — styled like SCORE label but smaller, left-aligned
     this.add.text(left, panelTop - 2, 'HIGH SCORES', {
@@ -656,8 +657,8 @@ export class ScoreScene extends Phaser.Scene {
     const bg = this.add.graphics();
     bg.fillStyle(0x002244, 0.5);
     bg.lineStyle(1, 0x336699, 0.3);
-    bg.fillRoundedRect(CX - panelW / 2, panelTop, panelW, panelH, 6);
-    bg.strokeRoundedRect(CX - panelW / 2, panelTop, panelW, panelH, 6);
+    bg.fillRoundedRect(this.scale.width / 2 - panelW / 2, panelTop, panelW, panelH, 6);
+    bg.strokeRoundedRect(this.scale.width / 2 - panelW / 2, panelTop, panelW, panelH, 6);
 
     let y = panelTop + 4;
 
@@ -672,7 +673,7 @@ export class ScoreScene extends Phaser.Scene {
       // Alternating row stripe
       const stripe = this.add.graphics();
       stripe.fillStyle(i % 2 === 0 ? 0x0d3155 : 0x071d33, 0.5);
-      stripe.fillRect(CX - panelW / 2, y, panelW, rowH);
+      stripe.fillRect(this.scale.width / 2 - panelW / 2, y, panelW, rowH);
 
       this.add.text(left, mid, `#${entry.rank}`, {
         fontSize: '11px', fontFamily: 'monospace', color: rankCol,
@@ -688,7 +689,7 @@ export class ScoreScene extends Phaser.Scene {
 
     // Gap + player row if player is not already in top N
     if (ctx.player && !this.playerInTop(ctx)) {
-      this.add.text(CX, y + rowH / 2, '·  ·  ·', {
+      this.add.text(this.scale.width / 2, y + rowH / 2, '·  ·  ·', {
         fontSize: '10px', fontFamily: 'monospace', color: '#335566',
       }).setOrigin(0.5, 0.5);
       y += rowH;
@@ -716,7 +717,7 @@ export class ScoreScene extends Phaser.Scene {
   // ── Balance ───────────────────────────────────────────────────────────────────
 
   private createBalance(balance: number): void {
-    this.add.text(CX, GAME_HEIGHT * 0.82, `Balance: ${balance} coins`, {
+    this.add.text(this.scale.width / 2, this.scale.height * 0.82, `Balance: ${balance} coins`, {
       fontSize:   '16px',
       fontFamily: 'monospace',
       color:      '#aaddff',
@@ -728,7 +729,7 @@ export class ScoreScene extends Phaser.Scene {
   private createCheckpointButton(): void {
     if (!this.checkpointAvailable) return;
 
-    const btn = this.add.text(CX, GAME_HEIGHT * 0.87, 'Respawn at Checkpoint', {
+    const btn = this.add.text(this.scale.width / 2, this.scale.height * 0.87, 'Respawn at Checkpoint', {
       fontSize:        '12px',
       fontFamily:      'monospace',
       color:           '#88aaff',
@@ -754,9 +755,9 @@ export class ScoreScene extends Phaser.Scene {
   private createMenuPrompt(): void {
     const im    = InputManager.getInstance();
     const label = im.isMobile ? 'TAP ANYWHERE FOR MENU' : 'PRESS ANY KEY FOR MENU';
-    const promptY = GAME_HEIGHT * 0.95;
+    const promptY = this.scale.height * 0.95;
 
-    const promptText = this.add.text(CX, promptY, label, {
+    const promptText = this.add.text(this.scale.width / 2, promptY, label, {
       fontSize:      '16px',
       fontFamily:    'monospace',
       color:         '#ffffff',

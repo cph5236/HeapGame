@@ -1,9 +1,6 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
-import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
 import type { PlaceableManager } from '../systems/PlaceableManager';
-
-const HUD_Y    = GAME_HEIGHT - 44;
 const MARGIN_R = 20;   // gap from right screen edge
 const ICON_GAP = 14;   // gap between icon groups
 const DASH_W   = 80;
@@ -30,24 +27,26 @@ export class HUD {
   private readonly cloudIcons:    Phaser.GameObjects.Image[] = [];
   private readonly wallJumpIcons: Phaser.GameObjects.Image[] = [];
   private          dashLeft:      number = 0;
+  private readonly hudY:          number;
 
   constructor(scene: Phaser.Scene, player: Player, placeableManager?: PlaceableManager) {
+    this.hudY = scene.scale.height - 44;
     this.player = player;
 
     // Build positions right-to-left so the layout adapts to which abilities are unlocked
-    let cursorX = GAME_WIDTH - MARGIN_R; // start from right edge
+    let cursorX = scene.scale.width - MARGIN_R; // start from right edge
 
     // ── Dash bar (rightmost) ────────────────────────────────────────────────
     if (player.hasDash) {
       const dashLeft = cursorX - DASH_W;
       const dashCX   = dashLeft + DASH_W / 2;
 
-      scene.add.rectangle(dashCX, HUD_Y, DASH_W, DASH_H, 0x000000, 0.55)
+      scene.add.rectangle(dashCX, this.hudY, DASH_W, DASH_H, 0x000000, 0.55)
         .setScrollFactor(0).setDepth(19);
 
       this.dashBar = scene.add.graphics().setScrollFactor(0).setDepth(20);
 
-      this.dashLabel = scene.add.text(dashCX, HUD_Y, 'DASH', {
+      this.dashLabel = scene.add.text(dashCX, this.hudY, 'DASH', {
         fontSize: '14px',
         color: '#ffffff',
         stroke: '#000000',
@@ -65,8 +64,8 @@ export class HUD {
     // ── Wall jump icon (1 charge, right of clouds) ──────────────────────────
     if (player.hasWallJump) {
       const iconCX = cursorX - ICON_BG_R;
-      addRadialBg(scene, iconCX, HUD_Y);
-      const icon = scene.add.image(iconCX, HUD_Y, 'wall-jump')
+      addRadialBg(scene, iconCX, this.hudY);
+      const icon = scene.add.image(iconCX, this.hudY, 'wall-jump')
         .setScrollFactor(0).setDepth(20);
       this.wallJumpIcons.push(icon);
       cursorX = iconCX - ICON_BG_R - ICON_GAP;
@@ -77,8 +76,8 @@ export class HUD {
     const cloudSpacing = ICON_BG_R * 2 + 6;
     for (let i = player.maxAirJumpsCount - 1; i >= 0; i--) {
       const cx = cursorX - ICON_BG_R;
-      addRadialBg(scene, cx, HUD_Y);
-      const icon = scene.add.image(cx, HUD_Y, 'cloud')
+      addRadialBg(scene, cx, this.hudY);
+      const icon = scene.add.image(cx, this.hudY, 'cloud')
         .setScrollFactor(0).setDepth(20).setScale(1.1);
       this.cloudIcons[i] = icon;
       cursorX -= cloudSpacing;
@@ -87,7 +86,7 @@ export class HUD {
     // ── Hotbar bag icon (bottom-left) ──────────────────────────────────────────
     if (placeableManager) {
       const bagX = 36;
-      const bagY = GAME_HEIGHT - 44;
+      const bagY = this.hudY;
 
       addRadialBg(scene, bagX, bagY);
 
@@ -114,7 +113,7 @@ export class HUD {
       this.dashBar.clear();
       this.dashBar.fillStyle(ready ? 0x44aaff : 0x225588, 1);
       if (fillW > 0) {
-        this.dashBar.fillRect(dashLeft, HUD_Y - DASH_H / 2, fillW, DASH_H);
+        this.dashBar.fillRect(dashLeft, this.hudY - DASH_H / 2, fillW, DASH_H);
       }
       this.dashLabel.setColor(ready ? '#ffffff' : '#aaccee');
     }
