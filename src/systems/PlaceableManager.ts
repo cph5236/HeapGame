@@ -40,11 +40,15 @@ export class PlaceableManager {
 
   private state:          PlacementState = PlacementState.Closed;
   private placingItemId:  string = '';
-  private ghost!:         Phaser.GameObjects.Graphics;
+  private ghostRects:     Record<string, Phaser.GameObjects.Rectangle> = {};
   private ghostValid:     boolean = false;
   private ghostWorldX:    number = 0;
   private ghostWorldY:    number = 0;
   private ghostLocked:    boolean = false;
+  // findSurfaceY scans walkableGroup.getChildren() every call. Cache by
+  // pointer position so a stationary cursor doesn't re-scan every frame.
+  private _lastPtrX:      number = Number.NaN;
+  private _lastPtrY:      number = Number.NaN;
 
   private hotbarBg!:      Phaser.GameObjects.Rectangle;
   private hotbarItems:    Phaser.GameObjects.Rectangle[] = [];
@@ -118,7 +122,13 @@ export class PlaceableManager {
     this.confirmTxt?.setText('PLACE  [↵]');
     this.setHotbarVisible(false);
     this.setPlacementUIVisible(false);
-    this.ghost.clear();
+    this.hideGhost();
+    this._lastPtrX = Number.NaN;
+    this._lastPtrY = Number.NaN;
+  }
+
+  private hideGhost(): void {
+    for (const key in this.ghostRects) this.ghostRects[key].setVisible(false);
   }
 
   // ── UI creation ──────────────────────────────────────────────────────────────
@@ -128,8 +138,18 @@ export class PlaceableManager {
     const GAME_WIDTH  = scene.scale.width;
     const GAME_HEIGHT = scene.scale.height;
 
-    // Ghost graphics (world-space, scrolls with camera)
-    this.ghost = scene.add.graphics().setDepth(30);
+    // Ghost rectangles — one pre-built shape per item type; only the active
+    // one is shown. Property updates (position, fillColor, strokeColor) avoid
+    // any per-frame Graphics clear/redraw.
+    this.ghostRects.ladder = scene.add
+      .rectangle(0, 0, LADDER_WIDTH, LADDER_HEIGHT, 0x44ff88, 0.5)
+      .setOrigin(0.5, 1).setDepth(30).setVisible(false);
+    this.ghostRects.ibeam = scene.add
+      .rectangle(0, 0, IBEAM_WIDTH, IBEAM_HEIGHT, 0x44ff88, 0.5)
+      .setOrigin(0.5, 1).setDepth(30).setVisible(false);
+    this.ghostRects.checkpoint = scene.add
+      .rectangle(0, 0, 32, 32, 0x44ff88, 0.5)
+      .setOrigin(0.5, 1).setDepth(30).setVisible(false);
 
     // Hotbar background panel (screen-space)
     this.hotbarBg = scene.add.rectangle(
@@ -228,6 +248,8 @@ export class PlaceableManager {
       return;
     }
     this.ghostLocked = false;
+    this._lastPtrX = Number.NaN;
+    this._lastPtrY = Number.NaN;
     this.setHotbarVisible(false);
     this.placingItemId = itemId;
     this.state = PlacementState.Placing;
@@ -279,6 +301,11 @@ export class PlaceableManager {
 
     const cam     = this.scene.cameras.main;
     const ptr     = this.scene.input.activePointer;
+    // Skip the surface scan + redraw when the pointer hasn't moved. This
+    // matters because findSurfaceY iterates the entire walkableGroup.
+    if (ptr.x === this._lastPtrX && ptr.y === this._lastPtrY) return;
+    this._lastPtrX = ptr.x;
+    this._lastPtrY = ptr.y;
     const worldX  = ptr.x + cam.scrollX;
     const worldY  = ptr.y + cam.scrollY;
 
@@ -345,42 +372,17 @@ export class PlaceableManager {
   }
 
   private drawGhost(): void {
-    const g = this.ghost;
-    g.clear();
     const color = this.ghostValid ? 0x44ff88 : 0xff4444;
-    const alpha = 0.5;
-    g.lineStyle(2, color, 0.8);
-    g.fillStyle(color, alpha);
-
-    switch (this.placingItemId) {
-      case 'ladder':
-        g.fillRect(
-          this.ghostWorldX - LADDER_WIDTH / 2,
-          this.ghostWorldY - LADDER_HEIGHT,
-          LADDER_WIDTH, LADDER_HEIGHT,
-        );
-        g.strokeRect(
-          this.ghostWorldX - LADDER_WIDTH / 2,
-          this.ghostWorldY - LADDER_HEIGHT,
-          LADDER_WIDTH, LADDER_HEIGHT,
-        );
-        break;
-      case 'ibeam':
-        g.fillRect(
-          this.ghostWorldX - IBEAM_WIDTH / 2,
-          this.ghostWorldY - IBEAM_HEIGHT,
-          IBEAM_WIDTH, IBEAM_HEIGHT,
-        );
-        g.strokeRect(
-          this.ghostWorldX - IBEAM_WIDTH / 2,
-          this.ghostWorldY - IBEAM_HEIGHT,
-          IBEAM_WIDTH, IBEAM_HEIGHT,
-        );
-        break;
-      case 'checkpoint':
-        g.fillRect(this.ghostWorldX - 16, this.ghostWorldY - 32, 32, 32);
-        g.strokeRect(this.ghostWorldX - 16, this.ghostWorldY - 32, 32, 32);
-        break;
+    for (const key in this.ghostRects) {
+      const r = this.ghostRects[key];
+      if (key === this.placingItemId) {
+        r.setVisible(true);
+        r.setFillStyle(color, 0.5);
+        r.setStrokeStyle(2, color, 0.8);
+        r.setPosition(this.ghostWorldX, this.ghostWorldY);
+      } else if (r.visible) {
+        r.setVisible(false);
+      }
     }
   }
 
@@ -503,6 +505,6 @@ export class PlaceableManager {
     this.confirmTxt.setVisible(visible);
     this.cancelBtn.setVisible(visible);
     this.cancelTxt.setVisible(visible);
-    if (!visible) this.ghost.clear();
+    if (!visible) this.hideGhost();
   }
 }

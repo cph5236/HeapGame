@@ -6,27 +6,39 @@ const ICON_GAP = 14;   // gap between icon groups
 const DASH_W   = 80;
 const DASH_H   = 28;
 const ICON_BG_R = 30;  // radius of radial-gradient icon backgrounds
+const RADIAL_TEX_KEY = 'hud-radial-bg';
+const RADIAL_TEX_SIZE = ICON_BG_R * 2 + 2; // a bit of padding for the +1 outer radius
 
-/** Draw a dark-grey → transparent radial gradient circle for HUD icon backgrounds. */
-function addRadialBg(scene: Phaser.Scene, cx: number, cy: number): void {
-  const g = scene.add.graphics().setScrollFactor(0).setDepth(19);
+/**
+ * Bakes the radial-gradient circle once per game into a cached texture so HUD
+ * icons can use a single textured quad instead of 14 live fillCircle ops/frame.
+ */
+function ensureRadialTexture(scene: Phaser.Scene): void {
+  if (scene.textures.exists(RADIAL_TEX_KEY)) return;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  const c = RADIAL_TEX_SIZE / 2;
   const steps = 14;
   for (let i = 0; i < steps; i++) {
-    // i=0: outermost, most transparent; i=steps-1: innermost, most opaque
     const t      = i / (steps - 1);
     const radius = ICON_BG_R * (1 - t * 0.88) + 1;
     g.fillStyle(0x111111, t * 0.65);
-    g.fillCircle(cx, cy, radius);
+    g.fillCircle(c, c, radius);
   }
+  g.generateTexture(RADIAL_TEX_KEY, RADIAL_TEX_SIZE, RADIAL_TEX_SIZE);
+  g.destroy();
+}
+
+function addRadialBg(scene: Phaser.Scene, cx: number, cy: number): void {
+  ensureRadialTexture(scene);
+  scene.add.image(cx, cy, RADIAL_TEX_KEY).setScrollFactor(0).setDepth(19);
 }
 
 export class HUD {
   private readonly player: Player;
-  private readonly dashBar:   Phaser.GameObjects.Graphics;
+  private readonly dashFill:  Phaser.GameObjects.Rectangle;
   private readonly dashLabel: Phaser.GameObjects.Text;
   private readonly cloudIcons:    Phaser.GameObjects.Image[] = [];
   private readonly wallJumpIcons: Phaser.GameObjects.Image[] = [];
-  private          dashLeft:      number = 0;
   private readonly hudY:          number;
 
   constructor(scene: Phaser.Scene, player: Player, placeableManager?: PlaceableManager) {
@@ -44,7 +56,12 @@ export class HUD {
       scene.add.rectangle(dashCX, this.hudY, DASH_W, DASH_H, 0x000000, 0.55)
         .setScrollFactor(0).setDepth(19);
 
-      this.dashBar = scene.add.graphics().setScrollFactor(0).setDepth(20);
+      // Left-anchored fill: scaleX maps directly to fillW (no geometry rebuild).
+      this.dashFill = scene.add.rectangle(dashLeft, this.hudY, DASH_W, DASH_H, 0x44aaff, 1)
+        .setOrigin(0, 0.5)
+        .setScrollFactor(0)
+        .setDepth(20)
+        .setVisible(false);
 
       this.dashLabel = scene.add.text(dashCX, this.hudY, 'DASH', {
         fontSize: '14px',
@@ -54,10 +71,9 @@ export class HUD {
         fontStyle: 'bold',
       }).setOrigin(0.5).setScrollFactor(0).setDepth(21);
 
-      this.dashLeft = dashLeft;
       cursorX = dashLeft - ICON_GAP;
     } else {
-      this.dashBar   = scene.add.graphics();
+      this.dashFill  = scene.add.rectangle(0, 0, 1, 1, 0).setVisible(false);
       this.dashLabel = scene.add.text(0, 0, '').setVisible(false);
     }
 
@@ -106,14 +122,15 @@ export class HUD {
     // Dash fill
     if (this.player.hasDash) {
       const fraction = this.player.dashCooldownFraction;
-      const dashLeft = this.dashLeft;
       const fillW    = Math.round((1 - fraction) * DASH_W);
       const ready    = fraction === 0;
 
-      this.dashBar.clear();
-      this.dashBar.fillStyle(ready ? 0x44aaff : 0x225588, 1);
       if (fillW > 0) {
-        this.dashBar.fillRect(dashLeft, this.hudY - DASH_H / 2, fillW, DASH_H);
+        this.dashFill.setVisible(true);
+        this.dashFill.scaleX = fillW / DASH_W;
+        this.dashFill.fillColor = ready ? 0x44aaff : 0x225588;
+      } else {
+        this.dashFill.setVisible(false);
       }
       this.dashLabel.setColor(ready ? '#ffffff' : '#aaccee');
     }
