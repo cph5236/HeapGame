@@ -6,10 +6,17 @@ import {
   CLOUD_PARALLAX_FACTOR,
   CLOUD_START_WORLD_Y,
 } from '../constants';
-import { drawCloudShape } from './backgroundEntities';
+import {
+  ensureCloudTexture,
+  CLOUD_TEXTURE_KEY,
+  CLOUD_TEX_W,
+  CLOUD_TEX_H,
+  CLOUD_TEX_OFFSET_X,
+  CLOUD_TEX_OFFSET_Y,
+} from './backgroundEntities';
 
 interface Cloud {
-  gfx: Phaser.GameObjects.Graphics;
+  sprite: Phaser.GameObjects.Image;
   virtualX: number; // screen-space X
   virtualY: number; // screen-space Y
   scale: number;
@@ -43,43 +50,56 @@ export class ParallaxBackground {
   // ── Ground ──────────────────────────────────────────────────────────────────
 
   private createGroundLayer(): void {
-    const gfx    = this.scene.add.graphics().setDepth(GROUND_DEPTH);
+    // Static art — bake once into a texture and draw as a single Image so the
+    // 5 fillRect/strokeRect ops don't run through GraphicsWebGLRenderer per frame.
+    const GROUND_TEX_KEY = 'ground-layer';
+    const STRIP_HEIGHT   = 14 + 36 + 70 + 60; // 180
+
+    if (!this.scene.textures.exists(GROUND_TEX_KEY)) {
+      const g = this.scene.make.graphics({ x: 0, y: 0 }, false);
+      // Texture local-Y 0 corresponds to (floorY - 14): top of the grass strip.
+      const localFloorY = 14;
+
+      g.fillStyle(0x4a7c3f).fillRect(0, 0, WORLD_WIDTH, 14);
+      g.fillStyle(0x7a4f2d).fillRect(0, localFloorY, WORLD_WIDTH, 36);
+      g.fillStyle(0x5a3820).fillRect(0, localFloorY + 36, WORLD_WIDTH, 70);
+      g.fillStyle(0x3a2510).fillRect(0, localFloorY + 106, WORLD_WIDTH, 60);
+      g.lineStyle(2, 0x2a1a08, 0.6).strokeRect(0, localFloorY, WORLD_WIDTH, 1);
+
+      g.generateTexture(GROUND_TEX_KEY, WORLD_WIDTH, STRIP_HEIGHT);
+      g.destroy();
+    }
+
     const floorY = this.worldHeight;
-
-    // Grass strip — sits above the world floor, visible beside the heap base
-    gfx.fillStyle(0x4a7c3f).fillRect(0, floorY - 14, WORLD_WIDTH, 14);
-
-    // Topsoil
-    gfx.fillStyle(0x7a4f2d).fillRect(0, floorY, WORLD_WIDTH, 36);
-
-    // Sub-soil
-    gfx.fillStyle(0x5a3820).fillRect(0, floorY + 36, WORLD_WIDTH, 70);
-
-    // Deep ground
-    gfx.fillStyle(0x3a2510).fillRect(0, floorY + 106, WORLD_WIDTH, 60);
-
-    // Thin definition line at the grass/topsoil boundary
-    gfx.lineStyle(2, 0x2a1a08, 0.6).strokeRect(0, floorY, WORLD_WIDTH, 1);
+    this.scene.add
+      .image(0, floorY - 14, GROUND_TEX_KEY)
+      .setOrigin(0, 0)
+      .setDepth(GROUND_DEPTH);
   }
 
   // ── Clouds ──────────────────────────────────────────────────────────────────
 
   private createCloudPool(): void {
+    ensureCloudTexture(this.scene);
+
+    // Origin chosen so the sprite's anchor matches the original Graphics local
+    // (0, 0) — i.e. setPosition(virtualX, virtualY) renders identically to before.
+    const originX = CLOUD_TEX_OFFSET_X / CLOUD_TEX_W;
+    const originY = CLOUD_TEX_OFFSET_Y / CLOUD_TEX_H;
+
     for (let i = 0; i < CLOUD_POOL_SIZE; i++) {
-      const gfx   = this.scene.add.graphics().setDepth(CLOUD_DEPTH).setScrollFactor(0);
       const scale = Phaser.Math.FloatBetween(0.6, 1.4);
+      const virtualX = Phaser.Math.Between(-80, this.scene.scale.width + 80);
+      const virtualY = Phaser.Math.Between(-this.scene.scale.height, this.scene.scale.height);
 
-      const cloud: Cloud = {
-        gfx,
-        virtualX: Phaser.Math.Between(-80, this.scene.scale.width + 80),
-        virtualY: Phaser.Math.Between(-this.scene.scale.height, this.scene.scale.height),
-        scale,
-      };
+      const sprite = this.scene.add
+        .image(virtualX, virtualY, CLOUD_TEXTURE_KEY)
+        .setOrigin(originX, originY)
+        .setDepth(CLOUD_DEPTH)
+        .setScrollFactor(0)
+        .setScale(scale);
 
-      drawCloudShape(gfx);
-      gfx.setScale(scale);
-      cloud.gfx.setPosition(cloud.virtualX, cloud.virtualY);
-      this.clouds.push(cloud);
+      this.clouds.push({ sprite, virtualX, virtualY, scale });
     }
   }
 
@@ -90,10 +110,10 @@ export class ParallaxBackground {
 
     for (const cloud of this.clouds) {
       if (!inCloudZone) {
-        cloud.gfx.setVisible(false);
+        cloud.sprite.setVisible(false);
         continue;
       }
-      cloud.gfx.setVisible(true);
+      cloud.sprite.setVisible(true);
 
       // When camera moves up (dy < 0, climbing), -dy is positive,
       // so virtualY increases → cloud drifts downward on screen at (1-FACTOR) speed.
@@ -111,7 +131,7 @@ export class ParallaxBackground {
         cloud.virtualY = this.scene.scale.height + Phaser.Math.Between(20, 200);
       }
 
-      cloud.gfx.setPosition(cloud.virtualX, cloud.virtualY);
+      cloud.sprite.setPosition(cloud.virtualX, cloud.virtualY);
     }
   }
 }

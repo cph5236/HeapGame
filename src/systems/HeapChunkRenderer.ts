@@ -12,9 +12,8 @@ const TEX_H = 1024;
 const HEAP_VISUAL_DEPTH = 3;
 
 interface ChunkObjects {
-  renderTexture: Phaser.GameObjects.RenderTexture;
-  maskGraphics: Phaser.GameObjects.Graphics;
-  borderGraphics: Phaser.GameObjects.Graphics;
+  image:      Phaser.GameObjects.Image;
+  textureKey: string;
 }
 
 export class HeapChunkRenderer {
@@ -27,6 +26,9 @@ export class HeapChunkRenderer {
 
   /** Live Phaser objects per rendered chunk, keyed by bandTop. */
   private readonly chunkObjects: Map<number, ChunkObjects> = new Map();
+
+  /** Monotonic counter for unique texture keys (avoids collision when a chunk re-renders). */
+  private static _textureSeq = 0;
 
   constructor(scene: Phaser.Scene, xOffset = 0, colWidth = WORLD_WIDTH) {
     this.scene    = scene;
@@ -81,11 +83,16 @@ export class HeapChunkRenderer {
     const cullThreshold = camBottom + ENEMY_CULL_DISTANCE;
     for (const [bandTop, objs] of this.chunkObjects) {
       if (bandTop > cullThreshold) {
-        objs.maskGraphics.destroy();
-        objs.renderTexture.destroy();
-        objs.borderGraphics.destroy();
+        this.disposeChunk(objs);
         this.chunkObjects.delete(bandTop);
       }
+    }
+  }
+
+  private disposeChunk(objs: ChunkObjects): void {
+    objs.image.destroy();
+    if (this.scene.textures.exists(objs.textureKey)) {
+      this.scene.textures.remove(objs.textureKey);
     }
   }
 
@@ -114,40 +121,59 @@ export class HeapChunkRenderer {
   private renderPolygon(bandTop: number, polygon: Vertex[]): void {
     if (polygon.length < 3) return;
 
-    // Destroy previous visual objects for this band
+    // Destroy previous visual objects for this band (e.g. when an entry is added
+    // that mutates an existing chunk's polygon).
     const existing = this.chunkObjects.get(bandTop);
     if (existing) {
-      existing.maskGraphics.destroy();
-      existing.renderTexture.destroy();
-      existing.borderGraphics.destroy();
+      this.disposeChunk(existing);
     }
 
-    // --- Mask Graphics ---
-    const maskGfx = this.scene.add.graphics();
-    maskGfx.setDepth(HEAP_VISUAL_DEPTH);
-    maskGfx.fillStyle(0xffffff, 1);
-    maskGfx.fillPoints(polygon, true);
+    // Bake fill + border into a single canvas via canvas2d's native path
+    // rasterizer (no JS earcut, no per-frame BitmapMask). Result is a single
+    // textured quad rendered through the standard ImageWebGLRenderer path.
+    const W = this.colWidth;
+    const H = CHUNK_BAND_HEIGHT;
+    const canvas = document.createElement('canvas');
+    canvas.width  = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-    // --- RenderTexture ---
-    const rt = this.scene.add.renderTexture(this.xOffset, bandTop, this.colWidth, CHUNK_BAND_HEIGHT);
-    rt.setOrigin(0, 0);
-    rt.setDepth(HEAP_VISUAL_DEPTH);
+    // Build the polygon path once — used for both clip() and stroke().
+    // Polygon is translated from world space into local (canvas) space.
+    ctx.beginPath();
+    ctx.moveTo(polygon[0].x - this.xOffset, polygon[0].y - bandTop);
+    for (let i = 1; i < polygon.length; i++) {
+      ctx.lineTo(polygon[i].x - this.xOffset, polygon[i].y - bandTop);
+    }
+    ctx.closePath();
 
+    // Clip to polygon, draw the heap-fill tiles, restore.
+    ctx.save();
+    ctx.clip();
     const tileOffsetY = -(bandTop % TEX_H);
-    for (let ty = tileOffsetY; ty < CHUNK_BAND_HEIGHT; ty += TEX_H) {
+    for (let ty = tileOffsetY; ty < H; ty += TEX_H) {
       const worldTile = Math.floor((bandTop + ty) / TEX_H);
-      const tileKey = `${HEAP_FILL_TEXTURE}-${worldTile % HEAP_TILE_COUNT}`;
-      rt.draw(tileKey, 0, ty);
+      const tileKey   = `${HEAP_FILL_TEXTURE}-${worldTile % HEAP_TILE_COUNT}`;
+      const tileSrc   = this.scene.textures.get(tileKey).getSourceImage() as CanvasImageSource;
+      ctx.drawImage(tileSrc, 0, ty);
     }
+    ctx.restore();
 
-    rt.setMask(maskGfx.createGeometryMask());
+    // Stroke the border on top (after restore so the line can sit on the
+    // polygon edge — same visual as the prior borderGfx layer).
+    ctx.lineWidth   = 8;
+    ctx.strokeStyle = '#6b3a1f';
+    ctx.stroke();
 
-    // --- Border stroke ---
-    const borderGfx = this.scene.add.graphics();
-    borderGfx.setDepth(HEAP_VISUAL_DEPTH + 1);
-    borderGfx.lineStyle(8, 0x6b3a1f, 1);
-    borderGfx.strokePoints(polygon, true);
+    const textureKey = `chunk-${++HeapChunkRenderer._textureSeq}`;
+    this.scene.textures.addCanvas(textureKey, canvas);
 
-    this.chunkObjects.set(bandTop, { renderTexture: rt, maskGraphics: maskGfx, borderGraphics: borderGfx });
+    const image = this.scene.add
+      .image(this.xOffset, bandTop, textureKey)
+      .setOrigin(0, 0)
+      .setDepth(HEAP_VISUAL_DEPTH);
+
+    this.chunkObjects.set(bandTop, { image, textureKey });
   }
 }

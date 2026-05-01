@@ -21,6 +21,24 @@ const SURFACE_ANGLE_THRESHOLD = 30; // degrees — below this is a surface, abov
 const RAT_IDLE_MS = 1000;
 const MIN_ENEMY_SPACING_PX = 100; // min horizontal gap between enemies spawned in the same band
 
+type RatStateName = 'walk-right' | 'idle-right' | 'walk-left' | 'idle-left';
+
+/**
+ * Per-enemy runtime state, kept in a Map keyed on the sprite. Avoids the
+ * DataManager overhead of reading 7+ keys via getData() every frame per enemy.
+ */
+interface EnemyRuntime {
+  kind: 'percher' | 'ghost';
+  speed: number;
+  // Percher (rat) only:
+  minX?: number;
+  maxX?: number;
+  minY?: number;
+  maxY?: number;
+  ratState?: RatStateName;
+  idleUntil?: number;
+}
+
 export class EnemyManager {
   /** Arcade group — use this for overlap registration in GameScene */
   readonly group: Phaser.Physics.Arcade.Group;
@@ -32,6 +50,7 @@ export class EnemyManager {
   private readonly _xMax: number;
   private readonly _worldHeight: number;
   private _enemyParams: HeapEnemyParams = {};
+  private readonly runtime = new Map<Phaser.Physics.Arcade.Sprite, EnemyRuntime>();
 
   constructor(
     scene: Phaser.Scene,
@@ -127,23 +146,27 @@ export class EnemyManager {
   /** Call every frame with current camera bounds. */
   update(_camTop: number, camBottom: number): void {
     const now = this.scene.time.now;
-    const children = this.group.getChildren();
+    // group.getChildren() returns the internal entries array directly (no copy).
+    const children = this.group.getChildren() as Phaser.Physics.Arcade.Sprite[];
     const cullY = camBottom + ENEMY_CULL_DISTANCE;
 
     for (let i = children.length - 1; i >= 0; i--) {
-      const s = children[i] as Phaser.Physics.Arcade.Sprite;
-      if (s.y > cullY) { s.destroy(); continue; }
+      const s = children[i];
+      if (s.y > cullY) {
+        this.runtime.delete(s);
+        s.destroy();
+        continue;
+      }
 
-      const kind: string = s.getData('kind');
+      const rt = this.runtime.get(s);
+      if (!rt) continue;
 
-      if (kind === 'percher') {
-        const body  = s.body as Phaser.Physics.Arcade.Body;
-        const speed: number = s.getData('speed');
-        const minX: number  = s.getData('minX') ?? s.x;
-        const maxX: number  = s.getData('maxX') ?? s.x;
-        const minY: number  = s.getData('minY') ?? s.y;
-        const maxY: number  = s.getData('maxY') ?? s.y;
-        const state: string = s.getData('ratState') ?? 'walk-right';
+      if (rt.kind === 'percher') {
+        const body = s.body as Phaser.Physics.Arcade.Body;
+        const minX = rt.minX ?? s.x;
+        const maxX = rt.maxX ?? s.x;
+        const minY = rt.minY ?? s.y;
+        const maxY = rt.maxY ?? s.y;
 
         // Follow the slope: interpolate Y based on current body X (post-step).
         // body.center.x reflects physics movement this frame; s.x is one frame stale.
@@ -153,46 +176,43 @@ export class EnemyManager {
           body.position.y = targetY - body.halfHeight;
         }
 
-        switch (state) {
+        switch (rt.ratState) {
           case 'walk-right':
             if (s.x >= maxX) {
               body.setVelocityX(0);
-              s.setData('ratState', 'idle-right');
-              s.setData('idleUntil', now + RAT_IDLE_MS);
+              rt.ratState = 'idle-right';
+              rt.idleUntil = now + RAT_IDLE_MS;
               s.play('rat-idle');
             }
             break;
           case 'idle-right':
-            if (now >= (s.getData('idleUntil') as number)) {
-              body.setVelocityX(-speed);
-              s.setData('ratState', 'walk-left');
+            if (now >= (rt.idleUntil ?? 0)) {
+              body.setVelocityX(-rt.speed);
+              rt.ratState = 'walk-left';
               s.play('rat-walk-left');
             }
             break;
           case 'walk-left':
             if (s.x <= minX) {
               body.setVelocityX(0);
-              s.setData('ratState', 'idle-left');
-              s.setData('idleUntil', now + RAT_IDLE_MS);
+              rt.ratState = 'idle-left';
+              rt.idleUntil = now + RAT_IDLE_MS;
               s.play('rat-idle');
             }
             break;
           case 'idle-left':
-            if (now >= (s.getData('idleUntil') as number)) {
-              body.setVelocityX(speed);
-              s.setData('ratState', 'walk-right');
+            if (now >= (rt.idleUntil ?? 0)) {
+              body.setVelocityX(rt.speed);
+              rt.ratState = 'walk-right';
               s.play('rat-walk-right');
             }
             break;
         }
-      }
-
-      if (kind === 'ghost') {
+      } else if (rt.kind === 'ghost') {
         const body = s.body as Phaser.Physics.Arcade.Body;
-        const speed: number = s.getData('speed');
 
         // Manually flip at column edges — avoids the oscillation that setBounce causes
-        const newVx = computeGhostFlip(s.x, body.velocity.x, speed, this._xMin, this._xMax);
+        const newVx = computeGhostFlip(s.x, body.velocity.x, rt.speed, this._xMin, this._xMax);
         if (newVx !== body.velocity.x) body.setVelocityX(newVx);
 
         const wantAnim = body.velocity.x < 0 ? 'vulture-fly-left' : 'vulture-fly-right';
@@ -235,15 +255,25 @@ export class EnemyManager {
     const spawnY = y - def.height / 2;
     const enemy = new Enemy(this.scene, this.group, x, spawnY, def);
 
+    const rt: EnemyRuntime = {
+      kind: def.kind as 'percher' | 'ghost',
+      speed: def.speed,
+    };
     if (def.kind === 'percher' && minX !== undefined && maxX !== undefined) {
-      enemy.sprite.setData('minX', minX);
-      enemy.sprite.setData('maxX', maxX);
       const halfH = def.height / 2;
-      enemy.sprite.setData('minY', (minY ?? spawnY + halfH) - halfH);
-      enemy.sprite.setData('maxY', (maxY ?? spawnY + halfH) - halfH);
-      enemy.sprite.setData('ratState', 'walk-right');
-      enemy.sprite.setData('idleUntil', 0);
+      rt.minX = minX;
+      rt.maxX = maxX;
+      rt.minY = (minY ?? spawnY + halfH) - halfH;
+      rt.maxY = (maxY ?? spawnY + halfH) - halfH;
+      rt.ratState = 'walk-right';
+      rt.idleUntil = 0;
     }
+    this.runtime.set(enemy.sprite, rt);
+    // External destroys (stomp, scene shutdown) bypass our cull loop;
+    // keep the runtime Map from leaking by listening for the destroy event.
+    enemy.sprite.once(Phaser.GameObjects.Events.DESTROY, () => {
+      this.runtime.delete(enemy.sprite);
+    });
     return true;
   }
 }
