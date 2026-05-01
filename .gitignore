@@ -11,3 +11,4 @@ todo/
 .worktrees/
 .claude/env.md
 .worktrees/
+.temp/
