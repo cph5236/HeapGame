@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { SubmitScoreResponse, LeaderboardContext } from '../../../shared/scoreTypes';
+import type { SubmitScoreResponse, LeaderboardContext, PlayerScoresResponse, PaginatedLeaderboardResponse } from '../../../shared/scoreTypes';
 
 beforeEach(() => {
   vi.stubGlobal('localStorage', {
@@ -99,6 +99,95 @@ describe('ScoreClient.getContext', () => {
   it('returns null on non-200 response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: false, status: 503 }));
     const result = await ScoreClient.getContext({ heapId: 'heap-1', playerId: 'p1' });
+    expect(result).toBeNull();
+  });
+});
+
+// ── getPlayerScores ───────────────────────────────────────────────────────────
+
+describe('ScoreClient.getPlayerScores', () => {
+  const MOCK_RESPONSE: PlayerScoresResponse = {
+    entries: [
+      { heapId: 'heap-a', rank: 2, score: 5000, name: 'Me' },
+      { heapId: 'heap-b', rank: 1, score: 7000, name: 'Me' },
+    ],
+  };
+
+  it('returns a Map keyed by heapId on success', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
+      ok:   true,
+      json: async () => MOCK_RESPONSE,
+    }));
+    const result = await ScoreClient.getPlayerScores('me');
+    expect(result).not.toBeNull();
+    expect(result!.size).toBe(2);
+    expect(result!.get('heap-a')?.rank).toBe(2);
+    expect(result!.get('heap-b')?.score).toBe(7000);
+  });
+
+  it('returns null on network failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('offline')));
+    const result = await ScoreClient.getPlayerScores('me');
+    expect(result).toBeNull();
+  });
+
+  it('returns null on non-200 response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: false, status: 500 }));
+    const result = await ScoreClient.getPlayerScores('me');
+    expect(result).toBeNull();
+  });
+
+  it('URL-encodes the playerId', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok:   true,
+      json: async () => ({ entries: [] } as PlayerScoresResponse),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await ScoreClient.getPlayerScores('has space/slash');
+    const calledUrl = (fetchMock.mock.calls[0] as [string])[0];
+    expect(calledUrl).toContain('/scores/player/has%20space%2Fslash');
+  });
+});
+
+// ── getLeaderboardPage ────────────────────────────────────────────────────────
+
+describe('ScoreClient.getLeaderboardPage', () => {
+  const PAGE: PaginatedLeaderboardResponse = {
+    entries: [{ rank: 1, playerId: 'p1', name: 'Alpha', score: 9000 }],
+    total:   1,
+    page:    0,
+  };
+
+  it('returns the page payload on success', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
+      ok:   true,
+      json: async () => PAGE,
+    }));
+    const result = await ScoreClient.getLeaderboardPage('heap-1', 0, 50);
+    expect(result).toEqual(PAGE);
+  });
+
+  it('passes page and limit query params', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok:   true,
+      json: async () => PAGE,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await ScoreClient.getLeaderboardPage('heap-1', 3, 25);
+    const url = (fetchMock.mock.calls[0] as [string])[0];
+    expect(url).toContain('page=3');
+    expect(url).toContain('limit=25');
+  });
+
+  it('returns null on network failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('offline')));
+    const result = await ScoreClient.getLeaderboardPage('heap-1', 0, 50);
+    expect(result).toBeNull();
+  });
+
+  it('returns null on non-200 response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: false, status: 500 }));
+    const result = await ScoreClient.getLeaderboardPage('heap-1', 0, 50);
     expect(result).toBeNull();
   });
 });

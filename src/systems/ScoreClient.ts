@@ -1,4 +1,4 @@
-import type { LeaderboardContext, SubmitScoreResponse } from '../../shared/scoreTypes';
+import type { LeaderboardContext, SubmitScoreResponse, PlayerScoreEntry, PlayerScoresResponse, PaginatedLeaderboardResponse } from '../../shared/scoreTypes';
 
 const SERVER_URL: string =
   (import.meta as unknown as { env: Record<string, string> }).env.VITE_HEAP_SERVER_URL ??
@@ -55,6 +55,40 @@ export class ScoreClient {
       );
       if (!res.ok) return null;
       return (await res.json()) as LeaderboardContext;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Fetch all of a player's high scores across heaps, ranked.
+   * Returns a Map keyed by heapId, or null on failure.
+   */
+  static async getPlayerScores(playerId: string)
+    : Promise<Map<string, PlayerScoreEntry> | null>
+  {
+    try {
+      const url = `${SERVER_URL}/scores/player/${encodeURIComponent(playerId)}`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const data = (await res.json()) as PlayerScoresResponse;
+      return new Map(data.entries.map(e => [e.heapId, e]));
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Fetch one page of the per-heap leaderboard. Returns null on failure.
+   */
+  static async getLeaderboardPage(heapId: string, page: number, limit: number)
+    : Promise<PaginatedLeaderboardResponse | null>
+  {
+    try {
+      const url = `${SERVER_URL}/scores/${encodeURIComponent(heapId)}?page=${page}&limit=${limit}`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      return (await res.json()) as PaginatedLeaderboardResponse;
     } catch {
       return null;
     }
