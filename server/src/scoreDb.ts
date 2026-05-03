@@ -137,9 +137,22 @@ export class D1ScoreDB implements ScoreDB {
     return result.results;
   }
 
-  async getPlayerScores(_playerId: string): Promise<Array<{
+  async getPlayerScores(playerId: string): Promise<Array<{
     heapId: string; name: string; score: number; rank: number;
   }>> {
-    throw new Error('not implemented');
+    const result = await this.d1
+      .prepare(`
+        WITH ranked AS (
+          SELECT heap_id, player_id, name, score,
+                 RANK() OVER (PARTITION BY heap_id ORDER BY score DESC) AS rank
+            FROM score
+        )
+        SELECT heap_id AS heapId, name, score, rank
+          FROM ranked
+         WHERE player_id = ?1
+      `)
+      .bind(playerId)
+      .all<{ heapId: string; name: string; score: number; rank: number }>();
+    return result.results;
   }
 }
