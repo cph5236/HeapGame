@@ -132,6 +132,7 @@ export class InfiniteGameScene extends Phaser.Scene {
           em.onBandLoaded(bandTopY, vertices);
         }
         this.bridgeSpawner?.onBandLoaded(bandTopY);
+        this.placeableManager?.retryPendingSpawns();
       };
 
       this.walkableGroups.push(walkable);
@@ -215,9 +216,9 @@ export class InfiniteGameScene extends Phaser.Scene {
 
     // ── Placeable manager ────────────────────────────────────────────────────────
     this.placeableManager = new PlaceableManager(
-      this, this.player, this.walkableGroups[0], this.wallGroups[0],
+      this, this.player, this.walkableGroups, this.wallGroups,
       INFINITE_HEAP_ID,
-      (_x, _savedY) => false,  // no surface restoration — no entries in LayerGenerator mode
+      true, // resnapOnLoad — heap polygons differ per run; snap saved items to nearest surface within SNAP_RADIUS
       true, // excludeCheckpoint
     );
 

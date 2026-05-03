@@ -32,11 +32,12 @@ interface SpawnedBody {
 export class PlaceableManager {
   private readonly scene:             Phaser.Scene;
   private readonly player:            Player;
-  private readonly walkableGroup:     Phaser.Physics.Arcade.StaticGroup;
-  private readonly wallGroup:         Phaser.Physics.Arcade.StaticGroup;
+  private readonly walkableGroups:    Phaser.Physics.Arcade.StaticGroup[];
+  private readonly wallGroups:        Phaser.Physics.Arcade.StaticGroup[];
   private readonly _heapId:           string;
-  private readonly _surfaceChecker?:  (x: number, savedY: number) => boolean;
+  private readonly _resnapOnLoad:     boolean;
   private readonly _excludeCheckpoint: boolean;
+  private pendingSaves: { save: PlacedItemSave; index: number }[] = [];
 
   private state:          PlacementState = PlacementState.Closed;
   private placingItemId:  string = '';
@@ -69,18 +70,18 @@ export class PlaceableManager {
   constructor(
     scene:              Phaser.Scene,
     player:             Player,
-    walkableGroup:      Phaser.Physics.Arcade.StaticGroup,
-    wallGroup:          Phaser.Physics.Arcade.StaticGroup,
+    walkableGroup:      Phaser.Physics.Arcade.StaticGroup | Phaser.Physics.Arcade.StaticGroup[],
+    wallGroup:          Phaser.Physics.Arcade.StaticGroup | Phaser.Physics.Arcade.StaticGroup[],
     heapId:             string,
-    surfaceChecker?:    (x: number, savedY: number) => boolean,
+    resnapOnLoad?:      boolean,
     excludeCheckpoint?: boolean,
   ) {
     this.scene               = scene;
     this.player              = player;
-    this.walkableGroup       = walkableGroup;
-    this.wallGroup           = wallGroup;
+    this.walkableGroups      = Array.isArray(walkableGroup) ? walkableGroup : [walkableGroup];
+    this.wallGroups          = Array.isArray(wallGroup) ? wallGroup : [wallGroup];
     this._heapId             = heapId;
-    this._surfaceChecker     = surfaceChecker;
+    this._resnapOnLoad       = resnapOnLoad ?? false;
     this._excludeCheckpoint  = excludeCheckpoint ?? false;
 
     this.checkpointGroup = scene.physics.add.staticGroup();
@@ -227,16 +228,85 @@ export class PlaceableManager {
 
   private spawnSavedItems(): void {
     const placed = getPlaced(this._heapId);
-    placed.forEach((save, index) => {
-      if (this._surfaceChecker && !this._surfaceChecker(save.x, save.y)) return;
-      switch (save.id) {
-        case 'ladder':     this.spawnLadderBody(save, index);     break;
-        case 'ibeam':      this.spawnIBeamBody(save, index);      break;
-        case 'checkpoint':
-          if (!this._excludeCheckpoint) this.spawnCheckpointBody(save, index);
-          break;
+    placed.forEach((save, index) => this.tryResolveAndSpawn(save, index));
+  }
+
+  /**
+   * Re-attempt to spawn any saved items that previously had no surface within
+   * SNAP_RADIUS. Call from the scene whenever new heap bands are generated
+   * (resnapOnLoad mode only).
+   */
+  retryPendingSpawns(): void {
+    if (!this._resnapOnLoad || this.pendingSaves.length === 0) return;
+    const still: { save: PlacedItemSave; index: number }[] = [];
+    for (const { save, index } of this.pendingSaves) {
+      if (!this.tryResolveAndSpawn(save, index, /*allowPending*/ false)) {
+        still.push({ save, index });
       }
-    });
+    }
+    this.pendingSaves = still;
+  }
+
+  /** Returns true if the item was spawned (or skipped by checkpoint exclusion). */
+  private tryResolveAndSpawn(
+    save: PlacedItemSave,
+    index: number,
+    allowPending = true,
+  ): boolean {
+    let resolved: PlacedItemSave = save;
+    if (this._resnapOnLoad) {
+      if (save.id === 'ibeam') {
+        const snap = this.findNearbyWallSnap(save.x, save.y);
+        if (snap === null) {
+          if (allowPending) this.pendingSaves.push({ save, index });
+          return false;
+        }
+        resolved = { ...save, x: snap.x, y: snap.y };
+      } else {
+        const snapY = this.findSurfaceY(save.x, save.y);
+        if (snapY === null) {
+          if (allowPending) this.pendingSaves.push({ save, index });
+          return false;
+        }
+        resolved = { ...save, y: snapY };
+      }
+    }
+    switch (resolved.id) {
+      case 'ladder':     this.spawnLadderBody(resolved, index);     break;
+      case 'ibeam':      this.spawnIBeamBody(resolved, index);      break;
+      case 'checkpoint':
+        if (!this._excludeCheckpoint) this.spawnCheckpointBody(resolved, index);
+        break;
+    }
+    return true;
+  }
+
+  /**
+   * I-Beam load re-snap: find a wall face whose closest point is within
+   * SNAP_RADIUS of (savedX, savedY). Returns the beam center coords
+   * (face-aligned X, Y clamped to wall vertical extent) or null.
+   */
+  private findNearbyWallSnap(savedX: number, savedY: number): { x: number; y: number } | null {
+    let best: { x: number; y: number } | null = null;
+    let bestDist = Infinity;
+    for (const group of this.wallGroups) {
+      for (const obj of group.getChildren()) {
+        const body = (obj as Phaser.GameObjects.Image).body as Phaser.Physics.Arcade.StaticBody;
+        const closestX = Math.max(body.left, Math.min(savedX, body.right));
+        const closestY = Math.max(body.top,  Math.min(savedY, body.bottom));
+        const dx = savedX - closestX;
+        const dy = savedY - closestY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > SNAP_RADIUS || dist >= bestDist) continue;
+        const distLeft  = Math.abs(savedX - body.left);
+        const distRight = Math.abs(savedX - body.right);
+        const faceX   = distLeft < distRight ? body.left : body.right;
+        const outward = distLeft < distRight ? -1 : 1;
+        bestDist = dist;
+        best = { x: faceX + outward * IBEAM_WIDTH / 2, y: closestY };
+      }
+    }
+    return best;
   }
 
   // ── Item selection & placement mode ─────────────────────────────────────────
@@ -333,16 +403,17 @@ export class PlaceableManager {
   }
 
   private findSurfaceY(worldX: number, worldY: number): number | null {
-    const bodies = this.walkableGroup.getChildren();
     let best: number | null = null;
     let bestDist = Infinity;
-    for (const obj of bodies) {
-      const body = (obj as Phaser.GameObjects.Image).body as Phaser.Physics.Arcade.StaticBody;
-      if (worldX >= body.left && worldX <= body.right) {
-        const dist = worldY - body.top;
-        if (dist >= -SNAP_RADIUS && dist < SNAP_RADIUS && dist < bestDist) {
-          best = body.top;
-          bestDist = dist;
+    for (const group of this.walkableGroups) {
+      for (const obj of group.getChildren()) {
+        const body = (obj as Phaser.GameObjects.Image).body as Phaser.Physics.Arcade.StaticBody;
+        if (worldX >= body.left && worldX <= body.right) {
+          const dist = worldY - body.top;
+          if (dist >= -SNAP_RADIUS && dist < SNAP_RADIUS && dist < bestDist) {
+            best = body.top;
+            bestDist = dist;
+          }
         }
       }
     }
@@ -351,21 +422,21 @@ export class PlaceableManager {
 
   /** Find the nearest wall face for I-Beam placement. Returns center X/Y for the beam. */
   private findWallSnap(worldX: number, worldY: number): { x: number; y: number } | null {
-    const bodies = this.wallGroup.getChildren();
     let best: { x: number; y: number } | null = null;
     let bestDist = Infinity;
-    for (const obj of bodies) {
-      const body = (obj as Phaser.GameObjects.Image).body as Phaser.Physics.Arcade.StaticBody;
-      if (worldY < body.top || worldY > body.bottom) continue;
-      const distLeft  = Math.abs(worldX - body.left);
-      const distRight = Math.abs(worldX - body.right);
-      const dist = Math.min(distLeft, distRight);
-      if (dist < SNAP_RADIUS && dist < bestDist) {
-        bestDist = dist;
-        // Position beam so its inner edge aligns with the wall face
-        const faceX   = distLeft < distRight ? body.left : body.right;
-        const outward  = distLeft < distRight ? -1 : 1;
-        best = { x: faceX + outward * IBEAM_WIDTH / 2, y: worldY };
+    for (const group of this.wallGroups) {
+      for (const obj of group.getChildren()) {
+        const body = (obj as Phaser.GameObjects.Image).body as Phaser.Physics.Arcade.StaticBody;
+        if (worldY < body.top || worldY > body.bottom) continue;
+        const distLeft  = Math.abs(worldX - body.left);
+        const distRight = Math.abs(worldX - body.right);
+        const dist = Math.min(distLeft, distRight);
+        if (dist < SNAP_RADIUS && dist < bestDist) {
+          bestDist = dist;
+          const faceX   = distLeft < distRight ? body.left : body.right;
+          const outward  = distLeft < distRight ? -1 : 1;
+          best = { x: faceX + outward * IBEAM_WIDTH / 2, y: worldY };
+        }
       }
     }
     return best;
