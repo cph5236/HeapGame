@@ -65,6 +65,19 @@ export class MockScoreDB implements ScoreDB {
       .slice(offset, offset + limit);
   }
 
+  async getPlayerScores(playerId: string): Promise<Array<{
+    heapId: string; name: string; score: number; rank: number;
+  }>> {
+    const all = Array.from(this.rows.values());
+    const playerRows = all.filter(r => r.player_id === playerId);
+    return playerRows.map(r => {
+      const rank = all.filter(o =>
+        o.heap_id === r.heap_id && o.score > r.score
+      ).length + 1;
+      return { heapId: r.heap_id, name: r.name, score: r.score, rank };
+    });
+  }
+
   /** Test helper — seed a score row directly. */
   seed(heapId: string, playerId: string, name: string, score: number): void {
     this.rows.set(this.key(heapId, playerId), {
