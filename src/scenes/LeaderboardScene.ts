@@ -114,7 +114,11 @@ export class LeaderboardScene extends Phaser.Scene {
     this.jumpBtn.on('pointerup', () => this.jumpToPlayer());
     this.jumpBtn.setVisible(false);  // hidden until we know playerRank
 
-    this.input.keyboard?.on('keydown-ESC', () => this.closeModal());
+    this.input.keyboard?.on('keydown-ESC',      () => this.closeModal());
+    this.input.keyboard?.on('keydown-UP',       () => this.scrollBy(-ROW_H));
+    this.input.keyboard?.on('keydown-DOWN',     () => this.scrollBy(ROW_H));
+    this.input.keyboard?.on('keydown-PAGE_UP',  () => this.scrollBy(-(this.bodyBottom - this.bodyTop)));
+    this.input.keyboard?.on('keydown-PAGE_DOWN', () => this.scrollBy(this.bodyBottom - this.bodyTop));
 
     // Wheel scroll for desktop
     this.input.on('wheel', (_p: Phaser.Input.Pointer, _o: unknown, _x: number, deltaY: number) => {
@@ -157,8 +161,6 @@ export class LeaderboardScene extends Phaser.Scene {
   private async gotoPage(page: number): Promise<void> {
     if (page < 0) return;
     if (this.total > 0 && page * PAGE_LIMIT >= this.total) return;
-    this.statusText.setText('Loading…').setVisible(true);
-    this.bodyContainer.removeAll(true);
     const data = await ScoreClient.getLeaderboardPage(this.heapId, page, PAGE_LIMIT);
     if (!data) {
       this.showError();
