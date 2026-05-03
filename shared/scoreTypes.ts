@@ -29,3 +29,14 @@ export interface PaginatedLeaderboardResponse {
   total:   number;
   page:    number;
 }
+
+export interface PlayerScoreEntry {
+  heapId: string;
+  rank:   number;
+  score:  number;
+  name:   string;
+}
+
+export interface PlayerScoresResponse {
+  entries: PlayerScoreEntry[];
+}
