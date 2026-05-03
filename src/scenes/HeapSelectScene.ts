@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
 import type { HeapSummary } from '../../shared/heapTypes';
-import { setSelectedHeapId, finalizeLegacyPlaced } from '../systems/SaveData';
+import { setSelectedHeapId, finalizeLegacyPlaced, getPlayerGuid } from '../systems/SaveData';
 import { HeapClient } from '../systems/HeapClient';
 import { drawDifficulty } from '../ui/DifficultyStars';
 import { InputManager } from '../systems/InputManager';
+import { ScoreClient } from '../systems/ScoreClient';
+import type { PlayerScoreEntry } from '../../shared/scoreTypes';
 
 const ROW_H = 88;
 const ROW_PAD_X = 16;
@@ -13,6 +15,8 @@ export class HeapSelectScene extends Phaser.Scene {
   private rowBgs: Phaser.GameObjects.Rectangle[] = [];
   private selectedIndex: number = 0;
   private activeId: string = '';
+  private playerScores: Map<string, PlayerScoreEntry> = new Map();
+  private youTextByRow: Map<number, Phaser.GameObjects.Text> = new Map();
 
   constructor() { super({ key: 'HeapSelectScene' }); }
 
@@ -83,6 +87,7 @@ export class HeapSelectScene extends Phaser.Scene {
     this.createFooter();
     this.registerInput();
     this.refreshHighlight();
+    void this.fetchPlayerScores();
   }
 
   private drawRow(heap: HeapSummary, y: number, active: boolean, rowIndex: number): Phaser.GameObjects.Rectangle {
@@ -101,6 +106,17 @@ export class HeapSelectScene extends Phaser.Scene {
       stroke: '#000000', strokeThickness: 2,
     });
     drawDifficulty(this, lx, y + 58, heap.params.difficulty, 20);
+
+    // YOU stat — renders to the right of the difficulty stars on the same line
+    const starsRightX = lx + 20 * 5 + 8;  // 5 stars * 20px + small gap; matches DifficultyStars sizing
+    const youText = this.add.text(starsRightX, y + 58,
+      'PR: —   Rank: —',
+      {
+        fontSize: '13px', color: '#7799bb',
+        stroke: '#000000', strokeThickness: 2,
+      },
+    ).setOrigin(0, 0.5);
+    this.youTextByRow.set(rowIndex, youText);
 
     // Right: three stats stacked — label right-aligned, value right-aligned
     const rx       = this.scale.width - ROW_PAD_X - 14;  // right edge
@@ -211,6 +227,28 @@ export class HeapSelectScene extends Phaser.Scene {
     }).finally(() => {
       finalizeLegacyPlaced(heap.id);
       this.scene.start('MenuScene');
+    });
+  }
+
+  private async fetchPlayerScores(): Promise<void> {
+    const playerId = getPlayerGuid();
+    const map = await ScoreClient.getPlayerScores(playerId);
+    if (!map) return;  // network failure — leave placeholders
+    this.playerScores = map;
+    this.refreshYouStats();
+  }
+
+  private refreshYouStats(): void {
+    this.sorted.forEach((heap, i) => {
+      const txt = this.youTextByRow.get(i);
+      if (!txt) return;
+      const entry = this.playerScores.get(heap.id);
+      if (!entry) {
+        txt.setText('PR: —   Rank: —');
+        return;
+      }
+      txt.setText(`PR: ${entry.score.toLocaleString()}   Rank: #${entry.rank}`);
+      txt.setColor('#ffcc88');
     });
   }
 }
