@@ -119,7 +119,7 @@ export class HeapSelectScene extends Phaser.Scene {
     this.youTextByRow.set(rowIndex, youText);
 
     // Right: three stats stacked — label right-aligned, value right-aligned
-    const rx       = this.scale.width - ROW_PAD_X - 14;  // right edge
+    const rx       = this.scale.width - ROW_PAD_X - 36;  // shifted left ~22px to leave room for trophy
     const valX     = rx;                             // value right edge
     const lblX     = rx - 50;                        // label right edge (gap before value)
     const divX     = rx - 118;                       // divider x
@@ -157,6 +157,18 @@ export class HeapSelectScene extends Phaser.Scene {
       fontSize: '14px', fontStyle: 'bold', color: '#88ddff',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(1, 0.5);
+
+    // Trophy button \u2014 opens leaderboard modal
+    const trophyX = this.scale.width - ROW_PAD_X - 4;
+    const trophy  = this.add.text(trophyX, midY, '\uD83C\uDFC6', {
+      fontSize: '20px',
+    }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
+    trophy.on('pointerover', () => trophy.setAlpha(0.7));
+    trophy.on('pointerout',  () => trophy.setAlpha(1));
+    trophy.on('pointerup', (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
+      this.openLeaderboard(heap);
+    });
 
     rowBg.on('pointerover', () => {
       const i = this.rowBgs.indexOf(rowBg);
@@ -250,5 +262,14 @@ export class HeapSelectScene extends Phaser.Scene {
       txt.setText(`PR: ${entry.score.toLocaleString()}   Rank: #${entry.rank}`);
       txt.setColor('#ffcc88');
     });
+  }
+
+  private openLeaderboard(heap: HeapSummary): void {
+    this.scene.launch('LeaderboardScene', {
+      heapId:   heap.id,
+      heapName: heap.params.name,
+      playerId: getPlayerGuid(),
+    });
+    this.scene.pause();
   }
 }
