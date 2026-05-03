@@ -8,6 +8,7 @@ import type {
   LeaderboardEntry,
   LeaderboardContext,
   PaginatedLeaderboardResponse,
+  PlayerScoresResponse,
 } from '../../../shared/scoreTypes';
 
 const DEFAULT_LIMIT = 5;
@@ -71,6 +72,19 @@ export function scoreRoutes(db: ScoreDB): Hono {
 
     const context = await buildContext(db, heapId, playerId, limit);
     return c.json({ submitted, context } satisfies SubmitScoreResponse);
+  });
+
+  // GET /scores/player/:playerId — all of a player's scores across heaps with rank
+  app.get('/player/:playerId', async (c) => {
+    const playerId = c.req.param('playerId');
+    const rows     = await db.getPlayerScores(playerId);
+    const entries  = rows.map(r => ({
+      heapId: r.heapId,
+      rank:   r.rank,
+      score:  r.score,
+      name:   r.name,
+    }));
+    return c.json({ entries } satisfies PlayerScoresResponse);
   });
 
   // GET /scores/:heapId/context — read-only context (future leaderboard screen)
