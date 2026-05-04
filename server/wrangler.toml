@@ -8,3 +8,10 @@ binding = "DB"
 database_name = "heap"
 database_id = "2806bb3d-bd95-4780-ae16-ee479eacede9"
 migrations_dir = "migrations"
+
+[vars]
+# Comma-separated list of origins allowed to call the API from a browser.
+# Use "*" to allow all (dev only). Tighten to your real production origin(s)
+# before relying on the CORS allowlist as a security layer, e.g.
+#   ALLOWED_ORIGINS = "https://your-domain.com,capacitor://localhost,https://localhost"
+ALLOWED_ORIGINS = "*"

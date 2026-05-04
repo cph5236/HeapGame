@@ -1,7 +1,7 @@
 // server/tests/routes.test.ts
 
 import { describe, it, expect } from 'vitest';
-import { createApp } from '../src/app';
+import { createApp, type AppOptions } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import type {
@@ -20,8 +20,8 @@ const VERTICES = [
   { x: 500, y: 400 },
 ];
 
-function makeApp() {
-  return createApp(new MockHeapDB(), new MockScoreDB());
+function makeApp(opts: AppOptions = {}) {
+  return createApp(new MockHeapDB(), new MockScoreDB(), opts);
 }
 
 // ── POST /heaps ──────────────────────────────────────────────────────────────
