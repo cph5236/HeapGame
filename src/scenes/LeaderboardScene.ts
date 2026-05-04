@@ -50,16 +50,18 @@ export class LeaderboardScene extends Phaser.Scene {
     const W = this.scale.width;
     const H = this.scale.height;
 
-    // Backdrop — blocks input to scene below
-    this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.7).setInteractive();
+    // Backdrop — clicking outside the panel closes the modal
+    const backdrop = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.7).setInteractive();
+    backdrop.on('pointerup', () => this.closeModal());
 
-    // Panel
+    // Panel — interactive so clicks inside don't bubble to the backdrop
     const panelW = Math.floor(W * 0.92);
     const panelH = Math.floor(H * 0.86);
     const panelX = Math.floor((W - panelW) / 2);
     const panelY = Math.floor((H - panelH) / 2);
     this.add.rectangle(W / 2, H / 2, panelW, panelH, 0x10131f)
-      .setStrokeStyle(2, 0x334466);
+      .setStrokeStyle(2, 0x334466)
+      .setInteractive();
 
     // Header
     this.add.text(panelX + 16, panelY + 20, this.heapName, {
@@ -67,11 +69,14 @@ export class LeaderboardScene extends Phaser.Scene {
       stroke: '#000000', strokeThickness: 3,
     });
     const close = this.add.text(panelX + panelW - 20, panelY + 20, '✕', {
-      fontSize: '20px', color: '#667799',
-    }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
-    close.on('pointerover', () => close.setColor('#ffffff'));
-    close.on('pointerout',  () => close.setColor('#667799'));
-    close.on('pointerup',   () => this.closeModal());
+      fontSize: '24px', color: '#667799',
+    }).setOrigin(1, 0);
+    const closeHit = this.add.rectangle(
+      panelX + panelW - 20, panelY + 20 + 16, 56, 56, 0x000000, 0,
+    ).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
+    closeHit.on('pointerover', () => close.setColor('#ffffff'));
+    closeHit.on('pointerout',  () => close.setColor('#667799'));
+    closeHit.on('pointerup',   () => this.closeModal());
     this.add.rectangle(W / 2, panelY + 56, panelW - 32, 1, 0x334466);
 
     // Body region geometry
