@@ -12,6 +12,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const app = createApp(new D1HeapDB(env.DB), new D1ScoreDB(env.DB), {
       allowedOrigins: env.ALLOWED_ORIGINS,
+      adminSecret:    env.ADMIN_SECRET,
     });
     return app.fetch(request);
   },

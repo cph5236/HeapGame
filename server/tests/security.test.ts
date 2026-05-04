@@ -2,6 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { createApp } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
+import type { CreateHeapResponse } from '../../shared/heapTypes';
+
+const VERTICES = [
+  { x: 100, y: 400 },
+  { x: 300, y: 600 },
+  { x: 500, y: 400 },
+];
 
 function makeApp(allowedOrigins?: string) {
   return createApp(new MockHeapDB(), new MockScoreDB(), { allowedOrigins });
@@ -39,5 +46,70 @@ describe('CORS allowlist', () => {
       },
     });
     expect(res.headers.get('access-control-allow-origin')).toBe('https://anywhere.example.com');
+  });
+});
+
+describe('Admin secret gate', () => {
+  function makeAppWithSecret(secret: string) {
+    return createApp(new MockHeapDB(), new MockScoreDB(), { adminSecret: secret });
+  }
+
+  it('rejects POST /heaps without X-Admin-Secret', async () => {
+    const res = await makeAppWithSecret('s3cret').request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects POST /heaps with wrong X-Admin-Secret', async () => {
+    const res = await makeAppWithSecret('s3cret').request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': 'nope' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('accepts POST /heaps with correct X-Admin-Secret', async () => {
+    const res = await makeAppWithSecret('s3cret').request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': 's3cret' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('does not gate read endpoints (GET /heaps)', async () => {
+    const res = await makeAppWithSecret('s3cret').request('/heaps');
+    expect(res.status).toBe(200);
+  });
+
+  it('does not gate POST /heaps/:id/place', async () => {
+    const app = createApp(new MockHeapDB(), new MockScoreDB(), { adminSecret: 's3cret' });
+    const created = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': 's3cret' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await created.json() as CreateHeapResponse;
+
+    const placeRes = await app.request(`/heaps/${id}/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 300, y: 100 }),
+    });
+    expect(placeRes.status).toBe(200);
+  });
+
+  it('disables the gate when adminSecret is empty string (dev mode)', async () => {
+    const app = createApp(new MockHeapDB(), new MockScoreDB(), { adminSecret: '' });
+    const res = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    expect(res.status).toBe(201);
   });
 });

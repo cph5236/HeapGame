@@ -118,7 +118,10 @@ async function seed(): Promise<void> {
     };
     const res = await fetch(url, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Admin-Secret': process.env.ADMIN_SECRET ?? '',
+      },
       body: JSON.stringify(params),
     });
     if (!res.ok) {
@@ -167,7 +170,10 @@ async function seed(): Promise<void> {
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Secret': process.env.ADMIN_SECRET ?? '',
+    },
     body: JSON.stringify({ vertices, params }),
   });
 
