@@ -46,6 +46,14 @@ function saveCachedBase(baseId: string, vertices: Vertex[]): void {
   localStorage.setItem(BASE_CACHE_PREFIX + baseId, JSON.stringify(vertices));
 }
 
+function clearCache(heapId: string): void {
+  try {
+    localStorage.removeItem(CACHE_PREFIX + heapId);
+  } catch {
+    // best effort
+  }
+}
+
 async function fetchBase(heapId: string, baseId: string): Promise<Vertex[]> {
   const cached = loadCachedBase(baseId);
   if (cached) return cached;
@@ -83,20 +91,42 @@ export class HeapClient {
    * Uses localStorage cache + server delta strategy.
    * Falls back to last cached data (or []) on network failure.
    */
-  static async load(heapId: string): Promise<Vertex[]> {
+  static async load(heapId: string, _retry = false): Promise<Vertex[]> {
     const cache = loadCache(heapId);
     const version = cache?.version ?? 0;
 
     try {
       const res = await fetch(`${SERVER_URL}/heaps/${heapId}?version=${version}`);
+      if (res.status === 404) {
+        console.warn(
+          `[HeapClient] Heap ${heapId} returned 404 — clearing orphan cache.`,
+        );
+        clearCache(heapId);
+        return [];
+      }
       if (!res.ok) throw new Error(`heap fetch failed: ${res.status}`);
       const data = (await res.json()) as GetHeapResponse;
 
       if (!data.changed && cache) {
-        return reconstructPolygonFromPoints(await buildPolygon(heapId, cache));
+        try {
+          return reconstructPolygonFromPoints(await buildPolygon(heapId, cache));
+        } catch (err) {
+          // Cache version matches server but base fetch failed (e.g. baseId no
+          // longer exists). Invalidate and retry with version=0 to pull fresh
+          // baseId + liveZone from server.
+          console.warn(
+            `[HeapClient] Heap ${heapId} cache healed: server reported changed=false (v${cache.version}) but base ${cache.baseId} could not be loaded (${(err as Error)?.message ?? err}). Clearing cache and retrying with version=0.`,
+          );
+          clearCache(heapId);
+          if (!_retry) return HeapClient.load(heapId, true);
+          throw new Error('base fetch failed after cache reset');
+        }
       }
 
       if (data.changed) {
+        // Fetch base BEFORE saving cache, so we never persist a cache pointing
+        // at a baseId we couldn't actually retrieve.
+        const base = await fetchBase(heapId, data.baseId);
         const newCache: HeapCache = {
           version: data.version,
           baseId: data.baseId,
@@ -104,7 +134,7 @@ export class HeapClient {
           enemyParams: data.enemyParams,
         };
         saveCache(heapId, newCache);
-        return reconstructPolygonFromPoints(await buildPolygon(heapId, newCache));
+        return reconstructPolygonFromPoints([...base, ...data.liveZone]);
       }
 
       return [];

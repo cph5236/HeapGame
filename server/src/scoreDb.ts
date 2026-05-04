@@ -44,6 +44,17 @@ export interface ScoreDB {
 
   /** Returns paginated entries for a heap, ordered by score DESC. */
   getScoresPaginated(heapId: string, offset: number, limit: number): Promise<ScoreRow[]>;
+
+  /**
+   * Returns one entry per heap the player has scored on, ranked within that heap.
+   * Rank uses RANK() semantics (ties share the lower rank). Empty array if none.
+   */
+  getPlayerScores(playerId: string): Promise<Array<{
+    heapId: string;
+    name:   string;
+    score:  number;
+    rank:   number;
+  }>>;
 }
 
 /** Production implementation backed by Cloudflare D1. */
@@ -123,6 +134,25 @@ export class D1ScoreDB implements ScoreDB {
       .prepare('SELECT * FROM score WHERE heap_id=?1 ORDER BY score DESC LIMIT ?2 OFFSET ?3')
       .bind(heapId, limit, offset)
       .all<ScoreRow>();
+    return result.results;
+  }
+
+  async getPlayerScores(playerId: string): Promise<Array<{
+    heapId: string; name: string; score: number; rank: number;
+  }>> {
+    const result = await this.d1
+      .prepare(`
+        WITH ranked AS (
+          SELECT heap_id, player_id, name, score,
+                 RANK() OVER (PARTITION BY heap_id ORDER BY score DESC) AS rank
+            FROM score
+        )
+        SELECT heap_id AS heapId, name, score, rank
+          FROM ranked
+         WHERE player_id = ?1
+      `)
+      .bind(playerId)
+      .all<{ heapId: string; name: string; score: number; rank: number }>();
     return result.results;
   }
 }

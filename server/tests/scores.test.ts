@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { createApp } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
-import type { SubmitScoreResponse, PaginatedLeaderboardResponse } from '../../shared/scoreTypes';
+import type { SubmitScoreResponse, PaginatedLeaderboardResponse, PlayerScoresResponse } from '../../shared/scoreTypes';
 
 const HEAP_ID   = 'heap-test-001';
 const PLAYER_A  = 'player-aaa';
@@ -236,5 +236,42 @@ describe('GET /scores/:heapId paginated', () => {
     expect(body.entries).toHaveLength(3);
     expect(body.entries[0].rank).toBe(4);
     expect(body.page).toBe(1);
+  });
+});
+
+// ── GET /scores/player/:playerId ──────────────────────────────────────────────
+
+describe('GET /scores/player/:playerId', () => {
+  it('returns empty entries for player with no scores', async () => {
+    const res  = await makeApp().request('/scores/player/nobody');
+    expect(res.status).toBe(200);
+    const body = await res.json() as PlayerScoresResponse;
+    expect(body.entries).toEqual([]);
+  });
+
+  it('returns ranked entries across multiple heaps for a known player', async () => {
+    const db = new MockScoreDB();
+    db.seed('heap-a', 'top',     'Top',  9000);
+    db.seed('heap-a', PLAYER_A,  'Me',   5000);
+    db.seed('heap-b', PLAYER_A,  'Me',   7000);
+    const res  = await makeApp(db).request(`/scores/player/${PLAYER_A}`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as PlayerScoresResponse;
+    const sorted = body.entries.sort((a, b) => a.heapId.localeCompare(b.heapId));
+    expect(sorted).toEqual([
+      { heapId: 'heap-a', name: 'Me', score: 5000, rank: 2 },
+      { heapId: 'heap-b', name: 'Me', score: 7000, rank: 1 },
+    ]);
+  });
+
+  it('handles URL-encoded playerId', async () => {
+    const db   = new MockScoreDB();
+    const id   = 'has space/slash';
+    db.seed('heap-a', id, 'Me', 5000);
+    const res  = await makeApp(db).request(`/scores/player/${encodeURIComponent(id)}`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as PlayerScoresResponse;
+    expect(body.entries).toHaveLength(1);
+    expect(body.entries[0].heapId).toBe('heap-a');
   });
 });

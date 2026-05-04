@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
 import type { HeapSummary } from '../../shared/heapTypes';
-import { setSelectedHeapId, finalizeLegacyPlaced } from '../systems/SaveData';
+import { setSelectedHeapId, finalizeLegacyPlaced, getPlayerGuid } from '../systems/SaveData';
 import { HeapClient } from '../systems/HeapClient';
 import { drawDifficulty } from '../ui/DifficultyStars';
 import { InputManager } from '../systems/InputManager';
+import { ScoreClient } from '../systems/ScoreClient';
+import type { PlayerScoreEntry } from '../../shared/scoreTypes';
 
 const ROW_H = 88;
 const ROW_PAD_X = 16;
@@ -13,6 +15,8 @@ export class HeapSelectScene extends Phaser.Scene {
   private rowBgs: Phaser.GameObjects.Rectangle[] = [];
   private selectedIndex: number = 0;
   private activeId: string = '';
+  private playerScores: Map<string, PlayerScoreEntry> = new Map();
+  private rankTextByRow: Map<number, Phaser.GameObjects.Text> = new Map();
 
   constructor() { super({ key: 'HeapSelectScene' }); }
 
@@ -42,12 +46,15 @@ export class HeapSelectScene extends Phaser.Scene {
     // Header underline
     this.add.rectangle(this.scale.width / 2, 58, this.scale.width - 2 * ROW_PAD_X, 1, 0x334466);
 
-    const close = this.add.text(this.scale.width - 20, 34, '\u2715', {
-      fontSize: '20px', color: '#667799',
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    close.on('pointerover', () => close.setColor('#ffffff'));
-    close.on('pointerout',  () => close.setColor('#667799'));
-    close.once('pointerup', () => this.scene.start('MenuScene'));
+    // Back arrow \u2014 top-left, matches StoreScene/UpgradeScene
+    const backHit = this.add.rectangle(30, 34, 52, 52, 0x000000, 0)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(11);
+    this.add.text(12, 18, '\u2190', {
+      fontSize: '32px', color: '#ff9922',
+      stroke: '#000000', strokeThickness: 3,
+    }).setDepth(11);
+    backHit.on('pointerup', () => this.scene.start('MenuScene'));
 
     const catalog = (this.game.registry.get('heapCatalog') as HeapSummary[] | undefined) ?? [];
 
@@ -83,6 +90,7 @@ export class HeapSelectScene extends Phaser.Scene {
     this.createFooter();
     this.registerInput();
     this.refreshHighlight();
+    void this.fetchPlayerScores();
   }
 
   private drawRow(heap: HeapSummary, y: number, active: boolean, rowIndex: number): Phaser.GameObjects.Rectangle {
@@ -94,21 +102,48 @@ export class HeapSelectScene extends Phaser.Scene {
     ).setStrokeStyle(active ? 2 : 1, active ? 0xff9922 : 0x1e2a44)
      .setInteractive({ useHandCursor: true });
 
-    // Left: name + stars
-    const lx = ROW_PAD_X + 14;
-    this.add.text(lx, y + 18, heap.params.name, {
-      fontSize: '17px', fontStyle: 'bold', color: active ? '#ffcc88' : '#ffffff',
-      stroke: '#000000', strokeThickness: 2,
-    });
-    drawDifficulty(this, lx, y + 58, heap.params.difficulty, 20);
-
     // Right: three stats stacked — label right-aligned, value right-aligned
-    const rx       = this.scale.width - ROW_PAD_X - 14;  // right edge
+    const rx       = this.scale.width - ROW_PAD_X - 14;
     const valX     = rx;                             // value right edge
     const lblX     = rx - 50;                        // label right edge (gap before value)
     const divX     = rx - 118;                       // divider x
     const midY     = y + ROW_H / 2;
     const STAT_STEP = 22;
+
+    // Trophy/rank button — spans both rows, sits left of the stat divider
+    const tBtnW = 78;
+    const tBtnH = ROW_H - 20;
+    const tBtnRightX  = divX - 10;
+    const tBtnLeftX   = tBtnRightX - tBtnW;
+    const tBtnCenterX = (tBtnLeftX + tBtnRightX) / 2;
+
+    // Left: name + stars (name wraps so it can't overlap the trophy button)
+    const lx = ROW_PAD_X + 14;
+    const nameMaxW = tBtnLeftX - lx - 8;
+    this.add.text(lx, y + 18, heap.params.name, {
+      fontSize: '17px', fontStyle: 'bold', color: active ? '#ffcc88' : '#ffffff',
+      stroke: '#000000', strokeThickness: 2,
+      wordWrap: { width: nameMaxW },
+    });
+    drawDifficulty(this, lx, y + 58, heap.params.difficulty, 20);
+
+    const tBtnBg = this.add.rectangle(tBtnCenterX, midY, tBtnW, tBtnH, 0x10131f)
+      .setStrokeStyle(1, 0x334466)
+      .setInteractive({ useHandCursor: true });
+    this.add.text(tBtnCenterX, midY - 12, '🏆', {
+      fontSize: '22px',
+    }).setOrigin(0.5);
+    const rankText = this.add.text(tBtnCenterX, midY + 18, 'Rank: —', {
+      fontSize: '12px', color: '#7799bb',
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5);
+    this.rankTextByRow.set(rowIndex, rankText);
+    tBtnBg.on('pointerover', () => tBtnBg.setStrokeStyle(1, 0xff9922));
+    tBtnBg.on('pointerout',  () => tBtnBg.setStrokeStyle(1, 0x334466));
+    tBtnBg.on('pointerup', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
+      this.openLeaderboard(heap);
+    });
 
     // Divider
     this.add.rectangle(divX, midY, 1, ROW_H - 20, 0x2a3a5a);
@@ -153,14 +188,26 @@ export class HeapSelectScene extends Phaser.Scene {
 
   private createFooter(): void {
     const im = InputManager.getInstance();
-    if (im.isMobile) return;
 
     this.add.rectangle(this.scale.width / 2, this.scale.height - 25, this.scale.width, 50, 0x111118, 0.88)
       .setDepth(9);
-    this.add.text(this.scale.width / 2, this.scale.height - 25,
-      '\u2191\u2193 navigate   ENTER select   ESC back',
-      { fontSize: '16px', color: '#b1abab' },
-    ).setOrigin(0.5).setDepth(10);
+
+    if (im.isMobile) {
+      const backBtnBg = this.add.rectangle(
+        this.scale.width / 2, this.scale.height - 25, 200, 36, 0x1a0800,
+      ).setStrokeStyle(1, 0xff9922).setInteractive({ useHandCursor: true })
+       .setDepth(10);
+      this.add.text(this.scale.width / 2, this.scale.height - 25, '\u2190 Back to Menu', {
+        fontSize: '15px', color: '#ff9922',
+        stroke: '#000000', strokeThickness: 1,
+      }).setOrigin(0.5).setDepth(11);
+      backBtnBg.on('pointerup', () => this.scene.start('MenuScene'));
+    } else {
+      this.add.text(this.scale.width / 2, this.scale.height - 25,
+        '\u2191\u2193 navigate   ENTER select   R scores   ESC back',
+        { fontSize: '16px', color: '#b1abab' },
+      ).setOrigin(0.5).setDepth(10);
+    }
   }
 
   private registerInput(): void {
@@ -168,6 +215,7 @@ export class HeapSelectScene extends Phaser.Scene {
     kb.on('keydown-UP',    () => this.move(-1));
     kb.on('keydown-DOWN',  () => this.move(1));
     kb.on('keydown-ENTER', () => this.confirmSelection());
+    kb.on('keydown-R',     () => this.openHighlightedLeaderboard());
     kb.on('keydown-ESC',   () => this.scene.start('MenuScene'));
   }
 
@@ -212,5 +260,40 @@ export class HeapSelectScene extends Phaser.Scene {
       finalizeLegacyPlaced(heap.id);
       this.scene.start('MenuScene');
     });
+  }
+
+  private async fetchPlayerScores(): Promise<void> {
+    const playerId = getPlayerGuid();
+    const map = await ScoreClient.getPlayerScores(playerId);
+    if (!map) return;  // network failure — leave placeholders
+    this.playerScores = map;
+    this.refreshYouStats();
+  }
+
+  private refreshYouStats(): void {
+    this.sorted.forEach((heap, i) => {
+      const txt = this.rankTextByRow.get(i);
+      if (!txt) return;
+      const entry = this.playerScores.get(heap.id);
+      if (!entry) {
+        txt.setText('Rank: —').setColor('#7799bb');
+        return;
+      }
+      txt.setText(`Rank: #${entry.rank}`).setColor('#ffcc88');
+    });
+  }
+
+  private openHighlightedLeaderboard(): void {
+    if (this.sorted.length === 0) return;
+    this.openLeaderboard(this.sorted[this.selectedIndex]);
+  }
+
+  private openLeaderboard(heap: HeapSummary): void {
+    this.scene.launch('LeaderboardScene', {
+      heapId:   heap.id,
+      heapName: heap.params.name,
+      playerId: getPlayerGuid(),
+    });
+    this.scene.pause();
   }
 }
