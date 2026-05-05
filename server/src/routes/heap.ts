@@ -72,12 +72,18 @@ export function heapRoutes(db: HeapDB): Hono {
     }
 
     const { vertices, params } = body;
+    const MAX_VERTICES = 10_000;
     if (
       !Array.isArray(vertices) ||
       vertices.length < 3 ||
-      !vertices.every((v) => typeof (v as Vertex)?.x === 'number' && typeof (v as Vertex)?.y === 'number')
+      vertices.length > MAX_VERTICES ||
+      !vertices.every((v) =>
+        v != null &&
+        typeof (v as Vertex).x === 'number' && Number.isFinite((v as Vertex).x) &&
+        typeof (v as Vertex).y === 'number' && Number.isFinite((v as Vertex).y),
+      )
     ) {
-      return c.json({ error: 'vertices must be an array of at least 3 {x, y} objects' }, 400);
+      return c.json({ error: `vertices must be an array of 3-${MAX_VERTICES} {x, y} objects with finite numbers` }, 400);
     }
 
     const resolved = resolveParams(params);
@@ -236,8 +242,9 @@ export function heapRoutes(db: HeapDB): Hono {
 
     const id = c.req.param('id');
     const { x, y } = body;
-    if (typeof x !== 'number' || typeof y !== 'number') {
-      return c.json({ error: 'x and y are required numbers' }, 400);
+    if (typeof x !== 'number' || !Number.isFinite(x) ||
+        typeof y !== 'number' || !Number.isFinite(y)) {
+      return c.json({ error: 'x and y must be finite numbers' }, 400);
     }
 
     const row = await db.getHeap(id);

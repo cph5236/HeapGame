@@ -80,6 +80,28 @@ Equivalent to `wrangler deploy`. Bundles `src/index.ts` and pushes to Cloudflare
 
 ---
 
+## Security
+
+The Worker is hardened in three layers:
+
+1. **CORS allowlist** — `ALLOWED_ORIGINS` in `wrangler.toml` is a comma-separated list of origins that may call the API from a browser. `*` (default) disables the allowlist for local dev. Tighten to your real production origin(s) before relying on this as a security layer.
+2. **Admin secret** — mutating heap routes (`POST /heaps`, `PUT /heaps/:id/reset`, `PUT /heaps/:id/enemy-params`, `DELETE /heaps/:id`) require an `X-Admin-Secret` header matching the `ADMIN_SECRET` Worker secret. Set with `npx wrangler secret put ADMIN_SECRET`. If the secret is unset (local dev) the gate is bypassed. The seed script reads `ADMIN_SECRET` from `process.env` — pass it when running against a production-gated server: `ADMIN_SECRET=<value> npm run seed`.
+3. **Per-IP rate limits** — three Workers Rate Limiting API bindings declared in `wrangler.toml`: `RL_SCORES` (10/min on `POST /scores`), `RL_PLACE` (30/min on `POST /heaps/:id/place`), `RL_GLOBAL` (300/min global circuit breaker). Keyed by client IP via `cf-connecting-ip`. Counts are per Cloudflare datacenter per IP.
+
+Read endpoints and `POST /heaps/:id/place` (the only mutating route the game client uses during normal play) are intentionally not gated by the admin secret — the rate limiter is the defense for those.
+
+### Monitoring rate-limit hits
+
+The middleware logs `[ratelimit] blocked label=... ip=... path=...` on every blocked request. To watch live:
+
+```bash
+cd server && npx wrangler tail
+```
+
+Past blocks also appear in the **Workers → heap-server → Logs** tab in the Cloudflare dashboard, and `429` responses show up on the Worker's status-code analytics chart.
+
+---
+
 ## Tests
 
 ```bash

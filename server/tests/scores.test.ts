@@ -275,3 +275,32 @@ describe('GET /scores/player/:playerId', () => {
     expect(body.entries[0].heapId).toBe('heap-a');
   });
 });
+
+describe('POST /scores hardening', () => {
+  const validBody = {
+    heapId: 'h1',
+    playerId: 'p1',
+    playerName: 'Alice',
+    score: 100,
+  };
+
+  it('rejects non-finite score', async () => {
+    const res = await submitScore(makeApp(), { ...validBody, score: Number.POSITIVE_INFINITY });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects score above MAX_SCORE ceiling', async () => {
+    const res = await submitScore(makeApp(), { ...validBody, score: 100_000_001 });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects oversized playerId', async () => {
+    const res = await submitScore(makeApp(), { ...validBody, playerId: 'p'.repeat(200) });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects empty playerName after trim', async () => {
+    const res = await submitScore(makeApp(), { ...validBody, playerName: '   ' });
+    expect(res.status).toBe(400);
+  });
+});

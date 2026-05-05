@@ -13,6 +13,9 @@ import type {
 
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT     = 50;
+const MAX_SCORE     = 100_000_000;
+const MAX_ID_LEN    = 64;
+const MAX_NAME_LEN  = 32;
 
 async function buildContext(
   db:       ScoreDB,
@@ -56,10 +59,14 @@ export function scoreRoutes(db: ScoreDB): Hono {
 
     const { heapId, playerId, playerName, score } = body;
 
-    if (!heapId || typeof heapId !== 'string')         return c.json({ error: 'heapId is required' }, 400);
-    if (!playerId || typeof playerId !== 'string')     return c.json({ error: 'playerId is required' }, 400);
-    if (!playerName || typeof playerName !== 'string') return c.json({ error: 'playerName is required' }, 400);
-    if (!Number.isInteger(score) || score <= 0)        return c.json({ error: 'score must be a positive integer' }, 400);
+    if (typeof heapId !== 'string' || heapId.length === 0 || heapId.length > MAX_ID_LEN)
+      return c.json({ error: `heapId must be a 1-${MAX_ID_LEN} char string` }, 400);
+    if (typeof playerId !== 'string' || playerId.length === 0 || playerId.length > MAX_ID_LEN)
+      return c.json({ error: `playerId must be a 1-${MAX_ID_LEN} char string` }, 400);
+    if (typeof playerName !== 'string' || playerName.trim().length === 0)
+      return c.json({ error: 'playerName must be a non-empty string' }, 400);
+    if (!Number.isInteger(score) || score <= 0 || score > MAX_SCORE)
+      return c.json({ error: `score must be an integer in (0, ${MAX_SCORE}]` }, 400);
 
     const limit = Math.min(
       parseInt(c.req.query('limit') ?? String(DEFAULT_LIMIT)) || DEFAULT_LIMIT,
@@ -67,7 +74,7 @@ export function scoreRoutes(db: ScoreDB): Hono {
     );
 
     const now       = new Date().toISOString();
-    const submitted = await db.upsertScore(heapId, playerId, playerName.slice(0, 32), score, now);
+    const submitted = await db.upsertScore(heapId, playerId, playerName.trim().slice(0, MAX_NAME_LEN), score, now);
     if (submitted) await db.pruneScores(heapId);
 
     const context = await buildContext(db, heapId, playerId, limit);

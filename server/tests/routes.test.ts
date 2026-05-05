@@ -1,7 +1,7 @@
 // server/tests/routes.test.ts
 
 import { describe, it, expect } from 'vitest';
-import { createApp } from '../src/app';
+import { createApp, type AppOptions } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import type {
@@ -20,8 +20,8 @@ const VERTICES = [
   { x: 500, y: 400 },
 ];
 
-function makeApp() {
-  return createApp(new MockHeapDB(), new MockScoreDB());
+function makeApp(opts: AppOptions = {}) {
+  return createApp(new MockHeapDB(), new MockScoreDB(), opts);
 }
 
 // ── POST /heaps ──────────────────────────────────────────────────────────────
@@ -655,6 +655,55 @@ describe('PUT /heaps/:id/enemy-params', () => {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(null),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /heaps hardening', () => {
+  it('rejects vertices containing non-finite coordinates', async () => {
+    const res = await makeApp().request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertices: [
+          { x: 0, y: 0 },
+          { x: Number.POSITIVE_INFINITY, y: 100 },
+          { x: 100, y: 100 },
+        ],
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects vertex arrays exceeding 10_000 entries', async () => {
+    const huge = Array.from({ length: 10_001 }, (_, i) => ({ x: i, y: i }));
+    const res = await makeApp().request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: huge }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /heaps/:id/place hardening', () => {
+  async function makeHeap(app: ReturnType<typeof makeApp>) {
+    const res = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    return (await res.json() as CreateHeapResponse).id;
+  }
+
+  it('rejects non-finite coordinates', async () => {
+    const app = makeApp();
+    const id = await makeHeap(app);
+    const res = await app.request(`/heaps/${id}/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: Number.NaN, y: 100 }),
     });
     expect(res.status).toBe(400);
   });
