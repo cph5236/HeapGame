@@ -13,9 +13,7 @@ const PLAYER_B  = 'player-bbb';
 function makeApp(scoreDb = new MockScoreDB(), heapDb?: MockHeapDB) {
   if (!heapDb) {
     heapDb = new MockHeapDB();
-    heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {
-      name: 'Default', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 2000,
-    });
+    heapDb.seedHeap(HEAP_ID, 1, []);
   }
   return createApp(heapDb, scoreDb);
 }
@@ -73,18 +71,18 @@ describe('POST /scores — submission', () => {
 
   it('updates the record when new score beats existing', async () => {
     const db  = new MockScoreDB();
-    db.seed(HEAP_ID, PLAYER_A, 'Trashbag#00001', 1000);
-    const res = await submitScore(makeApp(db), validBody({ inputs: { baseHeightPx: 1500 } }));
+    db.seed(HEAP_ID, PLAYER_A, 'Trashbag#00001', 5000);
+    const res = await submitScore(makeApp(db), validBody({ inputs: { baseHeightPx: 7000, elapsedMs: 17_500 } }));
     expect(res.status).toBe(200);
     const body = await res.json() as SubmitScoreResponse;
     expect(body.submitted).toBe(true);
-    expect(body.context.player?.score).toBe(1500);
+    expect(body.context.player?.score).toBe(7000);
   });
 
   it('updates player name alongside score', async () => {
     const db = new MockScoreDB();
-    db.seed(HEAP_ID, PLAYER_A, 'OldName#11111', 1000);
-    await submitScore(makeApp(db), validBody({ playerName: 'NewName#22222', inputs: { baseHeightPx: 1500 } }));
+    db.seed(HEAP_ID, PLAYER_A, 'OldName#11111', 5000);
+    await submitScore(makeApp(db), validBody({ playerName: 'NewName#22222', inputs: { baseHeightPx: 7000, elapsedMs: 17_500 } }));
     const row = await db.getScore(HEAP_ID, PLAYER_A);
     expect(row?.name).toBe('NewName#22222');
   });
@@ -108,10 +106,10 @@ describe('POST /scores — leaderboard context in response', () => {
   });
 
   it('returns the submitting player in context.player', async () => {
-    const res  = await submitScore(makeApp(), validBody({ inputs: { baseHeightPx: 1500 } }));
+    const res  = await submitScore(makeApp(), validBody({ inputs: { baseHeightPx: 5000, elapsedMs: 12_500 } }));
     const body = await res.json() as SubmitScoreResponse;
     expect(body.context.player?.playerId).toBe(PLAYER_A);
-    expect(body.context.player?.score).toBe(1500);
+    expect(body.context.player?.score).toBe(5000);
     expect(body.context.player?.rank).toBe(1);
   });
 
