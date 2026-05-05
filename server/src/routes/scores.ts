@@ -2,6 +2,7 @@
 
 import { Hono } from 'hono';
 import type { ScoreDB } from '../scoreDb';
+import type { HeapDB } from '../db';
 import type {
   SubmitScoreRequest,
   SubmitScoreResponse,
@@ -10,22 +11,28 @@ import type {
   PaginatedLeaderboardResponse,
   PlayerScoresResponse,
 } from '../../../shared/scoreTypes';
+import { buildRunScore } from '../../../shared/buildRunScore';
+import { ENEMY_DEFS } from '../../../shared/enemyDefs';
 
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT     = 50;
-const MAX_SCORE     = 100_000_000;
 const MAX_ID_LEN    = 64;
 const MAX_NAME_LEN  = 32;
 
+// Plausibility caps (per second of run)
+const MAX_CLIMB_RATE_Y_PER_S = 400;
+const MAX_KILLS_PER_S        = 1;
+const HEIGHT_GRACE_PX        = 200;
+
 async function buildContext(
-  db:       ScoreDB,
+  scoreDb:  ScoreDB,
   heapId:   string,
   playerId: string,
   limit:    number,
 ): Promise<LeaderboardContext> {
   const [topRows, playerRow] = await Promise.all([
-    db.getTopScores(heapId, limit),
-    db.getScore(heapId, playerId),
+    scoreDb.getTopScores(heapId, limit),
+    scoreDb.getScore(heapId, playerId),
   ]);
   const top: LeaderboardEntry[] = topRows.map((row, i) => ({
     rank:     i + 1,
@@ -35,7 +42,7 @@ async function buildContext(
   }));
   if (!playerRow) return { top, player: null };
 
-  const rank: number = await db.getRank(heapId, playerRow.score);
+  const rank: number = await scoreDb.getRank(heapId, playerRow.score);
   const player: LeaderboardEntry = {
     rank,
     playerId: playerRow.player_id,
@@ -45,10 +52,10 @@ async function buildContext(
   return { top, player };
 }
 
-export function scoreRoutes(db: ScoreDB): Hono {
+export function scoreRoutes(scoreDb: ScoreDB, heapDb: HeapDB): Hono {
   const app = new Hono();
 
-  // POST /scores — submit score; returns LeaderboardContext in response
+  // POST /scores — submit raw inputs; server recomputes the score and returns leaderboard context
   app.post('/', async (c) => {
     let body: SubmitScoreRequest;
     try {
@@ -57,16 +64,63 @@ export function scoreRoutes(db: ScoreDB): Hono {
       return c.json({ error: 'Invalid JSON' }, 400);
     }
 
-    const { heapId, playerId, playerName, score } = body;
+    const { heapId, playerId, playerName, inputs } = body;
 
+    // Identity / name validation
     if (typeof heapId !== 'string' || heapId.length === 0 || heapId.length > MAX_ID_LEN)
       return c.json({ error: `heapId must be a 1-${MAX_ID_LEN} char string` }, 400);
     if (typeof playerId !== 'string' || playerId.length === 0 || playerId.length > MAX_ID_LEN)
       return c.json({ error: `playerId must be a 1-${MAX_ID_LEN} char string` }, 400);
     if (typeof playerName !== 'string' || playerName.trim().length === 0)
       return c.json({ error: 'playerName must be a non-empty string' }, 400);
-    if (!Number.isInteger(score) || score <= 0 || score > MAX_SCORE)
-      return c.json({ error: `score must be an integer in (0, ${MAX_SCORE}]` }, 400);
+
+    // Inputs shape
+    if (!inputs || typeof inputs !== 'object')
+      return c.json({ error: 'inputs must be an object' }, 400);
+
+    const { baseHeightPx, kills, elapsedMs, isFailure } = inputs;
+
+    if (!Number.isInteger(baseHeightPx) || baseHeightPx < 0)
+      return c.json({ error: 'inputs.baseHeightPx must be a non-negative integer' }, 400);
+    if (!Number.isInteger(elapsedMs) || elapsedMs < 1)
+      return c.json({ error: 'inputs.elapsedMs must be a positive integer' }, 400);
+    if (typeof isFailure !== 'boolean')
+      return c.json({ error: 'inputs.isFailure must be a boolean' }, 400);
+    if (!kills || typeof kills !== 'object')
+      return c.json({ error: 'inputs.kills must be an object' }, 400);
+    const percher = kills.percher;
+    const ghost   = kills.ghost;
+    if (!Number.isInteger(percher) || percher < 0)
+      return c.json({ error: 'inputs.kills.percher must be a non-negative integer' }, 400);
+    if (!Number.isInteger(ghost) || ghost < 0)
+      return c.json({ error: 'inputs.kills.ghost must be a non-negative integer' }, 400);
+
+    // Heap-relative validation — needs the heap row
+    const heap = await heapDb.getHeap(heapId);
+    if (!heap) return c.json({ error: 'heap not found' }, 404);
+
+    const maxClimbPx = (heap.world_height - heap.top_y) + HEIGHT_GRACE_PX;
+    if (baseHeightPx > maxClimbPx)
+      return c.json({ error: `inputs.baseHeightPx (${baseHeightPx}) exceeds max possible climb (${maxClimbPx})` }, 400);
+
+    // Climb-rate cap (integer arithmetic to avoid FP rounding at the boundary)
+    if (baseHeightPx * 1000 > MAX_CLIMB_RATE_Y_PER_S * elapsedMs)
+      return c.json({ error: `climb rate exceeds ${MAX_CLIMB_RATE_Y_PER_S} Y/s` }, 400);
+
+    // Kill-rate cap
+    if ((percher + ghost) * 1000 > MAX_KILLS_PER_S * elapsedMs)
+      return c.json({ error: `kill rate exceeds ${MAX_KILLS_PER_S}/s` }, 400);
+
+    // Recompute score server-side — single source of truth
+    const { finalScore } = buildRunScore(
+      { baseHeightPx, kills: { percher, ghost }, elapsedMs },
+      ENEMY_DEFS,
+      isFailure,
+      heap.score_mult,
+    );
+
+    if (finalScore <= 0)
+      return c.json({ error: 'recomputed score is non-positive' }, 400);
 
     const limit = Math.min(
       parseInt(c.req.query('limit') ?? String(DEFAULT_LIMIT)) || DEFAULT_LIMIT,
@@ -74,17 +128,17 @@ export function scoreRoutes(db: ScoreDB): Hono {
     );
 
     const now       = new Date().toISOString();
-    const submitted = await db.upsertScore(heapId, playerId, playerName.trim().slice(0, MAX_NAME_LEN), score, now);
-    if (submitted) await db.pruneScores(heapId);
+    const submitted = await scoreDb.upsertScore(heapId, playerId, playerName.trim().slice(0, MAX_NAME_LEN), finalScore, now);
+    if (submitted) await scoreDb.pruneScores(heapId);
 
-    const context = await buildContext(db, heapId, playerId, limit);
+    const context = await buildContext(scoreDb, heapId, playerId, limit);
     return c.json({ submitted, context } satisfies SubmitScoreResponse);
   });
 
   // GET /scores/player/:playerId — all of a player's scores across heaps with rank
   app.get('/player/:playerId', async (c) => {
     const playerId = c.req.param('playerId');
-    const rows     = await db.getPlayerScores(playerId);
+    const rows     = await scoreDb.getPlayerScores(playerId);
     const entries  = rows.map(r => ({
       heapId: r.heapId,
       rank:   r.rank,
@@ -103,7 +157,7 @@ export function scoreRoutes(db: ScoreDB): Hono {
       parseInt(c.req.query('limit') ?? String(DEFAULT_LIMIT)) || DEFAULT_LIMIT,
       MAX_LIMIT,
     );
-    const context = await buildContext(db, heapId, playerId, limit);
+    const context = await buildContext(scoreDb, heapId, playerId, limit);
     return c.json(context);
   });
 
@@ -118,8 +172,8 @@ export function scoreRoutes(db: ScoreDB): Hono {
     const offset = page * limit;
 
     const [rows, total] = await Promise.all([
-      db.getScoresPaginated(heapId, offset, limit),
-      db.countScores(heapId),
+      scoreDb.getScoresPaginated(heapId, offset, limit),
+      scoreDb.countScores(heapId),
     ]);
 
     const entries: LeaderboardEntry[] = rows.map((row, i) => ({

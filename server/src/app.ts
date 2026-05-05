@@ -61,6 +61,6 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   app.delete('/heaps/:id',              adminGate);
 
   app.route('/heaps',  heapRoutes(heapDb));
-  app.route('/scores', scoreRoutes(scoreDb));
+  app.route('/scores', scoreRoutes(scoreDb, heapDb));
   return app;
 }
