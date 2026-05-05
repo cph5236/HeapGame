@@ -18,6 +18,9 @@ import type {
 } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
 
+// Mirror of src/constants.ts WORLD_WIDTH. Update both if either changes.
+const WORLD_WIDTH = 960;
+
 function validateDifficulty(d: number): string | null {
   if (!Number.isFinite(d)) return 'difficulty must be a finite number';
   if (d < 1 || d > 5) return 'difficulty must be between 1 and 5';
@@ -249,6 +252,11 @@ export function heapRoutes(db: HeapDB): Hono {
 
     const row = await db.getHeap(id);
     if (!row) return c.json({ error: 'Heap not found' }, 404);
+
+    if (x < 0 || x > WORLD_WIDTH)
+      return c.json({ error: `x must be in [0, ${WORLD_WIDTH}]` }, 400);
+    if (y < 0 || y > row.world_height)
+      return c.json({ error: `y must be in [0, ${row.world_height}]` }, 400);
 
     const liveZone: Vertex[] = JSON.parse(row.live_zone);
     const baseVertices: Vertex[] = (await db.getBaseVerticesById(row.base_id)) ?? [];

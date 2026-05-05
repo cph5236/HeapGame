@@ -765,3 +765,58 @@ describe('heap top_y maintenance', () => {
     expect(db.getTopYForTest(id)).toBe(400);
   });
 });
+
+describe('POST /heaps/:id/place coordinate clamp', () => {
+  async function makeHeap(app: ReturnType<typeof createApp>) {
+    const res = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    return (await res.json() as CreateHeapResponse).id;
+  }
+
+  it('rejects x below 0', async () => {
+    const app = createApp(new MockHeapDB(), new MockScoreDB());
+    const id = await makeHeap(app);
+    const res = await app.request(`/heaps/${id}/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: -1, y: 100 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects x above WORLD_WIDTH', async () => {
+    const app = createApp(new MockHeapDB(), new MockScoreDB());
+    const id = await makeHeap(app);
+    const res = await app.request(`/heaps/${id}/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 999_999, y: 100 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects y below 0', async () => {
+    const app = createApp(new MockHeapDB(), new MockScoreDB());
+    const id = await makeHeap(app);
+    const res = await app.request(`/heaps/${id}/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 200, y: -1 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects y above heap.worldHeight', async () => {
+    const app = createApp(new MockHeapDB(), new MockScoreDB());
+    const id = await makeHeap(app);
+    const res = await app.request(`/heaps/${id}/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 200, y: 999_999 }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
