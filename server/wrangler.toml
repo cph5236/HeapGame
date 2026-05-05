@@ -15,3 +15,27 @@ migrations_dir = "migrations"
 # before relying on the CORS allowlist as a security layer, e.g.
 #   ALLOWED_ORIGINS = "https://your-domain.com,capacitor://localhost,https://localhost"
 ALLOWED_ORIGINS = "*"
+
+# Per-IP rate limits (Workers Rate Limiting API). period must be 10 or 60.
+# limit is tokens per period, counted per Cloudflare datacenter per key (key = client IP).
+
+[[ratelimits]]
+name = "RL_SCORES"
+namespace_id = "1001"
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
+[[ratelimits]]
+name = "RL_PLACE"
+namespace_id = "1002"
+  [ratelimits.simple]
+  limit = 30
+  period = 60
+
+[[ratelimits]]
+name = "RL_GLOBAL"
+namespace_id = "1003"
+  [ratelimits.simple]
+  limit = 300
+  period = 60

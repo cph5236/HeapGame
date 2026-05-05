@@ -5,12 +5,19 @@ import type { ScoreDB } from './scoreDb';
 import { heapRoutes } from './routes/heap';
 import { scoreRoutes } from './routes/scores';
 import { requireAdminSecret } from './middleware/adminAuth';
+import { rateLimit, type RateLimiter } from './middleware/rateLimit';
 
 export interface AppOptions {
   /** Comma-separated origin list, or '*' to allow all (dev only). */
   allowedOrigins?: string;
   /** When set, mutating heap routes require X-Admin-Secret: <value>. */
   adminSecret?: string;
+  /** Cloudflare Rate Limiting API bindings. Any unset = no limit on that bucket. */
+  limiters?: {
+    scores?: RateLimiter;
+    place?:  RateLimiter;
+    global?: RateLimiter;
+  };
 }
 
 export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {}): Hono {
@@ -32,6 +39,21 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
     allowHeaders: ['Content-Type', 'X-Admin-Secret'],
   }));
 
+  // Rate limiting — global circuit breaker on all heap/score traffic
+  const lim = opts.limiters ?? {};
+  if (lim.global) {
+    const globalMw = rateLimit(lim.global, 'global');
+    app.use('/heaps',    globalMw);
+    app.use('/heaps/*',  globalMw);
+    app.use('/scores',   globalMw);
+    app.use('/scores/*', globalMw);
+  }
+
+  // Per-route limiters (mounted as POST handlers; fall through on success)
+  app.post('/scores',          rateLimit(lim.scores, 'scores-submit'));
+  app.post('/heaps/:id/place', rateLimit(lim.place,  'place-block'));
+
+  // Admin gate on mutating heap routes
   const adminGate = requireAdminSecret(opts.adminSecret);
   app.post  ('/heaps',                  adminGate);
   app.put   ('/heaps/:id/reset',        adminGate);

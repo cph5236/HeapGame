@@ -632,41 +632,20 @@ Store it in a password manager. The seed script and any future admin tooling wil
 
 ---
 
-## Task 6: Configure Cloudflare dashboard rate limits (manual)
+## Task 6: Per-IP rate limiting via Workers Rate Limiting API binding
 
-**Files:** none — performed by the user in the Cloudflare dashboard.
+Original plan called for dashboard WAF rules, but those require a Cloudflare zone (custom domain). The Worker is deployed on `*.workers.dev`, so we use the in-Worker [Rate Limiting API binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit) instead. Three bindings (`RL_SCORES`, `RL_PLACE`, `RL_GLOBAL`) declared in `wrangler.toml`, called from a Hono middleware that keys by `cf-connecting-ip`.
 
-- [ ] **Step 1: Navigate to the Worker's rate limiting settings**
+**Files:**
+- Create: `server/src/middleware/rateLimit.ts`
+- Modify: `server/src/app.ts`, `server/src/index.ts`, `server/wrangler.toml`
+- Modify: `server/tests/security.test.ts`
 
-In the Cloudflare dashboard, open the `heap-server` Worker → **Settings** → **Rate Limiting** (if absent, use the zone's **Security → WAF → Rate limiting rules** instead).
+**Limits chosen:** 10/min POST `/scores`, 30/min POST `/heaps/:id/place`, 300/min global. `period` must be 10 or 60 (binding constraint). Counts are per Cloudflare datacenter per IP.
 
-- [ ] **Step 2: Add rule "scores-submit"**
+**Observability:** middleware emits `console.warn(\`[ratelimit] blocked ...\`)` on every block — surfaces in `npx wrangler tail` and the Workers Logs dashboard tab. `429` responses also show up automatically in the Worker's status-code analytics chart.
 
-- Match: `http.request.method eq "POST"` AND `http.request.uri.path eq "/scores"`
-- Characteristics: `IP source address`
-- Period: `60` seconds
-- Requests: `10`
-- Action: `Block` for `60` seconds
-
-- [ ] **Step 3: Add rule "place-block"**
-
-- Match: `http.request.method eq "POST"` AND `http.request.uri.path matches "^/heaps/[^/]+/place$"`
-- Characteristics: `IP source address`
-- Period: `60` seconds
-- Requests: `30`
-- Action: `Block` for `60` seconds
-
-- [ ] **Step 4: Add rule "global-circuit-breaker"**
-
-- Match: `(starts_with(http.request.uri.path, "/heaps") or starts_with(http.request.uri.path, "/scores"))`
-- Characteristics: `IP source address`
-- Period: `60` seconds
-- Requests: `300`
-- Action: `Block` for `60` seconds
-
-- [ ] **Step 5: Smoke test from a browser console**
-
-From the deployed site, run a loop hitting `POST /scores` with a junk body 12 times in <60s and confirm the 11th+ request returns `429`.
+(Implementation, file contents, and tests for this task are already committed — see commit `feat(server): per-IP rate limiting via Workers Rate Limiting API binding`.)
 
 ---
 
