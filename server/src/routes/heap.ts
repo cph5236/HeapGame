@@ -283,6 +283,7 @@ export function heapRoutes(db: HeapDB): Hono {
 
     const newVersion = row.version + 1;
     await db.updateHeap(id, currentBaseId, newVersion, finalLiveZone, newFreezeY);
+    await db.updateTopY(id, y);
 
     return c.json({ accepted: true, version: newVersion } satisfies PlaceResponse);
   });

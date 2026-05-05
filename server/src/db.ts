@@ -15,6 +15,7 @@ export interface HeapRow {
   coin_mult: number;
   score_mult: number;
   world_height: number;
+  top_y: number;
 }
 
 export interface HeapSummaryRow {
@@ -42,6 +43,7 @@ export interface HeapDB {
   ): Promise<void>;
   updateHeap(id: string, baseId: string, version: number, liveZone: Vertex[], freezeY: number): Promise<void>;
   updateHeapParams(id: string, params: HeapParams): Promise<void>;
+  updateTopY(id: string, candidateY: number): Promise<void>;
   deleteHeap(id: string): Promise<void>;
   getBaseVerticesById(baseId: string): Promise<Vertex[] | null>;
   createBase(id: string, heapId: string, vertices: Vertex[], vertexHash: string, now: string): Promise<void>;
@@ -64,7 +66,7 @@ export class D1HeapDB implements HeapDB {
   async getHeap(id: string): Promise<HeapRow | null> {
     const row = await this.d1
       .prepare(
-        'SELECT id, base_id, live_zone, freeze_y, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height FROM heap WHERE id = ?1',
+        'SELECT id, base_id, live_zone, freeze_y, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height, top_y FROM heap WHERE id = ?1',
       )
       .bind(id)
       .first<HeapRow>();
@@ -79,6 +81,7 @@ export class D1HeapDB implements HeapDB {
     now: string,
     params: HeapParams = DEFAULT_HEAP_PARAMS,
   ): Promise<void> {
+    const initialTopY = vertices.length > 0 ? Math.min(...vertices.map(v => v.y)) : 0;
     await this.d1.batch([
       this.d1
         .prepare(
@@ -88,13 +91,14 @@ export class D1HeapDB implements HeapDB {
       this.d1
         .prepare(
           `INSERT INTO heap (id, base_id, live_zone, freeze_y, version, created_at,
-                             name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`,
+                             name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height, top_y)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`,
         )
         .bind(
           heapId, baseId, '[]', 0, 1, now,
           params.name, params.difficulty,
           params.spawnRateMult, params.coinMult, params.scoreMult, params.worldHeight,
+          initialTopY,
         ),
     ]);
   }
@@ -113,6 +117,13 @@ export class D1HeapDB implements HeapDB {
          WHERE id = ?7`,
       )
       .bind(params.name, params.difficulty, params.spawnRateMult, params.coinMult, params.scoreMult, params.worldHeight, id)
+      .run();
+  }
+
+  async updateTopY(id: string, candidateY: number): Promise<void> {
+    await this.d1
+      .prepare('UPDATE heap SET top_y = MIN(top_y, ?1) WHERE id = ?2')
+      .bind(candidateY, id)
       .run();
   }
 

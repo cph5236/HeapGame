@@ -54,6 +54,7 @@ export class MockHeapDB implements HeapDB {
     now: string,
     params: HeapParams = DEFAULT_HEAP_PARAMS,
   ): Promise<void> {
+    const initialTopY = vertices.length > 0 ? Math.min(...vertices.map(v => v.y)) : 0;
     this.bases.set(baseId, {
       heap_id: heapId,
       vertices: JSON.stringify(vertices),
@@ -72,6 +73,7 @@ export class MockHeapDB implements HeapDB {
       coin_mult:       params.coinMult,
       score_mult:      params.scoreMult,
       world_height:    params.worldHeight,
+      top_y: initialTopY,
     });
   }
 
@@ -130,6 +132,7 @@ export class MockHeapDB implements HeapDB {
       coin_mult:       params.coinMult,
       score_mult:      params.scoreMult,
       world_height:    params.worldHeight,
+      top_y: 0,
     });
   }
 
@@ -153,8 +156,26 @@ export class MockHeapDB implements HeapDB {
     this.enemyParams.set(heapId, JSON.stringify(params));
   }
 
+  async updateTopY(id: string, candidateY: number): Promise<void> {
+    const existing = this.heaps.get(id);
+    if (!existing) return;
+    this.heaps.set(id, { ...existing, top_y: Math.min(existing.top_y, candidateY) });
+  }
+
   /** Test helper — seed enemy params directly. */
   seedEnemyParams(heapId: string, params: HeapEnemyParams): void {
     this.enemyParams.set(heapId, JSON.stringify(params));
+  }
+
+  /** Test helper — read top_y directly. */
+  getTopYForTest(id: string): number | undefined {
+    return this.heaps.get(id)?.top_y;
+  }
+
+  /** Test helper — set top_y directly. */
+  setTopYForTest(id: string, value: number): void {
+    const existing = this.heaps.get(id);
+    if (!existing) return;
+    this.heaps.set(id, { ...existing, top_y: value });
   }
 }

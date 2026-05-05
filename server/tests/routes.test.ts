@@ -708,3 +708,60 @@ describe('POST /heaps/:id/place hardening', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('heap top_y maintenance', () => {
+  it('initializes top_y to MIN(y) of base vertices on create', async () => {
+    const db = new MockHeapDB();
+    const app = createApp(db, new MockScoreDB());
+    const res = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertices: [{ x: 0, y: 500 }, { x: 50, y: 200 }, { x: 100, y: 400 }],
+      }),
+    });
+    expect(res.status).toBe(201);
+    const { id } = await res.json() as CreateHeapResponse;
+    expect(db.getTopYForTest(id)).toBe(200);
+  });
+
+  it('lowers top_y when a placement is higher than current summit (lower Y)', async () => {
+    const db = new MockHeapDB();
+    const app = createApp(db, new MockScoreDB());
+    const create = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await create.json() as CreateHeapResponse;
+    expect(db.getTopYForTest(id)).toBe(400);
+
+    const place = await app.request(`/heaps/${id}/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 300, y: 100 }),
+    });
+    expect(place.status).toBe(200);
+    expect(db.getTopYForTest(id)).toBe(100);
+  });
+
+  it('does not raise top_y when a placement is below current summit (higher Y)', async () => {
+    const db = new MockHeapDB();
+    const app = createApp(db, new MockScoreDB());
+    const create = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await create.json() as CreateHeapResponse;
+    expect(db.getTopYForTest(id)).toBe(400);
+
+    const place = await app.request(`/heaps/${id}/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 300, y: 800 }),
+    });
+    expect(place.status).toBe(200);
+    expect(db.getTopYForTest(id)).toBe(400);
+  });
+});
