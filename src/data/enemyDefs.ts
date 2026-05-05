@@ -1,6 +1,7 @@
 // src/data/enemyDefs.ts
-import type { EnemyKind } from '../entities/Enemy';
 import type { HeapEnemyParams } from '../../shared/heapTypes';
+
+export type EnemyKind = 'percher' | 'ghost';
 
 export interface EnemyDef {
   kind: EnemyKind;
