@@ -66,10 +66,10 @@ function heightFt(worldHeight: number, topY: number | null | undefined): string 
 `worldHeight - topY` because the player climbs from `y=worldHeight` (floor) toward `y=0` (summit); a lower `topY` means a taller observed heap.
 
 ### HeapSelectScene
-Render the height label inside each heap's card. Layout (proposed): underneath the stats row, right-aligned, same font family as the existing stat labels but slightly smaller. "???" surfaces when the row's `top_y` is null in the DB (legacy rows; backfill 0004 should have caught most).
+Render the height label inside each heap's card. Layout (proposed): Right of the heap name displayed as "Name - xxxxFT "???" surfaces when the row's `top_y` is null in the DB (legacy rows; backfill 0004 should have caught most).
 
 ### Admin UI
-Once PR-3 is in flight the admin heap list also surfaces this string. For PR-1 alone we can optionally add a single feet readout to the existing `enemy-params.html` heap dropdown — minor polish, not required.
+The admin UI displays raw `topY` (px), not feet — the Y coordinate is the directly useful value when tuning enemy spawn bands (which are themselves expressed in px-above-floor). PR-3's heap list shows a `top Y` column with the raw integer (or `???` when null). For PR-1 alone we can optionally add a `top Y: <value>` readout next to the existing `enemy-params.html` heap dropdown — minor polish, not required.
 
 ### Tests
 - Server route test: list response includes `topY` for a seeded heap.
@@ -159,8 +159,8 @@ Rename `admin/enemy-params.html` → `admin/index.html`. Single page, sectioned 
 └──────────────────────────────────────────────────────────┘
 
 ┌─ Heaps ──────────────────────────────────────────────────┐
-│ Name           Difficulty  Height   Created    Actions   │
-│ Downtown Dump  3.0         120 ft   2026-05-01 [Edit][×] │
+│ Name           Difficulty  top Y    Created    Actions   │
+│ Downtown Dump  3.0         48800    2026-05-01 [Edit][×] │
 │ Hoarder's Heap 2.0         ???      2026-04-28 [Edit][×] │
 │ ...                                                       │
 └──────────────────────────────────────────────────────────┘
