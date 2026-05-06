@@ -86,6 +86,7 @@ export class BootScene extends Phaser.Scene {
           id: INFINITE_HEAP_ID,
           version: 1,
           createdAt: '2026-01-01T00:00:00.000Z',
+          topY: NaN,  // infinite heap has no real summit — heightFt renders "???"
           params: {
             name: '∞ Infinite Heap',
             difficulty: 5.0,

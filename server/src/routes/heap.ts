@@ -128,6 +128,7 @@ export function heapRoutes(db: HeapDB): Hono {
         id: r.id,
         version: r.version,
         createdAt: r.created_at,
+        topY: r.top_y,
         params: {
           name:          r.name,
           difficulty:    r.difficulty,

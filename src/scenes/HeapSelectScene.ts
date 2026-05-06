@@ -5,6 +5,7 @@ import { HeapClient } from '../systems/HeapClient';
 import { drawDifficulty } from '../ui/DifficultyStars';
 import { InputManager } from '../systems/InputManager';
 import { ScoreClient } from '../systems/ScoreClient';
+import { heightFt } from '../util/format';
 import type { PlayerScoreEntry } from '../../shared/scoreTypes';
 
 const ROW_H = 88;
@@ -120,7 +121,7 @@ export class HeapSelectScene extends Phaser.Scene {
     // Left: name + stars (name wraps so it can't overlap the trophy button)
     const lx = ROW_PAD_X + 14;
     const nameMaxW = tBtnLeftX - lx - 8;
-    this.add.text(lx, y + 18, heap.params.name, {
+    this.add.text(lx, y + 18, `${heap.params.name} - ${heightFt(heap.params.worldHeight, heap.topY)}`, {
       fontSize: '17px', fontStyle: 'bold', color: active ? '#ffcc88' : '#ffffff',
       stroke: '#000000', strokeThickness: 2,
       wordWrap: { width: nameMaxW },
