@@ -28,6 +28,7 @@ export interface HeapSummaryRow {
   coin_mult: number;
   score_mult: number;
   world_height: number;
+  top_y: number;
 }
 
 export interface HeapDB {
@@ -57,7 +58,7 @@ export class D1HeapDB implements HeapDB {
   async listHeaps(): Promise<HeapSummaryRow[]> {
     const result = await this.d1
       .prepare(
-        'SELECT id, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height FROM heap',
+        'SELECT id, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height, top_y FROM heap',
       )
       .all<HeapSummaryRow>();
     return result.results;

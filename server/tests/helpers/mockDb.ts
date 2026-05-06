@@ -37,6 +37,7 @@ export class MockHeapDB implements HeapDB {
       coin_mult:       row.coin_mult,
       score_mult:      row.score_mult,
       world_height:    row.world_height,
+      top_y:           row.top_y,
     }));
   }
 

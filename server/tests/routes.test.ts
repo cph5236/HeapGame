@@ -112,6 +112,26 @@ describe('GET /heaps', () => {
     expect(h2.version).toBe(3);
     expect(typeof h2.createdAt).toBe('string');
   });
+
+  it('list response includes topY for each heap', async () => {
+    const db = new MockHeapDB();
+    const app = createApp(db, new MockScoreDB());
+    const created = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    }).then(r => r.json()) as CreateHeapResponse;
+
+    // Simulate a placed point that lowered top_y
+    db.setTopYForTest(created.id, 12345);
+
+    const res = await app.request('/heaps');
+    expect(res.status).toBe(200);
+    const body = await res.json() as ListHeapsResponse;
+    const found = body.heaps.find(h => h.id === created.id);
+    expect(found).toBeDefined();
+    expect(found!.topY).toBe(12345);
+  });
 });
 
 // ── GET /heaps/:id ───────────────────────────────────────────────────────────

@@ -56,6 +56,8 @@ export interface HeapSummary {
   id: string;
   version: number;
   createdAt: string;
+  /** Current heap summit y in world coords (smaller = taller heap). */
+  topY: number;
   params: HeapParams;
 }
 
