@@ -39,7 +39,10 @@ export type HeapEnemyParams = Record<string, EnemySpawnParams>;
 // ── Create ──────────────────────────────────────────────────────────────────
 
 export interface CreateHeapRequest {
-  vertices: Vertex[];
+  /** Optional. If absent, server generates a default polygon from seed + worldHeight. */
+  vertices?: Vertex[];
+  /** Optional. Used only when vertices is absent. Defaults to a random int. */
+  seed?: number;
   params?: Partial<HeapParams>;
 }
 
