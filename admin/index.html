@@ -345,6 +345,9 @@
         }
         setStatus('params saved', 'ok');
         await loadHeaps();
+        // Refresh edit panel from updated cache so form values reflect what we saved.
+        const refreshed = cachedHeaps.find(h => h.id === editingHeapId);
+        if (refreshed) showEditPanel(refreshed);
       } catch (e) {
         setStatus(String(e), 'err');
       }
