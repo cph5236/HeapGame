@@ -393,6 +393,18 @@ describe('POST /scores — input validation (server-recompute)', () => {
     expect(res.status).toBe(400);
   });
 
+  it('accepts non-integer elapsedMs (e.g., Phaser hi-res clock)', async () => {
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {
+      name: 'X', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 2000,
+    });
+    const app = createApp(heapDb, new MockScoreDB());
+    const res = await submitScore(app, validBody({
+      inputs: { baseHeightPx: 100, elapsedMs: 3720.0399999999936 },
+    }));
+    expect(res.status).toBe(200);
+  });
+
   it('stores the server-recomputed score, ignoring any client-supplied score field', async () => {
     const heapDb = new MockHeapDB();
     heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {

@@ -61,55 +61,85 @@ export function scoreRoutes(scoreDb: ScoreDB, heapDb: HeapDB): Hono {
     try {
       body = await c.req.json<SubmitScoreRequest>();
     } catch {
-      return c.json({ error: 'Invalid JSON' }, 400);
+      console.warn('[scores] reject: invalid JSON');
+      return c.json({ error: 'invalid score submission' }, 400);
     }
 
     const { heapId, playerId, playerName, inputs } = body;
 
     // Identity / name validation
-    if (typeof heapId !== 'string' || heapId.length === 0 || heapId.length > MAX_ID_LEN)
-      return c.json({ error: `heapId must be a 1-${MAX_ID_LEN} char string` }, 400);
-    if (typeof playerId !== 'string' || playerId.length === 0 || playerId.length > MAX_ID_LEN)
-      return c.json({ error: `playerId must be a 1-${MAX_ID_LEN} char string` }, 400);
-    if (typeof playerName !== 'string' || playerName.trim().length === 0)
-      return c.json({ error: 'playerName must be a non-empty string' }, 400);
+    if (typeof heapId !== 'string' || heapId.length === 0 || heapId.length > MAX_ID_LEN) {
+      console.warn(`[scores] reject: bad heapId (${typeof heapId}, len=${(heapId as any)?.length ?? 'N/A'})`);
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
+    if (typeof playerId !== 'string' || playerId.length === 0 || playerId.length > MAX_ID_LEN) {
+      console.warn(`[scores] reject: bad playerId (${typeof playerId}, len=${(playerId as any)?.length ?? 'N/A'})`);
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
+    if (typeof playerName !== 'string' || playerName.trim().length === 0) {
+      console.warn(`[scores] reject: bad playerName (${typeof playerName})`);
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
 
     // Inputs shape
-    if (!inputs || typeof inputs !== 'object')
-      return c.json({ error: 'inputs must be an object' }, 400);
+    if (!inputs || typeof inputs !== 'object') {
+      console.warn(`[scores] reject: bad inputs (${typeof inputs})`);
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
 
     const { baseHeightPx, kills, elapsedMs, isFailure } = inputs;
 
-    if (!Number.isInteger(baseHeightPx) || baseHeightPx < 0)
-      return c.json({ error: 'inputs.baseHeightPx must be a non-negative integer' }, 400);
-    if (!Number.isInteger(elapsedMs) || elapsedMs < 1)
-      return c.json({ error: 'inputs.elapsedMs must be a positive integer' }, 400);
-    if (typeof isFailure !== 'boolean')
-      return c.json({ error: 'inputs.isFailure must be a boolean' }, 400);
-    if (!kills || typeof kills !== 'object')
-      return c.json({ error: 'inputs.kills must be an object' }, 400);
+    if (!Number.isInteger(baseHeightPx) || baseHeightPx < 0) {
+      console.warn(`[scores] reject: bad baseHeightPx (${baseHeightPx})`);
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
+    if (!(typeof elapsedMs === 'number' && Number.isFinite(elapsedMs) && elapsedMs >= 1)) {
+      console.warn(`[scores] reject: bad elapsedMs (${elapsedMs})`);
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
+    if (typeof isFailure !== 'boolean') {
+      console.warn(`[scores] reject: bad isFailure (${typeof isFailure})`);
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
+    if (!kills || typeof kills !== 'object') {
+      console.warn(`[scores] reject: bad kills (${typeof kills})`);
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
     const percher = kills.percher;
     const ghost   = kills.ghost;
-    if (!Number.isInteger(percher) || percher < 0)
-      return c.json({ error: 'inputs.kills.percher must be a non-negative integer' }, 400);
-    if (!Number.isInteger(ghost) || ghost < 0)
-      return c.json({ error: 'inputs.kills.ghost must be a non-negative integer' }, 400);
+    if (!Number.isInteger(percher) || percher < 0) {
+      console.warn(`[scores] reject: bad percher (${percher})`);
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
+    if (!Number.isInteger(ghost) || ghost < 0) {
+      console.warn(`[scores] reject: bad ghost (${ghost})`);
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
 
     // Heap-relative validation — needs the heap row
     const heap = await heapDb.getHeap(heapId);
-    if (!heap) return c.json({ error: 'heap not found' }, 404);
+    if (!heap) {
+      console.warn(`[scores] reject: heap not found (${heapId})`);
+      return c.json({ error: 'invalid score submission' }, 404);
+    }
 
     const maxClimbPx = (heap.world_height - heap.top_y) + HEIGHT_GRACE_PX;
-    if (baseHeightPx > maxClimbPx)
-      return c.json({ error: `inputs.baseHeightPx (${baseHeightPx}) exceeds max possible climb (${maxClimbPx})` }, 400);
+    if (baseHeightPx > maxClimbPx) {
+      console.warn(`[scores] reject: baseHeightPx ${baseHeightPx} exceeds max ${maxClimbPx} (heapId=${heapId})`);
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
 
     // Climb-rate cap (integer arithmetic to avoid FP rounding at the boundary)
-    if (baseHeightPx * 1000 > MAX_CLIMB_RATE_Y_PER_S * elapsedMs)
-      return c.json({ error: `climb rate exceeds ${MAX_CLIMB_RATE_Y_PER_S} Y/s` }, 400);
+    if (baseHeightPx * 1000 > MAX_CLIMB_RATE_Y_PER_S * elapsedMs) {
+      console.warn(`[scores] reject: climb rate ${(baseHeightPx * 1000) / elapsedMs} Y/s exceeds ${MAX_CLIMB_RATE_Y_PER_S} (heapId=${heapId})`);
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
 
     // Kill-rate cap
-    if ((percher + ghost) * 1000 > MAX_KILLS_PER_S * elapsedMs)
-      return c.json({ error: `kill rate exceeds ${MAX_KILLS_PER_S}/s` }, 400);
+    if ((percher + ghost) * 1000 > MAX_KILLS_PER_S * elapsedMs) {
+      console.warn(`[scores] reject: kill rate ${((percher + ghost) * 1000) / elapsedMs} /s exceeds ${MAX_KILLS_PER_S} (heapId=${heapId})`);
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
 
     // Recompute score server-side — single source of truth
     const { finalScore } = buildRunScore(
@@ -119,8 +149,10 @@ export function scoreRoutes(scoreDb: ScoreDB, heapDb: HeapDB): Hono {
       heap.score_mult,
     );
 
-    if (finalScore <= 0)
-      return c.json({ error: 'recomputed score is non-positive' }, 400);
+    if (finalScore <= 0) {
+      console.warn(`[scores] reject: recomputed score is non-positive (${finalScore}), heapId=${heapId}`);
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
 
     const limit = Math.min(
       parseInt(c.req.query('limit') ?? String(DEFAULT_LIMIT)) || DEFAULT_LIMIT,
