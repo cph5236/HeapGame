@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Heap Admin</title>
+  <style>
+    body { font-family: monospace; max-width: 900px; margin: 40px auto; padding: 0 16px; background: #111; color: #ddd; }
+    h1 { color: #0f0; margin-bottom: 4px; }
+    h2 { margin: 0 0 10px; font-size: 14px; color: #0cf; text-transform: uppercase; }
+    h3 { margin: 0 0 8px; font-size: 12px; color: #888; text-transform: uppercase; }
+    label { display: block; margin: 6px 0 2px; font-size: 13px; color: #aaa; }
+    input[type="number"], input[type="text"], input[type="password"] { width: 100%; padding: 6px; background: #222; border: 1px solid #444; color: #ddd; font-family: monospace; box-sizing: border-box; }
+    input[type="number"]:disabled, input[type="text"]:disabled { opacity: 0.5; }
+    select { cursor: pointer; }
+    .section { border-left: 4px solid #444; padding: 12px; margin: 12px 0; border-radius: 4px; }
+    .section-settings { border-left-color: #888; }
+    .section-list { border-left-color: #0cf; }
+    .section-edit { border-left-color: #0f0; }
+    .section-create { border-left-color: #fa0; }
+    .muted { color: #777; font-size: 12px; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; margin-left: 8px; }
+    .dot-ok { background: #0f0; }
+    .dot-bad { background: #f44; }
+    table.heaps { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.heaps th, table.heaps td { padding: 6px 8px; border-bottom: 1px solid #222; text-align: left; }
+    table.heaps th { color: #888; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; margin-right: 4px; }
+    .btn-danger { background: #c33; color: #fff; }
+    .btn-danger:hover { background: #a22; }
+    button { margin-top: 12px; padding: 10px 24px; background: #0f0; color: #000; border: none; font-family: monospace; font-size: 14px; font-weight: bold; cursor: pointer; }
+    button:hover { background: #0d0; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    #status { margin-top: 16px; font-size: 13px; padding: 8px; background: #1a1a1a; }
+    .ok { color: #0f0; }
+    .err { color: #f44; }
+  </style>
+</head>
+<body>
+  <h1>Heap Admin</h1>
+
+  <div class="section section-settings">
+    <h2>Settings</h2>
+    <label>Server URL</label>
+    <input type="text" id="serverUrl" />
+
+    <label>Admin Secret <span class="muted">(stored in localStorage)</span></label>
+    <input type="password" id="adminSecret" placeholder="leave blank if server has no secret" />
+
+    <div style="margin-top: 10px;">
+      <button id="saveSettings">Save Settings</button>
+      <span id="secretDot" class="dot dot-bad"></span>
+      <span id="secretLabel" class="muted">no secret saved</span>
+    </div>
+  </div>
+
+  <div class="section section-list">
+    <h2>Heaps</h2>
+    <button id="refreshHeaps">Refresh</button>
+    <table class="heaps">
+      <thead>
+        <tr>
+          <th>Name</th><th>Difficulty</th><th>top Y</th><th>Created</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="heapsTbody"><tr><td colspan="5" class="muted">loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="section section-edit" id="editPanel" style="display:none;">
+    <h2>Edit Heap: <span id="editHeapName">—</span></h2>
+
+    <h3 style="color: #aaa; font-size: 13px; margin-top: 12px;">Heap Params</h3>
+    <div class="row">
+      <div><label>Name</label><input type="text" id="ep-name" /></div>
+      <div><label>Difficulty (1–5, step 0.5)</label><input type="number" step="0.5" id="ep-difficulty" /></div>
+    </div>
+    <div class="row">
+      <div><label>spawnRateMult</label><input type="number" step="0.05" id="ep-spawnRateMult" /></div>
+      <div><label>coinMult</label><input type="number" step="0.05" id="ep-coinMult" /></div>
+    </div>
+    <div class="row">
+      <div><label>scoreMult</label><input type="number" step="0.05" id="ep-scoreMult" /></div>
+      <div><label>worldHeight <span class="muted">(locked)</span></label><input type="number" id="ep-worldHeight" disabled /></div>
+    </div>
+    <button id="saveParams">Save Params</button>
+
+    <h3 style="color: #aaa; font-size: 13px; margin-top: 20px;">Enemy Params</h3>
+    <div class="section" id="section-percher">
+      <h2>Percher (RAT)</h2>
+      <div class="row">
+        <div><label>spawnStartPxAboveFloor</label><input type="number" id="percher-spawnStartPxAboveFloor" /></div>
+        <div><label>spawnEndPxAboveFloor (-1 = none)</label><input type="number" id="percher-spawnEndPxAboveFloor" /></div>
+      </div>
+      <div class="row">
+        <div><label>spawnRampPxAboveFloor (-1 = flat)</label><input type="number" id="percher-spawnRampPxAboveFloor" /></div>
+        <div></div>
+      </div>
+      <div class="row">
+        <div><label>spawnChanceMin (0–1)</label><input type="number" step="0.01" id="percher-spawnChanceMin" /></div>
+        <div><label>spawnChanceMax (0–1)</label><input type="number" step="0.01" id="percher-spawnChanceMax" /></div>
+      </div>
+    </div>
+
+    <div class="section" id="section-ghost">
+      <h2>Ghost (VULTURE)</h2>
+      <div class="row">
+        <div><label>spawnStartPxAboveFloor</label><input type="number" id="ghost-spawnStartPxAboveFloor" /></div>
+        <div><label>spawnEndPxAboveFloor (-1 = none)</label><input type="number" id="ghost-spawnEndPxAboveFloor" /></div>
+      </div>
+      <div class="row">
+        <div><label>spawnRampPxAboveFloor (-1 = flat)</label><input type="number" id="ghost-spawnRampPxAboveFloor" /></div>
+        <div></div>
+      </div>
+      <div class="row">
+        <div><label>spawnChanceMin (0–1)</label><input type="number" step="0.01" id="ghost-spawnChanceMin" /></div>
+        <div><label>spawnChanceMax (0–1)</label><input type="number" step="0.01" id="ghost-spawnChanceMax" /></div>
+      </div>
+    </div>
+    <button id="saveEnemyParams">Save Enemy Params</button>
+  </div>
+
+  <div class="section section-create">
+    <h2>Create New Heap</h2>
+    <div class="row">
+      <div><label>Name</label><input type="text" id="cp-name" placeholder="Heap name" /></div>
+      <div><label>Difficulty</label><input type="number" step="0.5" id="cp-difficulty" value="1.0" /></div>
+    </div>
+    <div class="row">
+      <div><label>spawnRateMult</label><input type="number" step="0.05" id="cp-spawnRateMult" value="1.0" /></div>
+      <div><label>coinMult</label><input type="number" step="0.05" id="cp-coinMult" value="1.0" /></div>
+    </div>
+    <div class="row">
+      <div><label>scoreMult</label><input type="number" step="0.05" id="cp-scoreMult" value="1.0" /></div>
+      <div><label>worldHeight</label><input type="number" id="cp-worldHeight" value="50000" /></div>
+    </div>
+    <div class="row">
+      <div><label>Seed <span class="muted">(blank = random)</span></label><input type="number" id="cp-seed" /></div>
+      <div></div>
+    </div>
+    <button id="createHeap">Create Heap</button>
+  </div>
+
+  <div id="status"></div>
+
+  <script>
+    const LS_URL    = 'heapAdmin.serverUrl';
+    const LS_SECRET = 'heapAdmin.adminSecret';
+    const DEFAULT_URL = 'http://localhost:8787';
+    const KINDS = ['percher', 'ghost'];
+    const FIELDS = ['spawnStartPxAboveFloor', 'spawnEndPxAboveFloor', 'spawnRampPxAboveFloor', 'spawnChanceMin', 'spawnChanceMax'];
+
+    function $(id) { return document.getElementById(id); }
+    function serverUrl() { return $('serverUrl').value.replace(/\/$/, ''); }
+    function adminSecret() { return $('adminSecret').value; }
+
+    function refreshSecretIndicator() {
+      const has = !!localStorage.getItem(LS_SECRET);
+      $('secretDot').className = 'dot ' + (has ? 'dot-ok' : 'dot-bad');
+      $('secretLabel').textContent = has ? 'secret saved' : 'no secret saved';
+    }
+
+    async function adminFetch(path, opts = {}) {
+      const headers = Object.assign(
+        { 'Content-Type': 'application/json' },
+        opts.headers || {},
+      );
+      const secret = adminSecret();
+      if (secret) headers['X-Admin-Secret'] = secret;
+      const res = await fetch(serverUrl() + path, Object.assign({}, opts, { headers }));
+      if (res.status === 401) {
+        localStorage.removeItem(LS_SECRET);
+        refreshSecretIndicator();
+        throw new Error('admin secret rejected — cleared from localStorage');
+      }
+      return res;
+    }
+
+    function setStatus(msg, kind) {
+      const el = $('status');
+      if (!el) return;
+      el.textContent = msg;
+      el.className = kind || '';
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+    }
+
+    // ────── Settings ──────────────────────────────────────────────────────
+
+    function bootSettings() {
+      $('serverUrl').value    = localStorage.getItem(LS_URL)    || DEFAULT_URL;
+      $('adminSecret').value  = localStorage.getItem(LS_SECRET) || '';
+      $('saveSettings').onclick = () => {
+        localStorage.setItem(LS_URL,    $('serverUrl').value);
+        localStorage.setItem(LS_SECRET, $('adminSecret').value);
+        refreshSecretIndicator();
+        setStatus('settings saved', 'ok');
+      };
+      refreshSecretIndicator();
+    }
+
+    // ────── Heaps List ──────────────────────────────────────────────────────
+
+    let cachedHeaps = [];
+
+    async function loadHeaps() {
+      try {
+        const res = await fetch(serverUrl() + '/heaps');
+        if (!res.ok) throw new Error('list failed: ' + res.status);
+        const data = await res.json();
+        cachedHeaps = data.heaps || [];
+        renderHeapsTable();
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    function renderHeapsTable() {
+      const tbody = $('heapsTbody');
+      if (!cachedHeaps.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="muted">no heaps</td></tr>';
+        return;
+      }
+      tbody.innerHTML = cachedHeaps.map(h => {
+        const topY = (h.topY == null || !Number.isFinite(h.topY)) ? '???' : String(h.topY);
+        const created = (h.createdAt || '').slice(0, 10);
+        return `<tr>
+          <td>${escapeHtml(h.params.name)}</td>
+          <td>${h.params.difficulty.toFixed(1)}</td>
+          <td>${topY}</td>
+          <td>${created}</td>
+          <td>
+            <button class="btn-sm" onclick="onEditHeap('${h.id}')">Edit</button>
+            <button class="btn-sm btn-danger" onclick="onDeleteHeap('${h.id}')">×</button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function onDeleteHeap(id) {
+      const heap = cachedHeaps.find(h => h.id === id);
+      if (!heap) return;
+      if (!confirm(`Delete "${heap.params.name}"? This cannot be undone.`)) return;
+      try {
+        const res = await adminFetch('/heaps/' + id, { method: 'DELETE' });
+        if (!res.ok) throw new Error('delete failed: ' + res.status);
+        setStatus('deleted', 'ok');
+        await loadHeaps();
+        hideEditPanel();
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    function bootHeapsList() {
+      $('refreshHeaps').onclick = loadHeaps;
+      loadHeaps();
+    }
+
+    // ────── Edit Heap ──────────────────────────────────────────────────────
+
+    let editingHeapId = null;
+
+    function showEditPanel(heap) {
+      editingHeapId = heap.id;
+      $('editPanel').style.display = '';
+      $('editHeapName').textContent = heap.params.name;
+      $('ep-name').value          = heap.params.name;
+      $('ep-difficulty').value    = heap.params.difficulty;
+      $('ep-spawnRateMult').value = heap.params.spawnRateMult;
+      $('ep-coinMult').value      = heap.params.coinMult;
+      $('ep-scoreMult').value     = heap.params.scoreMult;
+      $('ep-worldHeight').value   = heap.params.worldHeight;
+      loadEnemyParams(heap.id);
+    }
+
+    function hideEditPanel() {
+      editingHeapId = null;
+      $('editPanel').style.display = 'none';
+    }
+
+    function onEditHeap(id) {
+      const heap = cachedHeaps.find(h => h.id === id);
+      if (heap) showEditPanel(heap);
+    }
+
+    async function loadEnemyParams(heapId) {
+      try {
+        const res = await fetch(`${serverUrl()}/heaps/${heapId}/enemy-params`);
+        if (!res.ok) throw new Error(`${res.status}`);
+        const params = await res.json();
+        for (const kind of KINDS) {
+          const kp = params[kind] ?? {};
+          for (const field of FIELDS) {
+            const el = $(`${kind}-${field}`);
+            if (el) el.value = kp[field] ?? '';
+          }
+        }
+      } catch (e) {
+        setStatus('Failed to load enemy params: ' + e.message, 'err');
+      }
+    }
+
+    async function saveEnemyParams() {
+      if (!editingHeapId) return;
+      const params = {};
+      for (const kind of KINDS) {
+        params[kind] = {};
+        for (const field of FIELDS) {
+          const val = parseFloat($(`${kind}-${field}`).value);
+          params[kind][field] = isNaN(val) ? -1 : val;
+        }
+      }
+      try {
+        const res = await adminFetch(`/heaps/${editingHeapId}/enemy-params`, {
+          method: 'PUT',
+          body: JSON.stringify(params),
+        });
+        const body = await res.json();
+        setStatus(res.ok ? '✓ Enemy params saved' : `Error: ${JSON.stringify(body)}`, res.ok ? 'ok' : 'err');
+      } catch (e) {
+        setStatus('Save failed: ' + e.message, 'err');
+      }
+    }
+
+    async function onSaveParams() {
+      if (!editingHeapId) return;
+      const body = {
+        name:          $('ep-name').value,
+        difficulty:    Number($('ep-difficulty').value),
+        spawnRateMult: Number($('ep-spawnRateMult').value),
+        coinMult:      Number($('ep-coinMult').value),
+        scoreMult:     Number($('ep-scoreMult').value),
+      };
+      try {
+        const res = await adminFetch(`/heaps/${editingHeapId}/params`, {
+          method: 'PUT',
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || ('save failed: ' + res.status));
+        }
+        setStatus('params saved', 'ok');
+        await loadHeaps();
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    function bootEditHeap() {
+      $('saveParams').onclick = onSaveParams;
+      $('saveEnemyParams').onclick = saveEnemyParams;
+    }
+
+    // ────── Create Heap ────────────────────────────────────────────────────
+
+    async function onCreateHeap() {
+      const params = {
+        name:          $('cp-name').value || 'Unnamed Heap',
+        difficulty:    Number($('cp-difficulty').value),
+        spawnRateMult: Number($('cp-spawnRateMult').value),
+        coinMult:      Number($('cp-coinMult').value),
+        scoreMult:     Number($('cp-scoreMult').value),
+        worldHeight:   Number($('cp-worldHeight').value),
+      };
+      const seedRaw = $('cp-seed').value;
+      const body = { params };
+      if (seedRaw !== '') body.seed = Number(seedRaw);
+
+      try {
+        const res = await adminFetch('/heaps', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || ('create failed: ' + res.status));
+        }
+        setStatus('heap created', 'ok');
+        $('cp-name').value = '';
+        $('cp-seed').value = '';
+        await loadHeaps();
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    function bootCreateHeap() {
+      $('createHeap').onclick = onCreateHeap;
+    }
+
+    // ────── Boot ───────────────────────────────────────────────────────────
+
+    document.addEventListener('DOMContentLoaded', () => {
+      bootSettings();
+      bootHeapsList();
+      bootEditHeap();
+      bootCreateHeap();
+    });
+  </script>
+</body>
+</html>
