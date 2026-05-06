@@ -952,3 +952,74 @@ describe('POST /heaps/:id/place coordinate clamp', () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ── PUT /heaps/:id/params ────────────────────────────────────────────────────
+
+describe('PUT /heaps/:id/params', () => {
+  async function seedOne(app: ReturnType<typeof makeApp>) {
+    const res = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    return (await res.json() as CreateHeapResponse).id;
+  }
+
+  it('updates editable params and returns updated summary', async () => {
+    const app = makeApp();
+    const id = await seedOne(app);
+
+    const res = await app.request(`/heaps/${id}/params`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Renamed', difficulty: 2.5, coinMult: 1.5 }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { summary: any };
+    expect(body.summary.params.name).toBe('Renamed');
+    expect(body.summary.params.difficulty).toBe(2.5);
+    expect(body.summary.params.coinMult).toBe(1.5);
+  });
+
+  it('rejects worldHeight in body with 400', async () => {
+    const app = makeApp();
+    const id = await seedOne(app);
+    const res = await app.request(`/heaps/${id}/params`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ worldHeight: 99_999 }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toMatch(/worldHeight/i);
+  });
+
+  it('returns 404 when heap does not exist', async () => {
+    const app = makeApp();
+    const res = await app.request('/heaps/does-not-exist/params', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'x' }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects when admin secret is configured but missing', async () => {
+    const app = makeApp({ adminSecret: 'topsecret' });
+    const id = await (async () => {
+      const res = await app.request('/heaps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': 'topsecret' },
+        body: JSON.stringify({ vertices: VERTICES }),
+      });
+      return (await res.json() as CreateHeapResponse).id;
+    })();
+
+    const res = await app.request(`/heaps/${id}/params`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },  // no X-Admin-Secret
+      body: JSON.stringify({ name: 'x' }),
+    });
+    expect(res.status).toBe(401);
+  });
+});

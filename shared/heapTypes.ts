@@ -94,6 +94,15 @@ export interface ResetHeapResponse {
   previousVersion: number;
 }
 
+// ── Update Params (no-vertices path) ─────────────────────────────────────────
+
+/** All fields optional. worldHeight is rejected if present. */
+export type UpdateHeapParamsRequest = Partial<Omit<HeapParams, 'worldHeight'>>;
+
+export interface UpdateHeapParamsResponse {
+  summary: HeapSummary;
+}
+
 // ── Delete ────────────────────────────────────────────────────────────────────
 
 export interface DeleteHeapResponse {

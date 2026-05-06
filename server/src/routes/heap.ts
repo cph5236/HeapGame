@@ -11,6 +11,8 @@ import type {
   PlaceRequest,
   PlaceResponse,
   ResetHeapResponse,
+  UpdateHeapParamsRequest,
+  UpdateHeapParamsResponse,
   DeleteHeapResponse,
   Vertex,
   HeapParams,
@@ -254,6 +256,47 @@ export function heapRoutes(db: HeapDB): Hono {
       version: 1,
       previousVersion,
     } satisfies ResetHeapResponse);
+  });
+
+  // PUT /heaps/:id/params — update editable params (worldHeight locked)
+  app.put('/:id/params', async (c) => {
+    const id = c.req.param('id');
+    const existing = await db.getHeap(id);
+    if (!existing) return c.json({ error: 'Heap not found' }, 404);
+
+    let body: UpdateHeapParamsRequest;
+    try {
+      body = await c.req.json<UpdateHeapParamsRequest>();
+    } catch {
+      return c.json({ error: 'Invalid JSON' }, 400);
+    }
+
+    if (body && 'worldHeight' in body) {
+      return c.json({ error: 'worldHeight is locked after creation' }, 400);
+    }
+
+    // Reuse resolveParams against the merged shape (existing values + edits).
+    const merged = resolveParams({
+      name:          body.name          ?? existing.name,
+      difficulty:    body.difficulty    ?? existing.difficulty,
+      spawnRateMult: body.spawnRateMult ?? existing.spawn_rate_mult,
+      coinMult:      body.coinMult      ?? existing.coin_mult,
+      scoreMult:     body.scoreMult     ?? existing.score_mult,
+      worldHeight:   existing.world_height,
+    });
+    if ('error' in merged) return c.json({ error: merged.error }, 400);
+
+    await db.updateHeapParams(id, merged);
+
+    return c.json({
+      summary: {
+        id,
+        version: existing.version,
+        createdAt: existing.created_at,
+        topY: existing.top_y,
+        params: merged,
+      },
+    } satisfies UpdateHeapParamsResponse);
   });
 
   // POST /heaps/:id/place — add a block vertex to the live zone
