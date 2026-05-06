@@ -1,4 +1,4 @@
-import type { LeaderboardContext, SubmitScoreResponse, PlayerScoreEntry, PlayerScoresResponse, PaginatedLeaderboardResponse } from '../../shared/scoreTypes';
+import type { LeaderboardContext, SubmitScoreInputs, SubmitScoreResponse, PlayerScoreEntry, PlayerScoresResponse, PaginatedLeaderboardResponse } from '../../shared/scoreTypes';
 
 const SERVER_URL: string =
   (import.meta as unknown as { env: Record<string, string> }).env.VITE_HEAP_SERVER_URL ??
@@ -13,7 +13,7 @@ export class ScoreClient {
     heapId:     string;
     playerId:   string;
     playerName: string;
-    score:      number;
+    inputs:     SubmitScoreInputs;
     limit?:     number;
   }): Promise<LeaderboardContext | null> {
     try {
@@ -28,7 +28,7 @@ export class ScoreClient {
           heapId:     params.heapId,
           playerId:   params.playerId,
           playerName: params.playerName,
-          score:      params.score,
+          inputs:     params.inputs,
         }),
       });
 

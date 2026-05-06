@@ -624,7 +624,16 @@ export class ScoreScene extends Phaser.Scene {
     const call       = this.isNewHighScore
       ? ScoreClient.submitScore({
           heapId: this.heapId, playerId, playerName,
-          score:  this.score, limit: LEADERBOARD_TOP_N,
+          inputs: {
+            baseHeightPx: this._baseHeightPx,
+            kills: {
+              percher: this._kills.percher ?? 0,
+              ghost:   this._kills.ghost   ?? 0,
+            },
+            elapsedMs: Math.floor(this._elapsedMs),
+            isFailure: this.isFailure,
+          },
+          limit: LEADERBOARD_TOP_N,
         })
       : ScoreClient.getContext({ heapId: this.heapId, playerId, limit: LEADERBOARD_TOP_N });
 

@@ -1,8 +1,8 @@
 // src/entities/Enemy.ts
 import Phaser from 'phaser';
-import type { EnemyDef } from '../data/enemyDefs';
+import type { EnemyDef, EnemyKind } from '../data/enemyDefs';
 
-export type EnemyKind = 'percher' | 'ghost';
+export type { EnemyKind };
 
 export class Enemy {
   readonly sprite: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;

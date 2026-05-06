@@ -12,11 +12,18 @@ export interface LeaderboardContext {
   player: LeaderboardEntry | null;
 }
 
+export interface SubmitScoreInputs {
+  baseHeightPx: number;
+  kills:        { percher: number; ghost: number };
+  elapsedMs:    number;
+  isFailure:    boolean;
+}
+
 export interface SubmitScoreRequest {
   heapId:     string;
   playerId:   string;
   playerName: string;
-  score:      number;
+  inputs:     SubmitScoreInputs;
 }
 
 export interface SubmitScoreResponse {

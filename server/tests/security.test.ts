@@ -99,7 +99,7 @@ describe('Admin secret gate', () => {
     const placeRes = await app.request(`/heaps/${id}/place`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ x: 300, y: 100 }),
+      body: JSON.stringify({ x: 300, y: 500 }),
     });
     expect(placeRes.status).toBe(200);
   });

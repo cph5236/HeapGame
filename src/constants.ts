@@ -90,8 +90,7 @@ export const ENEMY_CULL_DISTANCE = 2000; // px below camera before destroy
 
 // ── Score / Economy ────────────────────────────────────────────────────────────
 export const SCORE_TO_COINS_DIVISOR = 100;
-export const PACE_BONUS_CONST       = 10; // multiplier on px/s pace component
-export const SCORE_DISPLAY_DIVISOR  = 10; // px ÷ 10 = ft for HUD display
+export { PACE_BONUS_CONST, SCORE_DISPLAY_DIVISOR } from '../shared/scoreConstants';
 export const LEADERBOARD_TOP_N      = 5;  // number of top entries shown in leaderboard panel
 
 // ── Portals ────────────────────────────────────────────────────────────────────

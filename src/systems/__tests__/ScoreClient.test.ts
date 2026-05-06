@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { SubmitScoreResponse, LeaderboardContext, PlayerScoresResponse, PaginatedLeaderboardResponse } from '../../../shared/scoreTypes';
+import type { SubmitScoreInputs, SubmitScoreResponse, LeaderboardContext, PlayerScoresResponse, PaginatedLeaderboardResponse } from '../../../shared/scoreTypes';
 
 beforeEach(() => {
   vi.stubGlobal('localStorage', {
@@ -24,6 +24,13 @@ const MOCK_CONTEXT: LeaderboardContext = {
 // ── submitScore ───────────────────────────────────────────────────────────────
 
 describe('ScoreClient.submitScore', () => {
+  const MOCK_INPUTS: SubmitScoreInputs = {
+    baseHeightPx: 500,
+    kills: { percher: 3, ghost: 1 },
+    elapsedMs: 45000,
+    isFailure: false,
+  };
+
   it('returns LeaderboardContext on success', async () => {
     const mockResponse: SubmitScoreResponse = { submitted: true, context: MOCK_CONTEXT };
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
@@ -31,7 +38,7 @@ describe('ScoreClient.submitScore', () => {
       json: async () => mockResponse,
     }));
     const result = await ScoreClient.submitScore({
-      heapId: 'heap-1', playerId: 'p1', playerName: 'Alpha', score: 5000,
+      heapId: 'heap-1', playerId: 'p1', playerName: 'Alpha', inputs: MOCK_INPUTS,
     });
     expect(result).toEqual(MOCK_CONTEXT);
   });
@@ -39,7 +46,7 @@ describe('ScoreClient.submitScore', () => {
   it('returns null on network failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('Network error')));
     const result = await ScoreClient.submitScore({
-      heapId: 'heap-1', playerId: 'p1', playerName: 'Alpha', score: 5000,
+      heapId: 'heap-1', playerId: 'p1', playerName: 'Alpha', inputs: MOCK_INPUTS,
     });
     expect(result).toBeNull();
   });
@@ -47,7 +54,7 @@ describe('ScoreClient.submitScore', () => {
   it('returns null on non-200 response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: false, status: 500 }));
     const result = await ScoreClient.submitScore({
-      heapId: 'heap-1', playerId: 'p1', playerName: 'Alpha', score: 5000,
+      heapId: 'heap-1', playerId: 'p1', playerName: 'Alpha', inputs: MOCK_INPUTS,
     });
     expect(result).toBeNull();
   });
@@ -58,7 +65,7 @@ describe('ScoreClient.submitScore', () => {
       json: async () => { throw new SyntaxError('bad json'); },
     }));
     const result = await ScoreClient.submitScore({
-      heapId: 'heap-1', playerId: 'p1', playerName: 'Alpha', score: 5000,
+      heapId: 'heap-1', playerId: 'p1', playerName: 'Alpha', inputs: MOCK_INPUTS,
     });
     expect(result).toBeNull();
   });
@@ -71,7 +78,7 @@ describe('ScoreClient.submitScore', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     await ScoreClient.submitScore({
-      heapId: 'heap-1', playerId: 'p1', playerName: 'Alpha', score: 5000, limit: 10,
+      heapId: 'heap-1', playerId: 'p1', playerName: 'Alpha', inputs: MOCK_INPUTS, limit: 10,
     });
     const calledUrl = (fetchMock.mock.calls[0] as [string])[0];
     expect(calledUrl).toContain('limit=10');

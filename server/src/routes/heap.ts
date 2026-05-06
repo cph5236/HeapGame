@@ -18,6 +18,22 @@ import type {
 } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
 
+// Mirror of src/constants.ts WORLD_WIDTH. Update both if either changes.
+const WORLD_WIDTH = 960;
+
+// Mirror of GameScene's center-zone bounds (WORLD_WIDTH * 0.125 to 0.875).
+// TODO: promote to a heap parameter so each heap can define its playable column.
+const PLACE_X_MIN = WORLD_WIDTH * 0.125;  // 120
+const PLACE_X_MAX = WORLD_WIDTH * 0.875;  // 840
+
+// Grace pixels above current summit a placement may extend the heap upward.
+// Roughly one player-height of clearance plus margin.
+const PLACE_HEIGHT_GRACE_PX = 200;
+
+// Mirror of src/constants.ts HEAP_TOP_ZONE_PX. Defines the active-zone band
+// above the summit on a fresh heap (no live-zone vertices yet).
+const HEAP_TOP_ZONE_PX = 300;
+
 function validateDifficulty(d: number): string | null {
   if (!Number.isFinite(d)) return 'difficulty must be a finite number';
   if (d < 1 || d > 5) return 'difficulty must be between 1 and 5';
@@ -233,24 +249,50 @@ export function heapRoutes(db: HeapDB): Hono {
 
   // POST /heaps/:id/place — add a block vertex to the live zone
   app.post('/:id/place', async (c) => {
+    const id = c.req.param('id');
     let body: PlaceRequest;
     try {
       body = await c.req.json<PlaceRequest>();
     } catch {
-      return c.json({ error: 'Invalid JSON' }, 400);
+      console.warn(`[place] reject: invalid JSON heapId=${id}`);
+      return c.json({ error: 'invalid placement' }, 400);
     }
 
-    const id = c.req.param('id');
     const { x, y } = body;
     if (typeof x !== 'number' || !Number.isFinite(x) ||
         typeof y !== 'number' || !Number.isFinite(y)) {
-      return c.json({ error: 'x and y must be finite numbers' }, 400);
+      console.warn(`[place] reject: bad coords (x=${x}, y=${y}) heapId=${id}`);
+      return c.json({ error: 'invalid placement' }, 400);
     }
 
     const row = await db.getHeap(id);
     if (!row) return c.json({ error: 'Heap not found' }, 404);
 
+    if (x < PLACE_X_MIN || x > PLACE_X_MAX) {
+      console.warn(`[place] reject: x out of center zone (${x}) heapId=${id}`);
+      return c.json({ error: 'invalid placement' }, 400);
+    }
+    if (y < 0 || y > row.world_height) {
+      console.warn(`[place] reject: y out of world bounds (${y}, world_height=${row.world_height}) heapId=${id}`);
+      return c.json({ error: 'invalid placement' }, 400);
+    }
+    if (y < row.top_y - PLACE_HEIGHT_GRACE_PX) {
+      console.warn(`[place] reject: y above summit + grace (${y}, top_y=${row.top_y}, grace=${PLACE_HEIGHT_GRACE_PX}) heapId=${id}`);
+      return c.json({ error: 'invalid placement' }, 400);
+    }
+
     const liveZone: Vertex[] = JSON.parse(row.live_zone);
+
+    // Bottom of the live zone — placements below this aren't in the active band.
+    // Mirrors HeapClient.getLiveZoneBottomY: max y of live zone, or top_y + 300 (HEAP_TOP_ZONE_PX) for fresh heaps.
+    const liveZoneBottomY = liveZone.length > 0
+      ? liveZone.reduce((max, v) => v.y > max ? v.y : max, -Infinity)
+      : row.top_y + HEAP_TOP_ZONE_PX;
+    if (y > liveZoneBottomY) {
+      console.warn(`[place] reject: y below active zone (${y} > liveZoneBottomY=${liveZoneBottomY}) heapId=${id}`);
+      return c.json({ error: 'invalid placement' }, 400);
+    }
+
     const baseVertices: Vertex[] = (await db.getBaseVerticesById(row.base_id)) ?? [];
     const fullPolygon = [...baseVertices, ...liveZone];
 
@@ -283,6 +325,7 @@ export function heapRoutes(db: HeapDB): Hono {
 
     const newVersion = row.version + 1;
     await db.updateHeap(id, currentBaseId, newVersion, finalLiveZone, newFreezeY);
+    await db.updateTopY(id, y);
 
     return c.json({ accepted: true, version: newVersion } satisfies PlaceResponse);
   });

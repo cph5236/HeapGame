@@ -10,8 +10,12 @@ const HEAP_ID   = 'heap-test-001';
 const PLAYER_A  = 'player-aaa';
 const PLAYER_B  = 'player-bbb';
 
-function makeApp(scoreDb = new MockScoreDB()) {
-  return createApp(new MockHeapDB(), scoreDb);
+function makeApp(scoreDb = new MockScoreDB(), heapDb?: MockHeapDB) {
+  if (!heapDb) {
+    heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, []);
+  }
+  return createApp(heapDb, scoreDb);
 }
 
 async function submitScore(app: ReturnType<typeof makeApp>, body: object, limit?: number) {
@@ -23,13 +27,34 @@ async function submitScore(app: ReturnType<typeof makeApp>, body: object, limit?
   });
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+const VALID_INPUTS = {
+  baseHeightPx: 1000,
+  kills: { percher: 0, ghost: 0 },
+  elapsedMs: 60_000,
+  isFailure: true,
+};
+
+function validBody(overrides: {
+  heapId?: string;
+  playerId?: string;
+  playerName?: string;
+  inputs?: Partial<typeof VALID_INPUTS>;
+} = {}) {
+  return {
+    heapId:     overrides.heapId     ?? HEAP_ID,
+    playerId:   overrides.playerId   ?? PLAYER_A,
+    playerName: overrides.playerName ?? 'Trashbag#00001',
+    inputs:     { ...VALID_INPUTS, ...(overrides.inputs ?? {}) },
+  };
+}
+
 // ── POST /scores ──────────────────────────────────────────────────────────────
 
 describe('POST /scores — submission', () => {
   it('accepts a new score and returns submitted: true', async () => {
-    const res = await submitScore(makeApp(), {
-      heapId: HEAP_ID, playerId: PLAYER_A, playerName: 'Trashbag#00001', score: 5000,
-    });
+    const res = await submitScore(makeApp(), validBody({ inputs: { baseHeightPx: 1500 } }));
     expect(res.status).toBe(200);
     const body = await res.json() as SubmitScoreResponse;
     expect(body.submitted).toBe(true);
@@ -37,10 +62,8 @@ describe('POST /scores — submission', () => {
 
   it('returns submitted: false when score does not beat existing best', async () => {
     const db  = new MockScoreDB();
-    db.seed(HEAP_ID, PLAYER_A, 'Trashbag#00001', 5000);
-    const res = await submitScore(makeApp(db), {
-      heapId: HEAP_ID, playerId: PLAYER_A, playerName: 'Trashbag#00001', score: 3000,
-    });
+    db.seed(HEAP_ID, PLAYER_A, 'Trashbag#00001', 1500);
+    const res = await submitScore(makeApp(db), validBody({ inputs: { baseHeightPx: 1000 } }));
     expect(res.status).toBe(200);
     const body = await res.json() as SubmitScoreResponse;
     expect(body.submitted).toBe(false);
@@ -48,10 +71,8 @@ describe('POST /scores — submission', () => {
 
   it('updates the record when new score beats existing', async () => {
     const db  = new MockScoreDB();
-    db.seed(HEAP_ID, PLAYER_A, 'Trashbag#00001', 3000);
-    const res = await submitScore(makeApp(db), {
-      heapId: HEAP_ID, playerId: PLAYER_A, playerName: 'Trashbag#00001', score: 7000,
-    });
+    db.seed(HEAP_ID, PLAYER_A, 'Trashbag#00001', 5000);
+    const res = await submitScore(makeApp(db), validBody({ inputs: { baseHeightPx: 7000, elapsedMs: 17_500 } }));
     expect(res.status).toBe(200);
     const body = await res.json() as SubmitScoreResponse;
     expect(body.submitted).toBe(true);
@@ -60,10 +81,8 @@ describe('POST /scores — submission', () => {
 
   it('updates player name alongside score', async () => {
     const db = new MockScoreDB();
-    db.seed(HEAP_ID, PLAYER_A, 'OldName#11111', 3000);
-    await submitScore(makeApp(db), {
-      heapId: HEAP_ID, playerId: PLAYER_A, playerName: 'NewName#22222', score: 7000,
-    });
+    db.seed(HEAP_ID, PLAYER_A, 'OldName#11111', 5000);
+    await submitScore(makeApp(db), validBody({ playerName: 'NewName#22222', inputs: { baseHeightPx: 7000, elapsedMs: 17_500 } }));
     const row = await db.getScore(HEAP_ID, PLAYER_A);
     expect(row?.name).toBe('NewName#22222');
   });
@@ -72,26 +91,22 @@ describe('POST /scores — submission', () => {
 describe('POST /scores — leaderboard context in response', () => {
   it('returns top entries in rank order', async () => {
     const db = new MockScoreDB();
-    db.seed(HEAP_ID, 'p1', 'Alpha', 9000);
-    db.seed(HEAP_ID, 'p2', 'Beta',  7000);
-    db.seed(HEAP_ID, 'p3', 'Gamma', 5000);
+    db.seed(HEAP_ID, 'p1', 'Alpha', 1800);
+    db.seed(HEAP_ID, 'p2', 'Beta',  1500);
+    db.seed(HEAP_ID, 'p3', 'Gamma', 1200);
 
-    const res  = await submitScore(makeApp(db), {
-      heapId: HEAP_ID, playerId: 'p4', playerName: 'Delta', score: 3000,
-    }, 3);
+    const res  = await submitScore(makeApp(db), validBody({ playerId: 'p4', playerName: 'Delta', inputs: { baseHeightPx: 900 } }), 3);
     const body = await res.json() as SubmitScoreResponse;
 
     expect(body.context.top).toHaveLength(3);
     expect(body.context.top[0].rank).toBe(1);
-    expect(body.context.top[0].score).toBe(9000);
+    expect(body.context.top[0].score).toBe(1800);
     expect(body.context.top[1].rank).toBe(2);
     expect(body.context.top[2].rank).toBe(3);
   });
 
   it('returns the submitting player in context.player', async () => {
-    const res  = await submitScore(makeApp(), {
-      heapId: HEAP_ID, playerId: PLAYER_A, playerName: 'Trashbag#00001', score: 5000,
-    });
+    const res  = await submitScore(makeApp(), validBody({ inputs: { baseHeightPx: 5000, elapsedMs: 12_500 } }));
     const body = await res.json() as SubmitScoreResponse;
     expect(body.context.player?.playerId).toBe(PLAYER_A);
     expect(body.context.player?.score).toBe(5000);
@@ -100,23 +115,19 @@ describe('POST /scores — leaderboard context in response', () => {
 
   it('returns context.player even when submitted: false', async () => {
     const db = new MockScoreDB();
-    db.seed(HEAP_ID, PLAYER_A, 'Trashbag#00001', 5000);
-    const res  = await submitScore(makeApp(db), {
-      heapId: HEAP_ID, playerId: PLAYER_A, playerName: 'Trashbag#00001', score: 1000,
-    });
+    db.seed(HEAP_ID, PLAYER_A, 'Trashbag#00001', 1500);
+    const res  = await submitScore(makeApp(db), validBody({ inputs: { baseHeightPx: 1000 } }));
     const body = await res.json() as SubmitScoreResponse;
     expect(body.submitted).toBe(false);
-    expect(body.context.player?.score).toBe(5000); // existing best
+    expect(body.context.player?.score).toBe(1500); // existing best
   });
 
   it('includes player at correct rank when not in top N', async () => {
     const db = new MockScoreDB();
     for (let i = 1; i <= 5; i++) {
-      db.seed(HEAP_ID, `p${i}`, `Player${i}`, i * 1000);
+      db.seed(HEAP_ID, `p${i}`, `Player${i}`, i * 300);
     }
-    const res  = await submitScore(makeApp(db), {
-      heapId: HEAP_ID, playerId: 'late', playerName: 'LateEntry', score: 500,
-    }, 3);
+    const res  = await submitScore(makeApp(db), validBody({ playerId: 'late', playerName: 'LateEntry', inputs: { baseHeightPx: 100 } }), 3);
     const body = await res.json() as SubmitScoreResponse;
     expect(body.context.top).toHaveLength(3);
     expect(body.context.player?.rank).toBe(6);
@@ -131,9 +142,7 @@ describe('POST /scores — top-1000 cap', () => {
       db.seed(HEAP_ID, `player-${i}`, `P${i}`, (i + 1) * 10);
     }
     // New player with a very low score (rank 1001)
-    await submitScore(makeApp(db), {
-      heapId: HEAP_ID, playerId: 'loser', playerName: 'Loser', score: 1,
-    });
+    await submitScore(makeApp(db), validBody({ playerId: 'loser', playerName: 'Loser', inputs: { baseHeightPx: 1 } }));
     const total = await db.countScores(HEAP_ID);
     expect(total).toBeLessThanOrEqual(1000);
   });
@@ -141,32 +150,36 @@ describe('POST /scores — top-1000 cap', () => {
 
 describe('POST /scores — validation', () => {
   it('returns 400 when heapId is missing', async () => {
-    const res = await submitScore(makeApp(), { playerId: PLAYER_A, playerName: 'X', score: 100 });
+    const res = await submitScore(makeApp(), { playerId: PLAYER_A, playerName: 'X', inputs: VALID_INPUTS });
     expect(res.status).toBe(400);
   });
 
   it('returns 400 when playerId is missing', async () => {
-    const res = await submitScore(makeApp(), { heapId: HEAP_ID, playerName: 'X', score: 100 });
+    const res = await submitScore(makeApp(), { heapId: HEAP_ID, playerName: 'X', inputs: VALID_INPUTS });
     expect(res.status).toBe(400);
   });
 
   it('returns 400 when playerName is missing', async () => {
-    const res = await submitScore(makeApp(), { heapId: HEAP_ID, playerId: PLAYER_A, score: 100 });
+    const res = await submitScore(makeApp(), { heapId: HEAP_ID, playerId: PLAYER_A, inputs: VALID_INPUTS });
     expect(res.status).toBe(400);
   });
 
-  it('returns 400 when score is missing', async () => {
+  it('returns 400 when inputs is missing', async () => {
     const res = await submitScore(makeApp(), { heapId: HEAP_ID, playerId: PLAYER_A, playerName: 'X' });
     expect(res.status).toBe(400);
   });
 
-  it('returns 400 when score is not a positive integer', async () => {
-    const res = await submitScore(makeApp(), { heapId: HEAP_ID, playerId: PLAYER_A, playerName: 'X', score: -1 });
+  it('returns 400 when baseHeightPx is negative', async () => {
+    const res = await submitScore(makeApp(), validBody({ playerName: 'X', inputs: { baseHeightPx: -1 } }));
     expect(res.status).toBe(400);
   });
 
-  it('returns 400 when score is zero', async () => {
-    const res = await submitScore(makeApp(), { heapId: HEAP_ID, playerId: PLAYER_A, playerName: 'X', score: 0 });
+  it('returns 400 when baseHeightPx is zero AND no kills produces zero recomputed score', async () => {
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {
+      name: 'X', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 2000,
+    });
+    const res = await submitScore(makeApp(new MockScoreDB(), heapDb), validBody({ playerName: 'X', inputs: { baseHeightPx: 0 } }));
     expect(res.status).toBe(400);
   });
 });
@@ -277,30 +290,137 @@ describe('GET /scores/player/:playerId', () => {
 });
 
 describe('POST /scores hardening', () => {
-  const validBody = {
-    heapId: 'h1',
-    playerId: 'p1',
-    playerName: 'Alice',
-    score: 100,
-  };
-
-  it('rejects non-finite score', async () => {
-    const res = await submitScore(makeApp(), { ...validBody, score: Number.POSITIVE_INFINITY });
-    expect(res.status).toBe(400);
-  });
-
-  it('rejects score above MAX_SCORE ceiling', async () => {
-    const res = await submitScore(makeApp(), { ...validBody, score: 100_000_001 });
-    expect(res.status).toBe(400);
-  });
-
   it('rejects oversized playerId', async () => {
-    const res = await submitScore(makeApp(), { ...validBody, playerId: 'p'.repeat(200) });
+    const res = await submitScore(makeApp(), validBody({ playerId: 'p'.repeat(200) }));
     expect(res.status).toBe(400);
   });
 
   it('rejects empty playerName after trim', async () => {
-    const res = await submitScore(makeApp(), { ...validBody, playerName: '   ' });
+    const res = await submitScore(makeApp(), validBody({ playerName: '   ' }));
     expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /scores — input validation (server-recompute)', () => {
+  it('rejects baseHeightPx exceeding (worldHeight - top_y) + 200 grace', async () => {
+    // worldHeight = 1000 (via DEFAULT_HEAP_PARAMS override), top_y forced to 600
+    // → max possible climb = 1000 - 600 + 200 = 600
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {
+      name: 'X', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 1000,
+    });
+    heapDb.setTopYForTest(HEAP_ID, 600);
+    const app = createApp(heapDb, new MockScoreDB());
+    const res = await submitScore(app, validBody({
+      inputs: { baseHeightPx: 700, elapsedMs: 10_000_000 /* climb-rate not the cause */ },
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts baseHeightPx up to (worldHeight - top_y) + 200 grace', async () => {
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {
+      name: 'X', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 1000,
+    });
+    heapDb.setTopYForTest(HEAP_ID, 600);
+    const app = createApp(heapDb, new MockScoreDB());
+    const res = await submitScore(app, validBody({
+      inputs: { baseHeightPx: 600, elapsedMs: 10_000_000 },
+    }));
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects climb rate above 400 Y/s', async () => {
+    // 1000 Y in 1000 ms = 1000 Y/s — over the cap
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {
+      name: 'X', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 2000,
+    });
+    const app = createApp(heapDb, new MockScoreDB());
+    const res = await submitScore(app, validBody({
+      inputs: { baseHeightPx: 1000, elapsedMs: 1000 },
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts climb rate exactly at 400 Y/s', async () => {
+    // 400 Y in 1000 ms = 400 Y/s — boundary
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {
+      name: 'X', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 2000,
+    });
+    const app = createApp(heapDb, new MockScoreDB());
+    const res = await submitScore(app, validBody({
+      inputs: { baseHeightPx: 400, elapsedMs: 1000 },
+    }));
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects kill rate above 1/s', async () => {
+    // 11 kills in 10 seconds — over 1/s
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {
+      name: 'X', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 2000,
+    });
+    const app = createApp(heapDb, new MockScoreDB());
+    const res = await submitScore(app, validBody({
+      inputs: { baseHeightPx: 100, kills: { percher: 6, ghost: 5 }, elapsedMs: 10_000 },
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects negative percher kill count', async () => {
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {
+      name: 'X', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 2000,
+    });
+    const app = createApp(heapDb, new MockScoreDB());
+    const res = await submitScore(app, validBody({
+      inputs: { kills: { percher: -1, ghost: 0 } },
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects elapsedMs of 0', async () => {
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {
+      name: 'X', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 2000,
+    });
+    const app = createApp(heapDb, new MockScoreDB());
+    const res = await submitScore(app, validBody({
+      inputs: { baseHeightPx: 0, elapsedMs: 0 },
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts non-integer elapsedMs (e.g., Phaser hi-res clock)', async () => {
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {
+      name: 'X', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 2000,
+    });
+    const app = createApp(heapDb, new MockScoreDB());
+    const res = await submitScore(app, validBody({
+      inputs: { baseHeightPx: 100, elapsedMs: 3720.0399999999936 },
+    }));
+    expect(res.status).toBe(200);
+  });
+
+  it('stores the server-recomputed score, ignoring any client-supplied score field', async () => {
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {
+      name: 'X', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 2000,
+    });
+    const scoreDb = new MockScoreDB();
+    const app = createApp(heapDb, scoreDb);
+    // Inject an extra "score" field — server should ignore it entirely.
+    const body = {
+      ...validBody({ inputs: { baseHeightPx: 1000, elapsedMs: 60_000, isFailure: true } }),
+      score: 999_999_999,
+    };
+    const res = await submitScore(app, body);
+    expect(res.status).toBe(200);
+    const stored = await scoreDb.getScore(HEAP_ID, PLAYER_A);
+    expect(stored).not.toBeNull();
+    expect(stored!.score).toBe(1000); // recomputed = baseHeightPx with no kills, isFailure=true, scoreMult=1
   });
 });
