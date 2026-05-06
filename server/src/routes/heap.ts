@@ -17,6 +17,7 @@ import type {
   HeapEnemyParams,
 } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
+import { generateDefaultPolygon } from '../../../shared/heapPolygon';
 
 // Mirror of src/constants.ts WORLD_WIDTH. Update both if either changes.
 const WORLD_WIDTH = 960;
@@ -87,7 +88,17 @@ export function heapRoutes(db: HeapDB): Hono {
       return c.json({ error: 'Invalid JSON' }, 400);
     }
 
-    const { vertices, params } = body;
+    const resolved = resolveParams(body.params);
+    if ('error' in resolved) return c.json({ error: resolved.error }, 400);
+
+    let vertices: Vertex[];
+    if (Array.isArray(body.vertices)) {
+      vertices = body.vertices;
+    } else {
+      const seed = Number.isFinite(body.seed) ? Math.floor(body.seed!) : Math.floor(Math.random() * 1_000_000);
+      vertices = generateDefaultPolygon(seed, resolved.worldHeight);
+    }
+
     const MAX_VERTICES = 10_000;
     if (
       !Array.isArray(vertices) ||
@@ -101,9 +112,6 @@ export function heapRoutes(db: HeapDB): Hono {
     ) {
       return c.json({ error: `vertices must be an array of 3-${MAX_VERTICES} {x, y} objects with finite numbers` }, 400);
     }
-
-    const resolved = resolveParams(params);
-    if ('error' in resolved) return c.json({ error: resolved.error }, 400);
 
     const heapId = crypto.randomUUID();
     const baseId = crypto.randomUUID();

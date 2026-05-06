@@ -68,15 +68,6 @@ describe('POST /heaps', () => {
     expect(res.status).toBe(400);
   });
 
-  it('rejects missing vertices with 400', async () => {
-    const res = await makeApp().request('/heaps', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-    expect(res.status).toBe(400);
-  });
-
   it('rejects malformed vertex objects with 400', async () => {
     const res = await makeApp().request('/heaps', {
       method: 'POST',
@@ -84,6 +75,32 @@ describe('POST /heaps', () => {
       body: JSON.stringify({ vertices: [{ x: 1 }] }),  // missing y
     });
     expect(res.status).toBe(400);
+  });
+
+  it('creates a heap with no body — server generates default polygon', async () => {
+    const res = await makeApp().request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json() as CreateHeapResponse;
+    expect(body.vertexCount).toBeGreaterThan(10);
+  });
+
+  it('honors explicit seed for deterministic creation', async () => {
+    const app = makeApp();
+    const a = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seed: 12345 }),
+    }).then(r => r.json()) as CreateHeapResponse;
+    const b = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seed: 12345 }),
+    }).then(r => r.json()) as CreateHeapResponse;
+    expect(a.vertexCount).toBe(b.vertexCount);
   });
 });
 
