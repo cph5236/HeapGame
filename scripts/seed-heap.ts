@@ -20,23 +20,13 @@
 
 */
 
-import { HeapState } from '../src/systems/HeapState';
-import { OBJECT_DEFS } from '../src/data/heapObjectDefs';
-import { findSurfaceY } from '../src/systems/HeapSurface';
-import {
-  computeBandScanlines,
-  computeBandPolygon,
-  simplifyPolygon,
-} from '../src/systems/HeapPolygon';
-import { WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX } from '../src/constants';
-import type { HeapEntry } from '../src/data/heapTypes';
+import { generateDefaultPolygon } from '../shared/heapPolygon';
+import { MOCK_HEAP_HEIGHT_PX } from '../src/constants';
 import type { CreateHeapResponse, ResetHeapResponse } from '../shared/heapTypes';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const SERVER_URL = process.env.VITE_HEAP_SERVER_URL ?? 'http://localhost:8787';
-const NUM_BLOCKS = 1200;
-const SIMPLIFY_EPSILON = 2;
 const OVERWRITE = process.env.OVERWRITE === 'true';
 const TARGET_HEAP_ID = process.env.TARGET_HEAP_ID ?? '';
 const VERBOSE = process.env.VERBOSE === 'true';
@@ -49,51 +39,6 @@ const PARAM_COIN         = process.env.COIN_MULT    ? Number(process.env.COIN_MU
 const PARAM_SCORE        = process.env.SCORE_MULT   ? Number(process.env.SCORE_MULT)   : 1.0;
 const PARAM_WORLD_HEIGHT = process.env.WORLD_HEIGHT ? Number(process.env.WORLD_HEIGHT) : MOCK_HEAP_HEIGHT_PX;
 const PARAM_SEED         = process.env.SEED         ? Number(process.env.SEED)         : Math.floor(Math.random() * 1_000_000);
-
-// ── Generate HeapEntry[] via seeded PRNG ──────────────────────────────────────
-
-function buildHeap(): HeapEntry[] {
-  console.log(`Generating heap entries with seed ${PARAM_SEED}…`);
-  const state = new HeapState(PARAM_SEED);
-  const entries: HeapEntry[] = [];
-
-  for (let i = 0; i < NUM_BLOCKS; i++) {
-    const keyid = Math.floor(state.seededRandom(i * 3) * 3);
-    const def = OBJECT_DEFS[keyid];
-
-    const xMin = WORLD_WIDTH * 0.125 + def.width / 2;
-    const xMax = WORLD_WIDTH * 0.875 - def.width / 2;
-    const cx = xMin + state.seededRandom(i * 3 + 1) * (xMax - xMin);
-
-    const surfaceY = findSurfaceY(cx, def.width, entries);
-    const y = surfaceY - def.height / 2;
-
-    entries.push({ x: cx, y, keyid });
-  }
-
-  return entries;
-}
-
-// ── Convert entries to a simplified polygon ───────────────────────────────────
-
-interface Vertex { x: number; y: number }
-
-function buildPolygon(entries: HeapEntry[]): Vertex[] {
-  const rows = computeBandScanlines(entries, 0, MOCK_HEAP_HEIGHT_PX);
-  if (VERBOSE) console.log(`  Scanlines: ${rows.length} rows`);
-
-  const full = computeBandPolygon(rows);
-  if (VERBOSE) console.log(`  Before simplify: ${full.length} vertices`);
-
-  const simplified = simplifyPolygon(full, SIMPLIFY_EPSILON);
-  if (VERBOSE) {
-    console.log(`  After simplify (epsilon=${SIMPLIFY_EPSILON}): ${simplified.length} vertices`);
-    const yValues = simplified.map(v => v.y).sort((a, b) => a - b);
-    console.log(`  Y range: ${yValues[0]} to ${yValues[yValues.length - 1]}`);
-  }
-
-  return simplified;
-}
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -135,25 +80,10 @@ async function seed(): Promise<void> {
     return;
   }
 
-  console.log(`Building heap with ${NUM_BLOCKS} blocks… (seed=${PARAM_SEED})`);
-  const entries = buildHeap();
-  if (VERBOSE) {
-    const xVals = entries.map(e => e.x).sort((a, b) => a - b);
-    const yVals = entries.map(e => e.y).sort((a, b) => a - b);
-    console.log(`  Entry X range: ${xVals[0]?.toFixed(1)} to ${xVals[xVals.length - 1]?.toFixed(1)}`);
-    console.log(`  Entry Y range: ${yVals[0]?.toFixed(1)} to ${yVals[yVals.length - 1]?.toFixed(1)}`);
-  }
+  console.log(`Generating polygon with seed ${PARAM_SEED}…`);
+  const vertices = generateDefaultPolygon(PARAM_SEED, PARAM_WORLD_HEIGHT);
+  if (VERBOSE) console.log(`  Polygon vertices: ${vertices.length}`);
 
-  console.log('Computing polygon…');
-  const vertices = buildPolygon(entries);
-  console.log(`  Polygon: ${vertices.length} vertices after simplification`);
-
-  if (VERBOSE) {
-    console.log('Vertex list (first 10):');
-    vertices.slice(0, 10).forEach((v, i) => {
-      console.log(`    [${i}] x=${v.x.toFixed(1)}, y=${v.y.toFixed(1)}`);
-    });
-  }
 
   const url = `${SERVER_URL}/heaps`;
   console.log(`POSTing to ${url}…`);
