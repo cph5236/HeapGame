@@ -30,6 +30,10 @@ const PLACE_X_MAX = WORLD_WIDTH * 0.875;  // 840
 // Roughly one player-height of clearance plus margin.
 const PLACE_HEIGHT_GRACE_PX = 200;
 
+// Mirror of src/constants.ts HEAP_TOP_ZONE_PX. Defines the active-zone band
+// above the summit on a fresh heap (no live-zone vertices yet).
+const HEAP_TOP_ZONE_PX = 300;
+
 function validateDifficulty(d: number): string | null {
   if (!Number.isFinite(d)) return 'difficulty must be a finite number';
   if (d < 1 || d > 5) return 'difficulty must be between 1 and 5';
@@ -278,6 +282,17 @@ export function heapRoutes(db: HeapDB): Hono {
     }
 
     const liveZone: Vertex[] = JSON.parse(row.live_zone);
+
+    // Bottom of the live zone — placements below this aren't in the active band.
+    // Mirrors HeapClient.getLiveZoneBottomY: max y of live zone, or top_y + 300 (HEAP_TOP_ZONE_PX) for fresh heaps.
+    const liveZoneBottomY = liveZone.length > 0
+      ? liveZone.reduce((max, v) => v.y > max ? v.y : max, -Infinity)
+      : row.top_y + HEAP_TOP_ZONE_PX;
+    if (y > liveZoneBottomY) {
+      console.warn(`[place] reject: y below active zone (${y} > liveZoneBottomY=${liveZoneBottomY}) heapId=${id}`);
+      return c.json({ error: 'invalid placement' }, 400);
+    }
+
     const baseVertices: Vertex[] = (await db.getBaseVerticesById(row.base_id)) ?? [];
     const fullPolygon = [...baseVertices, ...liveZone];
 

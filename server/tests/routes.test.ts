@@ -303,10 +303,11 @@ describe('POST /heaps/:id/place', () => {
     ];
     db.seedHeap('h1', 1, square, 'base-1');
     db.seedBase('base-1', 'h1', []);
+    // square's max y = 100 → liveZoneBottomY = 100; place outside the square but within active band
     const res = await createApp(db, new MockScoreDB()).request('/heaps/h1/place', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ x: 200, y: 200 }),
+      body: JSON.stringify({ x: 200, y: 50 }),
     });
     expect(res.status).toBe(200);
     const body = await res.json() as PlaceResponse;
@@ -757,10 +758,12 @@ describe('heap top_y maintenance', () => {
     const { id } = await create.json() as CreateHeapResponse;
     expect(db.getTopYForTest(id)).toBe(400);
 
+    // Fresh heap → liveZoneBottomY = top_y + 300 = 700; pick (150, 500) which
+    // is below summit (y > top_y) but within the active band and outside the triangle.
     const place = await app.request(`/heaps/${id}/place`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ x: 300, y: 800 }),
+      body: JSON.stringify({ x: 150, y: 500 }),
     });
     expect(place.status).toBe(200);
     expect(db.getTopYForTest(id)).toBe(400);
@@ -870,5 +873,45 @@ describe('POST /heaps/:id/place coordinate clamp', () => {
     expect(res.status).toBe(400);
     const body = await res.json() as { error: string };
     expect(body.error).toBe('invalid placement');
+  });
+
+  it('rejects y below the active zone on a fresh heap (anti-cheat)', async () => {
+    const app = createApp(new MockHeapDB(), new MockScoreDB());
+    const id = await makeHeap(app);
+    // Fresh heap → liveZoneBottomY = top_y(400) + HEAP_TOP_ZONE_PX(300) = 700.
+    // y=2000 is well below that.
+    const res = await app.request(`/heaps/${id}/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 200, y: 2000 }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe('invalid placement');
+  });
+
+  it('accepts y exactly at the fresh-heap active-zone boundary (top_y + HEAP_TOP_ZONE_PX)', async () => {
+    const app = createApp(new MockHeapDB(), new MockScoreDB());
+    const id = await makeHeap(app);
+    // boundary = top_y(400) + 300 = 700; check is `y > liveZoneBottomY`, so y=700 passes
+    const res = await app.request(`/heaps/${id}/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 200, y: 700 }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects y below liveZoneBottomY on a heap with non-empty live zone', async () => {
+    const db = new MockHeapDB();
+    // Seed a heap whose live zone has max y = 100; bottom is fixed regardless of top_y.
+    db.seedHeap('h1', 1, [{ x: 50, y: 50 }, { x: 50, y: 100 }], 'base-1');
+    db.seedBase('base-1', 'h1', []);
+    const res = await createApp(db, new MockScoreDB()).request('/heaps/h1/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 200, y: 200 }),  // 200 > liveZoneBottomY=100
+    });
+    expect(res.status).toBe(400);
   });
 });
