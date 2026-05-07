@@ -6,6 +6,7 @@ import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { formatDifficulty } from '../ui/DifficultyStars';
+import { loadGameAssets } from './loadGameAssets';
 
 export class MenuScene extends Phaser.Scene {
   private farSilhouette!: Phaser.GameObjects.Graphics;
@@ -62,6 +63,7 @@ export class MenuScene extends Phaser.Scene {
     if (!im.isMobile) this.createHotkeyLegend();
     this.runEntranceSequence();
     this.registerInput();
+    loadGameAssets(this);
   }
 
   // ── Sky ──────────────────────────────────────────────────────────────────────
@@ -400,7 +402,10 @@ export class MenuScene extends Phaser.Scene {
       new Phaser.Geom.Rectangle(-160, -24, 320, 48),
       Phaser.Geom.Rectangle.Contains,
     );
-    this.heapPickerText.on('pointerup', () => this.scene.start('HeapSelectScene'));
+    this.heapPickerText.on('pointerup', () => {
+      if (this.game.registry.get('heapCatalogReady') !== true) return;
+      this.scene.start('HeapSelectScene');
+    });
   }
 
   // ── Settings button ──────────────────────────────────────────────────────────
@@ -674,6 +679,7 @@ export class MenuScene extends Phaser.Scene {
   private registerInput(): void {
     this.time.delayedCall(100, () => {
       const startGame = (): void => {
+        if (this.game.registry.get('gameAssetsReady') !== true) return;
         const activeHeapId  = (this.game.registry.get('activeHeapId') as string) ?? '';
         const activeParams  = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
         if (activeParams.isInfinite) {
@@ -686,6 +692,15 @@ export class MenuScene extends Phaser.Scene {
         this.scene.start('GameScene', hasCheckpoint ? { useCheckpoint: true } : undefined);
       };
 
+      const refreshStartLabel = (): void => {
+        const ready = this.game.registry.get('gameAssetsReady') === true;
+        this.startText.setText(ready ? 'START RUN' : 'LOADING…');
+        this.startText.setColor(ready ? '#ffffff' : '#778899');
+      };
+
+      refreshStartLabel();
+      this.game.events.once('gameAssetsReady', refreshStartLabel);
+
       this.input.keyboard!.once('keydown-SPACE', startGame);
       this.input.keyboard!.once('keydown-U',     () => this.scene.start('UpgradeScene'));
       this.input.keyboard!.once('keydown-F2',    () => this.scene.start('TexturePreviewScene'));
@@ -694,7 +709,7 @@ export class MenuScene extends Phaser.Scene {
         new Phaser.Geom.Rectangle(-200, -40, 400, 80),
         Phaser.Geom.Rectangle.Contains,
       );
-      this.startText.once('pointerup', startGame);
+      this.startText.on('pointerup', startGame);  // .on, not .once — START stays armed across the LOADING→READY transition
 
       this.upgradeText.setInteractive(
         new Phaser.Geom.Rectangle(-78, -28, 156, 56),
