@@ -57,6 +57,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   const adminGate = requireAdminSecret(opts.adminSecret);
   app.post  ('/heaps',                  adminGate);
   app.put   ('/heaps/:id/reset',        adminGate);
+  app.put   ('/heaps/:id/params',       adminGate);
   app.put   ('/heaps/:id/enemy-params', adminGate);
   app.delete('/heaps/:id',              adminGate);
 
