@@ -714,7 +714,11 @@ export class MenuScene extends Phaser.Scene {
       refreshStartLabel();
       this.game.events.once('gameAssetsReady', refreshStartLabel);
 
-      this.input.keyboard!.once('keydown-SPACE', startGame);
+      // .on (not .once) for SPACE — startGame early-returns while gameAssetsReady
+      // is false, and .once would burn the binding on any pre-ready press,
+      // leaving the player unable to start with the keyboard until they
+      // navigated away and back. Same logic as the pointerup handler below.
+      this.input.keyboard!.on('keydown-SPACE', startGame);
       this.input.keyboard!.once('keydown-U',     () => this.scene.start('UpgradeScene'));
       this.input.keyboard!.once('keydown-F2',    () => this.scene.start('TexturePreviewScene'));
 
