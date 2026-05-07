@@ -108,7 +108,12 @@ export class PortalManager {
     private readonly getBandPolygon: (colIdx: number, bandTopY: number) => Vertex[] | undefined,
   ) {
     this.nextPortalY  = player.sprite.y - randBetween(def.spawnPortalEveryY);
-    this.textureKeys  = Array.from({ length: RECYCLE_ITEM_COUNT }, (_, i) => `recycle-item-${i}`);
+    // Reuse OBJECT_DEFS recycle-items keys (loaded once in loadGameAssets) instead
+    // of a parallel `recycle-item-${i}` keyspace.
+    this.textureKeys = Array.from(
+      { length: RECYCLE_ITEM_COUNT },
+      (_, i) => `recycle-items-${i.toString().padStart(2, '0')}`,
+    );
   }
 
   update(): void {
