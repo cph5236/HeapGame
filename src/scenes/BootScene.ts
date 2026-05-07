@@ -40,7 +40,7 @@ export class BootScene extends Phaser.Scene {
           createdAt: '2026-01-01T00:00:00.000Z',
           topY: NaN,
           params: {
-            name: '∞ Infinite Heap',
+            name: 'Infinite Heap',
             difficulty: 5.0,
             spawnRateMult: 1.0,
             coinMult: 1.0,

@@ -129,12 +129,17 @@ export class HeapSelectScene extends Phaser.Scene {
       wordWrap: { width: nameMaxW },
     });
 
-    const heightLabel = `⛰ ${heightFt(heap.params.worldHeight, heap.topY, heap.params.isInfinite)}`;
-    const heightText = this.add.text(lx, y + 58, heightLabel, {
+    // Glyph + label split so the mountain emoji can render bigger than the
+    // text without scaling up the digits (emoji render small at body sizes).
+    const heightGlyph = this.add.text(lx, y + 58, '⛰', {
+      fontSize: '22px',
+    }).setOrigin(0, 0.5);
+    const heightText = this.add.text(lx + heightGlyph.width + 4, y + 58,
+      heightFt(heap.params.worldHeight, heap.topY, heap.params.isInfinite), {
       fontSize: '16px', fontStyle: 'bold', color: '#ff9922',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0, 0.5);
-    drawDifficulty(this, lx + heightText.width + 12, y + 58, heap.params.difficulty, 18);
+    drawDifficulty(this, heightText.x + heightText.width + 12, y + 58, heap.params.difficulty, 18);
 
     const tBtnBg = this.add.rectangle(tBtnCenterX, midY, tBtnW, tBtnH, 0x10131f)
       .setStrokeStyle(1, 0x334466)
