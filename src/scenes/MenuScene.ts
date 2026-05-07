@@ -371,7 +371,6 @@ export class MenuScene extends Phaser.Scene {
 
   private createHeapPicker(): void {
     const shift = this.layoutShift;
-    const params = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
 
     this.heapPickerBg = this.add.graphics().setDepth(8).setAlpha(0);
     this.heapPickerBg.fillStyle(0x000000, 0.5);
@@ -379,24 +378,38 @@ export class MenuScene extends Phaser.Scene {
     this.heapPickerBg.lineStyle(1, 0x8899bb, 0.6);
     this.heapPickerBg.strokeRoundedRect(this.scale.width / 2 - 160, 480 - shift, 320, 48, 10);
 
-    const nameLabel  = `\u25BE ${params.name}  `;
-    const starsLabel = formatDifficulty(params.difficulty);
-
-    this.heapPickerText = this.add.text(0, 504 - shift, nameLabel, {
+    this.heapPickerText = this.add.text(0, 504 - shift, '', {
       fontSize: '16px', color: '#ffffff',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0, 0.5).setAlpha(0).setDepth(9);
 
-    this.heapPickerStars = this.add.text(0, 504 - shift, starsLabel, {
+    this.heapPickerStars = this.add.text(0, 504 - shift, '', {
       fontSize: '16px', color: '#ff9922',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0, 0.5).setAlpha(0).setDepth(9);
 
-    // Center both texts together on the button
-    const totalW = this.heapPickerText.width + this.heapPickerStars.width;
-    const startX = this.scale.width / 2 - totalW / 2;
-    this.heapPickerText.setX(startX);
-    this.heapPickerStars.setX(startX + this.heapPickerText.width);
+    // Refresh from current registry \u2014 runs once now (with placeholder if catalog
+    // is still loading) and again when `heapCatalogReady` fires from BootScene.
+    const refreshHeapPicker = (): void => {
+      const ready  = this.game.registry.get('heapCatalogReady') === true;
+      const params = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
+
+      const nameLabel  = ready ? `\u25BE ${params.name}  ` : 'Heaps loading\u2026';
+      const starsLabel = ready ? formatDifficulty(params.difficulty) : '';
+
+      this.heapPickerText.setText(nameLabel);
+      this.heapPickerStars.setText(starsLabel);
+      this.heapPickerText.setColor(ready ? '#ffffff' : '#778899');
+
+      // Re-center both texts together each refresh \u2014 widths change with text.
+      const totalW = this.heapPickerText.width + this.heapPickerStars.width;
+      const startX = this.scale.width / 2 - totalW / 2;
+      this.heapPickerText.setX(startX);
+      this.heapPickerStars.setX(startX + this.heapPickerText.width);
+    };
+
+    refreshHeapPicker();
+    this.game.events.once('heapCatalogReady', refreshHeapPicker);
 
     this.heapPickerText.setInteractive(
       new Phaser.Geom.Rectangle(-160, -24, 320, 48),

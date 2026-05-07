@@ -90,7 +90,9 @@ export function loadGameAssets(scene: Phaser.Scene): void {
 
     scene.registry.set('gameAssetsLoading', false);
     scene.registry.set('gameAssetsReady',   true);
-    scene.events.emit('gameAssetsReady');
+    // Emit on game.events (not scene.events) so MenuScene's listener — which is
+    // also on game.events for consistency with `heapCatalogReady` — actually fires.
+    scene.game.events.emit('gameAssetsReady');
   });
 
   scene.load.start();
