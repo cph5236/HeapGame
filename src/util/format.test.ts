@@ -31,6 +31,13 @@ describe('heightFt', () => {
     expect(heightFt(15_000_000, 0)).toBe('1.5M FT');
   });
 
+  it('uses magnitude when topY exceeds worldHeight (heap outgrew its config)', () => {
+    // Real data: a heap climbed past its configured worldHeight, giving
+    // worldHeight - topY < 0. The displayed climb is still a magnitude.
+    expect(heightFt(50_000, 99_995)).toBe('4999 FT');
+    expect(heightFt(100_000, 4_580_000)).toBe('448K FT');
+  });
+
   it('renders infinite heaps as ∞ FT regardless of topY', () => {
     expect(heightFt(50_000, NaN, true)).toBe('∞ FT');
     expect(heightFt(50_000, null, true)).toBe('∞ FT');

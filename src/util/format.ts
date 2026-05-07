@@ -16,7 +16,9 @@ export function heightFt(
 ): string {
   if (isInfinite) return '∞ FT';
   if (topY == null || !Number.isFinite(topY)) return '???';
-  const ft = Math.floor((worldHeight - topY) / SCORE_DISPLAY_DIVISOR);
+  // Magnitude — some heaps have climbed past their configured worldHeight, so
+  // (worldHeight - topY) goes negative. The displayed climb is still positive.
+  const ft = Math.floor(Math.abs(worldHeight - topY) / SCORE_DISPLAY_DIVISOR);
   if (ft >= 1_000_000) return `${(ft / 1_000_000).toFixed(1)}M FT`;
   if (ft >= 10_000)    return `${Math.round(ft / 1_000)}K FT`;
   return `${ft} FT`;
