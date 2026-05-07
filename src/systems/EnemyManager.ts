@@ -1,6 +1,6 @@
 // src/systems/EnemyManager.ts
 import Phaser from 'phaser';
-import { Enemy } from '../entities/Enemy';
+import { Enemy, applyBodyBox } from '../entities/Enemy';
 import { ENEMY_DEFS, EnemyDef } from '../data/enemyDefs';
 import type { HeapEnemyParams } from '../../shared/heapTypes';
 import { CHUNK_BAND_HEIGHT, ENEMY_CULL_DISTANCE, MOCK_HEAP_HEIGHT_PX, WORLD_WIDTH } from '../constants';
@@ -176,6 +176,12 @@ export class EnemyManager {
           body.position.y = targetY - body.halfHeight;
         }
 
+        // Rat sprite has different proportions when walking (low + wide) vs
+        // idle (upright + narrow); swap body boxes per transition so the
+        // collision rect tracks the visible animation.
+        const walkBox = ENEMY_DEFS.percher.bodyWalking;
+        const idleBox = ENEMY_DEFS.percher.bodyIdle;
+
         switch (rt.ratState) {
           case 'walk-right':
             if (s.x >= maxX) {
@@ -183,6 +189,7 @@ export class EnemyManager {
               rt.ratState = 'idle-right';
               rt.idleUntil = now + RAT_IDLE_MS;
               s.play('rat-idle');
+              if (idleBox) applyBodyBox(body, idleBox);
             }
             break;
           case 'idle-right':
@@ -190,6 +197,7 @@ export class EnemyManager {
               body.setVelocityX(-rt.speed);
               rt.ratState = 'walk-left';
               s.play('rat-walk-left');
+              if (walkBox) applyBodyBox(body, walkBox);
             }
             break;
           case 'walk-left':
@@ -198,6 +206,7 @@ export class EnemyManager {
               rt.ratState = 'idle-left';
               rt.idleUntil = now + RAT_IDLE_MS;
               s.play('rat-idle');
+              if (idleBox) applyBodyBox(body, idleBox);
             }
             break;
           case 'idle-left':
@@ -205,6 +214,7 @@ export class EnemyManager {
               body.setVelocityX(rt.speed);
               rt.ratState = 'walk-right';
               s.play('rat-walk-right');
+              if (walkBox) applyBodyBox(body, walkBox);
             }
             break;
         }
