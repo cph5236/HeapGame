@@ -48,9 +48,9 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
     // Rat sprite is a 32×32 frame, displayed at 48×48 (1.5× scale). Body
     // values are in texture pixels — Phaser scales them to display space.
     // Walking frames: rat is low and wide along the bottom of the frame.
-    bodyWalking: { width: 26, height: 14, offsetX: 3, offsetY: 16 },
+    bodyWalking: { width: 26, height: 16, offsetX: 3, offsetY: 16 },
     // Idle frames: rat sits upright, narrower and taller, centered higher.
-    bodyIdle:    { width: 16, height: 22, offsetX: 8, offsetY: 8  },
+    bodyIdle:    { width: 16, height: 24, offsetX: 8, offsetY: 8  },
     spawnOnHeapSurface: true,
     spawnOnHeapWall: false,
     displayName: 'RAT',

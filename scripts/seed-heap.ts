@@ -20,6 +20,8 @@
 
 */
 
+/// <reference types="node" />
+
 import { generateDefaultPolygon } from '../shared/heapPolygon';
 import { MOCK_HEAP_HEIGHT_PX } from '../src/constants';
 import type { CreateHeapResponse, ResetHeapResponse } from '../shared/heapTypes';
