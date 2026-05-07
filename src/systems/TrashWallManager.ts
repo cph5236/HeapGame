@@ -45,7 +45,8 @@ interface OscImage extends Phaser.GameObjects.Image {
   _scalar: number; // amplitude multiplier [0.5, 1.0]
 }
 
-const SPRITE_KEYS = OBJECT_DEF_LIST.map(d => d.textureKey);
+/** Fallback when the registry pool is missing — keeps tests + edge cases functional. */
+const FALLBACK_SPRITE_KEYS: readonly string[] = OBJECT_DEF_LIST.map(d => d.textureKey);
 
 /**
  * px above wallY over which item alpha fades from 0 → 1 as it emerges.
@@ -66,6 +67,7 @@ export class TrashWallManager {
   private readonly body:            Phaser.GameObjects.Graphics;
   private readonly gradientOverlay: Phaser.GameObjects.Graphics;
   private readonly trashSprites:    OscImage[] = [];
+  private readonly spriteKeys:      readonly string[];
 
   constructor(
     private readonly scene:      Phaser.Scene,
@@ -80,6 +82,9 @@ export class TrashWallManager {
     // Covers only the narrow emergence zone above wallY
     this.gradientOverlay = scene.add.graphics();
     this.gradientOverlay.setDepth(7);
+
+    const pool = scene.registry.get('trashWallPool') as readonly string[] | undefined;
+    this.spriteKeys = pool && pool.length > 0 ? pool : FALLBACK_SPRITE_KEYS;
   }
 
   /**
@@ -136,7 +141,7 @@ export class TrashWallManager {
     const count = this.def.undulateCount;
     const slotW = this.worldWidth / count;
     for (let i = 0; i < count; i++) {
-      const key = SPRITE_KEYS[Math.floor(Math.random() * SPRITE_KEYS.length)];
+      const key = this.spriteKeys[Math.floor(Math.random() * this.spriteKeys.length)];
       const img = this.scene.add.image(
         slotW * i + slotW / 2 + (Math.random() - 0.5) * slotW * 0.5,
         this.wallY,
@@ -170,7 +175,7 @@ export class TrashWallManager {
       img._phase += img._speed * (delta / 1000);
       if (img._phase >= Math.PI * 2) {
         img._phase -= Math.PI * 2;
-        img.setTexture(SPRITE_KEYS[Math.floor(Math.random() * SPRITE_KEYS.length)]);
+        img.setTexture(this.spriteKeys[Math.floor(Math.random() * this.spriteKeys.length)]);
       }
 
       // Sine oscillation: positive half-cycle → above wallY (emerging); negative → inside wall

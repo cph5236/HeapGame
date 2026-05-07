@@ -6,6 +6,7 @@ import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { formatDifficulty } from '../ui/DifficultyStars';
+import { loadGameAssets } from './loadGameAssets';
 
 export class MenuScene extends Phaser.Scene {
   private farSilhouette!: Phaser.GameObjects.Graphics;
@@ -62,6 +63,7 @@ export class MenuScene extends Phaser.Scene {
     if (!im.isMobile) this.createHotkeyLegend();
     this.runEntranceSequence();
     this.registerInput();
+    loadGameAssets(this);
   }
 
   // ── Sky ──────────────────────────────────────────────────────────────────────
@@ -369,7 +371,6 @@ export class MenuScene extends Phaser.Scene {
 
   private createHeapPicker(): void {
     const shift = this.layoutShift;
-    const params = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
 
     this.heapPickerBg = this.add.graphics().setDepth(8).setAlpha(0);
     this.heapPickerBg.fillStyle(0x000000, 0.5);
@@ -377,30 +378,47 @@ export class MenuScene extends Phaser.Scene {
     this.heapPickerBg.lineStyle(1, 0x8899bb, 0.6);
     this.heapPickerBg.strokeRoundedRect(this.scale.width / 2 - 160, 480 - shift, 320, 48, 10);
 
-    const nameLabel  = `\u25BE ${params.name}  `;
-    const starsLabel = formatDifficulty(params.difficulty);
-
-    this.heapPickerText = this.add.text(0, 504 - shift, nameLabel, {
+    this.heapPickerText = this.add.text(0, 504 - shift, '', {
       fontSize: '16px', color: '#ffffff',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0, 0.5).setAlpha(0).setDepth(9);
 
-    this.heapPickerStars = this.add.text(0, 504 - shift, starsLabel, {
+    this.heapPickerStars = this.add.text(0, 504 - shift, '', {
       fontSize: '16px', color: '#ff9922',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0, 0.5).setAlpha(0).setDepth(9);
 
-    // Center both texts together on the button
-    const totalW = this.heapPickerText.width + this.heapPickerStars.width;
-    const startX = this.scale.width / 2 - totalW / 2;
-    this.heapPickerText.setX(startX);
-    this.heapPickerStars.setX(startX + this.heapPickerText.width);
+    // Refresh from current registry \u2014 runs once now (with placeholder if catalog
+    // is still loading) and again when `heapCatalogReady` fires from BootScene.
+    const refreshHeapPicker = (): void => {
+      const ready  = this.game.registry.get('heapCatalogReady') === true;
+      const params = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
+
+      const nameLabel  = ready ? `\u25BE ${params.name}  ` : 'Heaps loading\u2026';
+      const starsLabel = ready ? formatDifficulty(params.difficulty) : '';
+
+      this.heapPickerText.setText(nameLabel);
+      this.heapPickerStars.setText(starsLabel);
+      this.heapPickerText.setColor(ready ? '#ffffff' : '#778899');
+
+      // Re-center both texts together each refresh \u2014 widths change with text.
+      const totalW = this.heapPickerText.width + this.heapPickerStars.width;
+      const startX = this.scale.width / 2 - totalW / 2;
+      this.heapPickerText.setX(startX);
+      this.heapPickerStars.setX(startX + this.heapPickerText.width);
+    };
+
+    refreshHeapPicker();
+    this.game.events.once('heapCatalogReady', refreshHeapPicker);
 
     this.heapPickerText.setInteractive(
       new Phaser.Geom.Rectangle(-160, -24, 320, 48),
       Phaser.Geom.Rectangle.Contains,
     );
-    this.heapPickerText.on('pointerup', () => this.scene.start('HeapSelectScene'));
+    this.heapPickerText.on('pointerup', () => {
+      if (this.game.registry.get('heapCatalogReady') !== true) return;
+      this.scene.start('HeapSelectScene');
+    });
   }
 
   // ── Settings button ──────────────────────────────────────────────────────────
@@ -674,6 +692,7 @@ export class MenuScene extends Phaser.Scene {
   private registerInput(): void {
     this.time.delayedCall(100, () => {
       const startGame = (): void => {
+        if (this.game.registry.get('gameAssetsReady') !== true) return;
         const activeHeapId  = (this.game.registry.get('activeHeapId') as string) ?? '';
         const activeParams  = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
         if (activeParams.isInfinite) {
@@ -686,7 +705,20 @@ export class MenuScene extends Phaser.Scene {
         this.scene.start('GameScene', hasCheckpoint ? { useCheckpoint: true } : undefined);
       };
 
-      this.input.keyboard!.once('keydown-SPACE', startGame);
+      const refreshStartLabel = (): void => {
+        const ready = this.game.registry.get('gameAssetsReady') === true;
+        this.startText.setText(ready ? 'START RUN' : 'LOADING…');
+        this.startText.setColor(ready ? '#ffffff' : '#778899');
+      };
+
+      refreshStartLabel();
+      this.game.events.once('gameAssetsReady', refreshStartLabel);
+
+      // .on (not .once) for SPACE — startGame early-returns while gameAssetsReady
+      // is false, and .once would burn the binding on any pre-ready press,
+      // leaving the player unable to start with the keyboard until they
+      // navigated away and back. Same logic as the pointerup handler below.
+      this.input.keyboard!.on('keydown-SPACE', startGame);
       this.input.keyboard!.once('keydown-U',     () => this.scene.start('UpgradeScene'));
       this.input.keyboard!.once('keydown-F2',    () => this.scene.start('TexturePreviewScene'));
 
@@ -694,7 +726,7 @@ export class MenuScene extends Phaser.Scene {
         new Phaser.Geom.Rectangle(-200, -40, 400, 80),
         Phaser.Geom.Rectangle.Contains,
       );
-      this.startText.once('pointerup', startGame);
+      this.startText.on('pointerup', startGame);  // .on, not .once — START stays armed across the LOADING→READY transition
 
       this.upgradeText.setInteractive(
         new Phaser.Geom.Rectangle(-78, -28, 156, 56),

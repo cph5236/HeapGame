@@ -1,8 +1,17 @@
 // src/entities/Enemy.ts
 import Phaser from 'phaser';
-import type { EnemyDef, EnemyKind } from '../data/enemyDefs';
+import type { BodyBox, EnemyDef, EnemyKind } from '../data/enemyDefs';
 
 export type { EnemyKind };
+
+/** Apply a per-state body box (texture-pixel coords) to an Arcade body. */
+export function applyBodyBox(
+  body: Phaser.Physics.Arcade.Body,
+  box: BodyBox,
+): void {
+  body.setSize(box.width, box.height);
+  body.setOffset(box.offsetX, box.offsetY);
+}
 
 export class Enemy {
   readonly sprite: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
@@ -26,9 +35,13 @@ export class Enemy {
 
     // Must be set after group.add — adding to a group can reset body flags
     this.sprite.body.setAllowGravity(false);
+    // Default body fills the display rect; per-state boxes (e.g. rat walking
+    // vs idle) are applied below or driven by the EnemyManager state machine.
     this.sprite.body.setSize(def.width, def.height);
 
     if (def.kind === 'percher') {
+      // Rat starts walking-right (see velocity below) — apply that body box.
+      if (def.bodyWalking) applyBodyBox(this.sprite.body, def.bodyWalking);
       this.sprite.setImmovable(true);
       this.sprite.setData('speed', def.speed);
       this.sprite.setVelocityX(def.speed); // start walking right; state machine takes over

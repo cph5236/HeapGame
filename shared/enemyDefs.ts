@@ -3,6 +3,19 @@ import type { HeapEnemyParams } from './heapTypes';
 
 export type EnemyKind = 'percher' | 'ghost';
 
+/**
+ * Physics body bounds in unscaled texture-frame pixels. Used to give an
+ * enemy a tighter collision box than its display rect — and (for animated
+ * enemies like the rat) to swap between per-state boxes (walking vs idle).
+ */
+export interface BodyBox {
+  width:    number;
+  height:   number;
+  /** Top-left offset of the body within the unscaled texture frame. */
+  offsetX:  number;
+  offsetY:  number;
+}
+
 export interface EnemyDef {
   kind: EnemyKind;
 
@@ -11,6 +24,10 @@ export interface EnemyDef {
   width: number;
   height: number;
   speed: number;
+
+  /** Per-state body boxes. If omitted, body falls back to width × height. */
+  bodyWalking?: BodyBox;
+  bodyIdle?:    BodyBox;
 
   // Surface spawn eligibility
   spawnOnHeapSurface: boolean;
@@ -25,9 +42,15 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   percher: {
     kind: 'percher',
     textureKey: 'rat',
-    width: 32,
-    height: 32,
+    width: 48,
+    height: 48,
     speed: 55,
+    // Rat sprite is a 32×32 frame, displayed at 48×48 (1.5× scale). Body
+    // values are in texture pixels — Phaser scales them to display space.
+    // Walking frames: rat is low and wide along the bottom of the frame.
+    bodyWalking: { width: 26, height: 16, offsetX: 3, offsetY: 16 },
+    // Idle frames: rat sits upright, narrower and taller, centered higher.
+    bodyIdle:    { width: 16, height: 24, offsetX: 8, offsetY: 8  },
     spawnOnHeapSurface: true,
     spawnOnHeapWall: false,
     displayName: 'RAT',
