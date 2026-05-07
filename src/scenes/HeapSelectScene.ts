@@ -118,15 +118,23 @@ export class HeapSelectScene extends Phaser.Scene {
     const tBtnLeftX   = tBtnRightX - tBtnW;
     const tBtnCenterX = (tBtnLeftX + tBtnRightX) / 2;
 
-    // Left: name + stars (name wraps so it can't overlap the trophy button)
+    // Left column, two lines:
+    //   row 1: heap name (wraps so it can't overlap the trophy button)
+    //   row 2: hero height (⛰ accent) + difficulty stars on the same baseline
     const lx = ROW_PAD_X + 14;
     const nameMaxW = tBtnLeftX - lx - 8;
-    this.add.text(lx, y + 18, `${heap.params.name} - ${heightFt(heap.params.worldHeight, heap.topY)}`, {
+    this.add.text(lx, y + 18, heap.params.name, {
       fontSize: '17px', fontStyle: 'bold', color: active ? '#ffcc88' : '#ffffff',
       stroke: '#000000', strokeThickness: 2,
       wordWrap: { width: nameMaxW },
     });
-    drawDifficulty(this, lx, y + 58, heap.params.difficulty, 20);
+
+    const heightLabel = `⛰ ${heightFt(heap.params.worldHeight, heap.topY, heap.params.isInfinite)}`;
+    const heightText = this.add.text(lx, y + 58, heightLabel, {
+      fontSize: '16px', fontStyle: 'bold', color: '#ff9922',
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0, 0.5);
+    drawDifficulty(this, lx + heightText.width + 12, y + 58, heap.params.difficulty, 18);
 
     const tBtnBg = this.add.rectangle(tBtnCenterX, midY, tBtnW, tBtnH, 0x10131f)
       .setStrokeStyle(1, 0x334466)
