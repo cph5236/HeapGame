@@ -8,7 +8,7 @@ import { ScoreClient } from '../systems/ScoreClient';
 import { heightFt } from '../util/format';
 import type { PlayerScoreEntry } from '../../shared/scoreTypes';
 
-const ROW_H = 88;
+const ROW_H = 102;
 const ROW_PAD_X = 16;
 
 export class HeapSelectScene extends Phaser.Scene {
@@ -111,19 +111,24 @@ export class HeapSelectScene extends Phaser.Scene {
     const midY     = y + ROW_H / 2;
     const STAT_STEP = 22;
 
-    // Trophy/rank button — spans both rows, sits left of the stat divider
-    const tBtnW = 78;
-    const tBtnH = ROW_H - 20;
+    // Trophy/rank button — sits beside the FT + stars rows only (not the name row),
+    // so the heap name can use the full width above it.
+    const tBtnW = 60;
+    const tBtnH = 48;                         // spans FT row (y+56) + stars row (y+82)
     const tBtnRightX  = divX - 10;
     const tBtnLeftX   = tBtnRightX - tBtnW;
     const tBtnCenterX = (tBtnLeftX + tBtnRightX) / 2;
+    const tBtnCenterY = y + 69;               // midpoint between FT row (56) and stars row (82)
 
-    // Left column, two lines:
-    //   row 1: heap name (wraps so it can't overlap the trophy button)
-    //   row 2: hero height (⛰ accent) + difficulty stars on the same baseline
+    // Left column, three lines:
+    //   row 1: heap name — single-line, runs full width above the trophy
+    //   row 2: hero height (⛰ accent + FT) beside the trophy
+    //   row 3: difficulty stars beside the trophy
     const lx = ROW_PAD_X + 14;
-    const nameMaxW = tBtnLeftX - lx - 8;
-    this.add.text(lx, y + 18, heap.params.name, {
+    // Generous cap so a pathological name can't push into the stats column,
+    // but normal names like "Recycling Center" render on a single line.
+    const nameMaxW = divX - lx - 8;
+    this.add.text(lx, y + 16, heap.params.name, {
       fontSize: '17px', fontStyle: 'bold', color: active ? '#ffcc88' : '#ffffff',
       stroke: '#000000', strokeThickness: 2,
       wordWrap: { width: nameMaxW },
@@ -131,24 +136,24 @@ export class HeapSelectScene extends Phaser.Scene {
 
     // Glyph + label split so the mountain emoji can render bigger than the
     // text without scaling up the digits (emoji render small at body sizes).
-    const heightGlyph = this.add.text(lx, y + 58, '⛰', {
-      fontSize: '22px',
+    const heightGlyph = this.add.text(lx, y + 56, '⛰', {
+      fontSize: '20px',
     }).setOrigin(0, 0.5);
-    const heightText = this.add.text(lx + heightGlyph.width + 4, y + 58,
+    this.add.text(lx + heightGlyph.width + 4, y + 56,
       heightFt(heap.params.worldHeight, heap.topY, heap.params.isInfinite), {
       fontSize: '16px', fontStyle: 'bold', color: '#ff9922',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0, 0.5);
-    drawDifficulty(this, heightText.x + heightText.width + 12, y + 58, heap.params.difficulty, 18);
+    drawDifficulty(this, lx, y + 82, heap.params.difficulty, 16);
 
-    const tBtnBg = this.add.rectangle(tBtnCenterX, midY, tBtnW, tBtnH, 0x10131f)
+    const tBtnBg = this.add.rectangle(tBtnCenterX, tBtnCenterY, tBtnW, tBtnH, 0x10131f)
       .setStrokeStyle(1, 0x334466)
       .setInteractive({ useHandCursor: true });
-    this.add.text(tBtnCenterX, midY - 12, '🏆', {
-      fontSize: '22px',
+    this.add.text(tBtnCenterX, tBtnCenterY - 8, '🏆', {
+      fontSize: '20px',
     }).setOrigin(0.5);
-    const rankText = this.add.text(tBtnCenterX, midY + 18, 'Rank: —', {
-      fontSize: '12px', color: '#7799bb',
+    const rankText = this.add.text(tBtnCenterX, tBtnCenterY + 14, 'Rank: —', {
+      fontSize: '11px', color: '#7799bb',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5);
     this.rankTextByRow.set(rowIndex, rankText);

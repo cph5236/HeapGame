@@ -1,5 +1,5 @@
 const config = {
-    appId: 'com.heapgame.app',
+    appId: 'com.hanlinsoftware.heapgame.app',
     appName: 'Heap',
     webDir: 'dist',
     server: {

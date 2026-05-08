@@ -1,4 +1,4 @@
-package com.heapgame.app;
+package com.hanlinsoftware.heapgame.app;
 
 import com.getcapacitor.BridgeActivity;
 

@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.heapgame.app',
+  appId: 'com.hanlinsoftware.heapgame.app',
   appName: 'Heap',
   webDir: 'dist',
   server: {
