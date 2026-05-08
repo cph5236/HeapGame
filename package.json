@@ -1,6 +1,6 @@
 {
   "name": "heap-game",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,11 @@
     "cap:sync": "cap sync",
     "cap:android": "cap open android",
     "gen-assets": "node scripts/gen-heap-defs.mjs && node scripts/gen-heap-texture.mjs",
-    "seed": "npx tsx --env-file=.env scripts/seed-heap.ts"
+    "seed": "npx tsx --env-file=.env scripts/seed-heap.ts",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version",
+    "bump": "node scripts/bump-version.js"
   },
   "dependencies": {
     "@capacitor/android": "8.2.0",

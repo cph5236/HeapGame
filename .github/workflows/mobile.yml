@@ -3,6 +3,8 @@ name: Mobile Builds
 on:
   push:
     branches: [main, release/*]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -25,10 +27,19 @@ jobs:
       - run: npm run build
       - run: npx cap sync android
 
+      # ---- PR path: unsigned verify build only (no secrets, no AAB upload) ----
+      - name: Build (PR — unsigned verify)
+        if: github.event_name == 'pull_request'
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      # ---- Push / workflow_dispatch path: signed AAB for Play Console ----
       - name: Decode keystore
+        if: github.event_name != 'pull_request'
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
 
       - name: Build AAB
+        if: github.event_name != 'pull_request'
         working-directory: android
         run: |
           ./gradlew bundleRelease \
@@ -38,6 +49,7 @@ jobs:
             -Pandroid.injected.signing.key.password=${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
         with:
           name: android-aab
           path: android/app/build/outputs/bundle/release/app-release.aab
