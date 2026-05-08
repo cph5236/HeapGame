@@ -1,7 +1,12 @@
 node_modules/
 dist/
-android/
 ios/
+
+# Android: track the native project, but never commit build outputs or signing material.
+# (android/.gitignore handles build/, local.properties, generated capacitor config, etc.)
+android/app/release.keystore
+android/**/*.keystore
+android/**/*.jks
 .DS_Store
 *.local
 .env
