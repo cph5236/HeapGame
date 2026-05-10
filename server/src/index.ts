@@ -26,6 +26,7 @@ export default {
         scores: env.RL_SCORES,
         place:  env.RL_PLACE,
         global: env.RL_GLOBAL,
+        log:    env.RL_LOG,
       },
       logSink,
     });

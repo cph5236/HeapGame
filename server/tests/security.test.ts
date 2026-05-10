@@ -50,6 +50,23 @@ describe('CORS allowlist', () => {
   });
 });
 
+describe('CORS allowlist includes Capacitor WebView origins', () => {
+  it('accepts capacitor://localhost preflight', async () => {
+    const app = createApp(new MockHeapDB(), new MockScoreDB(), {
+      allowedOrigins: 'https://example.com,capacitor://localhost,https://localhost',
+    });
+    const res = await app.request('/log', {
+      method: 'OPTIONS',
+      headers: {
+        'Origin': 'capacitor://localhost',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Content-Type',
+      },
+    });
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('capacitor://localhost');
+  });
+});
+
 describe('Admin secret gate', () => {
   function makeAppWithSecret(secret: string) {
     return createApp(new MockHeapDB(), new MockScoreDB(), { adminSecret: secret });

@@ -19,6 +19,7 @@ export interface AppOptions {
     scores?: RateLimiter;
     place?:  RateLimiter;
     global?: RateLimiter;
+    log?:    RateLimiter;
   };
   /** Sink for incoming /log entries. If unset, /log is not mounted. */
   logSink?: Sink;
@@ -56,6 +57,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   // Per-route limiters (mounted as POST handlers; fall through on success)
   app.post('/scores',          rateLimit(lim.scores, 'scores-submit'));
   app.post('/heaps/:id/place', rateLimit(lim.place,  'place-block'));
+  app.post('/log',             rateLimit(lim.log,    'log'));
 
   // Admin gate on mutating heap routes
   const adminGate = requireAdminSecret(opts.adminSecret);
