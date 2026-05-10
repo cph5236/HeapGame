@@ -53,3 +53,20 @@ INSERT OR IGNORE INTO heap_parameters (heap_id, enemy_params) VALUES (
   '00000000-0000-0000-0000-000000000000',
   '{"percher":{"spawnStartPxAboveFloor":0,"spawnEndPxAboveFloor":-1,"spawnRampPxAboveFloor":15000,"spawnChanceMin":0.15,"spawnChanceMax":0.45},"ghost":{"spawnStartPxAboveFloor":5000,"spawnEndPxAboveFloor":-1,"spawnRampPxAboveFloor":20000,"spawnChanceMin":0.10,"spawnChanceMax":0.35}}'
 );
+
+CREATE TABLE IF NOT EXISTS logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_guid TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  level TEXT NOT NULL,
+  event_type TEXT,
+  message TEXT,
+  payload TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  app_version TEXT NOT NULL,
+  user_agent TEXT NOT NULL,
+  client_ts INTEGER NOT NULL,
+  server_ts INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user_guid, server_ts DESC);
+CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level, server_ts DESC);
