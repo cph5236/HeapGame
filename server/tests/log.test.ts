@@ -108,3 +108,20 @@ describe('POST /log', () => {
     expect(res.status).toBe(204);
   });
 });
+
+import { createApp } from '../src/app';
+import { MockHeapDB } from './helpers/mockDb';
+import { MockScoreDB } from './helpers/mockScoreDb';
+
+describe('createApp mounts /log', () => {
+  it('routes POST /log through the provided sink', async () => {
+    const sink = new MemSink();
+    const app = createApp(new MockHeapDB(), new MockScoreDB(), { logSink: sink });
+    const res = await app.request('/log', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries: [validEntry] }),
+    });
+    expect(res.status).toBe(204);
+    expect(sink.written).toHaveLength(1);
+  });
+});

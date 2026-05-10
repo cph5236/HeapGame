@@ -4,8 +4,10 @@ import type { HeapDB } from './db';
 import type { ScoreDB } from './scoreDb';
 import { heapRoutes } from './routes/heap';
 import { scoreRoutes } from './routes/scores';
+import { logRoutes } from './routes/log';
 import { requireAdminSecret } from './middleware/adminAuth';
 import { rateLimit, type RateLimiter } from './middleware/rateLimit';
+import type { Sink } from './logging/Sink';
 
 export interface AppOptions {
   /** Comma-separated origin list, or '*' to allow all (dev only). */
@@ -18,6 +20,8 @@ export interface AppOptions {
     place?:  RateLimiter;
     global?: RateLimiter;
   };
+  /** Sink for incoming /log entries. If unset, /log is not mounted. */
+  logSink?: Sink;
 }
 
 export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {}): Hono {
@@ -63,5 +67,10 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
 
   app.route('/heaps',  heapRoutes(heapDb));
   app.route('/scores', scoreRoutes(scoreDb, heapDb));
+
+  if (opts.logSink) {
+    app.route('/', logRoutes(() => opts.logSink!));
+  }
+
   return app;
 }
