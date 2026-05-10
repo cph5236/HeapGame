@@ -106,7 +106,7 @@ Seven events. Each is a TypeScript discriminated union member, so payloads are s
 |---|---|---|
 | `user:created` | `{}` | Unique installs |
 | `heap:selected` | `{ heapId: string }` | Which heaps are popular |
-| `run:start` | `{ heapId, mode, upgradesHash }` | Sessions per heap, mode mix |
+| `run:start` | `{ heapId, mode }` | Sessions per heap, mode mix |
 | `run:end` | `{ heapId, mode, score, height, kills, durationMs, cause, upgrades }` | Session length, performance, quit-vs-die ratio |
 | `score:submitted` | `{ heapId, score, accepted, rejectionReason? }` | Server score-recompute mismatch rate |
 | `placement:made` | `{ heapId, itemType }` | Placeable usage |
@@ -117,7 +117,7 @@ Seven events. Each is a TypeScript discriminated union member, so payloads are s
 ### Upgrade-state strategy (loss-tolerant)
 
 - **`run:end`** carries the **full upgrade snapshot** (`upgrades: UpgradesSave`). It is the event of record — losing any other event never corrupts run-state reconstruction.
-- **`run:start`** carries only **`upgradesHash`** (first 8 chars of SHA-1 of canonical-JSON-stringified upgrades). Pairs with the `run:end` snapshot in the same session.
+- **`run:start`** carries no upgrade data. (We considered a sync hash for pairing, but since `run:end` already carries the full snapshot and shares a `sessionId` with `run:start`, hashing adds no information. Skipping it also avoids the async `SubtleCrypto.digest` wart in a sync logger API.)
 - **`upgrade:purchased`** carries the full snapshot too. Bonus signal for purchase-moment analysis; not load-bearing.
 
 This costs ~200 bytes extra per `run:end` versus a hash-only strategy and eliminates the orphan-hash failure mode where a lost `upgrade:purchased` event makes downstream runs unreadable.
@@ -130,8 +130,8 @@ This costs ~200 bytes extra per `run:end` versus a hash-only strategy and elimin
 
 | Field | Source |
 |---|---|
-| `userGuid` | `SaveData.identity.guid` |
-| `sessionId` | `crypto.randomUUID()` once per app launch |
+| `userGuid` | `SaveData.playerGuid (via getPlayerGuid())` (read via getter at flush time, not constructor — see "Initialization lifecycle" below) |
+| `sessionId` | `crypto.randomUUID()` once per app launch (with `Date.now() + Math.random()` fallback for older WebViews) |
 | `appVersion` | `import.meta.env.VITE_APP_VERSION` (set by build) |
 | `platform` | `Capacitor.getPlatform()` (`'web' \| 'android' \| 'ios'`) |
 | `userAgent` | `navigator.userAgent` truncated to 200 chars |
@@ -139,6 +139,17 @@ This costs ~200 bytes extra per `run:end` versus a hash-only strategy and elimin
 | `timestamp` | `Date.now()` (client clock) |
 
 The Worker also stamps `serverTimestamp = Date.now()` on receipt, so client clock skew is recoverable.
+
+### Initialization lifecycle
+
+`SaveData.playerGuid (via getPlayerGuid())` is created lazily in `MenuScene` on first launch, but `window.onerror` and `unhandledrejection` handlers must install at boot — earlier than guid availability. Resolution:
+
+- `getLogger()` returns the same `RemoteLogger` singleton from boot onward.
+- `RemoteLogger` is constructed with a **`getEnvelope: () => Envelope` getter**, not a static envelope object. The getter reads `SaveData.playerGuid (via getPlayerGuid())` at flush time.
+- Until `SaveData` is hydrated, the getter returns `userGuid: 'pre-init'`. Errors in the boot window are still captured and grouped under that synthetic guid.
+- `sessionId` is generated once at module load (independent of SaveData) and reused for the process lifetime.
+
+Event ordering: `run:start` and `run:end` may arrive in different batches. Consumers reconstruct sessions via `(sessionId, timestamp)`, never arrival order.
 
 ---
 
@@ -176,11 +187,13 @@ Approximate call-site count (estimated; verify during implementation):
 
 `RemoteLogger` does not POST per call. It batches:
 
-- **Buffer:** in-memory array of pending entries.
-- **Flush triggers:** every 5s, OR when buffer hits 10 entries, OR on `pagehide` / `visibilitychange → hidden`.
-- **Transport:** `navigator.sendBeacon(url, JSON.stringify({entries}))` when available (survives unload); fall back to `fetch(url, { method:'POST', keepalive:true })`.
-- **Failure isolation:** all logger code runs inside `try/catch`. Any throw is swallowed. Failed POSTs are dropped silently — we do not retry, do not store offline, do not stack up. Logging is best-effort by design.
-- **Hard size cap:** each entry is JSON-stringified and truncated if > 4 KB; replaced with `{ truncated: true, originalSize, head: <first 1KB> }`. Each batch is capped at 50 entries.
+- **Buffer:** in-memory array of pending entries with running JSON byte total.
+- **Flush triggers:** every 5s, OR when buffer hits 10 entries, OR when buffered bytes ≥ 48 KB, OR on `pagehide` / `visibilitychange → hidden`.
+- **Transport:** `navigator.sendBeacon(url, new Blob([json], { type: 'application/json' }))` when available (survives unload, and the explicit Blob type ensures the Worker receives `Content-Type: application/json` since `sendBeacon` ignores custom headers). Fall back to `fetch(url, { method:'POST', keepalive:true, headers: { 'Content-Type': 'application/json' } })`.
+- **Failure isolation:** all logger code runs inside `try/catch`. Any throw is swallowed. Failed POSTs are dropped silently — we do not retry, do not store offline, do not stack up. Logging is best-effort by design. Buffer is cleared on both success and failure.
+- **Hard size caps (browser `sendBeacon` body limit is 64 KB):**
+  - each entry is JSON-stringified and truncated if > 2 KB; replaced with `{ truncated: true, originalSize, head: <first 1 KB> }`.
+  - each batch is capped at 25 entries **and** 56 KB serialized (whichever is smaller). If a single `event/error/warn` call would push the buffer past either limit, the buffer is flushed first, then the new entry buffered.
 - **Sample rate hook:** `RemoteLogger` constructor accepts `sampleRates: { error: number; warn: number; event: number }` (default `{1, 1, 1}`). Future-proofs against volume; not used initially.
 
 ---
@@ -209,8 +222,9 @@ POST /log
 ```
 
 **Validation:**
-- Reject if `entries.length > 50` or `entries.length === 0`.
-- Reject if any individual entry > 4 KB after JSON.stringify.
+- Reject if `entries.length > 25` or `entries.length === 0`.
+- Reject if any individual entry > 2 KB after JSON.stringify.
+- Reject if total request body > 64 KB.
 - Strip unknown top-level fields. Coerce missing strings to `''`.
 - Cap `userAgent` to 200 chars (defense in depth — client should already truncate).
 
@@ -236,8 +250,11 @@ export interface Sink {
 Wires to `env.LOGS` (Workers Analytics Engine binding declared in `wrangler.toml`). Each entry maps to one `writeDataPoint` call:
 
 ```ts
+// userGuid is a 36-char UUID; AE indexes are capped at 32 bytes. Strip hyphens
+// to produce a 32-hex-char index that fits exactly. The mapping is 1:1 reversible.
+const userGuidIndex = userGuid.replace(/-/g, '');
 env.LOGS.writeDataPoint({
-  indexes: [userGuid],
+  indexes: [userGuidIndex],
   blobs: [
     level,                            // blob1
     eventType ?? message ?? '',       // blob2
@@ -251,7 +268,7 @@ env.LOGS.writeDataPoint({
 });
 ```
 
-Schema is fixed: `index1=userGuid`, `blob1=level`, `blob2=eventType|message`, `blob3=platform`, `blob4=appVersion`, `blob5=sessionId`, `blob6=payloadJson`, `blob7=userAgent`, `double1=timestamp`.
+Schema is fixed: `index1=userGuid` (32-hex, hyphens stripped — reverse with regex inserts when displaying), `blob1=level`, `blob2=eventType|message`, `blob3=platform`, `blob4=appVersion`, `blob5=sessionId`, `blob6=payloadJson`, `blob7=userAgent`, `double1=timestamp`.
 
 Querying: Cloudflare Analytics Engine SQL API, e.g.
 ```sql
@@ -310,15 +327,14 @@ A new toggle in the existing settings panel:
 > **Send anonymous gameplay analytics** ☐
 > Errors are always reported to help fix bugs.
 
-State stored in `SaveData.meta.verboseLogging: boolean` (default `false`). Toggle handler:
+State stored as a new `verboseLogging: boolean` field on `RawSave` (default `false`; absent on existing saves loads as `false`). Toggle handler:
 
 ```ts
-saveData.meta.verboseLogging = enabled;
-saveStore.persist(saveData);
+setVerboseLogging(enabled);    // new SaveData helper, persists immediately
 getLogger().setVerbose(enabled);
 ```
 
-`SaveData` schema gains the field with `verboseLogging?: boolean` so existing saves load without migration; `RemoteLogger.setVerbose` defaults to `false` when reading an absent value.
+`RawSave` gains `verboseLogging?: boolean`. `load()` returns `false` when the field is absent — no schema version bump needed.
 
 ---
 
@@ -340,6 +356,10 @@ namespace_id = "1004"
   limit = 100
   period = 60
 ```
+
+### CORS allowlist (`server/src/app.ts`)
+
+`/log` is anonymous-write but still subject to the existing CORS allowlist (PR #14). Ensure the allowlist includes the Capacitor WebView origin (`capacitor://localhost` on iOS, `https://localhost` on Android) in addition to the web/dev origins. Add a quick test: `OPTIONS /log` from each allowlisted origin returns 204; from a foreign origin, the preflight is rejected.
 
 ### `vite.config.ts`
 
@@ -405,6 +425,8 @@ Each phase is a reviewable commit. Phases 1–3 can ship without 4–6 and still
 | Privacy: sending `userGuid` and userAgent | `userGuid` is opaque (already used for save sync). UserAgent truncated. No display names, no IPs stored. Settings toggle gates everything beyond errors. Label is explicit: "Send anonymous gameplay analytics. Errors are always reported." |
 | Cost overrun on Analytics Engine | Free tier is 10M writes/month. Sample-rate hook exists for future use. Estimated current volume: well under 100K/month |
 | Lost `upgrade:purchased` events break upgrade analysis | `run:end` carries full upgrade snapshot — purchase event is now redundant context, not load-bearing |
+| `D1Sink` `logs` table grows unbounded | Document a manual prune (`DELETE FROM logs WHERE server_ts < ?`) or schedule a Cron Trigger pruning rows > 30 days. Out of scope for v1; tracked as a follow-up. |
+| Privacy: IP addresses | Cloudflare retains client IPs at the edge for access logs regardless. We do not write IP into our schema (`logs` table or AE blobs). Phrase user-facing copy accordingly. |
 
 ---
 
