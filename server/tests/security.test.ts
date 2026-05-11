@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createApp } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
+import { MockSink } from './helpers/mockSink';
 import type { CreateHeapResponse } from '../../shared/heapTypes';
 import type { RateLimiter } from '../src/middleware/rateLimit';
 
@@ -185,5 +186,54 @@ describe('Rate limiting', () => {
     const app = createApp(new MockHeapDB(), new MockScoreDB(), {});
     const res = await app.request('/heaps');
     expect(res.status).toBe(200);
+  });
+
+  it('emits rate_limit:hit warn when limiter denies', async () => {
+    const sink = new MockSink();
+    const app = createApp(new MockHeapDB(), new MockScoreDB(), {
+      logSink: sink,
+      limiters: { scores: fakeLimiter(false) },
+    });
+    const res = await app.request('/scores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ heapId: 'h', playerId: 'p', playerName: 'A', score: 1 }),
+    });
+    expect(res.status).toBe(429);
+    expect(sink.written).toHaveLength(1);
+    expect(sink.written[0].message).toBe('rate_limit:hit');
+    expect(sink.written[0].level).toBe('warn');
+    expect(sink.written[0].payload.bucket).toBe('scores-submit');
+    expect(sink.written[0].payload.ip).toBe('unknown');
+  });
+
+  it('does not emit rate_limit:hit when limiter allows', async () => {
+    const sink = new MockSink();
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap('h', 1, []);
+    const app = createApp(heapDb, new MockScoreDB(), {
+      logSink: sink,
+      limiters: { scores: fakeLimiter(true) },
+    });
+    const res = await app.request('/scores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ heapId: 'h', playerId: 'p', playerName: 'A', inputs: { baseHeightPx: 100, kills: { percher: 0, ghost: 0 }, elapsedMs: 60000, isFailure: true } }),
+    });
+    // Should succeed, and any rate_limit:hit entries should be 0
+    const rateLimitEntries = sink.written.filter(e => e.message === 'rate_limit:hit');
+    expect(rateLimitEntries).toHaveLength(0);
+  });
+
+  it('works when sink is undefined (gracefully ignores)', async () => {
+    const app = createApp(new MockHeapDB(), new MockScoreDB(), {
+      limiters: { scores: fakeLimiter(false) },
+    });
+    const res = await app.request('/scores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ heapId: 'h', playerId: 'p', playerName: 'A', score: 1 }),
+    });
+    expect(res.status).toBe(429);
   });
 });

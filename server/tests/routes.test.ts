@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { createApp, type AppOptions } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
+import { MockSink } from './helpers/mockSink';
 import type {
   CreateHeapResponse,
   ListHeapsResponse,
@@ -1021,5 +1022,86 @@ describe('PUT /heaps/:id/params', () => {
       body: JSON.stringify({ name: 'x' }),
     });
     expect(res.status).toBe(401);
+  });
+});
+
+describe('POST /heaps/:id/place — remote logging', () => {
+  it('emits place:rejected warn when coordinates are invalid', async () => {
+    const sink = new MockSink();
+    const app = makeApp({ logSink: sink });
+    const heapRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const heapId = (await heapRes.json() as CreateHeapResponse).id;
+
+    const placeRes = await app.request(`/heaps/${heapId}/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: NaN, y: 500 }),
+    });
+    expect(placeRes.status).toBe(400);
+    expect(sink.written).toHaveLength(1);
+    expect(sink.written[0].message).toBe('place:rejected');
+    expect(sink.written[0].level).toBe('warn');
+    expect(sink.written[0].payload.reason).toBe('bad coords');
+  });
+
+  it('emits place:rejected warn when x is out of center zone', async () => {
+    const sink = new MockSink();
+    const app = makeApp({ logSink: sink });
+    const heapRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const heapId = (await heapRes.json() as CreateHeapResponse).id;
+
+    const placeRes = await app.request(`/heaps/${heapId}/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 10, y: 500 }),  // x too small
+    });
+    expect(placeRes.status).toBe(400);
+    expect(sink.written).toHaveLength(1);
+    expect(sink.written[0].message).toBe('place:rejected');
+    expect(sink.written[0].payload.reason).toBe('x out of center zone');
+  });
+
+  it('does not emit place:rejected when placement is accepted', async () => {
+    const sink = new MockSink();
+    const app = makeApp({ logSink: sink });
+    const heapRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const heapId = (await heapRes.json() as CreateHeapResponse).id;
+
+    const placeRes = await app.request(`/heaps/${heapId}/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 480, y: 300 }),  // valid center zone placement
+    });
+    expect(placeRes.status).toBe(200);
+    expect(sink.written).toHaveLength(0);
+  });
+
+  it('works when sink is undefined (gracefully ignores)', async () => {
+    const app = makeApp();
+    const heapRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const heapId = (await heapRes.json() as CreateHeapResponse).id;
+
+    const placeRes = await app.request(`/heaps/${heapId}/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 10, y: 500 }),
+    });
+    expect(placeRes.status).toBe(400);
   });
 });
