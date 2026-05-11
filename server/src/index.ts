@@ -2,6 +2,7 @@ import { createApp } from './app';
 import { D1HeapDB } from './db';
 import { D1ScoreDB } from './scoreDb';
 import { D1Sink } from './logging/D1Sink';
+import { AnalyticsEngineSink } from './logging/AnalyticsEngineSink';
 import type { RateLimiter } from './middleware/rateLimit';
 
 export interface Env {
@@ -18,7 +19,9 @@ export interface Env {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const logSink = new D1Sink(env.DB); // Phase 4 swaps to AnalyticsEngineSink when env.LOGS is set
+    const logSink = env.LOGS
+      ? new AnalyticsEngineSink(env.LOGS)
+      : new D1Sink(env.DB);
     const app = createApp(new D1HeapDB(env.DB), new D1ScoreDB(env.DB), {
       allowedOrigins: env.ALLOWED_ORIGINS,
       adminSecret:    env.ADMIN_SECRET,
