@@ -640,19 +640,20 @@ export class ScoreScene extends Phaser.Scene {
 
     call.then((ctx) => {
       loading.destroy();
-      if (this.isNewHighScore) {
-        // Submit returned a context (success) or null (failure/offline)
-        const accepted = ctx !== null;
-        getLogger().event({
-          type: 'score:submitted',
-          heapId: this.heapId,
-          score: this.score,
-          accepted,
-          rejectionReason: accepted ? undefined : 'offline or rejected',
-        });
-      }
+      // Fire event for ALL submissions, not just high scores
+      const accepted = ctx !== null;
+      getLogger().event({
+        type: 'score:submitted',
+        heapId: this.heapId,
+        score: this.score,
+        accepted,
+        rejectionReason: accepted ? undefined : 'offline or rejected',
+      });
       if (!ctx) return; // offline — silently show nothing
 
+      if (this.isNewHighScore) {
+        // High-score specific logic
+      }
       this.renderLeaderboardEntries(ctx, PANEL_TOP, PANEL_W, ROW_H);
     });
   }
