@@ -25,6 +25,8 @@ import {
   resetCacheForTests,
   getLegacyPlacedForTests,
   getSchemaVersionForTests,
+  getVerboseLogging,
+  setVerboseLogging,
 } from '../SaveData';
 
 // Stub localStorage — vitest runs in node environment
@@ -369,5 +371,27 @@ describe('SaveData per-heap placeables', () => {
   it('selectedHeapId persists', () => {
     setSelectedHeapId('heap-xyz');
     expect(getSelectedHeapId()).toBe('heap-xyz');
+  });
+});
+
+// ── Verbose logging ───────────────────────────────────────────────────────────
+
+describe('verboseLogging', () => {
+  beforeEach(() => { localStorage.clear(); resetCacheForTests(); });
+
+  it('defaults to false on fresh saves', () => {
+    expect(getVerboseLogging()).toBe(false);
+  });
+
+  it('persists when set', () => {
+    setVerboseLogging(true);
+    resetCacheForTests();
+    expect(getVerboseLogging()).toBe(true);
+  });
+
+  it('returns false when field missing on legacy saves', () => {
+    localStorage.setItem('heap_save', JSON.stringify({ schemaVersion: 3, balance: 0, upgrades: {}, inventory: {}, placed: {}, selectedHeapId: '', playerGuid: 'g', playerName: 'n', highScores: {} }));
+    resetCacheForTests();
+    expect(getVerboseLogging()).toBe(false);
   });
 });
