@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
 import { installGlobalErrorHandlers } from '../capture';
 import type { Logger } from '../../../shared/logging/Logger';
 
