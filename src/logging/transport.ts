@@ -1,10 +1,10 @@
 import type { LogEntry } from '../../shared/logging/Logger';
 
 const LOG_URL = (() => {
-  // Same origin as HeapClient — for Capacitor builds this is the worker URL.
-  // Fall back to `/log` for web origins.
-  const apiBase = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
-  return `${apiBase}/log`;
+  const serverUrl =
+    (import.meta as unknown as { env: Record<string, string> }).env.VITE_HEAP_SERVER_URL ??
+    'http://localhost:8787';
+  return `${serverUrl}/log`;
 })();
 
 /** Best-effort POST. Returns true if a send was attempted; never throws. */
