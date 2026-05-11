@@ -19,33 +19,43 @@ Analytics events only appear when **"Send anonymous gameplay analytics"** is tog
 
 ---
 
-### Deploying to production
+### Production (Cloudflare Analytics Engine)
 
-**Step 1** — Uncomment the AE binding in `server/wrangler.toml`:
-```toml
-[[analytics_engine_datasets]]
-binding = "LOGS"
-dataset = "heap_logs"
+In the Cloudflare dashboard: **Storage & Databases → Analytics Engine → Studio → heap_logs**
+
+Column mapping (`AnalyticsEngineSink` write order):
+
+| Column | Field |
+|---|---|
+| `index1` | `user_guid` |
+| `blob1` | `level` (`event` / `warn` / `error`) |
+| `blob2` | `event_type` or `message` |
+| `blob3` | `platform` |
+| `blob4` | `app_version` |
+| `blob5` | `session_id` |
+| `blob6` | `payload` (JSON string) |
+| `blob7` | `user_agent` |
+| `double1` | `client_ts` (ms) |
+
+```sql
+SELECT
+  timestamp,
+  blob1  AS level,
+  blob2  AS event_type,
+  blob3  AS platform,
+  blob4  AS app_version,
+  blob5  AS session_id,
+  blob6  AS payload,
+  blob7  AS user_agent,
+  double1 AS client_ts,
+  index1 AS user_guid
+FROM heap_logs
+WHERE blob1 = 'event'
+ORDER BY timestamp DESC
+LIMIT 50
 ```
 
-**Step 2** — Apply the logs table migration (only needed once):
-```bash
-cd server && npx wrangler d1 migrations apply heap --remote
-```
-
-**Step 3** — Deploy:
-```bash
-cd server && npx wrangler deploy
-```
-
-In production, `env.LOGS` will be set and logs go to **Analytics Engine** (not D1). Query them via the CF SQL API:
-```bash
-curl "https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/analytics_engine/sql" \
-  -H "Authorization: Bearer <AUTH_TOKEN>" \
-  -d "SELECT blob1 as level, blob2 as event_type, double1 as ts FROM heap_logs ORDER BY double1 DESC LIMIT 20"
-```
-
-**After testing**, re-comment the AE binding before returning to local dev — otherwise `wrangler dev` will use the AE stub and logs will silently disappear again.
+Swap `WHERE blob1 = 'event'` for `'warn'` or `'error'` to filter by level.
 
 ---
 
