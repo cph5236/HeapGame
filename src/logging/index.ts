@@ -6,6 +6,7 @@ import { defaultTransport } from './transport';
 import { getPlayerGuid, getVerboseLogging } from '../systems/SaveData';
 import { installGlobalErrorHandlers } from './capture';
 import { Capacitor } from '@capacitor/core';
+import { version as APP_VERSION } from '../../package.json';
 
 let _logger: Logger = new NullLogger();
 
@@ -34,7 +35,7 @@ function getEnvelope(): LogEnvelope {
   return {
     userGuid,
     sessionId: SESSION_ID,
-    appVersion: (import.meta.env.VITE_APP_VERSION as string | undefined) ?? '0.0.0',
+    appVersion: APP_VERSION,
     platform: detectPlatform(),
     userAgent: (typeof navigator !== 'undefined' ? navigator.userAgent : '').slice(0, 200),
   };
