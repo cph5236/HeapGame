@@ -32,6 +32,13 @@ interface RawSave {
 
 let _cache: RawSave | null = null;
 
+function generateGuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function generateDefaultName(): string {
   const n = Array.from({ length: 5 }, () => Math.floor(Math.random() * 10)).join('');
   return `Trashbag#${n}`;
@@ -45,7 +52,7 @@ function freshSave(): RawSave {
     inventory:      {},
     placed:         {},
     selectedHeapId: '',
-    playerGuid:     crypto.randomUUID(),
+    playerGuid:     generateGuid(),
     playerName:     generateDefaultName(),
     highScores:     {},
   };
@@ -73,7 +80,7 @@ function migrate(parsed: any): RawSave {
       inventory:      parsed.inventory      ?? {},
       placed:         parsed.placed         ?? {},
       selectedHeapId: parsed.selectedHeapId ?? '',
-      playerGuid:     parsed.playerGuid     ?? crypto.randomUUID(),
+      playerGuid:     parsed.playerGuid     ?? generateGuid(),
       playerName:     parsed.playerName     ?? generateDefaultName(),
       highScores:     parsed.highScores     ?? {},
       verboseLogging: parsed.verboseLogging,
@@ -91,7 +98,7 @@ function migrate(parsed: any): RawSave {
       inventory:      parsed.inventory  ?? {},
       placed:         {},
       selectedHeapId: '',
-      playerGuid:     parsed.playerGuid ?? crypto.randomUUID(),
+      playerGuid:     parsed.playerGuid ?? generateGuid(),
       playerName:     parsed.playerName ?? generateDefaultName(),
       highScores:     parsed.highScores ?? {},
       verboseLogging: parsed.verboseLogging,
@@ -109,7 +116,7 @@ function migrate(parsed: any): RawSave {
     inventory:      parsed.inventory      ?? {},
     placed:         remapPlacedY(placed, WORLD_HEIGHT_V2, WORLD_HEIGHT_V3),
     selectedHeapId: parsed.selectedHeapId ?? '',
-    playerGuid:     parsed.playerGuid     ?? crypto.randomUUID(),
+    playerGuid:     parsed.playerGuid     ?? generateGuid(),
     playerName:     parsed.playerName     ?? generateDefaultName(),
     highScores:     parsed.highScores     ?? {},
     verboseLogging: parsed.verboseLogging,
