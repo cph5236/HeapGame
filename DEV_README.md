@@ -1,3 +1,54 @@
+## REMOTE LOGGING
+
+### Local dev
+
+The `[[analytics_engine_datasets]]` binding in `server/wrangler.toml` is intentionally **commented out**. This forces `wrangler dev` to use the local D1 database as the log sink.
+
+Start the server as normal:
+```bash
+cd server && npx wrangler dev
+```
+
+After playing the game, query logs:
+```bash
+npx wrangler d1 execute heap --local \
+  --command "SELECT level, event_type, message, payload FROM logs ORDER BY id DESC LIMIT 20"
+```
+
+Analytics events only appear when **"Send anonymous gameplay analytics"** is toggled ON in Menu → Settings. Errors and warnings always ship regardless.
+
+---
+
+### Deploying to production
+
+**Step 1** — Uncomment the AE binding in `server/wrangler.toml`:
+```toml
+[[analytics_engine_datasets]]
+binding = "LOGS"
+dataset = "heap_logs"
+```
+
+**Step 2** — Apply the logs table migration (only needed once):
+```bash
+cd server && npx wrangler d1 migrations apply heap --remote
+```
+
+**Step 3** — Deploy:
+```bash
+cd server && npx wrangler deploy
+```
+
+In production, `env.LOGS` will be set and logs go to **Analytics Engine** (not D1). Query them via the CF SQL API:
+```bash
+curl "https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/analytics_engine/sql" \
+  -H "Authorization: Bearer <AUTH_TOKEN>" \
+  -d "SELECT blob1 as level, blob2 as event_type, double1 as ts FROM heap_logs ORDER BY double1 DESC LIMIT 20"
+```
+
+**After testing**, re-comment the AE binding before returning to local dev — otherwise `wrangler dev` will use the AE stub and logs will silently disappear again.
+
+---
+
 ## THE Brain PLUGIN
 https://github.com/Advenire-Consulting/thebrain
 
