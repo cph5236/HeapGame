@@ -1,12 +1,13 @@
 import Phaser from 'phaser';
 
 
-import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance } from '../systems/SaveData';
+import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance, getPlayerGuid } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { formatDifficulty } from '../ui/DifficultyStars';
 import { loadGameAssets } from './loadGameAssets';
+import { getLogger } from '../logging';
 
 export class MenuScene extends Phaser.Scene {
   private farSilhouette!: Phaser.GameObjects.Graphics;
@@ -44,6 +45,14 @@ export class MenuScene extends Phaser.Scene {
     this.resetConfirmed = false;
 
     const im = InputManager.getInstance();
+
+    // Log user:created once per playerGuid via localStorage flag
+    const guid = getPlayerGuid();
+    const flagKey = `heap_user_created_logged:${guid}`;
+    if (!localStorage.getItem(flagKey)) {
+      getLogger().event({ type: 'user:created' });
+      localStorage.setItem(flagKey, '1');
+    }
 
     this.createSkyGradient();
     this.createStarField();

@@ -11,6 +11,7 @@ import {
 } from './SaveData';
 import { ITEM_DEFS } from '../data/itemDefs';
 import { Player } from '../entities/Player';
+import { getLogger } from '../logging';
 
 export const enum PlacementState { Closed, Hotbar, Placing }
 
@@ -499,6 +500,7 @@ export class PlaceableManager {
       }
     }
 
+    getLogger().event({ type: 'placement:made', heapId: this._heapId, itemType: this.placingItemId });
     this.closeAll();
   }
 

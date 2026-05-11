@@ -167,6 +167,8 @@ export function purchaseUpgrade(id: string): boolean {
   return true;
 }
 
+export function getUpgrades(): Record<string, number> { return { ...load().upgrades }; }
+
 // ── Inventory ─────────────────────────────────────────────────────────────────
 
 export function getItemQuantity(id: string): number { return load().inventory[id] ?? 0; }

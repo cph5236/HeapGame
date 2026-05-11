@@ -15,8 +15,9 @@ import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { LayerGenerator } from '../systems/LayerGenerator';
 import { computeBandPolygon, simplifyPolygon, type Vertex } from '../systems/HeapPolygon';
 import { buildRunScore } from '../systems/buildRunScore';
-import { getPlayerConfig, addBalance } from '../systems/SaveData';
+import { getPlayerConfig, addBalance, getUpgrades } from '../systems/SaveData';
 import { ENEMY_DEFS, DEFAULT_ENEMY_PARAMS } from '../data/enemyDefs';
+import { getLogger } from '../logging';
 import { BRIDGE_DEF } from '../data/bridgeDefs';
 import { PORTAL_DEF } from '../data/portalDefs';
 import { TRASH_WALL_DEF } from '../data/trashWallDef';
@@ -284,6 +285,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
     if (score > 0 && this._runStartTime === null) {
       this._runStartTime = this.time.now;
+      getLogger().event({ type: 'run:start', heapId: INFINITE_HEAP_ID, mode: 'infinite' });
     }
     this.scoreText.setText(`${Math.floor(score / 100)} ft`);
 
@@ -392,6 +394,18 @@ export class InfiniteGameScene extends Phaser.Scene {
       1.0,
     );
     this.time.delayedCall(800, () => {
+      const killCount = Object.values(this._runKills).reduce((sum, val) => sum + val, 0);
+      getLogger().event({
+        type: 'run:end',
+        heapId: INFINITE_HEAP_ID,
+        mode: 'infinite',
+        score: runResult.finalScore,
+        height: score,
+        kills: killCount,
+        durationMs: elapsedMs,
+        cause: 'death',
+        upgrades: getUpgrades(),
+      });
       this.scene.launch('ScoreScene', {
         score:               runResult.finalScore,
         heapId:              INFINITE_HEAP_ID,

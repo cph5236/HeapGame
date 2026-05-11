@@ -7,6 +7,7 @@ import { InputManager } from '../systems/InputManager';
 import { ScoreClient } from '../systems/ScoreClient';
 import { heightFt } from '../util/format';
 import type { PlayerScoreEntry } from '../../shared/scoreTypes';
+import { getLogger } from '../logging';
 
 const ROW_H = 102;
 const ROW_PAD_X = 16;
@@ -263,6 +264,7 @@ export class HeapSelectScene extends Phaser.Scene {
 
   private select(heap: HeapSummary): void {
     setSelectedHeapId(heap.id);
+    getLogger().event({ type: 'heap:selected', heapId: heap.id });
     this.game.registry.set('activeHeapId', heap.id);
     this.game.registry.set('heapParams',   heap.params);
 
