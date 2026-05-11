@@ -4,6 +4,7 @@ import { NullLogger } from './NullLogger';
 import { RemoteLogger } from './RemoteLogger';
 import { defaultTransport } from './transport';
 import { getPlayerGuid, getVerboseLogging } from '../systems/SaveData';
+import { installGlobalErrorHandlers } from './capture';
 import { Capacitor } from '@capacitor/core';
 
 let _logger: Logger = new NullLogger();
@@ -59,4 +60,7 @@ export function initLogger(): void {
     });
   }
   setLogger(logger);
+  if (typeof window !== 'undefined') {
+    installGlobalErrorHandlers(logger);
+  }
 }
