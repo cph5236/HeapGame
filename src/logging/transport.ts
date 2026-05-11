@@ -10,17 +10,11 @@ const LOG_URL = (() => {
 /** Best-effort POST. Returns true if a send was attempted; never throws. */
 export function defaultTransport(entries: LogEntry[]): boolean {
   try {
-    const body = JSON.stringify({ entries });
-    const blob = new Blob([body], { type: 'application/json' });
-    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-      // sendBeacon ignores custom headers; the Blob's `type` becomes Content-Type.
-      navigator.sendBeacon(LOG_URL, blob);
-      return true;
-    }
-    // Fallback: keepalive fetch (survives unload up to 64KB).
+    // keepalive fetch survives page unload (same benefit as sendBeacon) without
+    // forcing credentials mode, which avoids the CORS Allow-Credentials requirement.
     fetch(LOG_URL, {
       method: 'POST',
-      body,
+      body: JSON.stringify({ entries }),
       headers: { 'Content-Type': 'application/json' },
       keepalive: true,
     }).catch(() => { /* swallow */ });
