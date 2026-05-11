@@ -9,7 +9,7 @@
 
 ### Stretch goals 
 - Google play integration with Game profiles? 
-- Ad integration
+- google Ad integration
 - SEO optimization
 - Youtube playables or other arcade game websites
 - fix play Console Warning - There is no deobfuscation file associated with this App Bundle. If you use obfuscated code (R8/proguard), uploading a deobfuscation file will make crashes and ANRs easier to analyze and debug. Using R8/proguard can help reduce app size. Learn More

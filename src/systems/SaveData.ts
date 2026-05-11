@@ -26,6 +26,7 @@ interface RawSave {
   playerGuid:     string;
   playerName:     string;
   highScores:     Record<string, number>;
+  verboseLogging?: boolean;
   _legacyPlaced?: PlacedItemSave[];
 }
 
@@ -75,6 +76,7 @@ function migrate(parsed: any): RawSave {
       playerGuid:     parsed.playerGuid     ?? crypto.randomUUID(),
       playerName:     parsed.playerName     ?? generateDefaultName(),
       highScores:     parsed.highScores     ?? {},
+      verboseLogging: parsed.verboseLogging,
       _legacyPlaced:  parsed._legacyPlaced,
     };
   }
@@ -92,6 +94,7 @@ function migrate(parsed: any): RawSave {
       playerGuid:     parsed.playerGuid ?? crypto.randomUUID(),
       playerName:     parsed.playerName ?? generateDefaultName(),
       highScores:     parsed.highScores ?? {},
+      verboseLogging: parsed.verboseLogging,
       // v1 items have no world-height context — leave Y as-is; can't safely remap
       _legacyPlaced:  legacyArray.length > 0 ? legacyArray : undefined,
     };
@@ -109,6 +112,7 @@ function migrate(parsed: any): RawSave {
     playerGuid:     parsed.playerGuid     ?? crypto.randomUUID(),
     playerName:     parsed.playerName     ?? generateDefaultName(),
     highScores:     parsed.highScores     ?? {},
+    verboseLogging: parsed.verboseLogging,
     _legacyPlaced:  parsed._legacyPlaced,
   };
 }
@@ -162,6 +166,8 @@ export function purchaseUpgrade(id: string): boolean {
   persist(data);
   return true;
 }
+
+export function getUpgrades(): Record<string, number> { return { ...load().upgrades }; }
 
 // ── Inventory ─────────────────────────────────────────────────────────────────
 
@@ -298,6 +304,15 @@ export function setPlayerName(name: string): void {
   if (!trimmed) return;
   const data = load();
   data.playerName = trimmed;
+  persist(data);
+}
+
+// ── Verbose logging ───────────────────────────────────────────────────────────
+
+export function getVerboseLogging(): boolean { return load().verboseLogging ?? false; }
+export function setVerboseLogging(enabled: boolean): void {
+  const data = load();
+  data.verboseLogging = enabled;
   persist(data);
 }
 

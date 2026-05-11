@@ -2,6 +2,8 @@
 
 import { Hono } from 'hono';
 import type { HeapDB } from '../db';
+import type { Sink } from '../logging/Sink';
+import { captureServer } from '../logging/captureServerEvent';
 import { isPointInside, checkFreeze, hashVertices } from '../polygon';
 import type {
   CreateHeapRequest,
@@ -78,7 +80,10 @@ function resolveParams(input: Partial<HeapParams> | undefined): HeapParams | { e
   return merged;
 }
 
-export function heapRoutes(db: HeapDB): Hono {
+export function heapRoutes(
+  db: HeapDB,
+  getSink: () => Sink | undefined,
+): Hono {
   const app = new Hono();
 
   // POST /heaps — create a new heap
@@ -307,6 +312,10 @@ export function heapRoutes(db: HeapDB): Hono {
       body = await c.req.json<PlaceRequest>();
     } catch {
       console.warn(`[place] reject: invalid JSON heapId=${id}`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'place:rejected', { reason: 'invalid JSON', heapId: id });
+      }
       return c.json({ error: 'invalid placement' }, 400);
     }
 
@@ -314,6 +323,10 @@ export function heapRoutes(db: HeapDB): Hono {
     if (typeof x !== 'number' || !Number.isFinite(x) ||
         typeof y !== 'number' || !Number.isFinite(y)) {
       console.warn(`[place] reject: bad coords (x=${x}, y=${y}) heapId=${id}`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'place:rejected', { reason: 'bad coords', heapId: id, x, y });
+      }
       return c.json({ error: 'invalid placement' }, 400);
     }
 
@@ -322,14 +335,26 @@ export function heapRoutes(db: HeapDB): Hono {
 
     if (x < PLACE_X_MIN || x > PLACE_X_MAX) {
       console.warn(`[place] reject: x out of center zone (${x}) heapId=${id}`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'place:rejected', { reason: 'x out of center zone', heapId: id, x, min: PLACE_X_MIN, max: PLACE_X_MAX });
+      }
       return c.json({ error: 'invalid placement' }, 400);
     }
     if (y < 0 || y > row.world_height) {
       console.warn(`[place] reject: y out of world bounds (${y}, world_height=${row.world_height}) heapId=${id}`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'place:rejected', { reason: 'y out of world bounds', heapId: id, y, worldHeight: row.world_height });
+      }
       return c.json({ error: 'invalid placement' }, 400);
     }
     if (y < row.top_y - PLACE_HEIGHT_GRACE_PX) {
       console.warn(`[place] reject: y above summit + grace (${y}, top_y=${row.top_y}, grace=${PLACE_HEIGHT_GRACE_PX}) heapId=${id}`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'place:rejected', { reason: 'y above summit + grace', heapId: id, y, topY: row.top_y, grace: PLACE_HEIGHT_GRACE_PX });
+      }
       return c.json({ error: 'invalid placement' }, 400);
     }
 
@@ -342,6 +367,10 @@ export function heapRoutes(db: HeapDB): Hono {
       : row.top_y + HEAP_TOP_ZONE_PX;
     if (y > liveZoneBottomY) {
       console.warn(`[place] reject: y below active zone (${y} > liveZoneBottomY=${liveZoneBottomY}) heapId=${id}`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'place:rejected', { reason: 'y below active zone', heapId: id, y, liveZoneBottomY });
+      }
       return c.json({ error: 'invalid placement' }, 400);
     }
 

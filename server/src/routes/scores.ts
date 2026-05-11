@@ -3,6 +3,8 @@
 import { Hono } from 'hono';
 import type { ScoreDB } from '../scoreDb';
 import type { HeapDB } from '../db';
+import type { Sink } from '../logging/Sink';
+import { captureServer } from '../logging/captureServerEvent';
 import type {
   SubmitScoreRequest,
   SubmitScoreResponse,
@@ -52,7 +54,11 @@ async function buildContext(
   return { top, player };
 }
 
-export function scoreRoutes(scoreDb: ScoreDB, heapDb: HeapDB): Hono {
+export function scoreRoutes(
+  scoreDb: ScoreDB,
+  heapDb: HeapDB,
+  getSink: () => Sink | undefined,
+): Hono {
   const app = new Hono();
 
   // POST /scores — submit raw inputs; server recomputes the score and returns leaderboard context
@@ -62,6 +68,10 @@ export function scoreRoutes(scoreDb: ScoreDB, heapDb: HeapDB): Hono {
       body = await c.req.json<SubmitScoreRequest>();
     } catch {
       console.warn('[scores] reject: invalid JSON');
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'invalid JSON' });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
@@ -70,20 +80,36 @@ export function scoreRoutes(scoreDb: ScoreDB, heapDb: HeapDB): Hono {
     // Identity / name validation
     if (typeof heapId !== 'string' || heapId.length === 0 || heapId.length > MAX_ID_LEN) {
       console.warn(`[scores] reject: bad heapId (${typeof heapId}, len=${(heapId as any)?.length ?? 'N/A'})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad heapId' });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
     if (typeof playerId !== 'string' || playerId.length === 0 || playerId.length > MAX_ID_LEN) {
       console.warn(`[scores] reject: bad playerId (${typeof playerId}, len=${(playerId as any)?.length ?? 'N/A'})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad playerId' });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
     if (typeof playerName !== 'string' || playerName.trim().length === 0) {
       console.warn(`[scores] reject: bad playerName (${typeof playerName})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad playerName' });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
     // Inputs shape
     if (!inputs || typeof inputs !== 'object') {
       console.warn(`[scores] reject: bad inputs (${typeof inputs})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad inputs' });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
@@ -91,28 +117,52 @@ export function scoreRoutes(scoreDb: ScoreDB, heapDb: HeapDB): Hono {
 
     if (!Number.isInteger(baseHeightPx) || baseHeightPx < 0) {
       console.warn(`[scores] reject: bad baseHeightPx (${baseHeightPx})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad baseHeightPx', value: baseHeightPx });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
     if (!(typeof elapsedMs === 'number' && Number.isFinite(elapsedMs) && elapsedMs >= 1)) {
       console.warn(`[scores] reject: bad elapsedMs (${elapsedMs})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad elapsedMs', value: elapsedMs });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
     if (typeof isFailure !== 'boolean') {
       console.warn(`[scores] reject: bad isFailure (${typeof isFailure})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad isFailure' });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
     if (!kills || typeof kills !== 'object') {
       console.warn(`[scores] reject: bad kills (${typeof kills})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad kills' });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
     const percher = kills.percher;
     const ghost   = kills.ghost;
     if (!Number.isInteger(percher) || percher < 0) {
       console.warn(`[scores] reject: bad percher (${percher})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad percher', value: percher });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
     if (!Number.isInteger(ghost) || ghost < 0) {
       console.warn(`[scores] reject: bad ghost (${ghost})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad ghost', value: ghost });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
@@ -120,24 +170,40 @@ export function scoreRoutes(scoreDb: ScoreDB, heapDb: HeapDB): Hono {
     const heap = await heapDb.getHeap(heapId);
     if (!heap) {
       console.warn(`[scores] reject: heap not found (${heapId})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'heap not found', heapId });
+      }
       return c.json({ error: 'invalid score submission' }, 404);
     }
 
     const maxClimbPx = (heap.world_height - heap.top_y) + HEIGHT_GRACE_PX;
     if (baseHeightPx > maxClimbPx) {
       console.warn(`[scores] reject: baseHeightPx ${baseHeightPx} exceeds max ${maxClimbPx} (heapId=${heapId})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'baseHeightPx exceeds max', heapId, baseHeightPx, maxClimbPx });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
     // Climb-rate cap (integer arithmetic to avoid FP rounding at the boundary)
     if (baseHeightPx * 1000 > MAX_CLIMB_RATE_Y_PER_S * elapsedMs) {
       console.warn(`[scores] reject: climb rate ${(baseHeightPx * 1000) / elapsedMs} Y/s exceeds ${MAX_CLIMB_RATE_Y_PER_S} (heapId=${heapId})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'climb rate too high', heapId, climbRatePerS: (baseHeightPx * 1000) / elapsedMs });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
     // Kill-rate cap
     if ((percher + ghost) * 1000 > MAX_KILLS_PER_S * elapsedMs) {
       console.warn(`[scores] reject: kill rate ${((percher + ghost) * 1000) / elapsedMs} /s exceeds ${MAX_KILLS_PER_S} (heapId=${heapId})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'kill rate too high', heapId, killRatePerS: ((percher + ghost) * 1000) / elapsedMs });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
@@ -151,6 +217,10 @@ export function scoreRoutes(scoreDb: ScoreDB, heapDb: HeapDB): Hono {
 
     if (finalScore <= 0) {
       console.warn(`[scores] reject: recomputed score is non-positive (${finalScore}), heapId=${heapId}`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'non-positive score', heapId, finalScore });
+      }
       return c.json({ error: 'invalid score submission' }, 400);
     }
 

@@ -4,8 +4,10 @@ import type { HeapDB } from './db';
 import type { ScoreDB } from './scoreDb';
 import { heapRoutes } from './routes/heap';
 import { scoreRoutes } from './routes/scores';
+import { logRoutes } from './routes/log';
 import { requireAdminSecret } from './middleware/adminAuth';
-import { rateLimit, type RateLimiter } from './middleware/rateLimit';
+import { rateLimit, type RateLimiter, setRateLimitSink } from './middleware/rateLimit';
+import type { Sink } from './logging/Sink';
 
 export interface AppOptions {
   /** Comma-separated origin list, or '*' to allow all (dev only). */
@@ -17,11 +19,19 @@ export interface AppOptions {
     scores?: RateLimiter;
     place?:  RateLimiter;
     global?: RateLimiter;
+    log?:    RateLimiter;
   };
+  /** Sink for incoming /log entries. If unset, /log is not mounted. */
+  logSink?: Sink;
 }
 
 export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {}): Hono {
   const app = new Hono();
+
+  // Wire in rate limit sink if available
+  if (opts.logSink) {
+    setRateLimitSink(() => opts.logSink);
+  }
 
   const raw = (opts.allowedOrigins ?? '*').trim();
   const allowAll = raw === '*';
@@ -52,6 +62,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   // Per-route limiters (mounted as POST handlers; fall through on success)
   app.post('/scores',          rateLimit(lim.scores, 'scores-submit'));
   app.post('/heaps/:id/place', rateLimit(lim.place,  'place-block'));
+  app.post('/log',             rateLimit(lim.log,    'log'));
 
   // Admin gate on mutating heap routes
   const adminGate = requireAdminSecret(opts.adminSecret);
@@ -61,7 +72,12 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   app.put   ('/heaps/:id/enemy-params', adminGate);
   app.delete('/heaps/:id',              adminGate);
 
-  app.route('/heaps',  heapRoutes(heapDb));
-  app.route('/scores', scoreRoutes(scoreDb, heapDb));
+  app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink));
+  app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink));
+
+  if (opts.logSink) {
+    app.route('/', logRoutes(() => opts.logSink!));
+  }
+
   return app;
 }

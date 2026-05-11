@@ -18,6 +18,7 @@ import { ScoreClient } from '../systems/ScoreClient';
 import type { LeaderboardContext } from '../../shared/scoreTypes';
 import type { HeapParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
+import { getLogger } from '../logging';
 
 
 export class ScoreScene extends Phaser.Scene {
@@ -639,8 +640,20 @@ export class ScoreScene extends Phaser.Scene {
 
     call.then((ctx) => {
       loading.destroy();
+      // Fire event for ALL submissions, not just high scores
+      const accepted = ctx !== null;
+      getLogger().event({
+        type: 'score:submitted',
+        heapId: this.heapId,
+        score: this.score,
+        accepted,
+        rejectionReason: accepted ? undefined : 'offline or rejected',
+      });
       if (!ctx) return; // offline — silently show nothing
 
+      if (this.isNewHighScore) {
+        // High-score specific logic
+      }
       this.renderLeaderboardEntries(ctx, PANEL_TOP, PANEL_W, ROW_H);
     });
   }

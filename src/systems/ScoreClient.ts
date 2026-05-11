@@ -1,4 +1,5 @@
 import type { LeaderboardContext, SubmitScoreInputs, SubmitScoreResponse, PlayerScoreEntry, PlayerScoresResponse, PaginatedLeaderboardResponse } from '../../shared/scoreTypes';
+import { fetchWithLog } from '../logging/fetchWithLog';
 
 const SERVER_URL: string =
   (import.meta as unknown as { env: Record<string, string> }).env.VITE_HEAP_SERVER_URL ??
@@ -21,7 +22,7 @@ export class ScoreClient {
         ? `${SERVER_URL}/scores?limit=${params.limit}`
         : `${SERVER_URL}/scores`;
 
-      const res = await fetch(url, {
+      const res = await fetchWithLog(url, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
@@ -50,7 +51,7 @@ export class ScoreClient {
   }): Promise<LeaderboardContext | null> {
     try {
       const limit = params.limit ?? 5;
-      const res   = await fetch(
+      const res   = await fetchWithLog(
         `${SERVER_URL}/scores/${params.heapId}/context?playerId=${params.playerId}&limit=${limit}`,
       );
       if (!res.ok) return null;
@@ -69,7 +70,7 @@ export class ScoreClient {
   {
     try {
       const url = `${SERVER_URL}/scores/player/${encodeURIComponent(playerId)}`;
-      const res = await fetch(url);
+      const res = await fetchWithLog(url);
       if (!res.ok) return null;
       const data = (await res.json()) as PlayerScoresResponse;
       return new Map(data.entries.map(e => [e.heapId, e]));
@@ -86,7 +87,7 @@ export class ScoreClient {
   {
     try {
       const url = `${SERVER_URL}/scores/${encodeURIComponent(heapId)}?page=${page}&limit=${limit}`;
-      const res = await fetch(url);
+      const res = await fetchWithLog(url);
       if (!res.ok) return null;
       return (await res.json()) as PaginatedLeaderboardResponse;
     } catch {

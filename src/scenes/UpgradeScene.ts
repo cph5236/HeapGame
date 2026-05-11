@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { UPGRADE_DEFS } from '../data/upgradeDefs';
-import { getBalance, getUpgradeLevel, purchaseUpgrade } from '../systems/SaveData';
+import { getBalance, getUpgradeLevel, purchaseUpgrade, getUpgrades } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
+import { getLogger } from '../logging';
 
 const ROW_START_Y   = 130;
 const ROW_SPACING   = 98;
@@ -320,8 +321,19 @@ export class UpgradeScene extends Phaser.Scene {
 
   private buy(): void {
     const id      = UPGRADE_DEFS[this.selectedIndex].id;
+    const def     = UPGRADE_DEFS[this.selectedIndex];
+    const oldLevel = getUpgradeLevel(id);
+    const cost = def.cost(oldLevel + 1);
     const success = purchaseUpgrade(id);
     if (success) {
+      getLogger().event({
+        type: 'upgrade:purchased',
+        itemType: id,
+        newLevel: oldLevel + 1,
+        cost,
+        balanceAfter: getBalance(),
+        upgrades: getUpgrades(),
+      });
       this.rows[this.selectedIndex].flashSuccess();
       this.time.delayedCall(450, () => this.refreshAll());
     } else {

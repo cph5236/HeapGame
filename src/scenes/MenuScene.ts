@@ -1,12 +1,13 @@
 import Phaser from 'phaser';
 
 
-import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance } from '../systems/SaveData';
+import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance, getPlayerGuid, getVerboseLogging, setVerboseLogging } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { formatDifficulty } from '../ui/DifficultyStars';
 import { loadGameAssets } from './loadGameAssets';
+import { getLogger } from '../logging';
 
 export class MenuScene extends Phaser.Scene {
   private farSilhouette!: Phaser.GameObjects.Graphics;
@@ -44,6 +45,14 @@ export class MenuScene extends Phaser.Scene {
     this.resetConfirmed = false;
 
     const im = InputManager.getInstance();
+
+    // Log user:created once per playerGuid via localStorage flag
+    const guid = getPlayerGuid();
+    const flagKey = `heap_user_created_logged:${guid}`;
+    if (!localStorage.getItem(flagKey)) {
+      getLogger().event({ type: 'user:created' });
+      localStorage.setItem(flagKey, '1');
+    }
 
     this.createSkyGradient();
     this.createStarField();
@@ -508,7 +517,39 @@ export class MenuScene extends Phaser.Scene {
       { fontSize: '14px', color: '#aa8888', align: 'center' },
     ).setOrigin(0.5).setDepth(32).setVisible(false);
 
-    const overlayParts = [overlayBg, panel, title, closeBtn, coinBg, coinLabel, resetBg, resetLabel, resetWarning];
+    // Analytics toggle
+    const analyticsBg = this.add.rectangle(
+      this.scale.width / 2, this.scale.height / 2 + 130, 260, 48, 0x1a3a1a,
+    ).setDepth(32).setVisible(false).setStrokeStyle(2, 0x44aa44)
+      .setInteractive({ useHandCursor: true });
+
+    let analyticsEnabled = getVerboseLogging();
+    const analyticsCheckbox = this.add.text(
+      this.scale.width / 2 - 110, this.scale.height / 2 + 130,
+      analyticsEnabled ? '☑' : '☐',
+      { fontSize: '20px', color: '#44ff44', fontStyle: 'bold' },
+    ).setOrigin(0.5).setDepth(33).setVisible(false);
+
+    const analyticsLabel = this.add.text(
+      this.scale.width / 2 - 35, this.scale.height / 2 + 122,
+      'Send anonymous\ngameplay analytics',
+      { fontSize: '13px', color: '#aaffaa' },
+    ).setOrigin(0, 0.5).setDepth(33).setVisible(false);
+
+    const analyticsHint = this.add.text(
+      this.scale.width / 2 - 35, this.scale.height / 2 + 139,
+      'Errors are always reported.',
+      { fontSize: '11px', color: '#88aa88' },
+    ).setOrigin(0, 0.5).setDepth(33).setVisible(false);
+
+    analyticsBg.on('pointerup', () => {
+      analyticsEnabled = !analyticsEnabled;
+      setVerboseLogging(analyticsEnabled);
+      getLogger().setVerbose(analyticsEnabled);
+      analyticsCheckbox.setText(analyticsEnabled ? '☑' : '☐');
+    });
+
+    const overlayParts = [overlayBg, panel, title, closeBtn, coinBg, coinLabel, resetBg, resetLabel, resetWarning, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint];
     const open  = () => overlayParts.forEach(p => p.setVisible(true));
     const close = () => {
       overlayParts.forEach(p => p.setVisible(false));

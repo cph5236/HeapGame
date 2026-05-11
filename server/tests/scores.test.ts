@@ -4,18 +4,19 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { createApp } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
+import { MockSink } from './helpers/mockSink';
 import type { SubmitScoreResponse, PaginatedLeaderboardResponse, PlayerScoresResponse } from '../../shared/scoreTypes';
 
 const HEAP_ID   = 'heap-test-001';
 const PLAYER_A  = 'player-aaa';
 const PLAYER_B  = 'player-bbb';
 
-function makeApp(scoreDb = new MockScoreDB(), heapDb?: MockHeapDB) {
+function makeApp(scoreDb = new MockScoreDB(), heapDb?: MockHeapDB, sink?: MockSink) {
   if (!heapDb) {
     heapDb = new MockHeapDB();
     heapDb.seedHeap(HEAP_ID, 1, []);
   }
-  return createApp(heapDb, scoreDb);
+  return createApp(heapDb, scoreDb, { logSink: sink });
 }
 
 async function submitScore(app: ReturnType<typeof makeApp>, body: object, limit?: number) {
@@ -422,5 +423,55 @@ describe('POST /scores — input validation (server-recompute)', () => {
     const stored = await scoreDb.getScore(HEAP_ID, PLAYER_A);
     expect(stored).not.toBeNull();
     expect(stored!.score).toBe(1000); // recomputed = baseHeightPx with no kills, isFailure=true, scoreMult=1
+  });
+});
+
+describe('POST /scores — remote logging', () => {
+  it('emits score:rejected warn when inputs are invalid', async () => {
+    const sink = new MockSink();
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, []);
+    const app = createApp(heapDb, new MockScoreDB(), { logSink: sink });
+    const res = await submitScore(app, validBody({ playerName: '   ' }));
+    expect(res.status).toBe(400);
+    expect(sink.written).toHaveLength(1);
+    expect(sink.written[0].message).toBe('score:rejected');
+    expect(sink.written[0].level).toBe('warn');
+    expect(sink.written[0].payload.reason).toBe('bad playerName');
+  });
+
+  it('emits score:rejected warn when climb rate exceeds limit', async () => {
+    const sink = new MockSink();
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {
+      name: 'X', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 2000,
+    });
+    const app = createApp(heapDb, new MockScoreDB(), { logSink: sink });
+    const res = await submitScore(app, validBody({
+      inputs: { baseHeightPx: 1000, elapsedMs: 1000 },
+    }));
+    expect(res.status).toBe(400);
+    expect(sink.written).toHaveLength(1);
+    expect(sink.written[0].message).toBe('score:rejected');
+    expect(sink.written[0].payload.reason).toBe('climb rate too high');
+    expect(typeof sink.written[0].payload.climbRatePerS).toBe('number');
+  });
+
+  it('does not emit score:rejected when score is accepted', async () => {
+    const sink = new MockSink();
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, []);
+    const app = createApp(heapDb, new MockScoreDB(), { logSink: sink });
+    const res = await submitScore(app, validBody());
+    expect(res.status).toBe(200);
+    expect(sink.written).toHaveLength(0);
+  });
+
+  it('works when sink is undefined (gracefully ignores)', async () => {
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, []);
+    const app = createApp(heapDb, new MockScoreDB(), {});
+    const res = await submitScore(app, validBody({ playerName: '   ' }));
+    expect(res.status).toBe(400);
   });
 });

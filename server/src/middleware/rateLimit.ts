@@ -1,8 +1,16 @@
 import type { MiddlewareHandler } from 'hono';
+import type { Sink } from '../logging/Sink';
+import { captureServer } from '../logging/captureServerEvent';
 
 /** Cloudflare Workers Rate Limiting API binding shape. */
 export interface RateLimiter {
   limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
+let _getSink: (() => Sink | undefined) | null = null;
+
+export function setRateLimitSink(g: () => Sink | undefined): void {
+  _getSink = g;
 }
 
 /**
@@ -21,6 +29,10 @@ export function rateLimit(
     const { success } = await limiter.limit({ key: ip });
     if (!success) {
       console.warn(`[ratelimit] blocked label=${label} ip=${ip} path=${c.req.path}`);
+      const sink = _getSink?.();
+      if (sink) {
+        await captureServer(sink, 'warn', 'rate_limit:hit', { bucket: label, ip });
+      }
       return c.json({ error: 'rate limit exceeded' }, 429);
     }
     return next();
