@@ -1,5 +1,6 @@
 /// <reference types="vitest" />
 import { defineConfig } from 'vite';
+import pkg from './package.json';
 
 export default defineConfig({
   base: './',
@@ -19,7 +20,13 @@ export default defineConfig({
     port: 3000,
     open: true,
   },
+  define: {
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version),
+  },
   test: {
     environment: 'node',
+    define: {
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version),
+    },
   },
 });
