@@ -8,6 +8,7 @@ import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { MOCK_HEAP_HEIGHT_PX } from '../constants';
 import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced } from '../systems/SaveData';
 import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
+import { initLogger } from '../logging';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -30,6 +31,9 @@ export class BootScene extends Phaser.Scene {
     this.game.registry.set('heapParams',     DEFAULT_HEAP_PARAMS);
     this.game.registry.set('gameAssetsReady', false);
     this.game.registry.set('heapCatalogReady', false);
+
+    // Initialize logger after SaveData is importable but before async catalog fetch.
+    initLogger();
 
     // Kick off catalog/polygon fetch in the background — does not block the menu.
     HeapClient.list()
