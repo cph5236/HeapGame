@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-08
 **Branch target:** new feature branch off `main`
-**Status:** Spec draft — pending user review
+**Status:** Spec Approved - for planning
 
 ---
 

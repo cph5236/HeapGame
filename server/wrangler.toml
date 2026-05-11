@@ -9,9 +9,12 @@ database_name = "heap"
 database_id = "2806bb3d-bd95-4780-ae16-ee479eacede9"
 migrations_dir = "migrations"
 
-[[analytics_engine_datasets]]
-binding = "LOGS"
-dataset = "heap_logs"
+# Analytics Engine binding — uncomment when deploying to production.
+# In local dev (wrangler dev) the AE stub is silently no-op; omitting the
+# binding forces the fallback to D1Sink so logs land in the local DB.
+# [[analytics_engine_datasets]]
+# binding = "LOGS"
+# dataset = "heap_logs"
 
 [vars]
 # Comma-separated list of origins allowed to call the API from a browser.
