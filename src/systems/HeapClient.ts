@@ -5,6 +5,7 @@ import type {
   Vertex,
 } from '../../shared/heapTypes';
 import { reconstructPolygonFromPoints } from './HeapPolygonLoader';
+import { fetchWithLog } from '../logging/fetchWithLog';
 
 const SERVER_URL: string =
   (import.meta as unknown as { env: Record<string, string> }).env.VITE_HEAP_SERVER_URL ??
@@ -57,7 +58,7 @@ function clearCache(heapId: string): void {
 async function fetchBase(heapId: string, baseId: string): Promise<Vertex[]> {
   const cached = loadCachedBase(baseId);
   if (cached) return cached;
-  const res = await fetch(`${SERVER_URL}/heaps/${heapId}/base`);
+  const res = await fetchWithLog(`${SERVER_URL}/heaps/${heapId}/base`);
   if (!res.ok) throw new Error(`base fetch failed: ${res.status}`);
   const vertices = (await res.json()) as Vertex[];
   saveCachedBase(baseId, vertices);
@@ -77,7 +78,7 @@ export class HeapClient {
    */
   static async list(): Promise<import('../../shared/heapTypes').HeapSummary[]> {
     try {
-      const res = await fetch(`${SERVER_URL}/heaps`);
+      const res = await fetchWithLog(`${SERVER_URL}/heaps`);
       if (!res.ok) return [];
       const data = (await res.json()) as ListHeapsResponse;
       return data.heaps;
@@ -96,7 +97,7 @@ export class HeapClient {
     const version = cache?.version ?? 0;
 
     try {
-      const res = await fetch(`${SERVER_URL}/heaps/${heapId}?version=${version}`);
+      const res = await fetchWithLog(`${SERVER_URL}/heaps/${heapId}?version=${version}`);
       if (res.status === 404) {
         console.warn(
           `[HeapClient] Heap ${heapId} returned 404 — clearing orphan cache.`,
@@ -156,7 +157,7 @@ export class HeapClient {
    */
   static async append(heapId: string, x: number, y: number): Promise<void> {
     try {
-      const res = await fetch(`${SERVER_URL}/heaps/${heapId}/place`, {
+      const res = await fetchWithLog(`${SERVER_URL}/heaps/${heapId}/place`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ x, y }),
