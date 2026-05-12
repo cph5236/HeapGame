@@ -39,8 +39,9 @@ const outPath = 'screenshots/preview.png';
   // Wait for Phaser canvas to appear
   await page.waitForSelector('canvas', { timeout: 10000 });
 
-  // Wait for opening animations to settle
-  await page.waitForTimeout(2000);
+  // Wait for opening animations to settle and WebGL context to stabilize
+  // (in headless Playwright, WebGL context loss/restore can take time)
+  await page.waitForTimeout(3000);
 
   await page.screenshot({ path: outPath, fullPage: false });
   await browser.close();
