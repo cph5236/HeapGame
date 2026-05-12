@@ -10,8 +10,13 @@ import { TexturePreviewScene } from './scenes/TexturePreviewScene';
 import { InfiniteGameScene } from './scenes/InfiniteGameScene';
 import { LeaderboardScene } from './scenes/LeaderboardScene';
 
+// Force Canvas renderer when using the dev scene shortcut — headless Chromium
+// has no GPU context so WebGL produces a black canvas.
+const isDevPreview = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).has('dev');
+
 const config: Phaser.Types.Core.GameConfig = {
-  type: Phaser.AUTO,
+  type: isDevPreview ? Phaser.CANVAS : Phaser.AUTO,
   backgroundColor: '#5B8FC9',
   physics: {
     default: 'arcade',
