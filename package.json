@@ -11,6 +11,7 @@
     "cap:android": "cap open android",
     "gen-assets": "node scripts/gen-heap-defs.mjs && node scripts/gen-heap-texture.mjs",
     "seed": "npx tsx --env-file=.env scripts/seed-heap.ts",
+    "scene-preview": "tsx scripts/preview-scene.ts",
     "version:patch": "npm version patch --no-git-tag-version",
     "version:minor": "npm version minor --no-git-tag-version",
     "version:major": "npm version major --no-git-tag-version",
