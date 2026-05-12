@@ -36,6 +36,8 @@ export class ScoreScene extends Phaser.Scene {
   private _scoreRows:    RunScoreRow[]                      = [];
   private _heapParams:   HeapParams                         = DEFAULT_HEAP_PARAMS;
 
+  private _mockLeaderboard: LeaderboardContext | null = null;
+
   private _breakdownOpen    = false;
   private _breakdownObjects: Phaser.GameObjects.GameObject[] = [];
 
@@ -53,6 +55,7 @@ export class ScoreScene extends Phaser.Scene {
     kills?:               Partial<Record<EnemyKind, number>>;
     elapsedMs?:           number;
     heapParams?:          HeapParams;
+    mockLeaderboard?:     LeaderboardContext;
   }): void {
     this.score               = data.score               ?? 0;
     this.heapId              = data.heapId              ?? '';
@@ -64,6 +67,7 @@ export class ScoreScene extends Phaser.Scene {
     this._elapsedMs          = data.elapsedMs           ?? 0;
     this._scoreRows          = [];
     this._heapParams         = data.heapParams          ?? DEFAULT_HEAP_PARAMS;
+    this._mockLeaderboard    = data.mockLeaderboard     ?? null;
   }
 
   create(): void {
@@ -629,12 +633,20 @@ export class ScoreScene extends Phaser.Scene {
   // ── Leaderboard Panel ─────────────────────────────────────────────────────────
 
   private createLeaderboardPanel(topY: number): void {
-    if (!this.heapId) return;
+    if (!this.heapId && !this._mockLeaderboard) return;
 
     const PANEL_TOP = topY;
     const PANEL_W   = this.scale.width * 0.88;
     const PANEL_X   = this.scale.width / 2;
     const ROW_H     = 20;
+
+    // Mock data path — renders immediately, no API call.
+    if (this._mockLeaderboard) {
+      this.time.delayedCall(1100, () => {
+        this.renderLeaderboardEntries(this._mockLeaderboard!, PANEL_TOP, PANEL_W, ROW_H);
+      });
+      return;
+    }
 
     // Loading placeholder
     const loading = this.add.text(PANEL_X, PANEL_TOP + 8, 'Loading leaderboard...', {
