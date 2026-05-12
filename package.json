@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "8.2.0",
+    "@playwright/test": "^1.60.0",
     "@types/node": "25.5.0",
     "sharp": "^0.34.5",
     "tsx": "^4.19.2",
