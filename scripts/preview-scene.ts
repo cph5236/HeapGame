@@ -45,4 +45,7 @@ const outPath = 'screenshots/preview.png';
   await browser.close();
 
   console.log(`Screenshot saved to ${outPath}`);
-})();
+})().catch((err: Error) => {
+  console.error('Preview failed:', err.message);
+  process.exit(1);
+});
