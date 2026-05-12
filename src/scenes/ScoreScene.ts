@@ -36,7 +36,9 @@ export class ScoreScene extends Phaser.Scene {
   private _scoreRows:    RunScoreRow[]                      = [];
   private _heapParams:   HeapParams                         = DEFAULT_HEAP_PARAMS;
 
-  private _mockLeaderboard: LeaderboardContext | null = null;
+  private _mockLeaderboard:    LeaderboardContext | null = null;
+  private _forceBreakdownOpen: boolean                  = false;
+  private _mockPlayerConfig:   Partial<{ moneyMultiplier: number; peakMultiplier: number }> = {};
 
   private _breakdownOpen    = false;
   private _breakdownObjects: Phaser.GameObjects.GameObject[] = [];
@@ -56,6 +58,8 @@ export class ScoreScene extends Phaser.Scene {
     elapsedMs?:           number;
     heapParams?:          HeapParams;
     mockLeaderboard?:     LeaderboardContext;
+    forceBreakdownOpen?:  boolean;
+    mockPlayerConfig?:    Partial<{ moneyMultiplier: number; peakMultiplier: number }>;
   }): void {
     this.score               = data.score               ?? 0;
     this.heapId              = data.heapId              ?? '';
@@ -68,6 +72,8 @@ export class ScoreScene extends Phaser.Scene {
     this._scoreRows          = [];
     this._heapParams         = data.heapParams          ?? DEFAULT_HEAP_PARAMS;
     this._mockLeaderboard    = data.mockLeaderboard     ?? null;
+    this._forceBreakdownOpen = data.forceBreakdownOpen  ?? false;
+    this._mockPlayerConfig   = data.mockPlayerConfig    ?? {};
   }
 
   create(): void {
@@ -89,7 +95,7 @@ export class ScoreScene extends Phaser.Scene {
       this._scoreRows = runResult.rows;
     }
 
-    const cfg    = getPlayerConfig();
+    const cfg    = { ...getPlayerConfig(), ...this._mockPlayerConfig };
     const result = buildCoinBreakdown({
       score:           this.score,
       scoreToCoins:    SCORE_TO_COINS_DIVISOR,
@@ -118,6 +124,10 @@ export class ScoreScene extends Phaser.Scene {
     this.createLeaderboardPanel(coinsPanelBottom);
     this.createCheckpointButton();
     this.createMenuPrompt();
+
+    if (this._forceBreakdownOpen && this._scoreRows.length > 0) {
+      this.time.delayedCall(1600, () => this.openScoreBreakdown());
+    }
   }
 
   // ── Background ────────────────────────────────────────────────────────────────
@@ -217,13 +227,15 @@ export class ScoreScene extends Phaser.Scene {
   // ── Title & Score ─────────────────────────────────────────────────────────────
 
   private createTitle(): void {
-    const text  = this.isFailure ? 'HEAP FAILURE' : 'HEAP SUCCESSFUL';
-    const color = this.isFailure ? '#ff5555' : '#44ffaa';
+    const text         = this.isFailure ? 'HEAP FAILURE' : 'HEAP SUCCESSFUL';
+    const color        = this.isFailure ? '#ff5555' : '#44ffaa';
+    const fontSize     = this.scale.width < 420 ? '30px' : '36px';
+    const letterSpacing = this.scale.width < 420 ? 2 : 4;
     this.add.text(this.scale.width / 2, this.scale.height * 0.13, text, {
-      fontSize:        '36px',
+      fontSize,
       fontFamily:      'monospace',
       color,
-      letterSpacing:   4,
+      letterSpacing,
     }).setOrigin(0.5).setShadow(0, 0, color, 8, true, true);
   }
 
@@ -310,7 +322,7 @@ export class ScoreScene extends Phaser.Scene {
 
     // Panel background
     const bg = this.add.graphics().setDepth(60);
-    bg.fillStyle(0x0a0820, 0.95);
+    bg.fillStyle(0x0a0820, 1);
     bg.lineStyle(1, 0xffdd44, 0.25);
     bg.fillRoundedRect(PANEL_X - PANEL_W / 2, PANEL_TOP, PANEL_W, panelH, 8);
     bg.strokeRoundedRect(PANEL_X - PANEL_W / 2, PANEL_TOP, PANEL_W, panelH, 8);

@@ -12,10 +12,14 @@ npm run dev
 ### Usage
 
 ```bash
-npm run scene-preview -- <SceneName> '<paramsJSON>' <device>
+npm run scene-preview -- <SceneName> '<paramsJSON>' <device|all|headed>
 ```
 
-Screenshot saves to `screenshots/preview.png`.
+| Mode | Output | Use for |
+|---|---|---|
+| `pixel7` / `iphone14` / etc. | `screenshots/preview.png` | quick single-device iteration |
+| `all` | `screenshots/SceneName-{device}.png` × 4 | cross-device layout audit, runs in parallel |
+| `headed` | opens browser window | interactive — click on things, test animations |
 
 ### Device presets
 
@@ -29,24 +33,41 @@ Screenshot saves to `screenshots/preview.png`.
 ### Examples
 
 ```bash
-# Score screen — success
+# Quick iteration — single device
 npm run scene-preview -- ScoreScene '{"score":5000}' pixel7
 
-# Score screen — failure with checkpoint
-npm run scene-preview -- ScoreScene '{"score":171,"isFailure":true,"checkpointAvailable":true}' pixel7
+# Cross-device layout audit — all four at once
+npm run scene-preview -- ScoreScene '{"score":5000}' all
 
-# Score screen — peak run, new high score
-npm run scene-preview -- ScoreScene '{"score":9000,"isPeak":true}' pixel7
+# Interactive — opens browser so you can click and test
+npm run scene-preview -- ScoreScene '{"score":5000}' headed
+```
 
-# Main menu
-npm run scene-preview -- MenuScene '{}' pixel7
+#### Full ScoreScene loadout — leaderboard + coin panel
+
+```bash
+npm run scene-preview -- ScoreScene '{"score":5240,"isFailure":true,"checkpointAvailable":true,"mockLeaderboard":{"top":[{"rank":1,"playerId":"a","name":"105; Drop Table test","score":9819},{"rank":2,"playerId":"b","name":"Trashbag#44217","score":6186},{"rank":3,"playerId":"c","name":"Mincono","score":4393},{"rank":4,"playerId":"d","name":"Trashbag#06230","score":2641},{"rank":5,"playerId":"e","name":"Trashbag#08567","score":904}],"player":{"rank":6,"playerId":"you","name":"You","score":5240}}}' all
+```
+
+#### Full ScoreScene loadout — leaderboard + score breakdown overlay
+
+The score breakdown requires `baseHeightPx` > 0. Pass `forceBreakdownOpen: true` to auto-open the overlay for screenshots:
+
+```bash
+npm run scene-preview -- ScoreScene '{"score":5240,"baseHeightPx":4800,"kills":{"percher":3,"ghost":1},"elapsedMs":95000,"mockLeaderboard":{"top":[{"rank":1,"playerId":"a","name":"105; Drop Table test","score":9819},{"rank":2,"playerId":"b","name":"Trashbag#44217","score":6186},{"rank":3,"playerId":"c","name":"Mincono","score":4393},{"rank":4,"playerId":"d","name":"Trashbag#06230","score":2641},{"rank":5,"playerId":"e","name":"Trashbag#08567","score":904}],"player":{"rank":6,"playerId":"you","name":"You","score":5240}},"forceBreakdownOpen":true}' all
+```
+
+Or use `headed` to tap the score yourself and see the animation:
+
+```bash
+npm run scene-preview -- ScoreScene '{"score":5240,"baseHeightPx":4800,"kills":{"percher":3,"ghost":1},"elapsedMs":95000}' headed
 ```
 
 ### How it works
 
 BootScene detects `?dev=SceneName&params={...}` in the URL (dev builds only) and starts that scene directly with the given params — skipping the normal boot/menu flow. The params blob is passed verbatim to the scene's `init()` method, so any scene works out of the box with no changes.
 
-The Playwright script (`scripts/preview-scene.ts`) builds that URL, loads it in headless Chromium, waits for the canvas to render, and saves the screenshot.
+The Playwright script (`scripts/preview-scene.ts`) builds that URL, loads it in headless Chromium (or headed for interactive use), waits for the canvas to render, and saves the screenshot.
 
 ---
 
