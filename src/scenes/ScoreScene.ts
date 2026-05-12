@@ -110,9 +110,8 @@ export class ScoreScene extends Phaser.Scene {
     this.createTitle();
     this.createScoreDisplay();
     if (this.isNewHighScore) this.createHighScoreBadge();
-    const coinsPanelBottom = this.createCoinsPanel(result.rows, result.finalCoins);
+    const coinsPanelBottom = this.createCoinsPanel(result.rows, result.finalCoins, balance);
     this.createLeaderboardPanel(coinsPanelBottom);
-    this.createBalance(balance);
     this.createCheckpointButton();
     this.createMenuPrompt();
   }
@@ -216,7 +215,7 @@ export class ScoreScene extends Phaser.Scene {
   private createTitle(): void {
     const text  = this.isFailure ? 'HEAP FAILURE' : 'HEAP SUCCESSFUL';
     const color = this.isFailure ? '#ff5555' : '#44ffaa';
-    this.add.text(this.scale.width / 2, this.scale.height * 0.18, text, {
+    this.add.text(this.scale.width / 2, this.scale.height * 0.13, text, {
       fontSize:        '36px',
       fontFamily:      'monospace',
       color,
@@ -225,7 +224,7 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   private createScoreDisplay(): void {
-    const scoreText = this.add.text(this.scale.width / 2, this.scale.height * 0.28, '0', {
+    const scoreText = this.add.text(this.scale.width / 2, this.scale.height * 0.22, '0', {
       fontSize:   '52px',
       fontFamily: 'monospace',
       color:      '#ffdd44',
@@ -238,10 +237,10 @@ export class ScoreScene extends Phaser.Scene {
     // Glow ellipse behind score
     const glow = this.add.graphics();
     glow.fillStyle(0xffdd44, 0.08);
-    glow.fillEllipse(this.scale.width / 2, this.scale.height * 0.28, 160, 60);
+    glow.fillEllipse(this.scale.width / 2, this.scale.height * 0.22, 160, 60);
     this.children.moveBelow(glow as Phaser.GameObjects.GameObject, scoreText as Phaser.GameObjects.GameObject);
 
-    this.add.text(this.scale.width / 2, this.scale.height * 0.28 + 34, 'SCORE', {
+    this.add.text(this.scale.width / 2, this.scale.height * 0.22 + 34, 'SCORE', {
       fontSize:      '9px',
       fontFamily:    'monospace',
       color:         '#ffdd44',
@@ -269,7 +268,7 @@ export class ScoreScene extends Phaser.Scene {
 
   private createHighScoreBadge(): void {
     const color = '#ffdd44';
-    this.add.text(this.scale.width / 2, this.scale.height * 0.36, 'NEW HIGH SCORE!', {
+    this.add.text(this.scale.width / 2, this.scale.height * 0.30, 'NEW HIGH SCORE!', {
       fontSize:      '18px',
       fontFamily:    'monospace',
       color,
@@ -424,12 +423,12 @@ export class ScoreScene extends Phaser.Scene {
 
   // ── Coins Panel ───────────────────────────────────────────────────────────────
 
-  private createCoinsPanel(rows: BreakdownRow[], finalCoins: number): number {
+  private createCoinsPanel(rows: BreakdownRow[], finalCoins: number, balance: number): number {
     const PANEL_X    = this.scale.width / 2;
-    const PANEL_TOP  = this.scale.height * 0.42;
+    const PANEL_TOP  = this.scale.height * 0.37;
     const PANEL_W    = this.scale.width * 0.88;
     const ROW_H      = 26;
-    const PAD_X      = 14;
+    const PAD_X      = 16;
 
     // Color map keyed by row type
     const ROW_COLORS: Record<string, { accent: number; accentHex: string; labelHex: string }> = {
@@ -448,11 +447,16 @@ export class ScoreScene extends Phaser.Scene {
     const visibleRowCount = (collapsed: boolean) =>
       1 + (collapsed ? Math.min(3, multRows.length) : multRows.length); // base + mult rows
 
+    // Extra height for balance divider + row + bottom padding
+    const BALANCE_EXTRA = ROW_H + 30;
+
     const panelHeight = (collapsed: boolean) => {
-      const headerH = 52; // coins total + divider
+      const headerH = 52;
       const toggleH = shouldCollapse ? 24 : 0;
-      return headerH + visibleRowCount(collapsed) * ROW_H + toggleH + 20;
+      return headerH + visibleRowCount(collapsed) * ROW_H + toggleH + BALANCE_EXTRA;
     };
+
+    const coinColor = this.isFailure ? '#ff8866' : '#44ff88';
 
     // Panel background
     const bg = this.add.graphics();
@@ -472,7 +476,6 @@ export class ScoreScene extends Phaser.Scene {
     drawBg(shouldCollapse);
 
     // Header: "+N coins earned"
-    const coinColor  = this.isFailure ? '#ff8866' : '#44ff88';
     const headerText = this.add.text(
       PANEL_X, PANEL_TOP + 14,
       `+${finalCoins} coins earned`,
@@ -566,11 +569,37 @@ export class ScoreScene extends Phaser.Scene {
         drawBg(collapsed);
         toggleText!.setText(collapsed ? '\u25bc show' : '\u25b2 hide');
         toggleText!.setY(lastRowBottom + 4);
+        repositionBalance();
       });
     }
 
+    // Balance row \u2014 always visible at the bottom of the panel, below the toggle
+    const toggleSlot = shouldCollapse ? 28 : 0;
+    const balLeft    = PANEL_X - PANEL_W / 2 + PAD_X;
+    const balRight   = PANEL_X + PANEL_W / 2 - PAD_X;
+    const balDivG    = this.add.graphics();
+    const balLbl     = this.add.text(balLeft, 0, 'NEW BALANCE', {
+      fontSize: '11px', fontFamily: 'monospace', color: coinColor,
+    }).setOrigin(0, 0.5).setAlpha(0.75);
+    const balVal     = this.add.text(balRight, 0, `${balance} coins`, {
+      fontSize: '12px', fontFamily: 'monospace', color: coinColor, fontStyle: 'bold',
+    }).setOrigin(1, 0.5);
+
+    const repositionBalance = () => {
+      const divY   = lastRowBottom + toggleSlot + 10;
+      const rowMid = divY + 8 + ROW_H / 2;
+      balDivG.clear();
+      balDivG.lineStyle(1, this.isFailure ? 0xff5555 : 0x44ff88, 0.12);
+      balDivG.lineBetween(balLeft, divY, balRight, divY);
+      balLbl.setY(rowMid);
+      balVal.setY(rowMid);
+    };
+    repositionBalance();
+
     // Panel fade-in + slide-up after 800ms score count-up + 300ms delay
-    const fadeTargets: Phaser.GameObjects.GameObject[] = [bg, headerText, divG, ...rowObjects];
+    const fadeTargets: Phaser.GameObjects.GameObject[] = [
+      bg, headerText, divG, ...rowObjects, balDivG, balLbl, balVal,
+    ];
     if (toggleText) fadeTargets.push(toggleText);
     fadeTargets.forEach(o => (o as unknown as Phaser.GameObjects.Components.Alpha).setAlpha(0));
 
@@ -736,31 +765,22 @@ export class ScoreScene extends Phaser.Scene {
     return ctx.top.some(e => e.playerId === ctx.player!.playerId);
   }
 
-  // ── Balance ───────────────────────────────────────────────────────────────────
-
-  private createBalance(balance: number): void {
-    this.add.text(this.scale.width / 2, this.scale.height * 0.82, `Balance: ${balance} coins`, {
-      fontSize:   '16px',
-      fontFamily: 'monospace',
-      color:      '#aaddff',
-    }).setOrigin(0.5).setAlpha(0.85);
-  }
-
   // ── Checkpoint Button ─────────────────────────────────────────────────────────
 
   private createCheckpointButton(): void {
     if (!this.checkpointAvailable) return;
 
-    const btn = this.add.text(this.scale.width / 2, this.scale.height * 0.87, 'Respawn at Checkpoint', {
-      fontSize:        '12px',
+    const btn = this.add.text(this.scale.width / 2, this.scale.height * 0.87, 'RESPAWN AT CHECKPOINT', {
+      fontSize:        '14px',
       fontFamily:      'monospace',
-      color:           '#88aaff',
-      backgroundColor: '#112266cc',
-      padding:         { x: 16, y: 8 },
+      color:           '#ffffff',
+      backgroundColor: '#1a6b3acc',
+      padding:         { x: 20, y: 10 },
+      fontStyle:       'bold',
     }).setOrigin(0.5);
 
-    btn.on('pointerover', () => btn.setColor('#ffffff'));
-    btn.on('pointerout',  () => btn.setColor('#88aaff'));
+    btn.on('pointerover', () => { btn.setColor('#aaffcc'); btn.setBackgroundColor('#22994ecc'); });
+    btn.on('pointerout',  () => { btn.setColor('#ffffff'); btn.setBackgroundColor('#1a6b3acc'); });
 
     this.time.delayedCall(1500, () => {
       btn.setInteractive({ useHandCursor: true });
@@ -779,7 +799,7 @@ export class ScoreScene extends Phaser.Scene {
     const label = im.isMobile ? 'TAP ANYWHERE FOR MENU' : 'PRESS ANY KEY FOR MENU';
     const promptY = this.scale.height * 0.95;
 
-    const promptText = this.add.text(this.scale.width / 2, promptY, label, {
+    this.add.text(this.scale.width / 2, promptY, label, {
       fontSize:      '16px',
       fontFamily:    'monospace',
       color:         '#ffffff',
@@ -794,8 +814,12 @@ export class ScoreScene extends Phaser.Scene {
     this.time.delayedCall(1500, () => {
       this.input.keyboard!.once('keydown', goMenu);
       if (im.isMobile) {
-        promptText.setInteractive({ useHandCursor: true });
-        promptText.once('pointerup', goMenu);
+        // Full-screen zone at depth -1 so existing buttons (depth 0) stay on top via topOnly.
+        this.add.rectangle(
+          this.scale.width / 2, this.scale.height / 2,
+          this.scale.width, this.scale.height,
+          0x000000, 0,
+        ).setDepth(-1).setInteractive().once('pointerup', goMenu);
       }
     });
   }
