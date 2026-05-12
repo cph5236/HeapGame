@@ -1,9 +1,10 @@
 import { chromium } from '@playwright/test';
 
 const DEVICES: Record<string, { width: number; height: number; deviceScaleFactor: number }> = {
-  pixel7:  { width: 412, height: 915, deviceScaleFactor: 2.6 },
-  iphone14: { width: 390, height: 844, deviceScaleFactor: 3.0 },
-  desktop: { width: 1280, height: 800, deviceScaleFactor: 1.0 },
+  pixel7:   { width: 448, height: 970,  deviceScaleFactor: 2.6 },
+  browser:  { width: 480, height: 1042, deviceScaleFactor: 2.6 },
+  iphone14: { width: 390, height: 844,  deviceScaleFactor: 3.0 },
+  desktop:  { width: 1280, height: 800, deviceScaleFactor: 1.0 },
 };
 
 const [,, sceneName, paramsArg = '{}', deviceName = 'pixel7'] = process.argv;
