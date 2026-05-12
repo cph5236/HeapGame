@@ -1,3 +1,55 @@
+## SCENE PREVIEW
+
+Take a screenshot of any game scene at phone dimensions without playing through the game. Useful for UI iteration and checking layout changes quickly.
+
+### Setup
+
+Start the dev server (keep running):
+```bash
+npm run dev
+```
+
+### Usage
+
+```bash
+npm run scene-preview -- <SceneName> '<paramsJSON>' <device>
+```
+
+Screenshot saves to `screenshots/preview.png`.
+
+### Device presets
+
+| Name | Size | Notes |
+|---|---|---|
+| `pixel7` | 448×970 | default — matches the test phone |
+| `browser` | 480×1042 | browser pane size |
+| `iphone14` | 390×844 | iOS reference |
+| `desktop` | 1280×800 | wide layout |
+
+### Examples
+
+```bash
+# Score screen — success
+npm run scene-preview -- ScoreScene '{"score":5000}' pixel7
+
+# Score screen — failure with checkpoint
+npm run scene-preview -- ScoreScene '{"score":171,"isFailure":true,"checkpointAvailable":true}' pixel7
+
+# Score screen — peak run, new high score
+npm run scene-preview -- ScoreScene '{"score":9000,"isPeak":true}' pixel7
+
+# Main menu
+npm run scene-preview -- MenuScene '{}' pixel7
+```
+
+### How it works
+
+BootScene detects `?dev=SceneName&params={...}` in the URL (dev builds only) and starts that scene directly with the given params — skipping the normal boot/menu flow. The params blob is passed verbatim to the scene's `init()` method, so any scene works out of the box with no changes.
+
+The Playwright script (`scripts/preview-scene.ts`) builds that URL, loads it in headless Chromium, waits for the canvas to render, and saves the screenshot.
+
+---
+
 ## REMOTE LOGGING
 
 ### Local dev
