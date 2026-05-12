@@ -1,6 +1,7 @@
 ## BUGS
 # Mobile
-    - Score screen press anywhere isnt atually press anywhere you need to tap the label
+    - Full Screen game can the game become full screen on android triggering the OS to hide the navigation buttons and top notifications bar? 
+    -coins earned is under the high score panel layout needs attention, 
 
 # Main menu 
     - 

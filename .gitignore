@@ -18,5 +18,4 @@ todo/
 .worktrees/
 .temp/
 screenshots/
-/*.png
 .playwright-mcp/
