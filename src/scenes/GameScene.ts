@@ -3,6 +3,7 @@ import { Player } from '../entities/Player';
 import { CameraController } from '../systems/CameraController';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import type { Vertex } from '../systems/HeapPolygon';
+import { SCAN_STEP } from '../systems/HeapPolygon';
 import {
   applyPolygonToGenerator,
   polygonTopY,
@@ -17,6 +18,7 @@ import {
   GEN_LOOKAHEAD,
   HEAP_TOP_ZONE_PX,
   PLAYER_HEIGHT,
+  PLAYER_WIDTH,
   PEAK_BONUS_ZONE_PX,
   PLAYER_JUMP_VELOCITY,
   PLAYER_INVINCIBLE_MS,
@@ -301,6 +303,7 @@ export class GameScene extends Phaser.Scene {
     im.update(delta, inLiveZone);
 
     this.player.update(delta);
+    this.snapPlayerToSurface();
     this.parallaxBg.update();
     this.hud.update();
     this.placeableManager.update();
@@ -550,6 +553,28 @@ export class GameScene extends Phaser.Scene {
       this.player.slopeEjectDir = side === 'left' ? -1 : 1;
     }
   };
+
+  /**
+   * After physics resolves each frame, snap the player's Y to the exact surface
+   * height returned by the scanline query. This eliminates the 4px staircase
+   * artefact that occurs when traversing the discrete horizontal slab colliders
+   * on a slope.  Only runs when body.blocked.down (player is grounded and not
+   * on a steep wall surface).
+   */
+  private snapPlayerToSurface(): void {
+    const body = this.player.sprite.body;
+    if (!body.blocked.down || this.player.inSlopeZone) return;
+
+    const playerX = this.player.sprite.x;
+    const feetY   = this.player.sprite.y + PLAYER_HEIGHT / 2;
+    const slabTop = this.edgeCollider.getSurfaceYAtX(playerX, feetY);
+    if (slabTop === null) return;
+
+    const targetY = slabTop - PLAYER_HEIGHT / 2;
+    if (Math.abs(targetY - this.player.sprite.y) <= SCAN_STEP * 2) {
+      this.player.sprite.y = targetY;
+    }
+  }
 
   private readonly handleEnemyDamage = (): void => {
     // Shield absorbs the hit

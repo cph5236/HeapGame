@@ -722,8 +722,8 @@ export class ScoreScene extends Phaser.Scene {
     const right  = this.scale.width / 2 + panelW / 2 - PAD_X;
 
     // "HIGH SCORES" label above the panel — styled like SCORE label but smaller, left-aligned
-    this.add.text(left, panelTop - 2, 'HIGH SCORES', {
-      fontSize: '8px', fontFamily: 'monospace', color: '#ffdd44', letterSpacing: 2,
+    this.add.text(left, panelTop +4, 'HIGH SCORES', {
+      fontSize: '14px', fontFamily: 'monospace', color: '#ffdd44', letterSpacing: 2,
     }).setOrigin(0, 1);
 
     // Panel background

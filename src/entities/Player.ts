@@ -16,6 +16,7 @@ import {
   AIR_TILT_FORCE,
   AIR_MOMENTUM_DECAY,
   MOMENTUM_STOP_ADV_FACTOR,
+  TERRAIN_STICK_SPEED,
 } from '../constants';
 import { PlayerConfig } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
@@ -188,6 +189,12 @@ export class Player {
         if (this.momentumX < 0) this.sprite.setFlipX(true);
         else if (this.momentumX > 0) this.sprite.setFlipX(false);
       }
+    }
+
+    // Terrain stick: keep player pressed into surface so they don't float between
+    // slab colliders on slopes (4px slab spacing, gravity alone takes ~6 frames to close the gap)
+    if (body.blocked.down && !this.inSlopeZone && body.velocity.y < TERRAIN_STICK_SPEED) {
+      this.sprite.setVelocityY(TERRAIN_STICK_SPEED);
     }
 
     // Dash — horizontal burst with cooldown; direction from pressed keys or swipe

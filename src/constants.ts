@@ -32,9 +32,11 @@ export const MAX_AIR_JUMPS        = 1;    // base value — actual value comes f
 export const DASH_COOLDOWN_MS     = 800;  // ms between dashes
 export const DASH_DURATION_MS     = 200;  // ms the dash velocity is protected from movement override
 
+export const TERRAIN_STICK_SPEED      = 300;  // px/s downward velocity applied while grounded — 300/60fps=5px/frame > 4px SCAN_STEP, bridges slab gaps in ≤1 frame
+
 // ── Air momentum ───────────────────────────────────────────────────────────────
 export const AIR_TILT_FORCE           = 0.8;  // px/s added per ms at full tilt — reach PLAYER_SPEED in ~250ms
-export const AIR_MOMENTUM_DECAY       = 0.999; // per-ms decay factor when input is ~zero
+export const AIR_MOMENTUM_DECAY       = 0.997; // per-ms decay factor when input is ~zero
 export const MOMENTUM_STOP_ADV_FACTOR = 1.5;  // multiplier when input opposes current momentum
 
 // ── Mobile controls ────────────────────────────────────────────────────────────

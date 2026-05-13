@@ -17,6 +17,7 @@ import {
   PLAYER_JUMP_VELOCITY,
   PLAYER_DIVE_SPEED,
   PLAYER_MAX_FALL_SPEED,
+  TERRAIN_STICK_SPEED,
 } from '../../constants';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -559,7 +560,20 @@ describe('Player — slope eject', () => {
   });
 });
 
-// ── 7. Air momentum ───────────────────────────────────────────────────────
+// ── 7. Terrain stick ──────────────────────────────────────────────────────
+
+describe('Player — terrain stick', () => {
+  it('applies TERRAIN_STICK_SPEED downward when grounded with velocity.y near zero', async () => {
+    const { player, spy, sprite } = await makePlayer({ onGround: true });
+    sprite.body.velocity.y = 0; // physics just zeroed it after resolving into a slab
+
+    player.update(16);
+
+    expect(spy.setVelocityY).toContain(TERRAIN_STICK_SPEED);
+  });
+});
+
+// ── 8. Air momentum ───────────────────────────────────────────────────────
 
 describe('Player — air momentum', () => {
   it('accumulates rightward momentum while airborne with full right tilt', async () => {
