@@ -39,7 +39,6 @@ import {
   PLAYER_INVINCIBLE_MS,
   CHUNK_BAND_HEIGHT,
   INFINITE_LOOKAHEAD_CHUNKS,
-  PLAYER_WIDTH,
 } from '../constants';
 import { SCAN_STEP } from '../systems/HeapPolygon';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';

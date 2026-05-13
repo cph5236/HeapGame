@@ -96,19 +96,20 @@ describe('InputManager — analog tilt', () => {
     expect(im.tiltFactor).toBe(-1);
   });
 
-  it('tiltFactor is proportional in the ramp range (positive)', async () => {
+  it('tiltFactor at 25% of ramp range gives more than 0.4 — power curve boosts small tilts', async () => {
+    // gamma = 7.75 => 25% into [2, 25] => linear raw = 0.25
+    // with power curve (exp < 1): tiltFactor should be well above 0.25
     const { im, fire } = await makeMobileIM();
-    // gamma = 13.5 => midpoint of [2, 25] => factor = (13.5-2)/(25-2) = 0.5
-    fire('deviceorientation', { gamma: 13.5 });
+    fire('deviceorientation', { gamma: 7.75 });
     im.update(16, false);
-    expect(im.tiltFactor).toBeCloseTo(0.5, 5);
+    expect(im.tiltFactor).toBeGreaterThan(0.4);
   });
 
-  it('tiltFactor is proportional in the ramp range (negative)', async () => {
+  it('tiltFactor at 25% of ramp range (negative) gives less than -0.4', async () => {
     const { im, fire } = await makeMobileIM();
-    fire('deviceorientation', { gamma: -13.5 });
+    fire('deviceorientation', { gamma: -7.75 });
     im.update(16, false);
-    expect(im.tiltFactor).toBeCloseTo(-0.5, 5);
+    expect(im.tiltFactor).toBeLessThan(-0.4);
   });
 
   it('goRight is true when tiltFactor > 0.01', async () => {
@@ -248,6 +249,78 @@ describe('InputManager — swipe classifier', () => {
     // Too slow to be a dash — falls through to tap → jump
     expect(im.dashJustFired).toBe(false);
     expect(im.jumpJustPressed).toBe(true);
+  });
+});
+
+// ── Multi-touch robustness ─────────────────────────────────────────────────────
+
+describe('InputManager — multi-touch', () => {
+  it('a second touchstart while tracking is ignored — original swipe still classifies as jump', async () => {
+    const { im, fire } = await makeMobileIM();
+
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+    // Finger 1 starts swipe up
+    fire('touchstart', { touches: [{ clientX: 100, clientY: 300 }] });
+
+    // Finger 2 lands mid-swipe at a different position — should be ignored
+    fire('touchstart', { touches: [{ clientX: 200, clientY: 100 }] });
+
+    vi.spyOn(performance, 'now').mockReturnValue(100);
+    // Finger 1 lifts: dy=-70 up from original origin → should be jump
+    fire('touchend', { changedTouches: [{ clientX: 100, clientY: 230 }] });
+    vi.restoreAllMocks();
+
+    im.update(16, false);
+    expect(im.jumpJustPressed).toBe(true);
+    expect(im.diveJustFired).toBe(false);
+  });
+
+  it('a second touchstart while dragging is ignored — drag state preserved', async () => {
+    const { im, fire } = await makeMobileIM();
+    fire('touchstart', { touches: [{ clientX: 100, clientY: 300 }] });
+    // Enter drag state
+    fire('touchmove', { touches: [{ clientX: 101, clientY: 280 }] });
+    expect((im as any).touchState).toBe('drag');
+
+    // Second finger down — should not reset to tracking
+    fire('touchstart', { touches: [{ clientX: 200, clientY: 200 }] });
+    expect((im as any).touchState).toBe('drag');
+  });
+
+  it('touchend from a non-tracked finger (by identifier) is ignored — gesture stays active', async () => {
+    const { im, fire } = await makeMobileIM();
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+
+    // Finger 1 (id=1) starts swipe up
+    fire('touchstart', { touches: [{ identifier: 1, clientX: 100, clientY: 200 }] });
+
+    vi.spyOn(performance, 'now').mockReturnValue(100);
+    // Finger 2 (id=2) lifts with a downward motion — should be ignored
+    fire('touchend', { changedTouches: [{ identifier: 2, clientX: 100, clientY: 260 }] }); // dy=+60 → would be dive if processed
+
+    // Gesture should still be active (finger 1 hasn't lifted yet)
+    expect((im as any).touchState).not.toBe('idle');
+
+    // Finger 1 (id=1) lifts with upward motion — should register as jump
+    fire('touchend', { changedTouches: [{ identifier: 1, clientX: 100, clientY: 130 }] }); // dy=-70 → jump
+    vi.restoreAllMocks();
+
+    im.update(16, false);
+    expect(im.jumpJustPressed).toBe(true);
+    expect(im.diveJustFired).toBe(false);
+  });
+
+  it('a non-tracked touchmove (by identifier) does not affect drag state', async () => {
+    const { im, fire } = await makeMobileIM();
+
+    // Finger 1 (id=1) starts tracking
+    fire('touchstart', { touches: [{ identifier: 1, clientX: 100, clientY: 300 }] });
+    expect((im as any).touchState).toBe('tracking');
+
+    // Finger 2 (id=2) moves 20px up — enough to trigger drag (ady=20 > DRAG_THRESHOLD_PX=15)
+    // but should be ignored because identifier does not match the tracked finger
+    fire('touchmove', { touches: [{ identifier: 2, clientX: 101, clientY: 280 }] });
+    expect((im as any).touchState).toBe('tracking'); // must NOT have entered drag
   });
 });
 
@@ -445,6 +518,34 @@ describe('InputManager — pendingJumpVx', () => {
     // Lift fast with enough travel (ady >= SWIPE_MIN_DISTANCE_PX=60, dx=15 right)
     fire('touchend', { changedTouches: [{ clientX: 115, clientY: 230 }] });
     expect((im as any).pendingJumpVx).toBeGreaterThan(0);
+  });
+
+  it('a short diagonal swipe (total magnitude ≥ SWIPE_MIN but ady < SWIPE_MIN) fires jump with Vx — not a tap', async () => {
+    const { im, fire } = await makeMobileIM();
+    // dx=15, dy=-27: ady=27 < SWIPE_MIN_DISTANCE_PX(30) but magnitude=√(225+729)≈30.9 ≥ 30
+    // currently classified as tap (ady < 30 → fast=false) → jumpVx=0
+    // should be jump with Vx (magnitude qualifies it as a real swipe)
+    fire('touchstart', { touches: [{ clientX: 100, clientY: 300 }] });
+    fire('touchend', { changedTouches: [{ clientX: 115, clientY: 273 }] });
+    expect((im as any).pendingJumpVx).not.toBe(0);
+  });
+
+  it('a ~25° diagonal swipe gives more than 75% of max horizontal speed (power curve)', async () => {
+    const { im, fire } = await makeMobileIM();
+    const MAX = 400; // SWIPE_JUMP_HORIZONTAL_MAX
+    fire('touchstart', { touches: [{ clientX: 100, clientY: 300 }] });
+    // dx=40, dy=-86 → ~25° from vertical; ady=86 > adx=40, ady >= SWIPE_MIN_DISTANCE_PX(60)
+    fire('touchend', { changedTouches: [{ clientX: 140, clientY: 214 }] });
+    expect((im as any).pendingJumpVx).toBeGreaterThan(MAX * 0.75);
+  });
+
+  it('a ~44° diagonal swipe gives more than 95% of max horizontal speed (power curve)', async () => {
+    const { im, fire } = await makeMobileIM();
+    const MAX = 400; // SWIPE_JUMP_HORIZONTAL_MAX
+    fire('touchstart', { touches: [{ clientX: 100, clientY: 300 }] });
+    // dx=59, dy=-60 → ~44° from vertical; ady=60 > adx=59, ady=60 >= SWIPE_MIN_DISTANCE_PX(60)
+    fire('touchend', { changedTouches: [{ clientX: 159, clientY: 240 }] });
+    expect((im as any).pendingJumpVx).toBeGreaterThan(MAX * 0.95);
   });
 });
 

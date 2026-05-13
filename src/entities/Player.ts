@@ -192,8 +192,10 @@ export class Player {
     }
 
     // Terrain stick: keep player pressed into surface so they don't float between
-    // slab colliders on slopes (4px slab spacing, gravity alone takes ~6 frames to close the gap)
-    if (body.blocked.down && !this.inSlopeZone && body.velocity.y < TERRAIN_STICK_SPEED) {
+    // slab colliders on slopes (4px slab spacing, gravity alone takes ~6 frames to close the gap).
+    // Skip when already moving upward — snapPlayerToSurface can leave a small slab overlap
+    // that keeps blocked.down=true one frame after a jump, which would cancel the jump velocity.
+    if (body.blocked.down && !this.inSlopeZone && body.velocity.y >= 0 && body.velocity.y < TERRAIN_STICK_SPEED) {
       this.sprite.setVelocityY(TERRAIN_STICK_SPEED);
     }
 

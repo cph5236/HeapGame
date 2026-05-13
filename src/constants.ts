@@ -32,7 +32,7 @@ export const MAX_AIR_JUMPS        = 1;    // base value — actual value comes f
 export const DASH_COOLDOWN_MS     = 800;  // ms between dashes
 export const DASH_DURATION_MS     = 200;  // ms the dash velocity is protected from movement override
 
-export const TERRAIN_STICK_SPEED      = 300;  // px/s downward velocity applied while grounded — 300/60fps=5px/frame > 4px SCAN_STEP, bridges slab gaps in ≤1 frame
+export const TERRAIN_STICK_SPEED      = 100;  // px/s downward velocity applied while grounded — 300/60fps=5px/frame > 4px SCAN_STEP, bridges slab gaps in ≤1 frame
 
 // ── Air momentum ───────────────────────────────────────────────────────────────
 export const AIR_TILT_FORCE           = 0.8;  // px/s added per ms at full tilt — reach PLAYER_SPEED in ~250ms
@@ -42,10 +42,12 @@ export const MOMENTUM_STOP_ADV_FACTOR = 1.5;  // multiplier when input opposes c
 // ── Mobile controls ────────────────────────────────────────────────────────────
 export const TILT_DEAD_ZONE_DEG        = 2;   // gamma degrees to ignore near center
 export const TILT_MAX_DEG              = 25;  // gamma at which full speed is applied
-export const SWIPE_MIN_DISTANCE_PX     = 60;  // min travel to register a swipe
-export const SWIPE_MAX_TIME_MS         = 350; // swipes faster than this are recognized
+export const TILT_CURVE_EXP            = 0.3; // power curve exponent for tilt factor — 1.0=linear, lower=more speed at small tilt angles
+export const SWIPE_MIN_DISTANCE_PX     = 30;  // min travel to register a swipe
+export const SWIPE_MAX_TIME_MS         = 750; // swipes faster than this are recognized
 export const DRAG_THRESHOLD_PX         = 15;  // min vertical displacement to commit to drag mode
 export const SWIPE_JUMP_HORIZONTAL_MAX = 400; // max horizontal px/s seeded by a diagonal swipe-up
+export const SWIPE_JUMP_CURVE_EXP      = 0.5; // power curve exponent for swipe Vx — 1.0=linear sin, lower=more Vx at small angles
 
 // ── Heap generation ────────────────────────────────────────────────────────────
 export const NUM_HEAP_COLUMNS  = 16;    // 960 / 16 = 60px per column

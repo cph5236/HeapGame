@@ -571,6 +571,18 @@ describe('Player — terrain stick', () => {
 
     expect(spy.setVelocityY).toContain(TERRAIN_STICK_SPEED);
   });
+
+  it('does NOT apply terrain stick when velocity.y is already negative (player jumping upward)', async () => {
+    // Scenario: jump fired last frame, player is still touching slab (blocked.down=true
+    // due to snap-induced overlap), but is moving upward. Terrain stick must not cancel the jump.
+    const { player, spy, sprite } = await makePlayer({ onGround: true });
+    sprite.body.velocity.y = -550; // upward jump velocity set last frame
+
+    player.update(16);
+
+    // Terrain stick MUST NOT fire — TERRAIN_STICK_SPEED is downward and would cancel the jump
+    expect(spy.setVelocityY).not.toContain(TERRAIN_STICK_SPEED);
+  });
 });
 
 // ── 8. Air momentum ───────────────────────────────────────────────────────
