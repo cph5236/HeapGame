@@ -16,6 +16,8 @@ import {
   AIR_TILT_FORCE,
   AIR_MOMENTUM_DECAY,
   MOMENTUM_STOP_ADV_FACTOR,
+  TERRAIN_STICK_SPEED,
+  PLACEMENT_MOVE_SPEED,
 } from '../constants';
 import { PlayerConfig } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
@@ -56,6 +58,7 @@ export class Player {
   /** Floor Y for the current heap — used as the ground fallback. */
   public worldHeight: number = MOCK_HEAP_HEIGHT_PX;
 
+  private placementMode: boolean = false;
   private shieldActive: boolean = false;
   private shieldAura?: Phaser.GameObjects.Arc;
   private readonly syncAura = (): void => {
@@ -138,6 +141,12 @@ export class Player {
       this.coyoteTimer        = 120;
       this.airJumpsRemaining  = this.maxAirJumps;
       this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
+      // Cancel any active dive burst — diveActive only decrements inside the !onGround
+      // block so it would otherwise freeze on landing, re-triggering dive on the next jump.
+      if (this.diveActive > 0) {
+        this.diveActive = 0;
+        body.setMaxVelocityY(PLAYER_MAX_FALL_SPEED);
+      }
     } else {
       this.coyoteTimer = Math.max(0, this.coyoteTimer - delta);
     }
@@ -148,22 +157,24 @@ export class Player {
     const keyboardRight = this.rightKeys.some(k => k.isDown);
     this.dashActive = Math.max(0, this.dashActive - delta);
 
+    const moveSpeed = this.placementMode ? PLACEMENT_MOVE_SPEED : PLAYER_SPEED;
+
     if (this.dashActive === 0) {
       if (this.inSlopeZone && !keyboardLeft && !keyboardRight && im.tiltFactor === 0) {
         // Eject outward along the wall surface until the player slides off the edge
-        this.sprite.setVelocityX(this.slopeEjectDir * PLAYER_SPEED);
+        this.sprite.setVelocityX(this.slopeEjectDir * moveSpeed);
         this.momentumX = 0;
       } else if (onGround || this.inSlopeZone) {
         // Ground (or slope zone with active input): direct velocity control (unchanged feel)
         this.momentumX = 0;
         if (keyboardLeft) {
-          this.sprite.setVelocityX(-PLAYER_SPEED);
+          this.sprite.setVelocityX(-moveSpeed);
           this.sprite.setFlipX(true);
         } else if (keyboardRight) {
-          this.sprite.setVelocityX(PLAYER_SPEED);
+          this.sprite.setVelocityX(moveSpeed);
           this.sprite.setFlipX(false);
         } else {
-          const tiltVx = im.tiltFactor * PLAYER_SPEED;
+          const tiltVx = im.tiltFactor * moveSpeed;
           this.sprite.setVelocityX(tiltVx);
           if (tiltVx < 0) this.sprite.setFlipX(true);
           else if (tiltVx > 0) this.sprite.setFlipX(false);
@@ -190,6 +201,14 @@ export class Player {
       }
     }
 
+    // Terrain stick: keep player pressed into surface so they don't float between
+    // slab colliders on slopes (4px slab spacing, gravity alone takes ~6 frames to close the gap).
+    // Skip when already moving upward — snapPlayerToSurface can leave a small slab overlap
+    // that keeps blocked.down=true one frame after a jump, which would cancel the jump velocity.
+    if (body.blocked.down && !this.inSlopeZone && body.velocity.y >= 0 && body.velocity.y < TERRAIN_STICK_SPEED) {
+      this.sprite.setVelocityY(TERRAIN_STICK_SPEED);
+    }
+
     // Dash — horizontal burst with cooldown; direction from pressed keys or swipe
     if (this.dashEnabled) {
       this.dashCooldown = Math.max(0, this.dashCooldown - delta);
@@ -203,8 +222,8 @@ export class Player {
       }
     }
 
-    // Jump — JustDown prevents hold-spam
-    const jumpPressed    = this.jumpKeys.some(k => Phaser.Input.Keyboard.JustDown(k)) || im.jumpJustPressed;
+    // Jump — JustDown prevents hold-spam; suppressed during item placement
+    const jumpPressed    = !this.placementMode && (this.jumpKeys.some(k => Phaser.Input.Keyboard.JustDown(k)) || im.jumpJustPressed);
     const canGroundJump  = this.coyoteTimer > 0;
     if (jumpPressed) {
       const onWallForJump = this.wallJumpEnabled && (body.blocked.left || body.blocked.right);
@@ -321,6 +340,10 @@ export class Player {
 
   setControlsEnabled(enabled: boolean): void {
     this.controlsEnabled = enabled;
+  }
+
+  setPlacementMode(active: boolean): void {
+    this.placementMode = active;
   }
 
   freeze(): void {

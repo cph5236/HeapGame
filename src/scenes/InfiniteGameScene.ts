@@ -40,6 +40,7 @@ import {
   CHUNK_BAND_HEIGHT,
   INFINITE_LOOKAHEAD_CHUNKS,
 } from '../constants';
+import { SCAN_STEP } from '../systems/HeapPolygon';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import type { EnemyKind } from '../entities/Enemy';
 
@@ -62,6 +63,7 @@ export class InfiniteGameScene extends Phaser.Scene {
 
   private walkableGroups: Phaser.Physics.Arcade.StaticGroup[] = [];
   private wallGroups:     Phaser.Physics.Arcade.StaticGroup[] = [];
+  private edgeColliders:  HeapEdgeCollider[]                  = [];
   private generators:     HeapGenerator[]  = [];
   private layerGenerators: LayerGenerator[] = [];
   private enemyManagers:  EnemyManager[]   = [];
@@ -97,6 +99,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.enemyManagers = [];
     this.walkableGroups = [];
     this.wallGroups     = [];
+    this.edgeColliders  = [];
     this.spawnedBands      = [new Set(), new Set(), new Set()];
     this.colBandPolygons   = [new Map(), new Map(), new Map()];
 
@@ -138,6 +141,7 @@ export class InfiniteGameScene extends Phaser.Scene {
 
       this.walkableGroups.push(walkable);
       this.wallGroups.push(wall);
+      this.edgeColliders.push(edge);
       this.generators.push(gen);
       this.enemyManagers.push(em);
     }
@@ -300,6 +304,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     // ── Player + input ────────────────────────────────────────────────────────────
     this.im.update(delta, false);
     this.player.update(delta);
+    this.snapPlayerToSurface();
     this.placeableManager.update();
     this.hud.update();
 
@@ -490,4 +495,24 @@ export class InfiniteGameScene extends Phaser.Scene {
       this.player.slopeEjectDir = side === 'left' ? -1 : 1;
     }
   };
+
+  private snapPlayerToSurface(): void {
+    const body = this.player.sprite.body;
+    if (!body.blocked.down || this.player.inSlopeZone) return;
+
+    const playerX = this.player.sprite.x;
+    const feetY   = this.player.sprite.y + PLAYER_HEIGHT / 2;
+
+    let slabTop: number | null = null;
+    for (const ec of this.edgeColliders) {
+      const s = ec.getSurfaceYAtX(playerX, feetY);
+      if (s !== null && (slabTop === null || s < slabTop)) slabTop = s;
+    }
+    if (slabTop === null) return;
+
+    const targetY = slabTop - PLAYER_HEIGHT / 2;
+    if (Math.abs(targetY - this.player.sprite.y) <= SCAN_STEP * 2) {
+      this.player.sprite.y = targetY;
+    }
+  }
 }

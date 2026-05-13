@@ -29,6 +29,8 @@ import {
 export class HeapEdgeCollider {
   /** All edge bodies per band, keyed by bandTop. */
   private readonly bandBodies: Map<number, Phaser.Physics.Arcade.Image[]> = new Map();
+  /** Raw scanline rows per band — used for surface Y queries. */
+  private readonly bandRows:   Map<number, ScanlineRow[]>                  = new Map();
   private readonly walkableSlopeDeg: number;
 
   constructor(_scene: Phaser.Scene, walkableSlopeDeg = MAX_WALKABLE_SLOPE_DEG) {
@@ -80,6 +82,27 @@ export class HeapEdgeCollider {
       for (const body of bodies) body.destroy();
       this.bandBodies.delete(bandTop);
     }
+    this.bandRows.delete(bandTop);
+  }
+
+  /**
+   * Return the top Y of the highest slab (smallest Y) that covers worldX,
+   * within a 2px tolerance below playerFeetY. Returns null when no slab qualifies.
+   */
+  getSurfaceYAtX(worldX: number, playerFeetY: number): number | null {
+    const tolerance = 2;
+    let best: number | null = null;
+    for (const rows of this.bandRows.values()) {
+      for (const row of rows) {
+        if (worldX >= row.leftX && worldX <= row.rightX) {
+          const slabTop = row.y - FLOOR_BODY_HEIGHT / 2;
+          if (slabTop <= playerFeetY + tolerance) {
+            if (best === null || slabTop < best) best = slabTop;
+          }
+        }
+      }
+    }
+    return best;
   }
 
   cullBands(camBottom: number, cullDistance: number): void {
@@ -123,6 +146,7 @@ export class HeapEdgeCollider {
     }
 
     this.bandBodies.set(bandTop, bodies);
+    this.bandRows.set(bandTop, rows);
   }
 
   private createSpan(

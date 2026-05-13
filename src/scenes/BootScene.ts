@@ -35,6 +35,22 @@ export class BootScene extends Phaser.Scene {
     // Initialize logger after SaveData is importable but before async catalog fetch.
     initLogger();
 
+    // Dev scene shortcut — only active in Vite dev mode, dead code in production builds.
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+      const search = new URLSearchParams(window.location.search);
+      if (search.has('dev')) {
+        const sceneName = search.get('dev')!;
+        let params: Record<string, unknown> = {};
+        try {
+          params = JSON.parse(search.get('params') ?? '{}');
+        } catch {
+          // invalid JSON — use empty params, scene falls back to its own defaults
+        }
+        this.scene.start(sceneName, params);
+        return;
+      }
+    }
+
     // Kick off catalog/polygon fetch in the background — does not block the menu.
     HeapClient.list()
       .then((summaries) => {

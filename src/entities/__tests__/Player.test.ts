@@ -17,6 +17,8 @@ import {
   PLAYER_JUMP_VELOCITY,
   PLAYER_DIVE_SPEED,
   PLAYER_MAX_FALL_SPEED,
+  TERRAIN_STICK_SPEED,
+  PLACEMENT_MOVE_SPEED,
 } from '../../constants';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -559,7 +561,108 @@ describe('Player — slope eject', () => {
   });
 });
 
-// ── 7. Air momentum ───────────────────────────────────────────────────────
+// ── 7. Terrain stick ──────────────────────────────────────────────────────
+
+describe('Player — terrain stick', () => {
+  it('applies TERRAIN_STICK_SPEED downward when grounded with velocity.y near zero', async () => {
+    const { player, spy, sprite } = await makePlayer({ onGround: true });
+    sprite.body.velocity.y = 0; // physics just zeroed it after resolving into a slab
+
+    player.update(16);
+
+    expect(spy.setVelocityY).toContain(TERRAIN_STICK_SPEED);
+  });
+
+  it('does NOT apply terrain stick when velocity.y is already negative (player jumping upward)', async () => {
+    // Scenario: jump fired last frame, player is still touching slab (blocked.down=true
+    // due to snap-induced overlap), but is moving upward. Terrain stick must not cancel the jump.
+    const { player, spy, sprite } = await makePlayer({ onGround: true });
+    sprite.body.velocity.y = -550; // upward jump velocity set last frame
+
+    player.update(16);
+
+    // Terrain stick MUST NOT fire — TERRAIN_STICK_SPEED is downward and would cancel the jump
+    expect(spy.setVelocityY).not.toContain(TERRAIN_STICK_SPEED);
+  });
+});
+
+// ── 8. Placement mode ─────────────────────────────────────────────────────
+
+describe('Player — placement mode', () => {
+  it('caps ground speed to PLACEMENT_MOVE_SPEED when placement mode is active', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    player.setPlacementMode(true);
+
+    player.update(16);
+
+    const maxVx = Math.max(...spy.setVelocityX.map(Math.abs));
+    expect(maxVx).toBeLessThanOrEqual(PLACEMENT_MOVE_SPEED);
+  });
+
+  it('blocks jumping when placement mode is active', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    imState.jumpJustPressed = true;
+    player.setPlacementMode(true);
+
+    player.update(16);
+
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('restores normal speed when placement mode is cleared', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    imState.tiltFactor = 1; // full right tilt
+    player.setPlacementMode(true);
+    player.setPlacementMode(false);
+
+    player.update(16);
+
+    expect(spy.setVelocityX).toContain(PLAYER_SPEED);
+  });
+});
+
+// ── 9. Dive landing ──────────────────────────────────────────────────────
+
+describe('Player — dive landing', () => {
+  it('clears diveActive when player lands while a dive burst is still running', async () => {
+    const { player } = await makePlayer({
+      onGround: true,
+      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+    });
+    // Simulate landing mid-dive: diveActive frozen at 120ms remaining
+    (player as any).diveActive = 120;
+
+    player.update(16);
+
+    expect((player as any).diveActive).toBe(0);
+  });
+
+  it('does not re-trigger dive on the first airborne frame after landing a dive', async () => {
+    // Reproduce the stuck-on-surface bug:
+    // 1. land while diveActive > 0  →  diveActive should clear
+    // 2. jump  →  first airborne frame must NOT apply dive velocity
+    const { player, spy, sprite } = await makePlayer({
+      onGround: true,
+      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+    });
+    (player as any).diveActive = 120; // frozen dive from before landing
+
+    // Frame 1: grounded — should clear diveActive
+    player.update(16);
+    expect((player as any).diveActive).toBe(0);
+
+    // Frame 2: now simulate being airborne (player jumped)
+    sprite.body.blocked.down = false;
+    imState.jumpJustPressed = false; // jump already consumed
+
+    player.update(16);
+
+    // Dive must NOT have fired — setVelocityY should not contain PLAYER_DIVE_SPEED
+    expect(spy.setVelocityY).not.toContain(PLAYER_DIVE_SPEED);
+  });
+});
+
+// ── 10. Air momentum ──────────────────────────────────────────────────────
 
 describe('Player — air momentum', () => {
   it('accumulates rightward momentum while airborne with full right tilt', async () => {

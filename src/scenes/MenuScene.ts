@@ -31,8 +31,16 @@ export class MenuScene extends Phaser.Scene {
   private heapPickerText!:  Phaser.GameObjects.Text;
   private heapPickerStars!: Phaser.GameObjects.Text;
 
+  private _forceSettingsOpen = false;
+  private _forceInfoOpen     = false;
+
   constructor() {
     super({ key: 'MenuScene' });
+  }
+
+  init(data: { forceSettingsOpen?: boolean; forceInfoOpen?: boolean } = {}): void {
+    this._forceSettingsOpen = data.forceSettingsOpen ?? false;
+    this._forceInfoOpen     = data.forceInfoOpen     ?? false;
   }
 
   // On short screens, shift the button group up so coins/name/settings fit below
@@ -471,7 +479,7 @@ export class MenuScene extends Phaser.Scene {
     ).setDepth(30).setVisible(false).setInteractive();
 
     const panel = this.add.rectangle(
-      this.scale.width / 2, this.scale.height / 2, 360, 280, 0x0d0d20,
+      this.scale.width / 2, this.scale.height / 2, 360, 330, 0x0d0d20,
     ).setDepth(31).setVisible(false).setStrokeStyle(2, 0x4455aa);
 
     const title = this.add.text(this.scale.width / 2, this.scale.height / 2 - 105, 'SETTINGS', {
@@ -563,6 +571,8 @@ export class MenuScene extends Phaser.Scene {
     hitZone.on('pointerup', open);
     overlayBg.on('pointerup', close);
     closeBtn.on('pointerup', close);
+
+    if (this._forceSettingsOpen) this.time.delayedCall(2200, open);
 
     resetBg.on('pointerup', () => {
       if (!this.resetConfirmed) {
@@ -664,6 +674,8 @@ export class MenuScene extends Phaser.Scene {
 
     hitZone.on('pointerup', toggle);
     overlayBg.on('pointerup', toggle);
+
+    if (this._forceInfoOpen) this.time.delayedCall(2200, toggle);
   }
 
   // ── Entrance animation ───────────────────────────────────────────────────────

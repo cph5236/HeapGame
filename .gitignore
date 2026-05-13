@@ -17,3 +17,5 @@ todo/
 .claude/env.md
 .worktrees/
 .temp/
+screenshots/
+.playwright-mcp/

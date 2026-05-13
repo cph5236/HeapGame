@@ -5,6 +5,8 @@ import {
   SWIPE_MAX_TIME_MS,
   DRAG_THRESHOLD_PX,
   SWIPE_JUMP_HORIZONTAL_MAX,
+  SWIPE_JUMP_CURVE_EXP,
+  TILT_CURVE_EXP,
 } from '../constants';
 
 export class InputManager {
@@ -40,6 +42,7 @@ export class InputManager {
 
   // Touch state machine
   private touchState: 'idle' | 'tracking' | 'drag' = 'idle';
+  private activeTouchId: number | undefined = undefined;
   private touchStartX    = 0;
   private touchStartY    = 0;
   private touchStartTime = 0;
@@ -95,8 +98,8 @@ export class InputManager {
       } else if (abs >= TILT_MAX_DEG) {
         this.tiltFactor = g > 0 ? 1 : -1;
       } else {
-        const raw = (Math.sign(g) * (abs - TILT_DEAD_ZONE_DEG)) / (TILT_MAX_DEG - TILT_DEAD_ZONE_DEG);
-        this.tiltFactor = Math.max(-1, Math.min(1, raw));
+        const t = (abs - TILT_DEAD_ZONE_DEG) / (TILT_MAX_DEG - TILT_DEAD_ZONE_DEG);
+        this.tiltFactor = Math.sign(g) * Math.pow(t, TILT_CURVE_EXP);
       }
 
       this.goLeft  = this.tiltFactor < -0.01;
@@ -151,8 +154,10 @@ export class InputManager {
   };
 
   private onTouchStart = (e: TouchEvent): void => {
+    if (this.touchState !== 'idle') return;
     const t = e.touches[0];
     if (!t) return;
+    this.activeTouchId  = t.identifier;
     this.touchStartX    = t.clientX;
     this.touchStartY    = t.clientY;
     this.touchStartTime = performance.now();
@@ -163,7 +168,7 @@ export class InputManager {
   private onTouchMove = (e: TouchEvent): void => {
     if (this.touchState !== 'tracking' && this.touchState !== 'drag') return;
 
-    const t = e.touches[0];
+    const t = Array.from(e.touches).find(touch => touch.identifier === this.activeTouchId);
     if (!t) return;
 
     const currentX = t.clientX;
@@ -188,69 +193,47 @@ export class InputManager {
   };
 
   private onTouchCancel = (): void => {
-    this.touchState = 'idle';
-    this.dragUp     = false;
-    this.dragDown   = false;
+    this.touchState    = 'idle';
+    this.activeTouchId = undefined;
+    this.dragUp        = false;
+    this.dragDown      = false;
   };
 
   private onTouchEnd = (e: TouchEvent): void => {
-    if (this.touchState === 'idle') {
-      // Spurious event — ignore
-      return;
-    }
+    if (this.touchState === 'idle') return;
 
-    if (this.touchState === 'drag') {
-      // A fast flick that crossed the drag threshold should still fire as a swipe
-      const td = e.changedTouches[0];
-      if (td) {
-        const dx  = td.clientX - this.touchStartX;
-        const dy  = td.clientY - this.touchStartY;
-        const ady = Math.abs(dy);
-        const dt  = performance.now() - this.touchStartTime;
-        if (ady >= SWIPE_MIN_DISTANCE_PX && dt < SWIPE_MAX_TIME_MS) {
-          if (dy < 0) {
-            this.pendingJump   = true;
-            this.pendingJumpVx = (dx / Math.sqrt(dx * dx + dy * dy)) * SWIPE_JUMP_HORIZONTAL_MAX;
-          } else {
-            this.pendingDive = true;
-          }
-        }
-      }
-      this.dragUp    = false;
-      this.dragDown  = false;
-      this.touchState = 'idle';
-      return;
-    }
+    const t = Array.from(e.changedTouches).find(touch => touch.identifier === this.activeTouchId);
+    if (!t) return; // a different finger lifted — keep tracking ours
 
-    // State was 'tracking' — run swipe classifier
-    const t = e.changedTouches[0];
-    if (!t) {
-      this.touchState = 'idle';
-      return;
-    }
+    const wasDrag = this.touchState === 'drag';
+    this.dragUp        = false;
+    this.dragDown      = false;
+    this.touchState    = 'idle';
+    this.activeTouchId = undefined;
 
     const dx  = t.clientX - this.touchStartX;
     const dy  = t.clientY - this.touchStartY;
     const adx = Math.abs(dx);
     const ady = Math.abs(dy);
     const dt  = performance.now() - this.touchStartTime;
+    const mag  = Math.sqrt(dx * dx + dy * dy);
+    const fast = mag >= SWIPE_MIN_DISTANCE_PX && dt < SWIPE_MAX_TIME_MS;
 
     if (adx > ady && adx >= SWIPE_MIN_DISTANCE_PX && dt < SWIPE_MAX_TIME_MS) {
-      // Horizontal swipe → dash
       this.pendingDash    = true;
       this.pendingDashDir = dx > 0 ? 1 : -1;
-    } else if (ady > adx && ady >= SWIPE_MIN_DISTANCE_PX && dt < SWIPE_MAX_TIME_MS && dy > 0) {
-      // Swipe down → dive
+    } else if (ady > adx && fast && dy > 0) {
       this.pendingDive = true;
-    } else if (ady > adx && ady >= SWIPE_MIN_DISTANCE_PX && dt < SWIPE_MAX_TIME_MS && dy < 0) {
-      // Swipe up → jump; extract horizontal component for momentum seed
+    } else if (ady > adx && fast && dy < 0) {
       this.pendingJump   = true;
-      this.pendingJumpVx = (dx / Math.sqrt(dx * dx + dy * dy)) * SWIPE_JUMP_HORIZONTAL_MAX;
-    } else {
-      // Tap
+      this.pendingJumpVx = this.computeSwipeJumpVx(dx, dy);
+    } else if (!wasDrag) {
       this.pendingJump = true;
     }
-
-    this.touchState = 'idle';
   };
+
+  private computeSwipeJumpVx(dx: number, dy: number): number {
+    const sinAbs = Math.abs(dx) / Math.sqrt(dx * dx + dy * dy);
+    return Math.sign(dx) * Math.pow(Math.min(1, sinAbs / Math.SQRT1_2), SWIPE_JUMP_CURVE_EXP) * SWIPE_JUMP_HORIZONTAL_MAX;
+  }
 }

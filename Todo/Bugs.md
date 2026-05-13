@@ -1,10 +1,7 @@
 ## BUGS
 # Mobile
-    - Score screen press anywhere isnt atually press anywhere you need to tap the label
-
-# Main menu 
-    - 
+    
+# Scenes
     
 # Gameplay 
-    - Movement is bugged when walking along a surface the player character kinda bobs up and down - are we shifting the players locations on slopes? I came accross an article about how to traverse slopes in phaser Arcade physics https://emanueleferonato.com/2024/12/25/html5-tile-based-platformer-handling-slopes-powered-by-phaser-using-no-physics-engines-and-working-with-phaser-4/
-
+    

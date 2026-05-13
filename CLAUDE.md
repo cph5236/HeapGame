@@ -82,6 +82,46 @@ Superpowers skills override default behavior. Check for a relevant skill **befor
 
 ---
 
+## Scene Preview — Visual UI Iteration
+
+Use the `heap-scene-preview` skill whenever making UI changes that need visual verification. It provides a fast loop: change code → screenshot at phone dimensions → see result → repeat, without manually playing through the game.
+
+### How it works
+
+Two pieces work together:
+
+1. **URL shortcut** — `?dev=SceneName&params={...}` in BootScene jumps straight to any scene with mock data (dev builds only)
+2. **`npm run scene-preview`** — Playwright loads that URL in headless Chromium at phone dimensions and saves to `screenshots/preview.png`
+
+### Usage
+
+```bash
+# Terminal 1 — keep running
+npm run dev
+
+# Terminal 2 (or Claude runs this)
+npm run scene-preview -- ScoreScene '{"score":5000,"isFailure":true}' pixel7
+```
+
+Screenshot saves to `screenshots/preview.png`. Claude reads it with the Read tool.
+
+### Device presets
+
+| Name | Size | Use for |
+|---|---|---|
+| `pixel7` | 448×970 | default — matches the actual test phone |
+| `browser` | 480×1042 | browser pane size |
+| `iphone14` | 390×844 | iOS reference |
+| `desktop` | 1280×800 | wide layout check |
+
+### Skill trigger
+
+| Situation | Skill to invoke |
+|---|---|
+| Making UI changes and need to see the result | `heap-scene-preview` |
+
+---
+
 ## D1 Database Migrations
 
 Any change to the database schema **requires a migration file**. Never modify `server/schema.sql` alone.

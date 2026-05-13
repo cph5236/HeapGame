@@ -12,6 +12,7 @@ import {
 import { ITEM_DEFS } from '../data/itemDefs';
 import { Player } from '../entities/Player';
 import { getLogger } from '../logging';
+import { InputManager } from './InputManager';
 
 export const enum PlacementState { Closed, Hotbar, Placing }
 
@@ -61,6 +62,7 @@ export class PlaceableManager {
   private confirmTxt!:    Phaser.GameObjects.Text;
   private cancelBtn!:     Phaser.GameObjects.Rectangle;
   private cancelTxt!:     Phaser.GameObjects.Text;
+  private statusLabel!:   Phaser.GameObjects.Text;
 
   private spawnedBodies:  SpawnedBody[] = [];
   private ladderOverlaps: Phaser.Physics.Arcade.Collider[] = [];
@@ -119,8 +121,10 @@ export class PlaceableManager {
     this.state = PlacementState.Closed;
     this.placingItemId = '';
     this.ghostLocked = false;
+    this.scene.input.off('pointermove', this.onPointerMove, this);
     this.scene.input.off('pointerdown', this.onPlacementClick, this);
     this.scene.input.keyboard!.removeAllListeners('keydown-ENTER');
+    this.player.setPlacementMode(false);
     this.confirmTxt?.setText('PLACE  [↵]');
     this.setHotbarVisible(false);
     this.setPlacementUIVisible(false);
@@ -223,6 +227,13 @@ export class PlaceableManager {
     }).setOrigin(0.5).setScrollFactor(0).setDepth(26).setVisible(false);
 
     this.cancelBtn.on('pointerup', () => this.closeAll());
+
+    // Status label — placement instruction above the buttons
+    this.statusLabel = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 100, '', {
+      fontSize: '13px', color: '#cccccc',
+      stroke: '#000000', strokeThickness: 2,
+      align: 'center',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(26).setVisible(false);
   }
 
   // ── Spawn saved items on run start ───────────────────────────────────────────
@@ -324,8 +335,12 @@ export class PlaceableManager {
     this.setHotbarVisible(false);
     this.placingItemId = itemId;
     this.state = PlacementState.Placing;
+    this.player.setPlacementMode(true);
+    this.statusLabel.setText('Drag to position · Tap to lock');
     this.setPlacementUIVisible(true);
 
+    // Drag to position ghost (mobile: only while finger is down; desktop: always)
+    this.scene.input.on('pointermove', this.onPointerMove, this);
     // Click on game canvas to lock/unlock ghost position
     this.scene.input.once('pointerdown', this.onPlacementClick, this);
     // ENTER key to confirm placement
@@ -348,10 +363,12 @@ export class PlaceableManager {
       // Unlock — resume following cursor
       this.ghostLocked = false;
       this.confirmTxt.setText('PLACE  [↵]');
+      this.statusLabel.setText('Drag to position · Tap to lock');
     } else {
       // Lock ghost at current snap position
       this.ghostLocked = true;
       this.confirmTxt.setText('PLACE ✓');
+      this.statusLabel.setText('Position locked ✓');
     }
     // Re-listen for next click to allow toggling
     this.scene.input.once('pointerdown', this.onPlacementClick, this);
@@ -365,23 +382,27 @@ export class PlaceableManager {
   // ── Ghost / surface snapping ─────────────────────────────────────────────────
 
   private updateGhost(): void {
-    if (this.ghostLocked) {
-      this.drawGhost();
-      return;
-    }
+    // Ghost position is updated by onPointerMove; just redraw here.
+    this.drawGhost();
+  }
 
-    const cam     = this.scene.cameras.main;
-    const ptr     = this.scene.input.activePointer;
-    // Skip the surface scan + redraw when the pointer hasn't moved. This
-    // matters because findSurfaceY iterates the entire walkableGroup.
+  private onPointerMove = (ptr: Phaser.Input.Pointer): void => {
+    if (this.state !== PlacementState.Placing || this.ghostLocked) return;
+    // Mobile: only update while the finger is actively touching the screen.
+    // This means taps (including button presses) never snap the ghost — only drags do.
+    // Desktop: always follow the cursor.
+    if (InputManager.getInstance().isMobile && !ptr.isDown) return;
+
+    // Skip expensive surface scan when pointer hasn't moved.
     if (ptr.x === this._lastPtrX && ptr.y === this._lastPtrY) return;
     this._lastPtrX = ptr.x;
     this._lastPtrY = ptr.y;
-    const worldX  = ptr.x + cam.scrollX;
-    const worldY  = ptr.y + cam.scrollY;
+
+    const cam    = this.scene.cameras.main;
+    const worldX = ptr.x + cam.scrollX;
+    const worldY = ptr.y + cam.scrollY;
 
     if (this.placingItemId === 'ibeam') {
-      // I-Beam snaps to wall surfaces; fall back to walkable
       const wallSnap = this.findWallSnap(worldX, worldY);
       if (wallSnap) {
         this.ghostValid  = true;
@@ -399,9 +420,7 @@ export class PlaceableManager {
       this.ghostWorldX = worldX;
       this.ghostWorldY = snapY ?? worldY;
     }
-
-    this.drawGhost();
-  }
+  };
 
   private findSurfaceY(worldX: number, worldY: number): number | null {
     let best: number | null = null;
@@ -578,6 +597,7 @@ export class PlaceableManager {
     this.confirmTxt.setVisible(visible);
     this.cancelBtn.setVisible(visible);
     this.cancelTxt.setVisible(visible);
+    this.statusLabel.setVisible(visible);
     if (!visible) this.hideGhost();
   }
 }

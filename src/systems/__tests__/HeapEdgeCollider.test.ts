@@ -11,6 +11,7 @@ function makeMockImg() {
     setDebugBodyColor: vi.fn().mockReturnThis(),
     setData:           vi.fn().mockReturnThis(),
     refreshBody:       vi.fn(),
+    destroy:           vi.fn(),
     body: { checkCollision: { down: true } },
   };
 }
@@ -28,6 +29,63 @@ const rows45deg: ScanlineRow[] = [
   { y: 4, leftX: 104, rightX: 200 },
   { y: 8, leftX: 108, rightX: 200 },
 ];
+
+// ── getSurfaceYAtX ────────────────────────────────────────────────────────────
+// FLOOR_BODY_HEIGHT = 8  →  slabTop = row.y - 4
+
+describe('HeapEdgeCollider – getSurfaceYAtX', () => {
+  it('returns the highest slab top (smallest Y) covering worldX', () => {
+    const collider = new HeapEdgeCollider(null as any);
+    collider.buildFromScanlines(0, [
+      { y: 100, leftX: 50, rightX: 300 }, // slabTop = 96
+      { y: 104, leftX: 50, rightX: 300 }, // slabTop = 100
+    ], makeMockGroup() as any, makeMockGroup() as any);
+
+    // feetY=96 → tolerance window = [−∞, 98]
+    // slab y=100 top=96 ≤ 98 ✓  slab y=104 top=100 > 98 ✗
+    expect(collider.getSurfaceYAtX(150, 96)).toBe(96);
+  });
+
+  it('returns null when worldX is outside all rows', () => {
+    const collider = new HeapEdgeCollider(null as any);
+    collider.buildFromScanlines(0, [
+      { y: 100, leftX: 50, rightX: 300 },
+    ], makeMockGroup() as any, makeMockGroup() as any);
+
+    expect(collider.getSurfaceYAtX(400, 96)).toBeNull();
+  });
+
+  it('returns null when the covering slab top is too far below the player', () => {
+    const collider = new HeapEdgeCollider(null as any);
+    collider.buildFromScanlines(0, [
+      { y: 200, leftX: 50, rightX: 300 }, // slabTop = 196
+    ], makeMockGroup() as any, makeMockGroup() as any);
+
+    // feetY=190 → threshold = 192.  196 > 192 → not valid.
+    expect(collider.getSurfaceYAtX(150, 190)).toBeNull();
+  });
+
+  it('ignores far-off bands and returns the band nearest the player', () => {
+    const collider = new HeapEdgeCollider(null as any);
+    collider.buildFromScanlines(0,   [{ y: 100, leftX: 50, rightX: 300 }], makeMockGroup() as any, makeMockGroup() as any);
+    collider.buildFromScanlines(500, [{ y: 600, leftX: 50, rightX: 300 }], makeMockGroup() as any, makeMockGroup() as any);
+
+    // feetY=96: band 0 slabTop=96 ≤ 98 ✓   band 500 slabTop=596 > 98 ✗
+    expect(collider.getSurfaceYAtX(150, 96)).toBe(96);
+  });
+
+  it('returns null after destroyBand removes the only covering row', () => {
+    const collider = new HeapEdgeCollider(null as any);
+    collider.buildFromScanlines(0, [
+      { y: 100, leftX: 50, rightX: 300 },
+    ], makeMockGroup() as any, makeMockGroup() as any);
+    collider.destroyBand(0);
+
+    expect(collider.getSurfaceYAtX(150, 96)).toBeNull();
+  });
+});
+
+// ── walkableSlopeDeg ──────────────────────────────────────────────────────────
 
 describe('HeapEdgeCollider – walkableSlopeDeg', () => {
   it('classifies 45° left-edge slabs as walkable when threshold is 60°', () => {
