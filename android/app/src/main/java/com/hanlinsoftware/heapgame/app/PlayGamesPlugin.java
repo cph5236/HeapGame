@@ -170,6 +170,10 @@ public class PlayGamesPlugin extends Plugin {
                     Snapshot winner = baseBytes.length >= remoteBytes.length ? base : remote;
                     snapshotsClient.resolveConflict(conflict.getConflictId(), winner)
                         .addOnCompleteListener(resolveTask -> {
+                            if (!resolveTask.isSuccessful()) {
+                                call.reject("Snapshot conflict resolution failed");
+                                return;
+                            }
                             // After resolution, re-open to read the resolved state.
                             snapshotsClient.open(SNAPSHOT_NAME, false).addOnCompleteListener(reopenTask -> {
                                 readAndResolveSnapshot(reopenTask, snapshotsClient, call);
