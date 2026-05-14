@@ -11,8 +11,8 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        registerPlugin(PlayGamesPlugin.class);
         super.onCreate(savedInstanceState);
-        // Consume insets at decor view so they're never passed down to the WebView.
         ViewCompat.setOnApplyWindowInsetsListener(
             getWindow().getDecorView(),
             (v, insets) -> WindowInsetsCompat.CONSUMED
