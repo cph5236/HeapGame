@@ -25,6 +25,7 @@ interface RawSave {
   selectedHeapId: string;
   playerGuid:     string;
   playerName:     string;
+  gpgsPlayerId?:  string;
   highScores:     Record<string, number>;
   verboseLogging?: boolean;
   _legacyPlaced?: PlacedItemSave[];
@@ -82,6 +83,7 @@ function migrate(parsed: any): RawSave {
       selectedHeapId: parsed.selectedHeapId ?? '',
       playerGuid:     parsed.playerGuid     ?? generateGuid(),
       playerName:     parsed.playerName     ?? generateDefaultName(),
+      gpgsPlayerId:   parsed.gpgsPlayerId,
       highScores:     parsed.highScores     ?? {},
       verboseLogging: parsed.verboseLogging,
       _legacyPlaced:  parsed._legacyPlaced,
@@ -118,6 +120,7 @@ function migrate(parsed: any): RawSave {
     selectedHeapId: parsed.selectedHeapId ?? '',
     playerGuid:     parsed.playerGuid     ?? generateGuid(),
     playerName:     parsed.playerName     ?? generateDefaultName(),
+    gpgsPlayerId:   parsed.gpgsPlayerId,
     highScores:     parsed.highScores     ?? {},
     verboseLogging: parsed.verboseLogging,
     _legacyPlaced:  parsed._legacyPlaced,
@@ -311,6 +314,14 @@ export function setPlayerName(name: string): void {
   if (!trimmed) return;
   const data = load();
   data.playerName = trimmed;
+  persist(data);
+}
+
+export function getGpgsPlayerId(): string | null { return load().gpgsPlayerId ?? null; }
+
+export function setGpgsPlayerId(id: string): void {
+  const data = load();
+  data.gpgsPlayerId = id;
   persist(data);
 }
 
