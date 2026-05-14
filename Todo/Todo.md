@@ -15,8 +15,10 @@ Call the Integrity API at important moments in your app to check that it's your 
 -   Jumper cables - spawn on walls and extend in and out slightly, if player touches them, player stunned loses controls
 
 ### Stretch goals 
-- Google play integration with Game profiles? 
-- google Ad integration
-- SEO optimization
-- Youtube playables or other arcade game websites
-- fix play Console Warning - There is no deobfuscation file associated with this App Bundle. If you use obfuscated code (R8/proguard), uploading a deobfuscation file will make crashes and ANRs easier to analyze and debug. Using R8/proguard can help reduce app size. Learn More
+-finish todo_inprogress
+
+- Ensure compliance with Family's policy https://support.google.com/googleplay/android-developer/answer/9893335 
+ Making sure that any content in your app that could be seen by children is appropriate for them
+Only displaying ads that are appropriate for children, whenever your app is being used by a child
+Only displaying ads that are from Google Play certified ad networks , or ads served by you, whenever your app is being used by a child. This includes ads for your own apps, or from partnerships with other brands
+Making sure your app (including all APIs, SDKs, and ads) complies with all applicable laws and regulations relating to children, such as the US Children's Online Privacy Protection Act COPPA, and the EU General Data Protection Regulation GDPR

@@ -10,30 +10,46 @@ const DEVICES: Record<string, { width: number; height: number; deviceScaleFactor
 
 const ALL_DEVICES = Object.keys(DEVICES);
 
-const [,, sceneName, paramsArg = '{}', deviceName = 'pixel7'] = process.argv;
+// Parse WxH or WxH@S custom dimension syntax, e.g. "1080x1920" or "540x960@2"
+function parseCustomDimension(s: string): { width: number; height: number; deviceScaleFactor: number } | null {
+  const m = s.match(/^(\d+)x(\d+)(?:@([\d.]+))?$/);
+  if (!m) return null;
+  const scale = m[3] ? parseFloat(m[3]) : 1.0;
+  return { width: parseInt(m[1]), height: parseInt(m[2]), deviceScaleFactor: scale };
+}
+
+const [,, sceneName, paramsArg = '{}', deviceName = 'pixel7', customOutPath] = process.argv;
 
 if (!sceneName) {
-  console.error('Usage: npm run scene-preview -- <SceneName> [paramsJSON] [device|all|headed]');
+  console.error('Usage: npm run scene-preview -- <SceneName> [paramsJSON] [device|WxH|WxH@scale|all|headed] [outputPath]');
   console.error('Devices:', [...ALL_DEVICES, 'all', 'headed'].join(', '));
+  console.error('Custom: e.g. 540x960@2 for 1080×1920 physical pixels');
   process.exit(1);
 }
 
-const isAll    = deviceName === 'all';
-const isHeaded = deviceName === 'headed';
+const isAll       = deviceName === 'all';
+const isHeaded    = deviceName === 'headed';
+const customDims  = parseCustomDimension(deviceName);
 
-if (!isAll && !isHeaded && !DEVICES[deviceName]) {
+if (!isAll && !isHeaded && !DEVICES[deviceName] && !customDims) {
   console.error(`Unknown device "${deviceName}". Available: ${[...ALL_DEVICES, 'all', 'headed'].join(', ')}`);
+  console.error('Or use custom dimensions: WxH or WxH@scale (e.g. 540x960@2)');
   process.exit(1);
+}
+
+if (customDims) {
+  DEVICES['_custom'] = customDims;
 }
 
 const encodedParams = encodeURIComponent(paramsArg);
 const url = `http://localhost:3000?dev=${sceneName}&params=${encodedParams}`;
 
-async function screenshotDevice(deviceKey: string): Promise<void> {
+async function screenshotDevice(deviceKey: string, outPathOverride?: string): Promise<void> {
   const device  = DEVICES[deviceKey];
-  const outPath = isAll
-    ? path.join('screenshots', `${sceneName}-${deviceKey}.png`)
-    : path.join('screenshots', 'preview.png');
+  const outPath = outPathOverride
+    ?? (isAll
+      ? path.join('screenshots', `${sceneName}-${deviceKey}.png`)
+      : path.join('screenshots', 'preview.png'));
 
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
@@ -76,7 +92,8 @@ async function launchHeaded(): Promise<void> {
   if (isHeaded) {
     await launchHeaded();
   } else {
-    await Promise.all((isAll ? ALL_DEVICES : [deviceName]).map(screenshotDevice));
+    const targets = isAll ? ALL_DEVICES : [customDims ? '_custom' : deviceName];
+    await Promise.all(targets.map(key => screenshotDevice(key, customDims ? customOutPath : undefined)));
   }
 })().catch((err: Error) => {
   console.error('Preview failed:', err.message);
