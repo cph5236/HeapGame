@@ -21,7 +21,7 @@ import type { HeapParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
-import { getPlayConsoleId } from '../data/achievementDefs';
+import { getPlayConsoleId, LEADERBOARD_HIGH_SCORE_ID } from '../data/achievementDefs';
 
 
 export class ScoreScene extends Phaser.Scene {
@@ -722,7 +722,7 @@ export class ScoreScene extends Phaser.Scene {
       if (!ctx) return; // offline — silently show nothing
 
       if (this.isNewHighScore) {
-        // High-score specific logic
+        PlayGamesClient.submitScore(LEADERBOARD_HIGH_SCORE_ID, this.score);
       }
       this.renderLeaderboardEntries(ctx, PANEL_TOP, PANEL_W, ROW_H);
     });
