@@ -8,6 +8,7 @@ import {
   setLocalHighScore,
   getPlayerGuid,
   getPlayerName,
+  getPlaced,
 } from '../systems/SaveData';
 import { buildCoinBreakdown, BreakdownRow } from '../systems/coinBreakdown';
 import { buildRunScore, RunScoreRow } from '../systems/buildRunScore';
@@ -19,6 +20,8 @@ import type { LeaderboardContext } from '../../shared/scoreTypes';
 import type { HeapParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { getLogger } from '../logging';
+import { PlayGamesClient } from '../systems/PlayGamesClient';
+import { getPlayConsoleId } from '../data/achievementDefs';
 
 
 export class ScoreScene extends Phaser.Scene {
@@ -74,6 +77,20 @@ export class ScoreScene extends Phaser.Scene {
     this._mockLeaderboard    = data.mockLeaderboard     ?? null;
     this._forceBreakdownOpen = data.forceBreakdownOpen  ?? false;
     this._mockPlayerConfig   = data.mockPlayerConfig    ?? {};
+
+    // Achievements that trigger on any completed run (fire-and-forget)
+    const firstClimbId = getPlayConsoleId('first_climb');
+    if (firstClimbId) PlayGamesClient.unlockAchievement(firstClimbId);
+
+    // first_placement: fires if the player has ever placed any item on this heap
+    const heapId = data.heapId ?? '';
+    if (heapId) {
+      const placed = getPlaced(heapId);
+      if (placed.length > 0) {
+        const placementId = getPlayConsoleId('first_placement');
+        if (placementId) PlayGamesClient.unlockAchievement(placementId);
+      }
+    }
   }
 
   create(): void {

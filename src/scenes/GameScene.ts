@@ -4,6 +4,8 @@ import { CameraController } from '../systems/CameraController';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import type { Vertex } from '../systems/HeapPolygon';
 import { SCAN_STEP } from '../systems/HeapPolygon';
+import { PlayGamesClient } from '../systems/PlayGamesClient';
+import { getPlayConsoleId } from '../data/achievementDefs';
 import {
   applyPolygonToGenerator,
   polygonTopY,
@@ -76,6 +78,8 @@ export class GameScene extends Phaser.Scene {
   private _runStartTime: number | null = null;
   private _heapParams!: HeapParams;
   private _worldHeight: number = MOCK_HEAP_HEIGHT_PX;
+  private _reached100m:  boolean = false;
+  private _reached1000m: boolean = false;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -100,6 +104,8 @@ export class GameScene extends Phaser.Scene {
     this.infoOverlayParts = [];
     this._runKills     = {};
     this._runStartTime = null;
+    this._reached100m  = false;
+    this._reached1000m = false;
 
     // World: Y=0 is the summit (top), Y=worldHeight is the base (bottom)
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, this._worldHeight);
@@ -333,6 +339,19 @@ export class GameScene extends Phaser.Scene {
       );
     }
 
+    // Height achievements
+    const currentHeightPx = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
+    if (!this._reached100m && currentHeightPx >= 100_000) {
+      this._reached100m = true;
+      const id = getPlayConsoleId('reach_100m');
+      if (id) PlayGamesClient.unlockAchievement(id);
+    }
+    if (!this._reached1000m && currentHeightPx >= 1_000_000) {
+      this._reached1000m = true;
+      const id = getPlayConsoleId('reach_1000m');
+      if (id) PlayGamesClient.unlockAchievement(id);
+    }
+
     // Live score: pixels climbed from spawn
     const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
     if (score > 0 && this._runStartTime === null) {
@@ -512,6 +531,15 @@ export class GameScene extends Phaser.Scene {
     e.destroy();
 
     this._runKills[kind] = (this._runKills[kind] ?? 0) + 1;
+
+    // Stomp achievements
+    const totalKills = Object.values(this._runKills).reduce((sum, n) => sum + n, 0);
+    if (totalKills >= 10) {
+      const id = getPlayConsoleId('stomp_10');
+      if (id) PlayGamesClient.unlockAchievement(id);
+    }
+    const incrId = getPlayConsoleId('stomp_100_total');
+    if (incrId) PlayGamesClient.incrementAchievement(incrId, 1);
 
     this.player.refundAirJump();
     this.player.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
