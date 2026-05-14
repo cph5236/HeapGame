@@ -16,6 +16,8 @@ export interface PlacedItemSave {
   meta?: Record<string, number>;
 }
 
+export type { RawSave };
+
 interface RawSave {
   schemaVersion: number;
   balance:        number;
@@ -354,6 +356,72 @@ export function setLocalHighScore(heapId: string, score: number): void {
   const data = load();
   data.highScores[heapId] = score;
   persist(data);
+}
+
+// ── Cloud save merge ──────────────────────────────────────────────────────────
+
+export function mergeCloudSave(local: RawSave, cloud: RawSave): RawSave {
+  // Whichever has higher balance is treated as the "primary" for name/selection.
+  const primary   = local.balance >= cloud.balance ? local : cloud;
+  const secondary = local.balance >= cloud.balance ? cloud : local;
+
+  // Union upgrades: max level per key.
+  const upgrades: Record<string, number> = { ...secondary.upgrades };
+  for (const [k, v] of Object.entries(primary.upgrades)) {
+    upgrades[k] = Math.max(upgrades[k] ?? 0, v);
+  }
+
+  // Union inventory: max count per key.
+  const inventory: Record<string, number> = { ...secondary.inventory };
+  for (const [k, v] of Object.entries(primary.inventory)) {
+    inventory[k] = Math.max(inventory[k] ?? 0, v);
+  }
+
+  // Union placed items: per heap, deduplicate by item id (keep first occurrence).
+  const placed: Record<string, PlacedItemSave[]> = {};
+  const allHeapIds = new Set([
+    ...Object.keys(local.placed),
+    ...Object.keys(cloud.placed),
+  ]);
+  for (const heapId of allHeapIds) {
+    const seenIds = new Set<string>();
+    const merged: PlacedItemSave[] = [];
+    for (const item of [...(local.placed[heapId] ?? []), ...(cloud.placed[heapId] ?? [])]) {
+      if (!seenIds.has(item.id)) {
+        seenIds.add(item.id);
+        merged.push(item);
+      }
+    }
+    placed[heapId] = merged;
+  }
+
+  // Union high scores: max per heapId.
+  const highScores: Record<string, number> = { ...secondary.highScores };
+  for (const [k, v] of Object.entries(primary.highScores)) {
+    highScores[k] = Math.max(highScores[k] ?? 0, v);
+  }
+
+  return {
+    schemaVersion: CURRENT_SCHEMA,
+    balance:        Math.max(local.balance, cloud.balance),
+    upgrades,
+    inventory,
+    placed,
+    selectedHeapId: primary.selectedHeapId,
+    playerGuid:     local.playerGuid,    // always keep local GUID
+    playerName:     primary.playerName,
+    gpgsPlayerId:   local.gpgsPlayerId ?? cloud.gpgsPlayerId,
+    highScores,
+    verboseLogging: local.verboseLogging,
+  };
+}
+
+// ── Cloud save integration helpers ────────────────────────────────────────
+
+export function getRawSaveForCloudSync(): RawSave { return { ...load() }; }
+
+export function applyMergedSave(merged: RawSave): void {
+  persist(merged);
 }
 
 // ── Test helpers ──────────────────────────────────────────────────────────────

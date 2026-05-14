@@ -395,3 +395,97 @@ describe('verboseLogging', () => {
     expect(getVerboseLogging()).toBe(false);
   });
 });
+
+// ── Cloud save merging ────────────────────────────────────────────────────────
+
+import { mergeCloudSave } from '../SaveData';
+
+describe('mergeCloudSave', () => {
+  const base = () => ({
+    schemaVersion: 3,
+    balance:        100,
+    upgrades:       { air_jump: 1, dash: 0 },
+    inventory:      { ladder: 2 },
+    placed:         { 'heap-1': [{ id: 'ladder', x: 10, y: 20 }] },
+    selectedHeapId: 'heap-1',
+    playerGuid:     'local-guid',
+    playerName:     'LocalPlayer',
+    highScores:     { 'heap-1': 500 },
+  });
+
+  it('takes the higher balance', () => {
+    const local = { ...base(), balance: 200 };
+    const cloud = { ...base(), balance: 300 };
+    expect(mergeCloudSave(local, cloud).balance).toBe(300);
+  });
+
+  it('takes the higher balance from local if local wins', () => {
+    const local = { ...base(), balance: 400 };
+    const cloud = { ...base(), balance: 300 };
+    expect(mergeCloudSave(local, cloud).balance).toBe(400);
+  });
+
+  it('takes the max upgrade level per key', () => {
+    const local = { ...base(), upgrades: { air_jump: 2, dash: 1 } };
+    const cloud = { ...base(), upgrades: { air_jump: 1, wall_jump: 1 } };
+    const merged = mergeCloudSave(local, cloud);
+    expect(merged.upgrades).toEqual({ air_jump: 2, dash: 1, wall_jump: 1 });
+  });
+
+  it('takes the max inventory count per key', () => {
+    const local = { ...base(), inventory: { ladder: 3 } };
+    const cloud = { ...base(), inventory: { ladder: 1, checkpoint: 2 } };
+    const merged = mergeCloudSave(local, cloud);
+    expect(merged.inventory).toEqual({ ladder: 3, checkpoint: 2 });
+  });
+
+  it('unions placed items by heapId + item id', () => {
+    const item1 = { id: 'ladder',     x: 10, y: 20 };
+    const item2 = { id: 'checkpoint', x: 30, y: 40 };
+    const local = { ...base(), placed: { 'heap-1': [item1] } };
+    const cloud = { ...base(), placed: { 'heap-1': [item1, item2] } };
+    const merged = mergeCloudSave(local, cloud);
+    // item1 appears once (deduplicated), item2 appears once
+    expect(merged.placed['heap-1']).toHaveLength(2);
+    expect(merged.placed['heap-1'].map((i: { id: string }) => i.id)).toEqual(['ladder', 'checkpoint']);
+  });
+
+  it('unions placed items across all heapIds', () => {
+    const item1 = { id: 'ladder',     x: 10, y: 20 };
+    const item2 = { id: 'checkpoint', x: 30, y: 40 };
+    const local = { ...base(), placed: { 'heap-1': [item1] } };
+    const cloud = { ...base(), placed: { 'heap-2': [item2] } };
+    const merged = mergeCloudSave(local, cloud);
+    expect(merged.placed['heap-1']).toHaveLength(1);
+    expect(merged.placed['heap-2']).toHaveLength(1);
+  });
+
+  it('takes the higher high score per heapId', () => {
+    const local = { ...base(), highScores: { 'heap-1': 1000 } };
+    const cloud = { ...base(), highScores: { 'heap-1': 800, 'heap-2': 500 } };
+    const merged = mergeCloudSave(local, cloud);
+    expect(merged.highScores).toEqual({ 'heap-1': 1000, 'heap-2': 500 });
+  });
+
+  it('prefers the name/selectedHeapId from whichever has higher balance', () => {
+    const local = { ...base(), balance: 100, playerName: 'Local',  selectedHeapId: 'heap-1' };
+    const cloud = { ...base(), balance: 200, playerName: 'Cloud',  selectedHeapId: 'heap-2' };
+    const merged = mergeCloudSave(local, cloud);
+    expect(merged.playerName).toBe('Cloud');
+    expect(merged.selectedHeapId).toBe('heap-2');
+  });
+
+  it('prefers local name/selectedHeapId when balances are equal', () => {
+    const local = { ...base(), balance: 200, playerName: 'Local', selectedHeapId: 'heap-1' };
+    const cloud = { ...base(), balance: 200, playerName: 'Cloud', selectedHeapId: 'heap-2' };
+    const merged = mergeCloudSave(local, cloud);
+    expect(merged.playerName).toBe('Local');
+    expect(merged.selectedHeapId).toBe('heap-1');
+  });
+
+  it('preserves playerGuid from local', () => {
+    const local = { ...base(), playerGuid: 'local-guid' };
+    const cloud = { ...base(), playerGuid: 'cloud-guid' };
+    expect(mergeCloudSave(local, cloud).playerGuid).toBe('local-guid');
+  });
+});
