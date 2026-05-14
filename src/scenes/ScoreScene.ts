@@ -9,6 +9,7 @@ import {
   getPlayerGuid,
   getPlayerName,
   getPlaced,
+  getRawSaveForCloudSync,
 } from '../systems/SaveData';
 import { buildCoinBreakdown, BreakdownRow } from '../systems/coinBreakdown';
 import { buildRunScore, RunScoreRow } from '../systems/buildRunScore';
@@ -724,6 +725,11 @@ export class ScoreScene extends Phaser.Scene {
       if (this.isNewHighScore) {
         PlayGamesClient.submitScore(LEADERBOARD_HIGH_SCORE_ID, this.score);
       }
+
+      // Save snapshot to cloud after each run.
+      const cloudData = JSON.stringify(getRawSaveForCloudSync());
+      PlayGamesClient.saveSnapshot(cloudData);
+
       this.renderLeaderboardEntries(ctx, PANEL_TOP, PANEL_W, ROW_H);
     });
   }
