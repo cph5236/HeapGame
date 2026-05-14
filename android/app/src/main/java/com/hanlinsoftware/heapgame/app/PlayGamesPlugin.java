@@ -10,6 +10,7 @@ import com.google.android.gms.games.PlayGames;
 import com.google.android.gms.games.GamesSignInClient;
 import com.google.android.gms.games.Player;
 import com.google.android.gms.games.AchievementsClient;
+import com.google.android.gms.games.LeaderboardsClient;
 
 @CapacitorPlugin(name = "PlayGames")
 public class PlayGamesPlugin extends Plugin {
@@ -80,6 +81,20 @@ public class PlayGamesPlugin extends Plugin {
             return;
         }
         PlayGames.getAchievementsClient(getActivity()).increment(achievementId, steps);
+        call.resolve();
+    }
+
+    // ── Leaderboards ──────────────────────────────────────────────────────────
+
+    @PluginMethod
+    public void submitScore(PluginCall call) {
+        String leaderboardId = call.getString("leaderboardId");
+        Long score = call.getLong("score", 0L);
+        if (leaderboardId == null || leaderboardId.isEmpty()) {
+            call.reject("Missing leaderboardId");
+            return;
+        }
+        PlayGames.getLeaderboardsClient(getActivity()).submitScore(leaderboardId, score);
         call.resolve();
     }
 }
