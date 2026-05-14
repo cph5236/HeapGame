@@ -78,8 +78,9 @@ export class GameScene extends Phaser.Scene {
   private _runStartTime: number | null = null;
   private _heapParams!: HeapParams;
   private _worldHeight: number = MOCK_HEAP_HEIGHT_PX;
-  private _reached100m:  boolean = false;
-  private _reached1000m: boolean = false;
+  private _reached100m:   boolean = false;
+  private _reached1000m:  boolean = false;
+  private _reachedStomp10: boolean = false;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -104,8 +105,9 @@ export class GameScene extends Phaser.Scene {
     this.infoOverlayParts = [];
     this._runKills     = {};
     this._runStartTime = null;
-    this._reached100m  = false;
-    this._reached1000m = false;
+    this._reached100m    = false;
+    this._reached1000m   = false;
+    this._reachedStomp10 = false;
 
     // World: Y=0 is the summit (top), Y=worldHeight is the base (bottom)
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, this._worldHeight);
@@ -534,7 +536,8 @@ export class GameScene extends Phaser.Scene {
 
     // Stomp achievements
     const totalKills = Object.values(this._runKills).reduce((sum, n) => sum + n, 0);
-    if (totalKills >= 10) {
+    if (!this._reachedStomp10 && totalKills >= 10) {
+      this._reachedStomp10 = true;
       const id = getPlayConsoleId('stomp_10');
       if (id) PlayGamesClient.unlockAchievement(id);
     }
