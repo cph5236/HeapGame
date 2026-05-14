@@ -9,6 +9,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.google.android.gms.games.PlayGames;
 import com.google.android.gms.games.GamesSignInClient;
 import com.google.android.gms.games.Player;
+import com.google.android.gms.games.AchievementsClient;
 
 @CapacitorPlugin(name = "PlayGames")
 public class PlayGamesPlugin extends Plugin {
@@ -55,5 +56,30 @@ public class PlayGamesPlugin extends Plugin {
                     call.reject(msg);
                 }
             });
+    }
+
+    // ── Achievements ─────────────────────────────────────────────────────────
+
+    @PluginMethod
+    public void unlockAchievement(PluginCall call) {
+        String achievementId = call.getString("achievementId");
+        if (achievementId == null || achievementId.isEmpty()) {
+            call.reject("Missing achievementId");
+            return;
+        }
+        PlayGames.getAchievementsClient(getActivity()).unlock(achievementId);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void incrementAchievement(PluginCall call) {
+        String achievementId = call.getString("achievementId");
+        Integer steps = call.getInt("steps", 1);
+        if (achievementId == null || achievementId.isEmpty()) {
+            call.reject("Missing achievementId");
+            return;
+        }
+        PlayGames.getAchievementsClient(getActivity()).increment(achievementId, steps);
+        call.resolve();
     }
 }
