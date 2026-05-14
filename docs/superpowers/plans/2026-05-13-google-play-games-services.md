@@ -60,18 +60,19 @@ These tasks configure the Android project. They don't touch game logic. No unit 
   - Name: "High Score"
   - Ordering: Larger is better
   - Score format: Integer
-  - Save the ID (looks like `CgkI...AAE`). This goes in `achievementDefs.ts`.
+  - Save the ID ID: CgkIpJC3z5gSEAIQBw. This goes in `achievementDefs.ts`.
 
 - [ ] **Step 3: Create achievements**
 
   In Play Console → Play Games Services → Achievements → **Add achievement** for each:
   | Name | Description | Type |
   |---|---|---|
-  | First Climb | Complete your first run | Standard |
-  | Sky High | Reach 100 m in a single run | Standard |
-  | Cloud Surfer | Reach 1 000 m in a single run | Standard |
-  | Builder | Place your first item on the heap | Standard |
-  | Pest Control | Stomp 10 enemies in a single run | Standard |
+  | First Climb | Complete your first run | Standard | ID: CgkIpJC3z5gSEAIQAQ
+  | Sky High | Reach 100 m in a single run | Standard | ID: CgkIpJC3z5gSEAIQAg
+  | Cloud Surfer | Reach 1 000 m in a single run | Standard | ID: CgkIpJC3z5gSEAIQAw
+  | Builder | Place your first item on the heap | Standard | ID: CgkIpJC3z5gSEAIQBA
+  | Pest Control | Stomp 10 enemies in a single run | Standard | ID: CgkIpJC3z5gSEAIQBQ
+    | Heap Exterminator | Stomp 100 enemies total | Incremental 100 steps| ID: CgkIpJC3z5gSEAIQBg
 
   Save each achievement ID (also `CgkI...` format). These go in `achievementDefs.ts`.
 
