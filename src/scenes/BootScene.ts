@@ -6,9 +6,10 @@ import { generateAllTextures } from '../entities/TextureGenerators';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { MOCK_HEAP_HEIGHT_PX } from '../constants';
-import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced } from '../systems/SaveData';
+import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, setGpgsPlayerId } from '../systems/SaveData';
 import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
 import { initLogger } from '../logging';
+import { PlayGamesClient } from '../systems/PlayGamesClient';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -34,6 +35,11 @@ export class BootScene extends Phaser.Scene {
 
     // Initialize logger after SaveData is importable but before async catalog fetch.
     initLogger();
+
+    // Attempt GPGS sign-in in background — does not block menu render.
+    PlayGamesClient.signIn().then((player) => {
+      if (player) setGpgsPlayerId(player.playerId);
+    });
 
     // Dev scene shortcut — only active in Vite dev mode, dead code in production builds.
     if (import.meta.env.DEV && typeof window !== 'undefined') {
