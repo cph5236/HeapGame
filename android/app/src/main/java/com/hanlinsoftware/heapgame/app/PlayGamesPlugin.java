@@ -19,8 +19,11 @@ public class PlayGamesPlugin extends Plugin {
     public void signIn(PluginCall call) {
         GamesSignInClient signInClient = PlayGames.getGamesSignInClient(getActivity());
         signInClient.isAuthenticated().addOnCompleteListener(authTask -> {
-            boolean isAuthenticated = authTask.isSuccessful()
-                && authTask.getResult() != null
+            if (!authTask.isSuccessful()) {
+                call.reject("Failed to check authentication status");
+                return;
+            }
+            boolean isAuthenticated = authTask.getResult() != null
                 && authTask.getResult().isAuthenticated();
 
             if (isAuthenticated) {
@@ -47,7 +50,9 @@ public class PlayGamesPlugin extends Plugin {
                     result.put("displayName", player.getDisplayName());
                     call.resolve(result);
                 } else {
-                    call.reject("Failed to get player info");
+                    String msg = "Failed to get player info";
+                    if (playerTask.getException() != null) msg += ": " + playerTask.getException().getMessage();
+                    call.reject(msg);
                 }
             });
     }
