@@ -7,6 +7,7 @@ import {
   getLocalHighScore,
   setLocalHighScore,
   getPlayerGuid,
+  getGpgsPlayerId,
   getPlayerName,
   getPlaced,
   getRawSaveForCloudSync,
@@ -691,7 +692,7 @@ export class ScoreScene extends Phaser.Scene {
     });
 
     // Kick off server call
-    const playerId   = getPlayerGuid();
+    const playerId   = getGpgsPlayerId() ?? getPlayerGuid();
     const playerName = getPlayerName();
     const call       = this.isNewHighScore
       ? ScoreClient.submitScore({
