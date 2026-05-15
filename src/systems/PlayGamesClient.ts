@@ -5,6 +5,7 @@ interface PlayGamesPlugin {
   unlockAchievement(options: { achievementId: string }): Promise<void>;
   incrementAchievement(options: { achievementId: string; steps: number }): Promise<void>;
   submitScore(options: { leaderboardId: string; score: number }): Promise<void>;
+  showPlayerProfile(): Promise<void>;
   saveSnapshot(options: { data: string }): Promise<void>;
   loadSnapshot(): Promise<{ data: string | null }>;
 }
@@ -43,6 +44,13 @@ export const PlayGamesClient = {
     if (!isAndroid()) return;
     try {
       await _plugin.submitScore({ leaderboardId, score });
+    } catch { /* silent */ }
+  },
+
+  async showPlayerProfile(): Promise<void> {
+    if (!isAndroid()) return;
+    try {
+      await _plugin.showPlayerProfile();
     } catch { /* silent */ }
   },
 

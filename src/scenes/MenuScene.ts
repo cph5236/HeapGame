@@ -1,13 +1,14 @@
 import Phaser from 'phaser';
 
 
-import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance, getPlayerGuid, getVerboseLogging, setVerboseLogging } from '../systems/SaveData';
+import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { formatDifficulty } from '../ui/DifficultyStars';
 import { loadGameAssets } from './loadGameAssets';
 import { getLogger } from '../logging';
+import { PlayGamesClient } from '../systems/PlayGamesClient';
 
 export class MenuScene extends Phaser.Scene {
   private farSilhouette!: Phaser.GameObjects.Graphics;
@@ -284,12 +285,19 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private createPlayerName(): void {
-    const name = getPlayerName();
+    const name  = getPlayerName();
     const shift = this.layoutShift;
     const nameY = Math.max(710 - shift, Math.min(this.scale.height - 106, 778));
+
+    const isGpgs   = getGpgsPlayerId() !== null;
+    const label    = isGpgs ? `${name}  ▶ Play Games` : `${name}  [edit]`;
+    const onTap    = isGpgs
+      ? () => PlayGamesClient.showPlayerProfile()
+      : () => this.promptNameChange();
+
     this.playerNameText = this.add.text(
       this.scale.width / 2, nameY,
-      `${name}  [edit]`,
+      label,
       {
         fontSize:        '13px',
         fontFamily:      'monospace',
@@ -302,7 +310,7 @@ export class MenuScene extends Phaser.Scene {
 
     this.playerNameText.on('pointerover', () => this.playerNameText.setColor('#aabbcc'));
     this.playerNameText.on('pointerout',  () => this.playerNameText.setColor('#8899aa'));
-    this.playerNameText.on('pointerup',   () => this.promptNameChange());
+    this.playerNameText.on('pointerup',   onTap);
   }
 
   private promptNameChange(): void {

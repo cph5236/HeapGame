@@ -6,6 +6,8 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import android.content.Intent;
+
 import com.google.android.gms.games.PlayGames;
 import com.google.android.gms.games.GamesSignInClient;
 import com.google.android.gms.games.Player;
@@ -98,6 +100,19 @@ public class PlayGamesPlugin extends Plugin {
             return;
         }
         PlayGames.getLeaderboardsClient(getActivity()).submitScore(leaderboardId, score);
+        call.resolve();
+    }
+
+    // ── Profile ───────────────────────────────────────────────────────────────
+
+    @PluginMethod
+    public void showPlayerProfile(PluginCall call) {
+        Intent intent = getActivity().getPackageManager()
+            .getLaunchIntentForPackage("com.google.android.play.games");
+        if (intent != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getActivity().startActivity(intent);
+        }
         call.resolve();
     }
 
