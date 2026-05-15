@@ -4,7 +4,7 @@ Rough ideas captured for future sessions. Each section is a separate feature tra
 
 ---
 
-## R8 Obfuscation + Deobfuscation Mapping
+## R8 Obfuscation + Deobfuscation Mappings
 
 **The Play Console warning**
 - Warning: "no deobfuscation file associated with this App Bundle"
@@ -29,7 +29,7 @@ Rough ideas captured for future sessions. Each section is a separate feature tra
 
 ---
 
-## Google Play Games Services
+## Google Play Games Services - Complete
 
 **Identity**
 - Sign in with Google Play account → persistent player ID across devices
