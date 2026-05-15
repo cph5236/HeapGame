@@ -57,6 +57,7 @@ export class BootScene extends Phaser.Scene {
       const localSave = getRawSaveForCloudSync();
       const merged    = mergeCloudSave(localSave, cloudSave);
       applyMergedSave(merged);
+      setPlayerName(player.displayName); // GPGS name always wins after merge
     }).catch(() => { /* silent — cloud save merge is optional */ });
 
     // Dev scene shortcut — only active in Vite dev mode, dead code in production builds.
