@@ -42,6 +42,7 @@ export class BootScene extends Phaser.Scene {
       if (!player) return;
       setGpgsPlayerId(player.playerId);
       setPlayerName(player.displayName);
+      this.game.events.emit('gpgs:signed-in', player.displayName);
 
       // Load cloud snapshot and merge with local SaveData.
       const cloudJson = await PlayGamesClient.loadSnapshot();
@@ -58,6 +59,8 @@ export class BootScene extends Phaser.Scene {
       const merged    = mergeCloudSave(localSave, cloudSave);
       applyMergedSave(merged);
       setPlayerName(player.displayName); // GPGS name always wins after merge
+      this.game.events.emit('gpgs:signed-in', player.displayName);
+      this.game.events.emit('gpgs:save-merged');
     }).catch(() => { /* silent — cloud save merge is optional */ });
 
     // Dev scene shortcut — only active in Vite dev mode, dead code in production builds.

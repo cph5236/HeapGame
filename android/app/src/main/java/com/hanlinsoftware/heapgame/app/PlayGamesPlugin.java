@@ -7,6 +7,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import android.content.Intent;
+import android.util.Log;
 
 import com.google.android.gms.games.PlayGames;
 import com.google.android.gms.games.GamesSignInClient;
@@ -22,24 +23,37 @@ public class PlayGamesPlugin extends Plugin {
 
     // ── Sign-in ──────────────────────────────────────────────────────────────
 
+    private static final String TAG = "PlayGamesPlugin";
+
     @PluginMethod
     public void signIn(PluginCall call) {
+        Log.d(TAG, "signIn() called");
         GamesSignInClient signInClient = PlayGames.getGamesSignInClient(getActivity());
         signInClient.isAuthenticated().addOnCompleteListener(authTask -> {
             if (!authTask.isSuccessful()) {
+                String err = authTask.getException() != null ? authTask.getException().getMessage() : "unknown";
+                Log.e(TAG, "isAuthenticated() failed: " + err);
                 call.reject("Failed to check authentication status");
                 return;
             }
             boolean isAuthenticated = authTask.getResult() != null
                 && authTask.getResult().isAuthenticated();
+            Log.d(TAG, "isAuthenticated() result: " + isAuthenticated);
 
             if (isAuthenticated) {
                 fetchAndResolvePlayer(call);
             } else {
+                Log.d(TAG, "Not authenticated, calling signIn()");
                 signInClient.signIn().addOnCompleteListener(signInTask -> {
-                    if (signInTask.isSuccessful()) {
+                    boolean authenticated = signInTask.isSuccessful()
+                        && signInTask.getResult() != null
+                        && signInTask.getResult().isAuthenticated();
+                    if (authenticated) {
+                        Log.d(TAG, "signIn() succeeded and authenticated");
                         fetchAndResolvePlayer(call);
                     } else {
+                        String err = signInTask.getException() != null ? signInTask.getException().getMessage() : "not authenticated";
+                        Log.e(TAG, "signIn() failed or not authenticated: " + err);
                         call.reject("GPGS sign-in failed");
                     }
                 });
@@ -48,10 +62,12 @@ public class PlayGamesPlugin extends Plugin {
     }
 
     private void fetchAndResolvePlayer(PluginCall call) {
+        Log.d(TAG, "fetchAndResolvePlayer() called");
         PlayGames.getPlayersClient(getActivity()).getCurrentPlayer()
             .addOnCompleteListener(playerTask -> {
                 if (playerTask.isSuccessful() && playerTask.getResult() != null) {
                     Player player = playerTask.getResult();
+                    Log.d(TAG, "Got player: " + player.getDisplayName() + " id=" + player.getPlayerId());
                     JSObject result = new JSObject();
                     result.put("playerId", player.getPlayerId());
                     result.put("displayName", player.getDisplayName());
@@ -59,6 +75,7 @@ public class PlayGamesPlugin extends Plugin {
                 } else {
                     String msg = "Failed to get player info";
                     if (playerTask.getException() != null) msg += ": " + playerTask.getException().getMessage();
+                    Log.e(TAG, msg);
                     call.reject(msg);
                 }
             });
@@ -107,13 +124,27 @@ public class PlayGamesPlugin extends Plugin {
 
     @PluginMethod
     public void showPlayerProfile(PluginCall call) {
+        Log.d(TAG, "showPlayerProfile() called");
         Intent intent = getActivity().getPackageManager()
             .getLaunchIntentForPackage("com.google.android.play.games");
         if (intent != null) {
+            Log.d(TAG, "Launching Play Games app");
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getActivity().startActivity(intent);
+            call.resolve();
+        } else {
+            Log.d(TAG, "Play Games app not found, showing achievements overlay");
+            PlayGames.getAchievementsClient(getActivity())
+                .getAchievementsIntent()
+                .addOnSuccessListener(achievementsIntent -> {
+                    getActivity().startActivityForResult(achievementsIntent, 9001);
+                    call.resolve();
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Achievements overlay failed: " + e.getMessage());
+                    call.resolve();
+                });
         }
-        call.resolve();
     }
 
     // ── Cloud Saves (Snapshots) ────────────────────────────────────────────────

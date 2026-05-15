@@ -74,6 +74,16 @@ export class MenuScene extends Phaser.Scene {
     this.createFloatingClouds();
     this.createBalanceText();
     this.createPlayerName();
+    this.game.events.once('gpgs:signed-in', (displayName: string) => {
+      if (!this.playerNameText?.active) return;
+      this.playerNameText.setText(`${displayName}  ▶ Play Games`);
+      this.playerNameText.off('pointerup');
+      this.playerNameText.on('pointerup', () => PlayGamesClient.showPlayerProfile());
+    }, this);
+    this.game.events.once('gpgs:save-merged', () => {
+      if (!this.balanceText?.active) return;
+      this.balanceText.setText(`${getBalance()} coins`);
+    }, this);
     this.createPrompts(im);
     this.createHeapPicker();
     this.createSettingsButton();
