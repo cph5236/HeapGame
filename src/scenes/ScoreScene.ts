@@ -7,7 +7,10 @@ import {
   getLocalHighScore,
   setLocalHighScore,
   getPlayerGuid,
+  getGpgsPlayerId,
   getPlayerName,
+  getPlaced,
+  getRawSaveForCloudSync,
 } from '../systems/SaveData';
 import { buildCoinBreakdown, BreakdownRow } from '../systems/coinBreakdown';
 import { buildRunScore, RunScoreRow } from '../systems/buildRunScore';
@@ -19,6 +22,8 @@ import type { LeaderboardContext } from '../../shared/scoreTypes';
 import type { HeapParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { getLogger } from '../logging';
+import { PlayGamesClient } from '../systems/PlayGamesClient';
+import { getPlayConsoleId, LEADERBOARD_HIGH_SCORE_ID } from '../data/achievementDefs';
 
 
 export class ScoreScene extends Phaser.Scene {
@@ -74,6 +79,20 @@ export class ScoreScene extends Phaser.Scene {
     this._mockLeaderboard    = data.mockLeaderboard     ?? null;
     this._forceBreakdownOpen = data.forceBreakdownOpen  ?? false;
     this._mockPlayerConfig   = data.mockPlayerConfig    ?? {};
+
+    // Achievements that trigger on any completed run (fire-and-forget)
+    const firstClimbId = getPlayConsoleId('first_climb');
+    if (firstClimbId) PlayGamesClient.unlockAchievement(firstClimbId);
+
+    // first_placement: fires if the player has ever placed any item on this heap
+    const heapId = data.heapId ?? '';
+    if (heapId) {
+      const placed = getPlaced(heapId);
+      if (placed.length > 0) {
+        const placementId = getPlayConsoleId('first_placement');
+        if (placementId) PlayGamesClient.unlockAchievement(placementId);
+      }
+    }
   }
 
   create(): void {
@@ -673,7 +692,7 @@ export class ScoreScene extends Phaser.Scene {
     });
 
     // Kick off server call
-    const playerId   = getPlayerGuid();
+    const playerId   = getGpgsPlayerId() ?? getPlayerGuid();
     const playerName = getPlayerName();
     const call       = this.isNewHighScore
       ? ScoreClient.submitScore({
@@ -705,8 +724,13 @@ export class ScoreScene extends Phaser.Scene {
       if (!ctx) return; // offline — silently show nothing
 
       if (this.isNewHighScore) {
-        // High-score specific logic
+        PlayGamesClient.submitScore(LEADERBOARD_HIGH_SCORE_ID, this.score);
       }
+
+      // Save snapshot to cloud after each run.
+      const cloudData = JSON.stringify(getRawSaveForCloudSync());
+      PlayGamesClient.saveSnapshot(cloudData);
+
       this.renderLeaderboardEntries(ctx, PANEL_TOP, PANEL_W, ROW_H);
     });
   }

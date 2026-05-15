@@ -132,6 +132,70 @@ Swap `WHERE blob1 = 'event'` for `'warn'` or `'error'` to filter by level.
 
 ---
 
+## GOOGLE PLAY GAMES SERVICES (GPGS)
+
+Sign-in, achievements, leaderboard, and cloud saves on Android. Three external services are involved — all tied to the same Google account.
+
+---
+
+### Google Play Console
+**URL:** https://play.google.com/console → Heap app → **Grow → Play Games Services**
+
+This is where the game's Play Games project lives. What was configured here:
+
+| Thing | Where in console | Notes |
+|---|---|---|
+| Play Games project | Setup and management → Configuration | App ID: `625084319780` — goes in `android/app/src/main/res/values/games_ids.xml` |
+| Android OAuth credential | Configuration → Credentials | Linked the app package + SHA-1 fingerprint so GPGS accepts sign-in |
+| Achievements (6) | Achievements | IDs in `src/data/achievementDefs.ts` |
+| Leaderboard | Leaderboards | "High Score" — ID in `src/data/achievementDefs.ts` as `LEADERBOARD_HIGH_SCORE_ID` |
+
+**Important:** GPGS silent sign-in (no dialog) only works when the app is installed via the **Play Store Internal Testing track**, not sideloaded via ADB. If you see sign-in fail with error code 4 (`SIGN_IN_REQUIRED`), that's why.
+
+To add testers: Play Console → Internal Testing → Testers → add Google account emails.
+
+---
+
+### Google Cloud Console
+**URL:** https://console.cloud.google.com → project `heap-76e62`
+
+This is the underlying Google Cloud project that Play Games Services and Firebase both share. What was configured here:
+
+- **OAuth 2.0 client** — created automatically when you added the Android credential in Play Console. It authorises the app to use Google sign-in. You can see it under APIs & Services → Credentials.
+- **APIs enabled** — Google Play Games Services API is enabled here. If sign-in mysteriously breaks, check that the API is still enabled.
+
+You don't normally need to touch this directly — Play Console and Firebase both surface the parts that matter. But if you need to rotate the OAuth client or check what's enabled, this is where to go.
+
+---
+
+### Firebase Console
+**URL:** https://console.firebase.google.com → project `heap-76e62`
+
+Firebase is linked to the same Google Cloud project. It's used here **only** as the delivery mechanism for `google-services.json` — the config file the Android build needs to connect to Google services (including GPGS).
+
+**`google-services.json` is gitignored** (`android/app/.gitignore`). If you set up a new dev machine or CI environment:
+
+1. Go to Firebase Console → Project Settings → Your apps → `com.hanlinsoftware.heapgame.app`
+2. Download `google-services.json`
+3. Place it at `android/app/google-services.json`
+
+Without this file, the Android build will compile but Google services (including GPGS sign-in) won't work at runtime.
+
+---
+
+### What lives where in the codebase
+
+| File | Purpose |
+|---|---|
+| `android/app/src/main/res/values/games_ids.xml` | Play Games App ID (numeric, from Play Console) |
+| `android/app/src/main/AndroidManifest.xml` | `<meta-data>` tag wiring the App ID into the Android app |
+| `android/app/src/main/java/.../PlayGamesPlugin.java` | Capacitor in-app plugin — all GPGS SDK calls (sign-in, achievements, leaderboard, snapshots) |
+| `src/systems/PlayGamesClient.ts` | TypeScript wrapper — Android-only guards, silent error handling, the only GPGS import used by game code |
+| `src/data/achievementDefs.ts` | Achievement + leaderboard IDs from Play Console |
+| `android/app/google-services.json` | **Gitignored** — download from Firebase Console per machine |
+
+---
+
 ## THE Brain PLUGIN
 https://github.com/Advenire-Consulting/thebrain
 
