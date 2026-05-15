@@ -27,7 +27,6 @@ public class PlayGamesPlugin extends Plugin {
 
     @PluginMethod
     public void signIn(PluginCall call) {
-        Log.d(TAG, "signIn() called");
         GamesSignInClient signInClient = PlayGames.getGamesSignInClient(getActivity());
         signInClient.isAuthenticated().addOnCompleteListener(authTask -> {
             if (!authTask.isSuccessful()) {
@@ -38,18 +37,15 @@ public class PlayGamesPlugin extends Plugin {
             }
             boolean isAuthenticated = authTask.getResult() != null
                 && authTask.getResult().isAuthenticated();
-            Log.d(TAG, "isAuthenticated() result: " + isAuthenticated);
 
             if (isAuthenticated) {
                 fetchAndResolvePlayer(call);
             } else {
-                Log.d(TAG, "Not authenticated, calling signIn()");
                 signInClient.signIn().addOnCompleteListener(signInTask -> {
                     boolean authenticated = signInTask.isSuccessful()
                         && signInTask.getResult() != null
                         && signInTask.getResult().isAuthenticated();
                     if (authenticated) {
-                        Log.d(TAG, "signIn() succeeded and authenticated");
                         fetchAndResolvePlayer(call);
                     } else {
                         String err = signInTask.getException() != null ? signInTask.getException().getMessage() : "not authenticated";
@@ -62,12 +58,10 @@ public class PlayGamesPlugin extends Plugin {
     }
 
     private void fetchAndResolvePlayer(PluginCall call) {
-        Log.d(TAG, "fetchAndResolvePlayer() called");
         PlayGames.getPlayersClient(getActivity()).getCurrentPlayer()
             .addOnCompleteListener(playerTask -> {
                 if (playerTask.isSuccessful() && playerTask.getResult() != null) {
                     Player player = playerTask.getResult();
-                    Log.d(TAG, "Got player: " + player.getDisplayName() + " id=" + player.getPlayerId());
                     JSObject result = new JSObject();
                     result.put("playerId", player.getPlayerId());
                     result.put("displayName", player.getDisplayName());
@@ -124,16 +118,13 @@ public class PlayGamesPlugin extends Plugin {
 
     @PluginMethod
     public void showPlayerProfile(PluginCall call) {
-        Log.d(TAG, "showPlayerProfile() called");
         Intent intent = getActivity().getPackageManager()
             .getLaunchIntentForPackage("com.google.android.play.games");
         if (intent != null) {
-            Log.d(TAG, "Launching Play Games app");
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getActivity().startActivity(intent);
             call.resolve();
         } else {
-            Log.d(TAG, "Play Games app not found, showing achievements overlay");
             PlayGames.getAchievementsClient(getActivity())
                 .getAchievementsIntent()
                 .addOnSuccessListener(achievementsIntent -> {
