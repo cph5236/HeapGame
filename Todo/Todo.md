@@ -10,6 +10,7 @@ Call the Integrity API at important moments in your app to check that it's your 
 - The claw elevator.
 - Extra sky space wider world space.
 - allow player to place specific objects on heap 
+- make cloudflare analytics engine delete data over 90 days
 
 ### ENEMIES
 -   Jumper cables - spawn on walls and extend in and out slightly, if player touches them, player stunned loses controls
