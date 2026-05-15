@@ -6,7 +6,7 @@ import { generateAllTextures } from '../entities/TextureGenerators';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { MOCK_HEAP_HEIGHT_PX } from '../constants';
-import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, setGpgsPlayerId, getRawSaveForCloudSync, applyMergedSave, mergeCloudSave } from '../systems/SaveData';
+import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, setGpgsPlayerId, setPlayerName, getRawSaveForCloudSync, applyMergedSave, mergeCloudSave } from '../systems/SaveData';
 import type { RawSave } from '../systems/SaveData';
 import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
 import { initLogger } from '../logging';
@@ -41,6 +41,7 @@ export class BootScene extends Phaser.Scene {
     PlayGamesClient.signIn().then(async (player) => {
       if (!player) return;
       setGpgsPlayerId(player.playerId);
+      setPlayerName(player.displayName);
 
       // Load cloud snapshot and merge with local SaveData.
       const cloudJson = await PlayGamesClient.loadSnapshot();
