@@ -35,3 +35,10 @@ Sound effects
 Google Play closed beta
 itch.io upload
 Ad integration
+
+### CI / DevOps
+- Upgrade GitHub Actions to Node.js 24-native versions (forced migration June 2, 2026)
+  - actions/checkout@v4 → latest v4 or v5 with Node.js 24 support
+  - actions/setup-node@v4 → latest with Node.js 24 support
+  - actions/setup-java@v4 → latest with Node.js 24 support
+  - FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true already added as stopgap
