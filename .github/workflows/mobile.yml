@@ -35,23 +35,19 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug
 
-      # ---- Push / workflow_dispatch path: signed AAB for Play Console ----
+      # ---- Push / workflow_dispatch path: publish signed AAB to Play Console ----
       - name: Decode keystore
         if: github.event_name != 'pull_request'
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
 
-      - name: Build AAB
+      - name: Publish to Play Console (internal track)
         if: github.event_name != 'pull_request'
         working-directory: android
+        env:
+          ANDROID_PUBLISHER_CREDENTIALS: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
-          ./gradlew bundleRelease \
+          ./gradlew publishReleaseBundle \
             -Pandroid.injected.signing.store.file=${{ github.workspace }}/android/app/release.keystore \
             -Pandroid.injected.signing.store.password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.ANDROID_KEY_ALIAS }} \
             -Pandroid.injected.signing.key.password=${{ secrets.ANDROID_KEY_PASSWORD }}
-
-      - uses: actions/upload-artifact@v4
-        if: github.event_name != 'pull_request'
-        with:
-          name: android-aab
-          path: android/app/build/outputs/bundle/release/app-release.aab
