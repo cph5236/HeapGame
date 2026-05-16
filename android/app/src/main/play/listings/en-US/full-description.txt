@@ -1,0 +1,11 @@
+Heap is a mobile-first 2D vertical climbing platformer where every run is shaped by the community.
+
+Climb a towering heap of trash, placed piece by piece by players like you. Every item you place becomes part of the permanent landscape — bridges, ladders, checkpoints — making the climb easier (or harder) for everyone who comes after.
+
+Features:
+• Vertical climbing platformer with tight, responsive controls
+• Community-built levels — the heap grows with every player
+• Place items to help future climbers
+• Enemies, upgrades, and score multipliers
+• Google Play Games integration — achievements and leaderboards
+• Cloud saves — pick up where you left off on any device
