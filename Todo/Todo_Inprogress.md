@@ -133,3 +133,10 @@ Rough ideas captured for future sessions. Each section is a separate feature tra
 - Frequency cap: every 3 runs or so (AdMob supports this natively in the console, no code needed)
 - Rewarded video (e.g. double coins) is opt-in — most game-friendly format
 - Banner ads: skip entirely, poor fit for a fullscreen game
+
+**Families Policy / child-directed treatment (AdMob)**
+- App targets a general audience that includes children — Google Play Families Policy applies
+- When initializing AdMob, set `tagForChildDirectedTreatment(true)` on the `RequestConfiguration` before loading any ads
+- This flags all ad requests as COPPA-compliant, restricting targeting to child-appropriate ads regardless of who is playing
+- AdMob is a Google Play certified ad network so it satisfies the Families Policy requirement on its own
+- For GameDistribution / CrazyGames: check their child-directed / COPPA flag equivalents when integrating their SDKs — each has one

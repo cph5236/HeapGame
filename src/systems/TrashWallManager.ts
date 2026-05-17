@@ -1,7 +1,7 @@
 // src/systems/TrashWallManager.ts
 import type { TrashWallDef } from '../data/trashWallDef';
 import { OBJECT_DEF_LIST } from '../data/heapObjectDefs';
-import { WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX } from '../constants';
+import { WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX, SKY_PAD } from '../constants';
 import Phaser from 'phaser';
 
 // ── Pure math — exported for unit testing ─────────────────────────────────────
@@ -75,6 +75,7 @@ export class TrashWallManager {
     private readonly onKill:     () => void,
     private readonly worldWidth: number = WORLD_WIDTH,
     private readonly worldHeight: number = MOCK_HEAP_HEIGHT_PX,
+    private readonly worldX: number = -SKY_PAD * WORLD_WIDTH,
   ) {
     this.body = scene.add.graphics();
     this.body.setDepth(5);
@@ -143,7 +144,7 @@ export class TrashWallManager {
     for (let i = 0; i < count; i++) {
       const key = this.spriteKeys[Math.floor(Math.random() * this.spriteKeys.length)];
       const img = this.scene.add.image(
-        slotW * i + slotW / 2 + (Math.random() - 0.5) * slotW * 0.5,
+        this.worldX + slotW * i + slotW / 2 + (Math.random() - 0.5) * slotW * 0.5,
         this.wallY,
         key,
       ) as OscImage;
@@ -168,7 +169,7 @@ export class TrashWallManager {
     // Body: solid dark-brown fill from wallY downward — covers items (depth 2) below the surface
     this.body.clear();
     this.body.fillStyle(0x3B1F0A, 1);
-    this.body.fillRect(0, this.wallY, this.worldWidth, this.worldHeight - this.wallY);
+    this.body.fillRect(this.worldX, this.wallY, this.worldWidth, this.worldHeight - this.wallY);
 
     for (const img of this.trashSprites) {
       // Advance phase; swap texture at the start of each new cycle
@@ -198,7 +199,7 @@ export class TrashWallManager {
       const t     = (steps - i) / steps; // 1 at bottom (wallY), ~0 at top
       const alpha = t * t * t;            // cubic — fully opaque at surface, rapid falloff above
       this.gradientOverlay.fillStyle(0x3B1F0A, alpha); 
-      this.gradientOverlay.fillRect(0, this.wallY - (i + 1) * stepH, this.worldWidth, stepH + 1);
+      this.gradientOverlay.fillRect(this.worldX, this.wallY - (i + 1) * stepH, this.worldWidth, stepH + 1);
     }
   }
 }

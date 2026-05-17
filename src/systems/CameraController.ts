@@ -6,8 +6,9 @@ export class CameraController {
     target: Phaser.GameObjects.Sprite,
     worldWidth: number,
     worldHeight: number,
+    worldX = 0,
   ): void {
-    scene.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
+    scene.cameras.main.setBounds(worldX, 0, worldWidth, worldHeight);
     scene.cameras.main.startFollow(target, true, 1, 0.1);
     scene.cameras.main.centerOn(target.x, target.y);
   }

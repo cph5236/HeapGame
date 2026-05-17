@@ -162,5 +162,6 @@ Wrangler tracks applied migrations in a `d1_migrations` table — each file is o
 - Server code lives in `server/`; game client in `src/`; shared types in `shared/`
 - Tests live alongside server code in `server/tests/`
 - `npm run dev` starts Vite on port 3000; `npm run test` runs Vitest
+- **Always run `npm run build` in addition to `npm test` before claiming work is complete** — the build catches TypeScript errors that tests do not
 - Local D1 is managed by Wrangler; seed with `npx ts-node scripts/seed-heap.ts`
 - Do not commit `.wrangler/state/` — it contains local DB state

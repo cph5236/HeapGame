@@ -5,6 +5,8 @@ import {
   PLAYER_WIDTH,
   PLAYER_HEIGHT,
   WORLD_WIDTH,
+  SKY_PAD,
+  SKY_INSET,
   MOCK_HEAP_HEIGHT_PX,
   PLAYER_DASH_VELOCITY,
   PLAYER_AIR_MAX_SPEED,
@@ -52,6 +54,8 @@ export class Player {
   public inSlopeZone = false;
   /** Direction to eject when inSlopeZone: -1 = left (off left wall), 1 = right (off right wall). */
   public slopeEjectDir: number = 0;
+  /** Set to -1 (wrapped left→right) or 1 (wrapped right→left) for one frame after a wrap. */
+  public wrapDir: number = 0;
 
   /** Override in scenes that use a wider world (e.g. InfiniteGameScene). */
   public worldWidth: number = WORLD_WIDTH;
@@ -120,8 +124,10 @@ export class Player {
         this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
         this.coyoteTimer        = 120;
         // Still allow X-wrap so player doesn't get stuck at world edge on ladder
-        if (this.sprite.x < 0)                  this.sprite.x = this.worldWidth;
-        else if (this.sprite.x > this.worldWidth) this.sprite.x = 0;
+        if (this.sprite.x < -SKY_PAD * this.worldWidth)
+          this.sprite.x = (1 - SKY_INSET) * this.worldWidth;
+        else if (this.sprite.x > (1 + SKY_PAD) * this.worldWidth)
+          this.sprite.x = SKY_INSET * this.worldWidth;
         return; // skip all normal physics this frame
       }
     }
@@ -278,11 +284,14 @@ export class Player {
       }
     }
 
-    // X wrap — seamless edge-to-edge teleport
-    if (this.sprite.x < 0) {
-      this.sprite.x = this.worldWidth;
-    } else if (this.sprite.x > this.worldWidth) {
-      this.sprite.x = 0;
+    // X wrap — extended sky pad on each side, lands inset from the far edge
+    this.wrapDir = 0;
+    if (this.sprite.x < -SKY_PAD * this.worldWidth) {
+      this.sprite.x = (1 - SKY_INSET) * this.worldWidth;
+      this.wrapDir = -1; // wrapped left→right, player exits right edge of camera
+    } else if (this.sprite.x > (1 + SKY_PAD) * this.worldWidth) {
+      this.sprite.x = SKY_INSET * this.worldWidth;
+      this.wrapDir = 1;  // wrapped right→left, player exits left edge of camera
     }
 
     // Reset per-frame flags set by the wall-group collision callback (physics runs before update)

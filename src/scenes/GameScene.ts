@@ -16,6 +16,7 @@ import { InputManager } from '../systems/InputManager';
 import { getLogger } from '../logging';
 import {
   WORLD_WIDTH,
+  SKY_PAD,
   MOCK_HEAP_HEIGHT_PX,
   GEN_LOOKAHEAD,
   HEAP_TOP_ZONE_PX,
@@ -110,7 +111,7 @@ export class GameScene extends Phaser.Scene {
     this._reachedStomp10 = false;
 
     // World: Y=0 is the summit (top), Y=worldHeight is the base (bottom)
-    this.physics.world.setBounds(0, 0, WORLD_WIDTH, this._worldHeight);
+    this.physics.world.setBounds(-SKY_PAD * WORLD_WIDTH, 0, WORLD_WIDTH * (1 + 2 * SKY_PAD), this._worldHeight);
 
     this.heapWalkableGroup = this.physics.add.staticGroup();
     this.heapWallGroup     = this.physics.add.staticGroup();
@@ -211,7 +212,7 @@ export class GameScene extends Phaser.Scene {
         });
         this.scene.pause();
       });
-    }, WORLD_WIDTH, this._worldHeight);
+    }, WORLD_WIDTH * (1 + 2 * SKY_PAD), this._worldHeight);
     this.trashWallManager.spawn(this.player.sprite.y);
 
     // Stream an initial chunk synchronously so collision is ready before the first frame
@@ -243,7 +244,7 @@ export class GameScene extends Phaser.Scene {
 
     // Snap camera to player immediately so the first-frame cull threshold
     // is correct (otherwise camBottom ≈ 0 and all bottom-world chunks get culled).
-    CameraController.setup(this, this.player.sprite, WORLD_WIDTH, this._worldHeight);
+    CameraController.setup(this, this.player.sprite, WORLD_WIDTH * (1 + 2 * SKY_PAD), this._worldHeight, -SKY_PAD * WORLD_WIDTH);
 
     // Background layers (sky colour set in main.ts; this adds ground dirt + parallax clouds)
     this.parallaxBg = new ParallaxBackground(this, this._worldHeight);
@@ -311,6 +312,24 @@ export class GameScene extends Phaser.Scene {
 
     this.player.update(delta);
     this.snapPlayerToSurface();
+
+    // After a wrap, snap the camera so the player appears at the edge they came out of,
+    // then tween the follow offset back to zero so the camera re-centers naturally.
+    if (this.player.wrapDir !== 0) {
+      const halfW = this.cameras.main.width / 2;
+      // wrapDir -1 = came out right edge, offset pulls camera left so player is at right
+      // wrapDir  1 = came out left edge,  offset pulls camera right so player is at left
+      const startOffset = -this.player.wrapDir * halfW;
+      this.cameras.main.setFollowOffset(startOffset, 0);
+      this.tweens.killTweensOf(this.cameras.main);
+      this.tweens.addCounter({
+        from: startOffset, to: 0, duration: 2000, ease: 'Cubic.Out',
+        onUpdate: (tween) => {
+          this.cameras.main.setFollowOffset(tween.getValue() ?? 0, 0);
+        },
+      });
+    }
+
     this.parallaxBg.update();
     this.hud.update();
     this.placeableManager.update();
