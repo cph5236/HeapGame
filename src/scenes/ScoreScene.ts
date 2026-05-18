@@ -651,12 +651,13 @@ export class ScoreScene extends Phaser.Scene {
     return PANEL_TOP + panelHeight(collapsed) + 40; // +20 matches the slide-down intro tween
   }
 
-  private rowLabel(type: 'money_mult' | 'heap_coin_mult' | 'peak_hunter' | 'death_penalty'): string {
+  private rowLabel(type: 'money_mult' | 'heap_coin_mult' | 'peak_hunter' | 'death_penalty' | 'off_peak_bonus'): string {
     const labels: Record<string, string> = {
       money_mult:     'Coin Multiplier',
       heap_coin_mult: 'Heap Coin Bonus',
       peak_hunter:    'Peak Bonus \u2736',
       death_penalty:  'Death Penalty \ud83d\udc80',
+      off_peak_bonus: 'Off-Peak Bonus',
     };
     return labels[type] ?? type;
   }
