@@ -115,6 +115,33 @@ rows.push({ type: 'off_peak_bonus', multiplier: offPeakBonus, runningTotal: runn
 
 ---
 
+## Database Migration
+
+No migration file needed. `ghostPointCount` is stored inside the existing `params` JSON column on the `heap` table — adding a new field to `HeapParams` and `DEFAULT_HEAP_PARAMS` is sufficient. Existing heap rows that predate this change will lack the key in their stored JSON; the server's `{ ...DEFAULT_HEAP_PARAMS, ...storedParams }` merge pattern already fills in missing fields with defaults, so those heaps automatically behave as `ghostPointCount: 1` without any data backfill.
+
+---
+
+## Admin UI (`admin/index.html`)
+
+Two forms need a `ghostPointCount` input:
+
+### Edit Params form (`ep-*` IDs)
+Add after the `scoreMult` row, before the locked `worldHeight` row:
+```html
+<div><label>ghostPointCount</label><input type="number" step="1" min="0" id="ep-ghostPointCount" /></div>
+```
+Populate it in `openEditPanel`: `$('ep-ghostPointCount').value = heap.params.ghostPointCount ?? 1;`
+Read it in the save handler alongside the other params.
+
+### Create Heap form (`cp-*` IDs)
+Add after the `scoreMult` row:
+```html
+<div><label>ghostPointCount</label><input type="number" step="1" min="0" id="cp-ghostPointCount" value="1" /></div>
+```
+Read it in the create handler alongside the other params.
+
+---
+
 ## Tests
 
 - **`server/tests/routes.test.ts`**: assert ghost points appear in the returned heap after a placement; assert `bonusCoins` present when `y > top_y + 100`, absent otherwise; assert `ghostPointCount` param is respected (0 = no ghosts)
