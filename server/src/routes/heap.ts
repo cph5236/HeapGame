@@ -41,6 +41,7 @@ const HEAP_TOP_ZONE_PX = 300;
 
 const OFF_PEAK_THRESHOLD_PX = 100; // px below top_y that earns off-peak bonus
 const OFF_PEAK_BONUS_COINS  = 10;  // flat coins awarded for off-peak placement
+const GHOST_JITTER_RADIUS_PX = 80;  // max px offset from anchor when placing ghost points
 
 function validateDifficulty(d: number): string | null {
   if (!Number.isFinite(d)) return 'difficulty must be a finite number';
@@ -400,11 +401,15 @@ export function heapRoutes(
       liveZone.splice(insertIdx, 0, newVertex);
     }
 
-    // Ghost points: spread heap shape without player input
+    // Ghost points: jitter near a random existing live zone vertex to keep heap shape organic
     const ghostCount = Math.max(0, Math.floor(row.ghost_point_count ?? 1));
     for (let i = 0; i < ghostCount; i++) {
-      const gx = PLACE_X_MIN + Math.random() * (PLACE_X_MAX - PLACE_X_MIN);
-      const gy = row.top_y + Math.random() * (liveZoneBottomY - row.top_y);
+      const anchorIdx = Math.floor(Math.random() * liveZone.length);
+      const anchor = liveZone[anchorIdx];
+      const dx = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
+      const dy = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
+      const gx = Math.max(PLACE_X_MIN, Math.min(PLACE_X_MAX, anchor.x + dx));
+      const gy = Math.max(row.top_y, Math.min(liveZoneBottomY, anchor.y + dy));
       const gv: Vertex = { x: gx, y: gy };
       const gIdx = liveZone.findIndex((v) => v.y > gy);
       if (gIdx === -1) liveZone.push(gv); else liveZone.splice(gIdx, 0, gv);

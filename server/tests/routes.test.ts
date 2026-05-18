@@ -433,6 +433,41 @@ describe('POST /heaps/:id/place', () => {
     expect(body.accepted).toBe(true);
     expect(body.bonusCoins).toBeUndefined();
   });
+
+  it('ghost points land within GHOST_JITTER_RADIUS_PX of an existing live zone vertex', async () => {
+    // Seed a heap with one existing vertex far from the placement point
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 1, [{ x: 600, y: 300 }], 'base-1', 0, {
+      ...DEFAULT_HEAP_PARAMS,
+      ghostPointCount: 1,
+    });
+    db.seedBase('base-1', 'h1', []);
+
+    const app = createApp(db, new MockScoreDB());
+    await app.request('/heaps/h1/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 400, y: 150 }),
+    });
+
+    const heapRes = await app.request('/heaps/h1?version=0');
+    const heap = await heapRes.json() as Extract<GetHeapResponse, { changed: true }>;
+    // 1 existing + 1 player + 1 ghost = 3
+    expect(heap.liveZone).toHaveLength(3);
+
+    const RADIUS = 80; // must match GHOST_JITTER_RADIUS_PX in heap.ts
+    // Possible anchors at the time ghost was inserted: existing (600,300) and player (400,150)
+    const anchors = [{ x: 600, y: 300 }, { x: 400, y: 150 }];
+    const ghostPoints = heap.liveZone.filter(
+      v => !(v.x === 400 && v.y === 150) && !(v.x === 600 && v.y === 300),
+    );
+    expect(ghostPoints).toHaveLength(1);
+    const ghost = ghostPoints[0];
+    const nearAnyAnchor = anchors.some(
+      a => Math.abs(ghost.x - a.x) <= RADIUS && Math.abs(ghost.y - a.y) <= RADIUS,
+    );
+    expect(nearAnyAnchor).toBe(true);
+  });
 });
 
 // ── DELETE /heaps/:id ────────────────────────────────────────────────────────
