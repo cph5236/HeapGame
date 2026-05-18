@@ -342,7 +342,7 @@
         spawnRateMult: Number($('ep-spawnRateMult').value),
         coinMult:      Number($('ep-coinMult').value),
         scoreMult:     Number($('ep-scoreMult').value),
-        ghostPointCount: parseInt($('ep-ghostPointCount').value, 10) || 1,
+        ghostPointCount: (v => isNaN(v) ? 1 : v)(parseInt($('ep-ghostPointCount').value, 10)),
       };
       try {
         const res = await adminFetch(`/heaps/${editingHeapId}/params`, {
@@ -377,7 +377,7 @@
         spawnRateMult: Number($('cp-spawnRateMult').value),
         coinMult:      Number($('cp-coinMult').value),
         scoreMult:     Number($('cp-scoreMult').value),
-        ghostPointCount: parseInt($('cp-ghostPointCount').value, 10) || 1,
+        ghostPointCount: (v => isNaN(v) ? 1 : v)(parseInt($('cp-ghostPointCount').value, 10)),
         worldHeight:   Number($('cp-worldHeight').value),
       };
       const seedRaw = $('cp-seed').value;
