@@ -237,7 +237,7 @@ describe('HeapClient.append', () => {
     const heapId = 'heap-guid-007';
     vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('offline')));
 
-    await expect(HeapClient.append(heapId, 100, 200)).resolves.toBeUndefined();
+    await expect(HeapClient.append(heapId, 100, 200)).resolves.toBeNull();
   });
 });
 

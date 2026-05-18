@@ -2,6 +2,7 @@ import type {
   GetHeapResponse,
   HeapEnemyParams,
   ListHeapsResponse,
+  PlaceResponse,
   Vertex,
 } from '../../shared/heapTypes';
 import { reconstructPolygonFromPoints } from './HeapPolygonLoader';
@@ -154,21 +155,23 @@ export class HeapClient {
   /**
    * Fire-and-forget block placement for a specific heap.
    * Called after the player places a block. Never throws or blocks gameplay.
+   * Returns the PlaceResponse if successful, or null on network error or non-ok response.
    */
-  static async append(heapId: string, x: number, y: number): Promise<void> {
+  static async append(heapId: string, x: number, y: number): Promise<PlaceResponse | null> {
     try {
       const res = await fetchWithLog(`${SERVER_URL}/heaps/${heapId}/place`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ x, y }),
       });
-      if (!res.ok) return;
+      if (!res.ok) return null;
       // Do NOT update the cache version here. The client doesn't hold the
       // server's new data yet — load() must fetch it with the current version
       // so the server responds with the real liveZone.
-      await res.json();
+      return await res.json() as PlaceResponse;
     } catch {
       // Silently drop — game never depends on server for local progression
+      return null;
     }
   }
 
