@@ -13,6 +13,7 @@ export interface HeapParams {
   scoreMult: number;
   worldHeight: number;     // px from Y=0 (summit) to Y=worldHeight (floor)
   isInfinite?: boolean;
+  ghostPointCount: number;  // random extra points added per accepted placement
 }
 
 export const DEFAULT_HEAP_PARAMS: HeapParams = {
@@ -22,6 +23,7 @@ export const DEFAULT_HEAP_PARAMS: HeapParams = {
   coinMult: 1.0,
   scoreMult: 1.0,
   worldHeight: 50_000,
+  ghostPointCount: 1,
 };
 
 // ── Enemy spawn params (served per-heap, replaces EnemyDef fraction fields) ──
@@ -84,6 +86,7 @@ export interface PlaceRequest {
 export interface PlaceResponse {
   accepted: boolean;
   version: number;
+  bonusCoins?: number;
 }
 
 // ── Reset ─────────────────────────────────────────────────────────────────────
