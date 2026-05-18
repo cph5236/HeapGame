@@ -478,9 +478,11 @@ export class GameScene extends Phaser.Scene {
     const py     = this.player.sprite.y;
     const isPeak = py <= this.heapGenerator.topY + PEAK_BONUS_ZONE_PX;
 
-    const appendDone = HeapClient.append(this._heapId, px, py).then(() =>
-      HeapClient.load(this._heapId),
-    ).then(freshPolygon => {
+    let bonusCoinsFromServer = 0;
+    const appendDone = HeapClient.append(this._heapId, px, py).then(placeResp => {
+      bonusCoinsFromServer = placeResp?.bonusCoins ?? 0;
+      return HeapClient.load(this._heapId);
+    }).then(freshPolygon => {
       applyPolygonToGenerator(freshPolygon, this.heapGenerator);
       this.heapGenerator.setPolygonTopY(polygonTopY(freshPolygon));
       this.game.registry.set('heapPolygon', freshPolygon);
@@ -517,6 +519,7 @@ export class GameScene extends Phaser.Scene {
           kills:        this._runKills,
           elapsedMs,
           heapParams:   this._heapParams,
+          bonusCoins:   bonusCoinsFromServer,
         });
         this.scene.pause();
       });
