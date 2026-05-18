@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS heap (
   coin_mult       REAL NOT NULL DEFAULT 1.0,
   score_mult      REAL NOT NULL DEFAULT 1.0,
   world_height    INTEGER NOT NULL DEFAULT 50000,
-  top_y           REAL NOT NULL DEFAULT 0
+  top_y           REAL NOT NULL DEFAULT 0,
+  ghost_point_count INTEGER NOT NULL DEFAULT 1
 );
 
 -- High scores — one row per (heap, player), enforced by PRIMARY KEY
