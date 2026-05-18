@@ -95,6 +95,7 @@ export class BootScene extends Phaser.Scene {
             scoreMult: 1.0,
             worldHeight: MOCK_HEAP_HEIGHT_PX,
             isInfinite: true,
+            ghostPointCount: 1,
           },
         };
         const deduped = summaries.filter(s => s.id !== INFINITE_HEAP_ID);
