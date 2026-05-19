@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { AudioManager } from '../systems/AudioManager';
 import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N } from '../constants';
 import {
   addBalance,
@@ -99,6 +100,7 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   create(): void {
+    AudioManager.play('music-score');
     // Check and update local high score before rendering anything
     if (this.heapId && this.score > 0) {
       const prev = getLocalHighScore(this.heapId);

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 
 
+import { AudioManager } from '../systems/AudioManager';
 import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
@@ -86,6 +87,7 @@ export class MenuScene extends Phaser.Scene {
     }, this);
     this.createPrompts(im);
     this.createHeapPicker();
+    AudioManager.play('music-menu');
     this.createSettingsButton();
     this.createInfoButton();
     if (!im.isMobile) this.createHotkeyLegend();

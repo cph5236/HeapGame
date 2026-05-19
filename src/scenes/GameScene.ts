@@ -174,6 +174,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    AudioManager.play('music-game');
     this.trashWallManager = new TrashWallManager(this, TRASH_WALL_DEF, () => {
       this.player.freeze();
       this.player.sprite.setDepth(4); // visually swallowed — below wall body (depth 5)

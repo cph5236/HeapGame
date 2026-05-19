@@ -216,6 +216,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     );
 
     // ── Trash wall ───────────────────────────────────────────────────────────────
+    AudioManager.play('music-game');
     this.trashWallManager = new TrashWallManager(this, TRASH_WALL_DEF, () => {
       this.handleDeath();
     }, INFINITE_WORLD_WIDTH);
