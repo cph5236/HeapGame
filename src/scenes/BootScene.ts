@@ -11,6 +11,7 @@ import type { RawSave } from '../systems/SaveData';
 import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
 import { initLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
+import { AudioManager } from '../systems/AudioManager';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -25,6 +26,7 @@ export class BootScene extends Phaser.Scene {
   create(): void {
     // Procedural textures — synchronous, no network/disk.
     generateAllTextures(this);
+    AudioManager.init(this.sound);
 
     // Default registry state so MenuScene can render before catalog resolves.
     this.game.registry.set('heapCatalog',    [] as HeapSummary[]);
