@@ -23,6 +23,7 @@ import {
 } from '../constants';
 import { PlayerConfig } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
+import { AudioManager } from '../systems/AudioManager';
 
 const { KeyCodes } = Phaser.Input.Keyboard;
 
@@ -70,6 +71,7 @@ export class Player {
   };
   private onLadder: boolean = false;
   private controlsEnabled = true;
+  private _wasOnGround = false;
 
   // ── HUD accessors ──────────────────────────────────────────────────────────
   get dashCooldownFraction(): number  { return this.dashCooldown / DASH_COOLDOWN_MS; }
@@ -141,6 +143,11 @@ export class Player {
     // and touching a wall, a wall-face body can register as ground — ignore it.
     const onGround = (body.blocked.down && !this.inSlopeZone && !(onWall && body.velocity.y > 10))
                    || this.sprite.y >= floorY;
+
+    if (onGround && !this._wasOnGround) {
+      AudioManager.play('player-land');
+    }
+    this._wasOnGround = onGround;
 
     // Landing resets air jump and wall jump counters, and refreshes coyote window
     if (onGround) {
@@ -238,11 +245,13 @@ export class Player {
         this.sprite.setVelocityX(this.momentumX);
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.coyoteTimer = 0; // consume coyote window so it can't be reused
+        AudioManager.play('player-jump');
       } else if (!onWallForJump && this.airJumpsRemaining > 0) {
         this.momentumX = im.jumpVx !== 0 ? im.jumpVx : body.velocity.x;
         this.sprite.setVelocityX(this.momentumX);
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.airJumpsRemaining--;
+        AudioManager.play('player-jump');
       }
     }
 
@@ -254,6 +263,7 @@ export class Player {
         this.sprite.setVelocityX(this.momentumX);
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.wallJumpsRemaining--;
+        AudioManager.play('player-jump');
       }
     }
 
