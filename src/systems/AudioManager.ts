@@ -40,6 +40,7 @@ class _AudioManager {
     if (!this.sm) return;
     const def = SOUND_DEFS[key];
     if (!def) return;
+    if (!this.sm.game?.cache?.audio?.has(key)) return;
 
     if (def.category === 'music') {
       if (this.currentMusicKey && this.currentMusicKey !== key) {
