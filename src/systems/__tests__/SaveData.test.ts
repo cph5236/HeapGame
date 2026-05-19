@@ -27,6 +27,8 @@ import {
   getSchemaVersionForTests,
   getVerboseLogging,
   setVerboseLogging,
+  getSoundSettings,
+  setSoundVolume,
 } from '../SaveData';
 
 // Stub localStorage — vitest runs in node environment
@@ -323,7 +325,7 @@ describe('SaveData v1→v2 migration', () => {
 
     expect(getPlaced('any-heap')).toEqual([]);                 // fresh key is empty
     expect(getLegacyPlacedForTests()).toEqual([{ id: 'ibeam', x: 10, y: 20 }]);
-    expect(getSchemaVersionForTests()).toBe(3);
+    expect(getSchemaVersionForTests()).toBe(4);
   });
 
   it('finalizeLegacyPlaced moves items onto a heap id', () => {
@@ -487,5 +489,54 @@ describe('mergeCloudSave', () => {
     const local = { ...base(), playerGuid: 'local-guid' };
     const cloud = { ...base(), playerGuid: 'cloud-guid' };
     expect(mergeCloudSave(local, cloud).playerGuid).toBe('local-guid');
+  });
+});
+
+describe('soundSettings – schema v4 migration', () => {
+  it('migrates a v3 save to v4 and injects default soundSettings', () => {
+    store['heap_save'] = JSON.stringify({
+      schemaVersion: 3,
+      balance: 100,
+      upgrades: {},
+      inventory: {},
+      placed: {},
+      selectedHeapId: '',
+      playerGuid: 'test-guid',
+      playerName: 'TestPlayer',
+      highScores: {},
+    });
+    resetCacheForTests();
+    const settings = getSoundSettings();
+    expect(settings.master).toBe(1.0);
+    expect(settings.music).toBe(0.7);
+    expect(settings.playerSfx).toBe(1.0);
+    expect(settings.enemySfx).toBe(0.8);
+    expect(settings.envSfx).toBe(0.9);
+    expect(getSchemaVersionForTests()).toBe(4);
+  });
+
+  it('preserves existing soundSettings when loading a v4 save', () => {
+    store['heap_save'] = JSON.stringify({
+      schemaVersion: 4,
+      balance: 0,
+      upgrades: {},
+      inventory: {},
+      placed: {},
+      selectedHeapId: '',
+      playerGuid: 'test-guid',
+      playerName: 'TestPlayer',
+      highScores: {},
+      soundSettings: { master: 0.5, music: 0.3, playerSfx: 0.8, enemySfx: 0.6, envSfx: 0.7 },
+    });
+    resetCacheForTests();
+    const settings = getSoundSettings();
+    expect(settings.master).toBe(0.5);
+    expect(settings.music).toBe(0.3);
+  });
+
+  it('setSoundVolume persists a single category change', () => {
+    setSoundVolume('music', 0.2);
+    resetCacheForTests();
+    expect(getSoundSettings().music).toBe(0.2);
   });
 });
