@@ -479,96 +479,108 @@ export class MenuScene extends Phaser.Scene {
   private createSettingsButton(): void {
     const bx = this.scale.width - 22;
     const by = this.scale.height - 22;
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2;
 
+    // ── Gear button ──────────────────────────────────────────────────────────
     const btnGfx = this.add.graphics().setDepth(20);
     btnGfx.fillStyle(0x000000, 0.65);
     btnGfx.fillCircle(bx, by, 14);
     btnGfx.lineStyle(2, 0x8899bb, 1);
     btnGfx.strokeCircle(bx, by, 14);
+    this.add.text(bx, by, '⚙', { fontSize: '16px', color: '#ddddff' }).setOrigin(0.5).setDepth(20);
+    const hitZone = this.add.zone(bx, by, 36, 36).setDepth(20).setInteractive({ useHandCursor: true });
 
-    this.add.text(bx, by, '\u2699', {
-      fontSize: '16px', color: '#ddddff',
-    }).setOrigin(0.5).setDepth(20);
+    // ── Overlay + panel ───────────────────────────────────────────────────────
+    const overlayBg = this.add.rectangle(cx, cy, this.scale.width, this.scale.height, 0x000000, 0.72)
+      .setDepth(30).setVisible(false).setInteractive();
+    const PANEL_W = 360;
+    const PANEL_H = 420;
+    const panel = this.add.rectangle(cx, cy, PANEL_W, PANEL_H, 0x0d0d20)
+      .setDepth(31).setVisible(false).setStrokeStyle(2, 0x4455aa);
 
-    const hitZone = this.add.zone(bx, by, 36, 36).setDepth(20);
-    hitZone.setInteractive({ useHandCursor: true });
-
-    // Overlay
-    const overlayBg = this.add.rectangle(
-      this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x000000, 0.72,
-    ).setDepth(30).setVisible(false).setInteractive();
-
-    const panel = this.add.rectangle(
-      this.scale.width / 2, this.scale.height / 2, 360, 330, 0x0d0d20,
-    ).setDepth(31).setVisible(false).setStrokeStyle(2, 0x4455aa);
-
-    const title = this.add.text(this.scale.width / 2, this.scale.height / 2 - 105, 'SETTINGS', {
-      fontSize: '28px', color: '#ffffff',
-      stroke: '#000000', strokeThickness: 3,
+    const title = this.add.text(cx, cy - PANEL_H / 2 + 22, 'SETTINGS', {
+      fontSize: '22px', color: '#ffffff', stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(32).setVisible(false);
 
-    // Close button
-    const closeBtn = this.add.text(this.scale.width / 2 + 155, this.scale.height / 2 - 120, '\u2715', {
+    const closeBtn = this.add.text(cx + PANEL_W / 2 - 20, cy - PANEL_H / 2 + 14, '✕', {
       fontSize: '20px', color: '#aaaaaa',
     }).setOrigin(0.5).setDepth(32).setVisible(false).setInteractive({ useHandCursor: true });
 
-    // Give coins button (dev shortcut)
-    const coinBg = this.add.rectangle(
-      this.scale.width / 2, this.scale.height / 2 - 52, 260, 44, 0x1a5c1a,
-    ).setDepth(32).setVisible(false).setStrokeStyle(2, 0x44ff44)
-      .setInteractive({ useHandCursor: true });
+    // ── Tab bar ───────────────────────────────────────────────────────────────
+    const TAB_Y = cy - PANEL_H / 2 + 52;
+    const TAB_W = 140;
+    const TAB_H = 32;
 
-    const coinLabel = this.add.text(this.scale.width / 2, this.scale.height / 2 - 52, '+ 500 Coins', {
-      fontSize: '18px', color: '#aaffaa', fontStyle: 'bold',
-      stroke: '#000000', strokeThickness: 2,
+    const soundsTabBg   = this.add.rectangle(cx - TAB_W / 2 - 4, TAB_Y, TAB_W, TAB_H, 0x2244aa).setDepth(32).setVisible(false);
+    const soundsTabText = this.add.text(cx - TAB_W / 2 - 4, TAB_Y, 'Sounds', { fontSize: '14px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(33).setVisible(false);
+    const devTabBg      = this.add.rectangle(cx + TAB_W / 2 + 4, TAB_Y, TAB_W, TAB_H, 0x1a1a2e).setDepth(32).setVisible(false);
+    const devTabText    = this.add.text(cx + TAB_W / 2 + 4, TAB_Y, 'Dev', { fontSize: '14px', color: '#888888' }).setOrigin(0.5).setDepth(33).setVisible(false);
+
+    // ── Tab containers ────────────────────────────────────────────────────────
+    const CONTENT_TOP = TAB_Y + TAB_H / 2 + 12;
+
+    // Dev tab content (existing items, repositioned relative to CONTENT_TOP)
+    const coinBg = this.add.rectangle(cx, CONTENT_TOP + 24, 260, 44, 0x1a5c1a)
+      .setDepth(32).setVisible(false).setStrokeStyle(2, 0x44ff44).setInteractive({ useHandCursor: true });
+    const coinLabel = this.add.text(cx, CONTENT_TOP + 24, '+ 500 Coins', {
+      fontSize: '18px', color: '#aaffaa', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(33).setVisible(false);
 
+    const resetBg = this.add.rectangle(cx, CONTENT_TOP + 88, 260, 52, 0x881111)
+      .setDepth(32).setVisible(false).setStrokeStyle(2, 0xff4444).setInteractive({ useHandCursor: true });
+    const resetLabel = this.add.text(cx, CONTENT_TOP + 88, 'Reset All Data', {
+      fontSize: '20px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(33).setVisible(false);
+    const resetWarning = this.add.text(cx, CONTENT_TOP + 144, 'Clears all coins, upgrades\nand placed blocks.', {
+      fontSize: '14px', color: '#aa8888', align: 'center',
+    }).setOrigin(0.5).setDepth(32).setVisible(false);
+
+    let analyticsEnabled = getVerboseLogging();
+    const analyticsBg = this.add.rectangle(cx, CONTENT_TOP + 202, 260, 48, 0x1a3a1a)
+      .setDepth(32).setVisible(false).setStrokeStyle(2, 0x44aa44).setInteractive({ useHandCursor: true });
+    const analyticsCheckbox = this.add.text(cx - 110, CONTENT_TOP + 202, analyticsEnabled ? '☑' : '☐', {
+      fontSize: '20px', color: '#44ff44', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(33).setVisible(false);
+    const analyticsLabel = this.add.text(cx - 35, CONTENT_TOP + 194, 'Send anonymous\ngameplay analytics', {
+      fontSize: '13px', color: '#aaffaa',
+    }).setOrigin(0, 0.5).setDepth(33).setVisible(false);
+    const analyticsHint = this.add.text(cx - 35, CONTENT_TOP + 211, 'Errors are always reported.', {
+      fontSize: '11px', color: '#88aa88',
+    }).setOrigin(0, 0.5).setDepth(33).setVisible(false);
+
+    // Sounds tab content — populated in Task 10
+    const soundsPlaceholder = this.add.text(cx, CONTENT_TOP + 80, '(Volume sliders coming soon)', {
+      fontSize: '14px', color: '#666688', align: 'center',
+    }).setOrigin(0.5).setDepth(33).setVisible(false);
+
+    // ── Tab switching ─────────────────────────────────────────────────────────
+    const devItems    = [coinBg, coinLabel, resetBg, resetLabel, resetWarning, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint];
+    const soundsItems = [soundsPlaceholder];
+
+    const showSoundsTab = () => {
+      soundsTabBg.setFillStyle(0x2244aa);   soundsTabText.setColor('#ffffff').setFontStyle('bold');
+      devTabBg.setFillStyle(0x1a1a2e);      devTabText.setColor('#888888').setFontStyle('normal');
+      devItems.forEach(o => o.setVisible(false));
+      soundsItems.forEach(o => o.setVisible(true));
+    };
+    const showDevTab = () => {
+      devTabBg.setFillStyle(0x2244aa);      devTabText.setColor('#ffffff').setFontStyle('bold');
+      soundsTabBg.setFillStyle(0x1a1a2e);  soundsTabText.setColor('#888888').setFontStyle('normal');
+      soundsItems.forEach(o => o.setVisible(false));
+      devItems.forEach(o => o.setVisible(true));
+    };
+
+    soundsTabBg.setInteractive({ useHandCursor: true }).on('pointerup', showSoundsTab);
+    soundsTabText.setInteractive({ useHandCursor: true }).on('pointerup', showSoundsTab);
+    devTabBg.setInteractive({ useHandCursor: true }).on('pointerup', showDevTab);
+    devTabText.setInteractive({ useHandCursor: true }).on('pointerup', showDevTab);
+
+    // ── Wire existing Dev tab buttons ─────────────────────────────────────────
     coinBg.on('pointerup', () => {
       addBalance(500);
       this.balanceText.setText(`${getBalance()} coins`);
     });
-
-    // Reset button
-    const resetBg = this.add.rectangle(
-      this.scale.width / 2, this.scale.height / 2 + 16, 260, 52, 0x881111,
-    ).setDepth(32).setVisible(false).setStrokeStyle(2, 0xff4444)
-      .setInteractive({ useHandCursor: true });
-
-    const resetLabel = this.add.text(this.scale.width / 2, this.scale.height / 2 + 16, 'Reset All Data', {
-      fontSize: '20px', color: '#ffffff', fontStyle: 'bold',
-      stroke: '#000000', strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(33).setVisible(false);
-
-    const resetWarning = this.add.text(
-      this.scale.width / 2, this.scale.height / 2 + 72,
-      'Clears all coins, upgrades\nand placed blocks.',
-      { fontSize: '14px', color: '#aa8888', align: 'center' },
-    ).setOrigin(0.5).setDepth(32).setVisible(false);
-
-    // Analytics toggle
-    const analyticsBg = this.add.rectangle(
-      this.scale.width / 2, this.scale.height / 2 + 130, 260, 48, 0x1a3a1a,
-    ).setDepth(32).setVisible(false).setStrokeStyle(2, 0x44aa44)
-      .setInteractive({ useHandCursor: true });
-
-    let analyticsEnabled = getVerboseLogging();
-    const analyticsCheckbox = this.add.text(
-      this.scale.width / 2 - 110, this.scale.height / 2 + 130,
-      analyticsEnabled ? '☑' : '☐',
-      { fontSize: '20px', color: '#44ff44', fontStyle: 'bold' },
-    ).setOrigin(0.5).setDepth(33).setVisible(false);
-
-    const analyticsLabel = this.add.text(
-      this.scale.width / 2 - 35, this.scale.height / 2 + 122,
-      'Send anonymous\ngameplay analytics',
-      { fontSize: '13px', color: '#aaffaa' },
-    ).setOrigin(0, 0.5).setDepth(33).setVisible(false);
-
-    const analyticsHint = this.add.text(
-      this.scale.width / 2 - 35, this.scale.height / 2 + 139,
-      'Errors are always reported.',
-      { fontSize: '11px', color: '#88aa88' },
-    ).setOrigin(0, 0.5).setDepth(33).setVisible(false);
 
     analyticsBg.on('pointerup', () => {
       analyticsEnabled = !analyticsEnabled;
@@ -577,11 +589,17 @@ export class MenuScene extends Phaser.Scene {
       analyticsCheckbox.setText(analyticsEnabled ? '☑' : '☐');
     });
 
-    const overlayParts = [overlayBg, panel, title, closeBtn, coinBg, coinLabel, resetBg, resetLabel, resetWarning, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint];
-    const open  = () => overlayParts.forEach(p => p.setVisible(true));
+    // ── Open / close ──────────────────────────────────────────────────────────
+    const alwaysVisible = [overlayBg, panel, title, closeBtn, soundsTabBg, soundsTabText, devTabBg, devTabText];
+
+    const open = () => {
+      alwaysVisible.forEach(o => o.setVisible(true));
+      showSoundsTab(); // default to Sounds tab on open
+    };
     const close = () => {
-      overlayParts.forEach(p => p.setVisible(false));
-      // Reset confirmation state when closing
+      alwaysVisible.forEach(o => o.setVisible(false));
+      devItems.forEach(o => o.setVisible(false));
+      soundsItems.forEach(o => o.setVisible(false));
       this.resetConfirmed = false;
       resetLabel.setText('Reset All Data');
       resetBg.setFillStyle(0x881111);
@@ -597,19 +615,12 @@ export class MenuScene extends Phaser.Scene {
     resetBg.on('pointerup', () => {
       if (!this.resetConfirmed) {
         this.resetConfirmed = true;
-        resetLabel.setText('Confirm? Tap again');
-        resetBg.setFillStyle(0xcc2200);
-        resetWarning.setText('This cannot be undone!').setColor('#ff6666');
-        this.time.delayedCall(4000, () => {
-          if (this.resetConfirmed) {
-            this.resetConfirmed = false;
-            resetLabel.setText('Reset All Data');
-            resetBg.setFillStyle(0x881111);
-            resetWarning.setText('Clears all coins, upgrades\nand placed blocks.').setColor('#aa8888');
-          }
-        });
+        resetLabel.setText('Tap again to confirm');
+        resetBg.setFillStyle(0xcc2222);
+        resetWarning.setText('This cannot be undone.').setColor('#ff6666');
       } else {
         resetAllData();
+        close();
         this.scene.restart();
       }
     });
