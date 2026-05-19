@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
+import { AudioManager } from '../systems/AudioManager';
 import { CameraController } from '../systems/CameraController';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import type { Vertex } from '../systems/HeapPolygon';
@@ -26,6 +27,7 @@ import {
   PLAYER_INVINCIBLE_MS,
   PLACE_HOLD_DURATION_MS,
   SCORE_DISPLAY_DIVISOR,
+  MAX_WALL_AUDIBLE_DISTANCE,
 } from '../constants';
 import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
@@ -339,6 +341,9 @@ export class GameScene extends Phaser.Scene {
     const camBottom = cam.scrollY + cam.height;
 
     this.trashWallManager.update(this.player.sprite.y, delta);
+    const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
+    const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
+    AudioManager.setWallProximity(wallT);
     this.enemyManager.update(camTop, camBottom);
     this.chunkRenderer.cullChunks(camBottom);
     this.edgeCollider.cullBands(camBottom, 2000);
@@ -748,5 +753,9 @@ export class GameScene extends Phaser.Scene {
     for (const part of this.infoOverlayParts) {
       part.setVisible(this.infoOpen);
     }
+  }
+
+  shutdown(): void {
+    AudioManager.stopAll();
   }
 }

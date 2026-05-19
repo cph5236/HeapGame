@@ -60,6 +60,9 @@ export class TrashWallManager {
   /** True when wall is within def.warningDistance of the player. Read by GameScene (future audio). */
   isWarning = false;
 
+  /** Current world Y of the wall top. Used by game scenes for proximity audio. */
+  get currentWallY(): number { return this.wallY; }
+
   private wallY    = 0;
   private spawned  = false;
   private killed   = false;

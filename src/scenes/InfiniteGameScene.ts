@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
+import { AudioManager } from '../systems/AudioManager';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
@@ -39,6 +40,7 @@ import {
   PLAYER_INVINCIBLE_MS,
   CHUNK_BAND_HEIGHT,
   INFINITE_LOOKAHEAD_CHUNKS,
+  MAX_WALL_AUDIBLE_DISTANCE,
 } from '../constants';
 import { SCAN_STEP } from '../systems/HeapPolygon';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
@@ -337,6 +339,9 @@ export class InfiniteGameScene extends Phaser.Scene {
     }
 
     this.trashWallManager.update(this.player.sprite.y, delta);
+    const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
+    const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
+    AudioManager.setWallProximity(wallT);
     this.portalManager.update();
 
     // ── Noclip — refund air jump every frame so player has infinite jumps ─────────
@@ -514,5 +519,9 @@ export class InfiniteGameScene extends Phaser.Scene {
     if (Math.abs(targetY - this.player.sprite.y) <= SCAN_STEP * 2) {
       this.player.sprite.y = targetY;
     }
+  }
+
+  shutdown(): void {
+    AudioManager.stopAll();
   }
 }

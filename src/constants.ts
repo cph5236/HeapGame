@@ -94,6 +94,7 @@ export const GROUND_LAYER_HEIGHT   = 180;       // total depth of dirt cross-sec
 
 // ── Enemies ────────────────────────────────────────────────────────────────────
 export const ENEMY_CULL_DISTANCE = 2000; // px below camera before destroy
+export const MAX_WALL_AUDIBLE_DISTANCE = 1200; // px gap at which wall rumble starts
 
 // ── Score / Economy ────────────────────────────────────────────────────────────
 export const SCORE_TO_COINS_DIVISOR = 100;
