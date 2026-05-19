@@ -5,6 +5,7 @@ import { HEAP_FILL_TEXTURE } from '../constants';
 import { HEAP_TILE_URLS, HEAP_TILE_COUNT } from '../data/heapTileUrls';
 import { PORTAL_DEF } from '../data/portalDefs';
 import { pickTrashWallPool } from '../systems/trashWallPool';
+import { SOUND_DEFS } from '../data/soundDefs';
 import ibeamUrl       from '../sprites/Placeables/IBeam.png?url';
 import ladderUrl      from '../sprites/Placeables/Ladder.png?url';
 import tombstone1Url  from '../sprites/Placeables/TombStone (1).png?url';
@@ -77,6 +78,11 @@ export function loadGameAssets(scene: Phaser.Scene): void {
     if (!def) continue;
     const url = HEAP_PNG_URLS[def.textureKey];
     if (url) scene.load.image(k, url);
+  }
+
+  // ── Audio ────────────────────────────────────────────────────────────────────
+  for (const [key, def] of Object.entries(SOUND_DEFS)) {
+    scene.load.audio(key, def.url);
   }
 
   // ── On complete: register enemy animations + flip the ready flag ─────────
