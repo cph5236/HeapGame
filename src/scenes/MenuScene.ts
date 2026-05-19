@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 
 
 import { AudioManager } from '../systems/AudioManager';
+import type { SoundCategory } from '../data/soundDefs';
 import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
@@ -476,6 +477,47 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5, 0.5).setDepth(9);
   }
 
+  private createVolumeSlider(
+    x: number, y: number, labelText: string,
+    cat: SoundCategory | 'master', initialValue: number, depth: number,
+  ): Phaser.GameObjects.GameObject[] {
+    const TRACK_W = 220;
+    const TRACK_H = 6;
+    const THUMB_R = 9;
+
+    const label = this.add.text(x - TRACK_W / 2, y - 14, labelText, {
+      fontSize: '13px', color: '#aaaacc',
+    }).setOrigin(0, 0.5).setDepth(depth);
+
+    const track = this.add.rectangle(x, y, TRACK_W, TRACK_H, 0x334466)
+      .setDepth(depth);
+
+    const fill = this.add.rectangle(
+      x - TRACK_W / 2 + (TRACK_W * initialValue) / 2, y, TRACK_W * initialValue, TRACK_H, 0x4466cc,
+    ).setDepth(depth);
+
+    const thumb = this.add.circle(x - TRACK_W / 2 + TRACK_W * initialValue, y, THUMB_R, 0x6688ff)
+      .setDepth(depth + 1).setInteractive({ draggable: true, useHandCursor: true });
+
+    const updateThumb = (newValue: number) => {
+      const clamped = Math.max(0, Math.min(1, newValue));
+      const thumbX  = x - TRACK_W / 2 + TRACK_W * clamped;
+      thumb.setPosition(thumbX, y);
+      fill.setPosition(x - TRACK_W / 2 + (TRACK_W * clamped) / 2, y);
+      fill.setSize(TRACK_W * clamped, TRACK_H);
+      AudioManager.setCategoryVolume(cat, clamped);
+    };
+
+    this.input.setDraggable(thumb);
+    thumb.on('drag', (_ptr: Phaser.Input.Pointer, dragX: number) => {
+      const newValue = (dragX - (x - TRACK_W / 2)) / TRACK_W;
+      updateThumb(newValue);
+    });
+
+    [label, track, fill, thumb].forEach(o => o.setVisible(false));
+    return [label, track, fill, thumb];
+  }
+
   private createSettingsButton(): void {
     const bx = this.scale.width - 22;
     const by = this.scale.height - 22;
@@ -549,25 +591,38 @@ export class MenuScene extends Phaser.Scene {
       fontSize: '11px', color: '#88aa88',
     }).setOrigin(0, 0.5).setDepth(33).setVisible(false);
 
-    // Sounds tab content — populated in Task 10
-    const soundsPlaceholder = this.add.text(cx, CONTENT_TOP + 80, '(Volume sliders coming soon)', {
-      fontSize: '14px', color: '#666688', align: 'center',
-    }).setOrigin(0.5).setDepth(33).setVisible(false);
+    // Sounds tab content — 5 volume sliders
+    const vols = AudioManager.getVolumes();
+    const SLIDER_DEPTH = 33;
+    const SLIDER_X = cx;
+    const DIVIDER_Y = CONTENT_TOP + 66;
+
+    const masterSliderParts = this.createVolumeSlider(SLIDER_X, CONTENT_TOP + 24, 'MASTER', 'master', vols.master, SLIDER_DEPTH);
+    const divider = this.add.rectangle(cx, DIVIDER_Y, 280, 1, 0x334466).setDepth(SLIDER_DEPTH).setVisible(false);
+    const musicSliderParts   = this.createVolumeSlider(SLIDER_X, CONTENT_TOP + 96,  'Music',        'music',     vols.music,     SLIDER_DEPTH);
+    const playerSliderParts  = this.createVolumeSlider(SLIDER_X, CONTENT_TOP + 150, 'Player SFX',   'playerSfx', vols.playerSfx, SLIDER_DEPTH);
+    const enemySliderParts   = this.createVolumeSlider(SLIDER_X, CONTENT_TOP + 204, 'Enemy SFX',    'enemySfx',  vols.enemySfx,  SLIDER_DEPTH);
+    const envSliderParts     = this.createVolumeSlider(SLIDER_X, CONTENT_TOP + 258, 'Environment',  'envSfx',    vols.envSfx,    SLIDER_DEPTH);
+
+    const soundsItems: Phaser.GameObjects.GameObject[] = [
+      divider,
+      ...masterSliderParts, ...musicSliderParts, ...playerSliderParts,
+      ...enemySliderParts, ...envSliderParts,
+    ];
 
     // ── Tab switching ─────────────────────────────────────────────────────────
     const devItems    = [coinBg, coinLabel, resetBg, resetLabel, resetWarning, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint];
-    const soundsItems = [soundsPlaceholder];
 
     const showSoundsTab = () => {
       soundsTabBg.setFillStyle(0x2244aa);   soundsTabText.setColor('#ffffff').setFontStyle('bold');
       devTabBg.setFillStyle(0x1a1a2e);      devTabText.setColor('#888888').setFontStyle('normal');
       devItems.forEach(o => o.setVisible(false));
-      soundsItems.forEach(o => o.setVisible(true));
+      soundsItems.forEach(o => (o as any).setVisible(true));
     };
     const showDevTab = () => {
       devTabBg.setFillStyle(0x2244aa);      devTabText.setColor('#ffffff').setFontStyle('bold');
       soundsTabBg.setFillStyle(0x1a1a2e);  soundsTabText.setColor('#888888').setFontStyle('normal');
-      soundsItems.forEach(o => o.setVisible(false));
+      soundsItems.forEach(o => (o as any).setVisible(false));
       devItems.forEach(o => o.setVisible(true));
     };
 
@@ -599,7 +654,7 @@ export class MenuScene extends Phaser.Scene {
     const close = () => {
       alwaysVisible.forEach(o => o.setVisible(false));
       devItems.forEach(o => o.setVisible(false));
-      soundsItems.forEach(o => o.setVisible(false));
+      soundsItems.forEach(o => (o as any).setVisible(false));
       this.resetConfirmed = false;
       resetLabel.setText('Reset All Data');
       resetBg.setFillStyle(0x881111);
