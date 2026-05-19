@@ -1,5 +1,6 @@
 // src/systems/EnemyManager.ts
 import Phaser from 'phaser';
+import { AudioManager } from './AudioManager';
 import { Enemy, applyBodyBox } from '../entities/Enemy';
 import { ENEMY_DEFS, EnemyDef } from '../data/enemyDefs';
 import type { HeapEnemyParams } from '../../shared/heapTypes';
@@ -279,11 +280,25 @@ export class EnemyManager {
       rt.idleUntil = 0;
     }
     this.runtime.set(enemy.sprite, rt);
+    if (def.kind === 'ghost' && this.ghostCount() === 1) {
+      AudioManager.play('enemy-vulture-ambient');
+    }
     // External destroys (stomp, scene shutdown) bypass our cull loop;
     // keep the runtime Map from leaking by listening for the destroy event.
     enemy.sprite.once(Phaser.GameObjects.Events.DESTROY, () => {
       this.runtime.delete(enemy.sprite);
+      if (rt.kind === 'ghost' && this.ghostCount() === 0) {
+        AudioManager.stop('enemy-vulture-ambient');
+      }
     });
     return true;
+  }
+
+  private ghostCount(): number {
+    let n = 0;
+    for (const rt of this.runtime.values()) {
+      if (rt.kind === 'ghost') n++;
+    }
+    return n;
   }
 }

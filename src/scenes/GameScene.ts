@@ -556,6 +556,7 @@ export class GameScene extends Phaser.Scene {
     enemy: Phaser.GameObjects.GameObject,
   ): void => {
     const e = enemy as Phaser.Physics.Arcade.Sprite;
+    AudioManager.play('enemy-kill');
     const stompX = e.x;
     const stompY = e.y;
     const kind = e.getData('kind') as EnemyKind;
