@@ -139,6 +139,38 @@ class _AudioManager {
     }
   }
 
+  setLoopProximity(key: string, t: number): void {
+    if (!this.sm) return;
+    const def = SOUND_DEFS[key];
+    if (!def) return;
+
+    if (t <= 0.01) {
+      this.stop(key);
+      return;
+    }
+
+    const vol = proximityVolume(t, def.baseVolume, this.volumes[def.category], this.volumes.master);
+
+    if (!this.playing.has(key)) {
+      if (!this.sm.game?.cache?.audio?.has(key)) return;
+      const sound = this.sm.add(key, { loop: true, volume: vol });
+      sound.play();
+      this.playing.set(key, sound);
+    } else {
+      this.playing.get(key)!.setVolume(vol);
+    }
+  }
+
+  playProximate(key: string, t: number): void {
+    if (t <= 0.01) return;
+    const def = SOUND_DEFS[key];
+    if (!def) return;
+    // Pass t-scaled base to play(); play() applies category + master on top,
+    // giving: Math.pow(t, 0.7) * base * category * master = proximityVolume result.
+    const tScaledBase = Math.pow(t, 0.7) * def.baseVolume;
+    this.play(key, { volume: tScaledBase });
+  }
+
   getVolumes(): VolumeMap {
     return { ...this.volumes };
   }
