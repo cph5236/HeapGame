@@ -110,7 +110,8 @@ export function heapRoutes(
       vertices = body.vertices;
     } else {
       const seed = Number.isFinite(body.seed) ? Math.floor(body.seed!) : Math.floor(Math.random() * 1_000_000);
-      vertices = generateDefaultPolygon(seed, resolved.worldHeight);
+      const genOpts = Number.isFinite(body.numBlocks) && (body.numBlocks! > 0) ? { numBlocks: body.numBlocks! } : {};
+      vertices = generateDefaultPolygon(seed, resolved.worldHeight, genOpts);
     }
 
     const MAX_VERTICES = 10_000;

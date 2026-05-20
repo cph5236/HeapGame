@@ -143,7 +143,7 @@
     </div>
     <div class="row">
       <div><label>Seed <span class="muted">(blank = random)</span></label><input type="number" id="cp-seed" /></div>
-      <div></div>
+      <div><label>Num Blocks <span class="muted">(blank = 50)</span></label><input type="number" step="1" min="1" id="cp-numBlocks" /></div>
     </div>
     <button id="createHeap">Create Heap</button>
   </div>
@@ -381,8 +381,10 @@
         worldHeight:   Number($('cp-worldHeight').value),
       };
       const seedRaw = $('cp-seed').value;
+      const numBlocksRaw = $('cp-numBlocks').value;
       const body = { params };
       if (seedRaw !== '') body.seed = Number(seedRaw);
+      if (numBlocksRaw !== '') body.numBlocks = Number(numBlocksRaw);
 
       try {
         const res = await adminFetch('/heaps', {
@@ -396,6 +398,7 @@
         setStatus('heap created', 'ok');
         $('cp-name').value = '';
         $('cp-seed').value = '';
+        $('cp-numBlocks').value = '';
         await loadHeaps();
       } catch (e) {
         setStatus(String(e), 'err');

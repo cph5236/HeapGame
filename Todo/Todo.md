@@ -20,9 +20,9 @@ Call the Integrity API at important moments in your app to check that it's your 
 
 
 ### ORDER of importance --- V 0.2.0
-Place extra point when player adds to heap — gameplay reward
-Per-heap placement X bounds — promote to heap parameter
 Sound effects
+fix rename menu 
+Animation for player
 Google Play closed beta
 itch.io upload
 Ad integration

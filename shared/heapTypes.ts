@@ -45,6 +45,8 @@ export interface CreateHeapRequest {
   vertices?: Vertex[];
   /** Optional. Used only when vertices is absent. Defaults to a random int. */
   seed?: number;
+  /** Optional. Number of blocks to generate when building the default polygon. Defaults to 50. */
+  numBlocks?: number;
   params?: Partial<HeapParams>;
 }
 
