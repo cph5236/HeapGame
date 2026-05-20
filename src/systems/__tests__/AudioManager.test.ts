@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { effectiveVolume, proximityVolume, proximityRate } from '../AudioManager';
+import { effectiveVolume, proximityVolume, proximityRate, distanceToProximityT } from '../AudioManager';
 
 describe('effectiveVolume', () => {
   it('multiplies base × category × master', () => {
@@ -42,5 +42,32 @@ describe('proximityRate', () => {
 
   it('returns 1.05 at t=0.5', () => {
     expect(proximityRate(0.5)).toBeCloseTo(1.05);
+  });
+});
+
+describe('distanceToProximityT', () => {
+  it('returns 1 when dist is within full-volume zone', () => {
+    expect(distanceToProximityT(50, 100, 500)).toBe(1);
+  });
+
+  it('returns 1 when dist equals fullVolumeDistancePx', () => {
+    expect(distanceToProximityT(100, 100, 500)).toBe(1);
+  });
+
+  it('returns 0 when dist equals maxAudibleDistancePx', () => {
+    expect(distanceToProximityT(500, 100, 500)).toBe(0);
+  });
+
+  it('returns 0 when dist exceeds maxAudibleDistancePx', () => {
+    expect(distanceToProximityT(999, 100, 500)).toBe(0);
+  });
+
+  it('returns 0.5 at the midpoint between fullVolume and maxAudible', () => {
+    // midpoint of [100, 500] is 300
+    expect(distanceToProximityT(300, 100, 500)).toBeCloseTo(0.5);
+  });
+
+  it('returns 1 when fullVolumeDistancePx equals maxAudibleDistancePx (no falloff zone)', () => {
+    expect(distanceToProximityT(100, 200, 200)).toBe(1);
   });
 });

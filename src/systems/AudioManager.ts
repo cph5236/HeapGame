@@ -15,6 +15,17 @@ export function proximityRate(t: number): number {
   return 0.8 + t * 0.5;
 }
 
+export function distanceToProximityT(
+  dist: number,
+  fullVolumeDistancePx: number,
+  maxAudibleDistancePx: number,
+): number {
+  if (dist <= fullVolumeDistancePx) return 1;
+  if (maxAudibleDistancePx <= fullVolumeDistancePx) return 1;
+  if (dist >= maxAudibleDistancePx) return 0;
+  return 1 - (dist - fullVolumeDistancePx) / (maxAudibleDistancePx - fullVolumeDistancePx);
+}
+
 // ── AudioManager singleton ─────────────────────────────────────────────────────
 
 type VolumeMap = Record<SoundCategory | 'master', number>;
