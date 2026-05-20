@@ -232,6 +232,7 @@ export class Player {
         this.sprite.setVelocityX(dir * PLAYER_DASH_VELOCITY);
         this.dashCooldown = DASH_COOLDOWN_MS;
         this.dashActive   = DASH_DURATION_MS;
+        AudioManager.play('player-dash');
       }
     }
 

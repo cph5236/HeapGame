@@ -88,13 +88,17 @@ export class MenuScene extends Phaser.Scene {
     }, this);
     this.createPrompts(im);
     this.createHeapPicker();
-    AudioManager.play('music-menu');
     this.createSettingsButton();
     this.createInfoButton();
     if (!im.isMobile) this.createHotkeyLegend();
     this.runEntranceSequence();
     this.registerInput();
     loadGameAssets(this);
+    if (this.registry.get('gameAssetsReady')) {
+      AudioManager.play('music-menu');
+    } else {
+      this.load.once(Phaser.Loader.Events.COMPLETE, () => AudioManager.play('music-menu'));
+    }
   }
 
   // ── Sky ──────────────────────────────────────────────────────────────────────

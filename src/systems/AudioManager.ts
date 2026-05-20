@@ -171,6 +171,11 @@ class _AudioManager {
     this.play(key, { volume: tScaledBase });
   }
 
+  onPlayerDeath(): void {
+    this.stopAll();
+    this.play('player-die');
+  }
+
   getVolumes(): VolumeMap {
     return { ...this.volumes };
   }

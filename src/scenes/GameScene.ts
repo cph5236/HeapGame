@@ -72,6 +72,7 @@ export class GameScene extends Phaser.Scene {
   private placeableManager!: PlaceableManager;
   private trashWallManager!: TrashWallManager;
   private _lastScore = -1;
+  private _playerDead = false;
   private _heapId = '';
   private _holdElapsed = 0;
   private _liveZoneBottomY: number | null = null;
@@ -108,6 +109,7 @@ export class GameScene extends Phaser.Scene {
     this.infoOverlayParts = [];
     this._runKills     = {};
     this._runStartTime = null;
+    this._playerDead   = false;
     this._reached100m    = false;
     this._reached1000m   = false;
     this._reachedStomp10 = false;
@@ -176,8 +178,8 @@ export class GameScene extends Phaser.Scene {
 
     AudioManager.play('music-game');
     this.trashWallManager = new TrashWallManager(this, TRASH_WALL_DEF, () => {
-      AudioManager.stop('env-wall-rumble');
-      AudioManager.play('player-die');
+      this._playerDead = true;
+      AudioManager.onPlayerDeath();
       this.player.freeze();
       this.player.sprite.setDepth(4); // visually swallowed — below wall body (depth 5)
       this.time.delayedCall(800, () => {
@@ -344,10 +346,14 @@ export class GameScene extends Phaser.Scene {
     const camBottom = cam.scrollY + cam.height;
 
     this.trashWallManager.update(this.player.sprite.y, delta);
-    const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
-    const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
-    AudioManager.setWallProximity(wallT);
-    this.enemyManager.update(camTop, camBottom, this.player.sprite.x, this.player.sprite.y);
+    if (!this._playerDead) {
+      const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
+      const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
+      AudioManager.setWallProximity(wallT);
+    }
+    if (!this._playerDead) {
+      this.enemyManager.update(camTop, camBottom, this.player.sprite.x, this.player.sprite.y);
+    }
     this.chunkRenderer.cullChunks(camBottom);
     this.edgeCollider.cullBands(camBottom, 2000);
 
@@ -645,6 +651,11 @@ export class GameScene extends Phaser.Scene {
       this.time.delayedCall(PLAYER_INVINCIBLE_MS * 4, () => { this.invincible = false; });
       return;
     }
+
+    if (this._playerDead) return;
+    this._playerDead = true;
+    AudioManager.onPlayerDeath();
+    this.player.freeze();
 
     const checkpointAvailable = getPlaced(this._heapId).some(
       p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
