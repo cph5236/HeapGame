@@ -1,8 +1,9 @@
 // src/systems/EnemyManager.ts
 import Phaser from 'phaser';
-import { AudioManager } from './AudioManager';
+import { AudioManager, distanceToProximityT } from './AudioManager';
 import { Enemy, applyBodyBox } from '../entities/Enemy';
 import { ENEMY_DEFS, EnemyDef } from '../data/enemyDefs';
+import { SOUND_DEFS } from '../data/soundDefs';
 import type { HeapEnemyParams } from '../../shared/heapTypes';
 import { CHUNK_BAND_HEIGHT, ENEMY_CULL_DISTANCE, MOCK_HEAP_HEIGHT_PX, WORLD_WIDTH } from '../constants';
 import type { Vertex } from './HeapPolygon';
@@ -52,6 +53,8 @@ export class EnemyManager {
   private readonly _worldHeight: number;
   private _enemyParams: HeapEnemyParams = {};
   private readonly runtime = new Map<Phaser.Physics.Arcade.Sprite, EnemyRuntime>();
+  private proximityNextAt = 0;
+  private ratChirpAt      = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -145,11 +148,60 @@ export class EnemyManager {
   }
 
   /** Call every frame with current camera bounds. */
-  update(_camTop: number, camBottom: number): void {
+  update(_camTop: number, camBottom: number, playerX: number, playerY: number): void {
     const now = this.scene.time.now;
     // group.getChildren() returns the internal entries array directly (no copy).
     const children = this.group.getChildren() as Phaser.Physics.Arcade.Sprite[];
     const cullY = camBottom + ENEMY_CULL_DISTANCE;
+
+    // ── Proximity audio (100 ms throttle) ─────────────────────────────────────
+    if (now >= this.proximityNextAt) {
+      this.proximityNextAt = now + 100;
+
+      // Vulture ambient — continuous loop driven by nearest ghost distance
+      const vultureDef = SOUND_DEFS['enemy-vulture-ambient'];
+      if (vultureDef?.maxAudibleDistancePx !== undefined) {
+        let minDist = Infinity;
+        for (const s of children) {
+          const rt = this.runtime.get(s);
+          if (rt?.kind !== 'ghost') continue;
+          const dx = s.x - playerX;
+          const dy = s.y - playerY;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < minDist) minDist = d;
+        }
+        const t = minDist === Infinity ? 0 : distanceToProximityT(
+          minDist,
+          vultureDef.fullVolumeDistancePx ?? 0,
+          vultureDef.maxAudibleDistancePx,
+        );
+        AudioManager.setLoopProximity('enemy-vulture-ambient', t);
+      }
+
+      // Rat chirp — intermittent one-shot at nearest rat distance
+      const ratDef = SOUND_DEFS['enemy-rat-ambient'];
+      if (ratDef?.maxAudibleDistancePx !== undefined && this.ratCount() > 0 && now >= this.ratChirpAt) {
+        let minDist = Infinity;
+        for (const s of children) {
+          const rt = this.runtime.get(s);
+          if (rt?.kind !== 'percher') continue;
+          const dx = s.x - playerX;
+          const dy = s.y - playerY;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < minDist) minDist = d;
+        }
+        if (minDist < Infinity) {
+          const t = distanceToProximityT(
+            minDist,
+            ratDef.fullVolumeDistancePx ?? 0,
+            ratDef.maxAudibleDistancePx,
+          );
+          AudioManager.playProximate('enemy-rat-ambient', t);
+        }
+        const [minMs, maxMs] = ratDef.playIntervalMs ?? [3000, 8000];
+        this.ratChirpAt = now + Phaser.Math.Between(minMs, maxMs);
+      }
+    }
 
     for (let i = children.length - 1; i >= 0; i--) {
       const s = children[i];
@@ -280,24 +332,18 @@ export class EnemyManager {
       rt.idleUntil = 0;
     }
     this.runtime.set(enemy.sprite, rt);
-    if (def.kind === 'ghost' && this.ghostCount() === 1) {
-      AudioManager.play('enemy-vulture-ambient');
-    }
     // External destroys (stomp, scene shutdown) bypass our cull loop;
     // keep the runtime Map from leaking by listening for the destroy event.
     enemy.sprite.once(Phaser.GameObjects.Events.DESTROY, () => {
       this.runtime.delete(enemy.sprite);
-      if (rt.kind === 'ghost' && this.ghostCount() === 0) {
-        AudioManager.stop('enemy-vulture-ambient');
-      }
     });
     return true;
   }
 
-  private ghostCount(): number {
+  private ratCount(): number {
     let n = 0;
     for (const rt of this.runtime.values()) {
-      if (rt.kind === 'ghost') n++;
+      if (rt.kind === 'percher') n++;
     }
     return n;
   }

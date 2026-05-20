@@ -176,6 +176,7 @@ export class GameScene extends Phaser.Scene {
 
     AudioManager.play('music-game');
     this.trashWallManager = new TrashWallManager(this, TRASH_WALL_DEF, () => {
+      AudioManager.stop('env-wall-rumble');
       AudioManager.play('player-die');
       this.player.freeze();
       this.player.sprite.setDepth(4); // visually swallowed — below wall body (depth 5)
@@ -346,7 +347,7 @@ export class GameScene extends Phaser.Scene {
     const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
     const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
     AudioManager.setWallProximity(wallT);
-    this.enemyManager.update(camTop, camBottom);
+    this.enemyManager.update(camTop, camBottom, this.player.sprite.x, this.player.sprite.y);
     this.chunkRenderer.cullChunks(camBottom);
     this.edgeCollider.cullBands(camBottom, 2000);
 

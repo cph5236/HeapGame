@@ -336,7 +336,7 @@ export class InfiniteGameScene extends Phaser.Scene {
 
     for (const em of this.enemyManagers) {
       em.setSpawnRateMult(spawnMult);
-      em.update(camTop, camBot);
+      em.update(camTop, camBot, this.player.sprite.x, this.player.sprite.y);
     }
 
     this.trashWallManager.update(this.player.sprite.y, delta);
