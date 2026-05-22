@@ -494,6 +494,57 @@ describe('Player — mobile dive', () => {
     expect(spy.setVelocityY).toContain(PLAYER_DIVE_SPEED);
     expect(sprite.body._maxVelocityY).toBe(PLAYER_DIVE_SPEED);
   });
+
+  it('same-frame jump+down does NOT dive — jump velocity must not be overwritten', async () => {
+    // Player airborne, dive enabled, holding down, jump fires this frame with coyote.
+    // After update(16), the LAST setVelocityY must be PLAYER_JUMP_VELOCITY - jumpBoost,
+    // NOT PLAYER_DIVE_SPEED. The dive guard must check jump flags.
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: true, jumpBoost: 50 },
+    });
+    // Set up coyote window so ground jump can fire
+    (player as any).coyoteTimer = 50;
+    // Simulate holding down
+    (player as any).downKeys[0].isDown = true;
+    // Simulate jump press — will fire this frame
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+
+    // The last setVelocityY call should be the jump velocity (PLAYER_JUMP_VELOCITY - jumpBoost = -550 - 50 = -600)
+    // NOT the dive speed (1200)
+    const expectedJumpVy = PLAYER_JUMP_VELOCITY - 50; // -600
+    const lastVy = spy.setVelocityY[spy.setVelocityY.length - 1];
+    expect(lastVy).toBe(expectedJumpVy);
+    // Verify dive speed is NOT applied after the jump
+    const diveSpeedIndex = spy.setVelocityY.indexOf(PLAYER_DIVE_SPEED);
+    const jumpVyIndex = spy.setVelocityY.lastIndexOf(expectedJumpVy);
+    // If dive was applied, it would be after jump. Make sure it's not.
+    if (diveSpeedIndex !== -1) {
+      expect(diveSpeedIndex < jumpVyIndex).toBe(true); // dive (if present) must come before final jump vy
+    }
+  });
+
+  it('holding down with no jump still dives as normal', async () => {
+    // Player airborne, dive enabled, holding down, NO jump press.
+    // Dive should apply normally.
+    const { player, spy, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).downKeys[0].isDown = true;
+    // NO jump press
+    imState.jumpJustPressed = false;
+
+    player.update(16);
+
+    expect(spy.setVelocityY).toContain(PLAYER_DIVE_SPEED);
+    expect(sprite.body._maxVelocityY).toBe(PLAYER_DIVE_SPEED);
+  });
 });
 
 // ── 5. Ladder drag ────────────────────────────────────────────────────────────

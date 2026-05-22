@@ -478,9 +478,13 @@ export class Player {
       this.diveActive = DASH_DURATION_MS; // mobile swipe-down burst
     }
 
+    // Guard dive against same-frame jump: do not overwrite jump velocity
+    const jumpedThisFrame = this._justJumped || this._justAirJumped || this._justWallJumped;
     if (holdingDown || this.diveActive > 0) {
-      ctx.body.setMaxVelocityY(PLAYER_DIVE_SPEED);
-      this.sprite.setVelocityY(PLAYER_DIVE_SPEED);
+      if (!jumpedThisFrame) {
+        ctx.body.setMaxVelocityY(PLAYER_DIVE_SPEED);
+        this.sprite.setVelocityY(PLAYER_DIVE_SPEED);
+      }
     } else {
       ctx.body.setMaxVelocityY(PLAYER_MAX_FALL_SPEED);
       if (ctx.body.velocity.y > PLAYER_MAX_FALL_SPEED) {
