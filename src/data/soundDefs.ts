@@ -1,5 +1,5 @@
 import mainMenuUrl from '../audio/Menu/MainMenu.mp3?url';
-import playerJumpUrl from '../audio/Player/Jump_20.wav?url';
+import playerJumpUrl from '../audio/Player/Jump_21.wav?url';
 import playerDieUrl from '../audio/Player/PlayerDie.wav?url';
 import playerDashUrl from '../audio/Player/Dash.wav?url';
 import playerLandUrl from '../audio/Player/player_land.wav?url';
@@ -24,7 +24,7 @@ export const SOUND_DEFS: Record<string, SoundDef> = {
   'music-menu':            { category: 'music',     loop: true,  baseVolume: 0.4, url: mainMenuUrl },
   'music-game':            { category: 'music',     loop: true,  baseVolume: 0.4, url: mainMenuUrl },
   'music-score':           { category: 'music',     loop: true,  baseVolume: 0.6, url: mainMenuUrl },
-  'player-jump':           { category: 'playerSfx', loop: false, baseVolume: 0.4, url: playerJumpUrl },
+  'player-jump':           { category: 'playerSfx', loop: false, baseVolume: 0.1, url: playerJumpUrl },
   'player-land':           { category: 'playerSfx', loop: false, baseVolume: 0.0, url: playerLandUrl },
   'player-die':            { category: 'playerSfx', loop: false, baseVolume: 0.5, url: playerDieUrl },
   'player-dash':           { category: 'playerSfx', loop: false, baseVolume: 0.9, url: playerDashUrl },
