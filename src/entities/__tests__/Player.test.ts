@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  PLAYER_HEIGHT,
   PLAYER_SPEED,
   PLAYER_JUMP_VELOCITY,
   PLAYER_DIVE_SPEED,
@@ -1214,7 +1215,7 @@ describe('Player — onGround derivation', () => {
     (player as any).inSlopeZone = false;
     // Simulate player touching the floor via sprite.y
     // floorY = worldHeight - PLAYER_HEIGHT/2
-    const floorY = (player as any).worldHeight - 16 / 2;
+    const floorY = (player as any).worldHeight - PLAYER_HEIGHT / 2;
     sprite.y = floorY; // Exactly at floor
 
     player.update(16);
