@@ -265,10 +265,17 @@ export class Player {
     const body     = this.sprite.body;
     const floorY   = this.worldHeight - PLAYER_HEIGHT / 2;
     const onWall   = body.blocked.left || body.blocked.right;
-    // Filter spurious blocked.down from wall bodies: while sliding (velocity.y > 10)
-    // and touching a wall, a wall-face body can register as ground — ignore it.
-    const onGround = (body.blocked.down && !this.inSlopeZone && !(onWall && body.velocity.y > 10))
-                   || this.sprite.y >= floorY;
+
+    // Derive onGround from three predicates:
+    // 1. Physics contact detection (but not in slope rejection zones)
+    const groundedByPhysics = body.blocked.down && !this.inSlopeZone;
+    // 2. Floor fallback (sprite touching the world floor)
+    const groundedByFloor   = this.sprite.y >= floorY;
+    // 3. Filter spurious ground from wall bodies: while sliding (velocity.y > 10)
+    //    and touching a wall, a wall-face can register as physics ground — reject it
+    const wallFalseGround   = onWall && body.velocity.y > 10;
+
+    const onGround = (groundedByPhysics && !wallFalseGround) || groundedByFloor;
 
     if (onGround && !this._wasOnGround) {
       AudioManager.play('player-land');

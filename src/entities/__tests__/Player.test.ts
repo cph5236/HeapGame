@@ -1138,3 +1138,87 @@ describe('Player — coyote consumed on every jump path', () => {
     expect((player as any).coyoteTimer).toBe(0);
   });
 });
+
+// ── 15. onGround derivation extraction ─────────────────────────────────────────
+
+describe('Player — onGround derivation', () => {
+  it('blocked.down=true, inSlopeZone=false, onWall=false → grounded', async () => {
+    const { player } = await makePlayer({
+      bodyOverrides: {
+        blocked: { left: false, right: false, down: true },
+        velocity: { x: 0, y: 0 },
+      },
+    });
+    // Ensure inSlopeZone=false (should be default)
+    (player as any).inSlopeZone = false;
+
+    player.update(16);
+
+    expect((player as any)._onGround).toBe(true);
+  });
+
+  it('blocked.down=true, inSlopeZone=true → NOT grounded (slope zone blocks ground)', async () => {
+    const { player, sprite } = await makePlayer({
+      bodyOverrides: {
+        blocked: { left: false, right: false, down: true },
+        velocity: { x: 0, y: 0 },
+      },
+    });
+    // Set inSlopeZone to simulate being in a slope rejection zone
+    (player as any).inSlopeZone = true;
+    // Ensure sprite.y is below floorY so groundedByFloor is also false
+    sprite.y = 0;
+
+    player.update(16);
+
+    expect((player as any)._onGround).toBe(false);
+  });
+
+  it('blocked.down=true, onWall=true, vy=50 → NOT grounded (wall false-ground filter)', async () => {
+    const { player, sprite } = await makePlayer({
+      bodyOverrides: {
+        blocked: { left: true, right: false, down: true },
+        velocity: { x: 0, y: 50 },
+      },
+    });
+    (player as any).inSlopeZone = false;
+    sprite.y = 0; // Ensure groundedByFloor is false
+
+    player.update(16);
+
+    expect((player as any)._onGround).toBe(false);
+  });
+
+  it('blocked.down=true, onWall=true, vy=0 → grounded (wall filter only kicks in while sliding vy>10)', async () => {
+    const { player, sprite } = await makePlayer({
+      bodyOverrides: {
+        blocked: { left: true, right: false, down: true },
+        velocity: { x: 0, y: 0 },
+      },
+    });
+    (player as any).inSlopeZone = false;
+    sprite.y = 0; // Ensure groundedByFloor is false
+
+    player.update(16);
+
+    expect((player as any)._onGround).toBe(true);
+  });
+
+  it('blocked.down=false, sprite.y >= floorY → grounded (floor fallback)', async () => {
+    const { player, sprite } = await makePlayer({
+      bodyOverrides: {
+        blocked: { left: false, right: false, down: false },
+        velocity: { x: 0, y: 0 },
+      },
+    });
+    (player as any).inSlopeZone = false;
+    // Simulate player touching the floor via sprite.y
+    // floorY = worldHeight - PLAYER_HEIGHT/2
+    const floorY = (player as any).worldHeight - 16 / 2;
+    sprite.y = floorY; // Exactly at floor
+
+    player.update(16);
+
+    expect((player as any)._onGround).toBe(true);
+  });
+});
