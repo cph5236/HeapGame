@@ -140,6 +140,12 @@ export class Player {
   }
 
   update(delta: number): void {
+    // Clear one-frame animation flags from the previous frame
+    this._justLanded     = false;
+    this._justJumped     = false;
+    this._justAirJumped  = false;
+    this._justWallJumped = false;
+
     // Ladder climbing mode — vertical movement only, gravity off, jump suppressed
     if (this.onLadder) {
       const im = InputManager.getInstance();
@@ -359,11 +365,6 @@ export class Player {
       }
     }
 
-    // Clear one-frame animation flags
-    this._justLanded     = false;
-    this._justJumped     = false;
-    this._justAirJumped  = false;
-    this._justWallJumped = false;
   }
 
   activateShield(): void {
