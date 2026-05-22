@@ -310,7 +310,7 @@ export class MenuScene extends Phaser.Scene {
     const label    = isGpgs ? `${name}  ▶ Play Games` : `${name}  [edit]`;
     const onTap    = isGpgs
       ? () => PlayGamesClient.showPlayerProfile()
-      : () => this.promptNameChange();
+      : () => this.openNameDialog();
 
     this.playerNameText = this.add.text(
       this.scale.width / 2, nameY,
@@ -330,12 +330,90 @@ export class MenuScene extends Phaser.Scene {
     this.playerNameText.on('pointerup',   onTap);
   }
 
-  private promptNameChange(): void {
+  private openNameDialog(): void {
     const current = getPlayerName();
-    const input   = window.prompt('Enter your player name (max 20 chars):', current);
-    if (input === null) return;  // cancelled
-    setPlayerName(input);
-    this.playerNameText.setText(`${getPlayerName()}  [edit]`);
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = [
+      'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.75)',
+      'display:flex', 'align-items:center', 'justify-content:center',
+      'z-index:9999', 'font-family:monospace',
+    ].join(';');
+
+    const panel = document.createElement('div');
+    panel.style.cssText = [
+      'background:#0d0d20', 'border:2px solid #ff9922', 'border-radius:12px',
+      'padding:28px 22px 22px', 'text-align:center', 'width:300px',
+      'box-shadow:0 0 32px rgba(255,153,34,0.18)', 'box-sizing:border-box',
+    ].join(';');
+
+    const heap = document.createElement('div');
+    heap.style.cssText = 'color:#ff9922;font-size:13px;font-weight:bold;letter-spacing:3px;margin-bottom:6px';
+    heap.textContent = 'HEAP';
+
+    const subtitle = document.createElement('div');
+    subtitle.style.cssText = 'color:#cc9966;font-size:14px;font-style:italic;margin-bottom:22px';
+    subtitle.textContent = 'What do they call you?';
+
+    const input = document.createElement('input');
+    input.maxLength = 20;
+    input.value = current;
+    input.style.cssText = [
+      'width:100%', 'box-sizing:border-box', 'background:transparent', 'border:none',
+      'border-bottom:2px solid #ff9922', 'color:#ffffff', 'font-size:20px',
+      'text-align:center', 'padding:6px 0 8px', 'font-family:monospace',
+      'outline:none', 'margin-bottom:6px',
+    ].join(';');
+
+    const counterRow = document.createElement('div');
+    counterRow.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:24px';
+    const counter = document.createElement('span');
+    counter.style.cssText = 'color:#556677;font-size:10px';
+    counter.textContent = `${current.length} / 20`;
+    counterRow.appendChild(counter);
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = 'CONFIRM';
+    confirmBtn.style.cssText = [
+      'width:100%', 'padding:13px', 'background:#ff9922', 'border:none',
+      'border-radius:8px', 'color:#0a0818', 'font-size:15px', 'font-weight:bold',
+      'font-family:monospace', 'letter-spacing:1px', 'cursor:pointer', 'margin-bottom:10px',
+    ].join(';');
+
+    const cancelEl = document.createElement('div');
+    cancelEl.textContent = 'cancel';
+    cancelEl.style.cssText = 'color:#556677;font-size:12px;cursor:pointer;letter-spacing:1px';
+
+    panel.append(heap, subtitle, input, counterRow, confirmBtn, cancelEl);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    const close = (): void => { document.body.removeChild(overlay); };
+
+    const confirm = (): void => {
+      setPlayerName(input.value);
+      this.playerNameText.setText(`${getPlayerName()}  [edit]`);
+      close();
+    };
+
+    input.addEventListener('input', () => {
+      const len = input.value.length;
+      counter.textContent = `${len} / 20`;
+      counter.style.color = len >= 19 ? '#ff4444' : '#556677';
+    });
+
+    input.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter')  confirm();
+      if (e.key === 'Escape') close();
+    });
+
+    confirmBtn.addEventListener('click', confirm);
+    cancelEl.addEventListener('click', close);
+    overlay.addEventListener('click', (e: MouseEvent) => {
+      if (e.target === overlay) close();
+    });
+
+    requestAnimationFrame(() => input.focus());
   }
 
   // ── Start / Upgrade prompts ──────────────────────────────────────────────────
