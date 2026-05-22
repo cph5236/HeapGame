@@ -403,7 +403,7 @@ export class Player {
       this.momentumX = this.bufferedJumpVx !== 0 ? this.bufferedJumpVx : body.velocity.x;
       this.sprite.setVelocityX(this.momentumX);
       this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
-      this.coyoteTimer = 0; // consume coyote window so it can't be reused
+      // Coyote consumed in consumeJumpBufferOnFire() so every jump path clears it.
       AudioManager.play('player-jump');
       this._justJumped = true;
       return true;
@@ -443,6 +443,7 @@ export class Player {
     if (!jumpFired) return;
     this.jumpBufferTimer = 0;
     this.bufferedJumpVx  = 0;
+    this.coyoteTimer     = 0; // any jump path consumes the coyote window (#9 defensive)
     if (this.bufferedJumpFromKeyboard && !this._frameJumpKeyHeld) {
       this.sprite.setVelocityY((PLAYER_JUMP_VELOCITY - this.jumpBoost) * JUMP_CUT_FACTOR);
       console.log('[JUMP-CUT-ONFIRE]', { jumpVy: PLAYER_JUMP_VELOCITY - this.jumpBoost, cutTo: (PLAYER_JUMP_VELOCITY - this.jumpBoost) * JUMP_CUT_FACTOR });

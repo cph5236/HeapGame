@@ -1101,3 +1101,40 @@ describe('Player — asymmetric gravity', () => {
     expect(sprite.body._gravityY).toBe(0);
   });
 });
+
+// ── 14. Coyote consumption on every jump path (#9) ───────────────────────────
+
+describe('Player — coyote consumed on every jump path', () => {
+  it('ground jump fired while coyote was active consumes the window', async () => {
+    const { player } = await makePlayer({
+      onGround: true,
+      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 120;
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+
+    expect((player as any).coyoteTimer).toBe(0);
+    // Air jump must NOT have also fired (else-if guard) — preserves charges
+    expect((player as any).airJumpsRemaining).toBe(1);
+  });
+
+  it('wall jump path also consumes coyote (defensive — covers same-frame double-fire)', async () => {
+    // Player ran off a ledge onto a wall, coyote still active. Both ground and wall
+    // jump paths can fire in the same frame (latent issue tracked separately).
+    // What we DO guarantee: by end of update, coyote is 0.
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 100;
+    (player as any).wallJumpsRemaining = 1;
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+
+    expect((player as any).coyoteTimer).toBe(0);
+  });
+});
