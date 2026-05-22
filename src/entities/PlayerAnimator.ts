@@ -12,7 +12,7 @@ const IDLE_PERIOD        = 2200;  // ms — breathing sine period
 const FALL_FLAP_PERIOD   = 550;   // ms — string flutter period
 const APEX_WIGGLE_PERIOD = 450;   // ms — apex rotation sine period
 const STRING_STROKE_W    = 2.5;   // px
-const COLLAR_OFFSET_Y    = -0.44; // fraction of PLAYER_HEIGHT (red collar position)
+const COLLAR_OFFSET_Y    = -1.2; // fraction of PLAYER_HEIGHT (red collar position)
 
 // ── State enum ───────────────────────────────────────────────────────────────
 enum AnimState {
@@ -52,6 +52,7 @@ const LANDING_FRAMES: Keyframe[] = [
 export class PlayerAnimator {
   private readonly sprite: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
   private readonly gfx:    Phaser.GameObjects.Graphics;
+  private readonly scene:  Phaser.Scene;
 
   private readonly baseScaleX: number;
   private readonly baseScaleY: number;
@@ -65,7 +66,7 @@ export class PlayerAnimator {
   private fallFlapTime: number = 0;
   private apexTime:     number = 0;
 
-  // Interpolated string control/end points (world-space offsets from attach point)
+  // Interpolated string control/end points (offsets from attach point in local gfx space)
   private cpLx  = -9;  private cpLy  =  16;
   private endLx = -12; private endLy =  30;
   private cpRx  =  9;  private cpRy  =  16;
@@ -76,9 +77,16 @@ export class PlayerAnimator {
     scene:  Phaser.Scene,
   ) {
     this.sprite     = sprite;
+    this.scene      = scene;
     this.baseScaleX = sprite.scaleX;
     this.baseScaleY = sprite.scaleY;
     this.gfx        = scene.add.graphics().setDepth(11);
+
+    // Sync gfx position AFTER ArcadePhysics body→sprite sync (which runs on POST_UPDATE).
+    // At scene.update() time sprite.x/y still holds last frame's synced position — reading
+    // it here would lag by one frame. POST_UPDATE fires after ArcadePhysics finishes, so
+    // sprite.x/y is final for the current frame when this callback runs.
+    scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.syncGfxToSprite, this);
   }
 
   update(delta: number, state: PlayerAnimState): void {
@@ -146,13 +154,13 @@ export class PlayerAnimator {
     }
 
     if (state.onWall && !state.onGround && state.vy > 0) {
-      this.state = AnimState.WALL_SLIDE;
+      this.setState(AnimState.WALL_SLIDE);
     } else if (!state.onGround && Math.abs(state.vy) < APEX_VY_THRESHOLD) {
-      this.state = AnimState.APEX;
+      this.setState(AnimState.APEX);
     } else if (!state.onGround && state.vy >= APEX_VY_THRESHOLD) {
-      this.state = AnimState.FALLING;
+      this.setState(AnimState.FALLING);
     } else {
-      this.state = AnimState.IDLE;
+      this.setState(AnimState.IDLE);
     }
 
     this.idleTime     += delta;
@@ -164,6 +172,7 @@ export class PlayerAnimator {
   }
 
   destroy(): void {
+    this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.syncGfxToSprite, this);
     this.sprite.setScale(this.baseScaleX, this.baseScaleY);
     this.sprite.setAngle(0);
     this.sprite.body.setSize(PLAYER_WIDTH / this.baseScaleX, PLAYER_HEIGHT / this.baseScaleY);
@@ -172,8 +181,15 @@ export class PlayerAnimator {
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
+  private setState(newState: AnimState): void {
+    if (newState !== this.state) {
+      console.log(`[PlayerAnimator] ${AnimState[this.state]} → ${AnimState[newState]}`);
+      this.state = newState;
+    }
+  }
+
   private enterTimed(newState: AnimState, duration: number): void {
-    this.state      = newState;
+    this.setState(newState);
     this.stateTimer = duration;
     this.idleTime   = 0;
   }
@@ -292,26 +308,17 @@ export class PlayerAnimator {
     this.endRy += (endRy - this.endRy) * lerpF;
   }
 
+  private syncGfxToSprite(): void {
+    if (this.dormant) return;
+    const offsetY = PLAYER_HEIGHT * COLLAR_OFFSET_Y * this.baseScaleY;
+    this.gfx.setPosition(this.sprite.x, this.sprite.y + offsetY);
+  }
+
   private drawStrings(): void {
-    const attachX = this.sprite.x;
-    const attachY = this.sprite.y + PLAYER_HEIGHT * COLLAR_OFFSET_Y * this.sprite.scaleY;
-
     this.gfx.clear();
-    this.gfx.lineStyle(STRING_STROKE_W, 0xffffff, 1);
-
-    // Left string — quadratic bezier via line segments
-    this.drawQuadraticBezier(
-      attachX, attachY,
-      attachX + this.cpLx, attachY + this.cpLy,
-      attachX + this.endLx, attachY + this.endLy,
-    );
-
-    // Right string — quadratic bezier via line segments
-    this.drawQuadraticBezier(
-      attachX, attachY,
-      attachX + this.cpRx, attachY + this.cpRy,
-      attachX + this.endRx, attachY + this.endRy,
-    );
+    this.gfx.lineStyle(STRING_STROKE_W, 0xFF0000, 1);
+    this.drawQuadraticBezier(0, 0, this.cpLx, this.cpLy, this.endLx, this.endLy);
+    this.drawQuadraticBezier(0, 0, this.cpRx, this.cpRy, this.endRx, this.endRy);
   }
 
   private drawQuadraticBezier(x0: number, y0: number, cpx: number, cpy: number, x1: number, y1: number): void {
