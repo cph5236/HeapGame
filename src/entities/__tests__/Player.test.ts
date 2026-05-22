@@ -1274,3 +1274,113 @@ describe('Player — onGround derivation', () => {
     expect((player as any)._onGround).toBe(true);
   });
 });
+
+// ── 16. Wall-leave coyote time ────────────────────────────────────────────────
+
+describe('Player — wall-leave coyote', () => {
+  it('touch left wall → leave wall → press jump within window → fires with right push', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).wallJumpsRemaining = 1;
+
+    // First update: touch left wall to prime lastWallSide and wallCoyoteTimer
+    player.update(16);
+
+    // Verify wall coyote was activated: wallCoyoteTimer should be WALL_COYOTE_MS
+    const wallCoyoteTimerAfterTouch = (player as any).wallCoyoteTimer;
+    expect(wallCoyoteTimerAfterTouch).toBeGreaterThan(0);
+    expect((player as any).lastWallSide).toBe(-1); // left wall = -1
+
+    // Now unset the wall contact and press jump
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    player.sprite.body.blocked.left = false;
+    imState.jumpJustPressed = true;
+    (player as any).wallJumpsRemaining = 1; // Refund for this test
+
+    // Second update: off wall, within coyote window, jump pressed
+    player.update(16);
+
+    // Wall jump should have fired with positive vx (jump away from left wall = right)
+    expect(spy.setVelocityX).toContain(PLAYER_SPEED * 1.5); // rightward push
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+    expect((player as any)._justWallJumped).toBe(true);
+  });
+
+  it('past coyote window: jump does NOT fire as wall-jump', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).wallJumpsRemaining = 1;
+
+    // First update: touch left wall
+    player.update(16);
+    const wallCoyoteMS = (player as any).wallCoyoteTimer;
+
+    // Expire the coyote timer
+    player.sprite.body.blocked.left = false;
+    player.update(wallCoyoteMS + 50);
+
+    // Now jump
+    imState.jumpJustPressed = true;
+    (player as any).wallJumpsRemaining = 1; // Refund for this test
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+
+    player.update(16);
+
+    // Wall jump should NOT have fired
+    expect((player as any)._justWallJumped).toBe(false);
+  });
+
+  it('touching wall continues to refresh coyote window every frame', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).wallJumpsRemaining = 1;
+
+    // Touch wall and update 5 times, each time the timer should be refreshed to max
+    for (let i = 0; i < 5; i++) {
+      player.update(16); // Each update: 16ms passes
+      // While onWall, wallCoyoteTimer should be refreshed to WALL_COYOTE_MS each frame
+      const timer = (player as any).wallCoyoteTimer;
+      expect(timer).toBeGreaterThan(0); // Should not decay while touching wall
+    }
+  });
+
+  it('wall-jump in coyote consumes the timer', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).wallJumpsRemaining = 1;
+
+    // Touch wall to prime coyote
+    player.update(16);
+    const wallCoyoteAfterTouch = (player as any).wallCoyoteTimer;
+    expect(wallCoyoteAfterTouch).toBeGreaterThan(0);
+
+    // Leave wall and jump within coyote window
+    player.sprite.body.blocked.left = false;
+    imState.jumpJustPressed = true;
+    (player as any).wallJumpsRemaining = 1;
+
+    player.update(16);
+
+    // Wall jump should have fired and consumed the coyote timer
+    expect((player as any)._justWallJumped).toBe(true);
+    expect((player as any).wallCoyoteTimer).toBe(0);
+  });
+});

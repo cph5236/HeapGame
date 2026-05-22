@@ -15,6 +15,7 @@ import {
   PLAYER_MAX_FALL_SPEED,
   PLAYER_DIVE_SPEED,
   WALL_SLIDE_SPEED,
+  WALL_COYOTE_MS,
   AIR_TILT_FORCE,
   AIR_MOMENTUM_DECAY,
   MOMENTUM_STOP_ADV_FACTOR,
@@ -70,6 +71,8 @@ export class Player {
 
   private airJumpsRemaining:  number = 0;
   private wallJumpsRemaining: number = 0;
+  private wallCoyoteTimer:    number = 0; // ms remaining of wall-leave coyote grace
+  private lastWallSide:       -1 | 0 | 1 = 0; // which side was player last touching: -1=left, 1=right, 0=none
   private dashCooldown:       number = 0; // ms remaining
   private dashActive:         number = 0; // ms remaining of active dash
   private diveActive:         number = 0; // ms remaining of mobile dive burst
@@ -172,6 +175,7 @@ export class Player {
 
     const ctx = this.computeGroundContext();
     this.applyGravityScaling(ctx);
+    this.updateWallCoyote(ctx, delta);
     this.handleLandingResets(ctx, delta);
     this.updateHorizontal(ctx, delta);
     this.applyTerrainStick(ctx);
@@ -305,6 +309,19 @@ export class Player {
     }
   }
 
+  /** Manage wall-leave coyote time window: refresh when touching wall, decay when not.
+   *  When onWall, sets wallCoyoteTimer and lastWallSide. When off wall, decays timer. */
+  private updateWallCoyote(ctx: FrameCtx, delta: number): void {
+    if (ctx.onWall) {
+      // Touching wall: refresh coyote window and record which side
+      this.wallCoyoteTimer = WALL_COYOTE_MS;
+      this.lastWallSide = ctx.body.blocked.left ? -1 : 1;
+    } else {
+      // Not touching wall: decay coyote timer
+      this.wallCoyoteTimer = Math.max(0, this.wallCoyoteTimer - delta);
+    }
+  }
+
   private handleLandingResets(ctx: FrameCtx, delta: number): void {
     if (ctx.onGround) {
       this.coyoteTimer        = 120;
@@ -428,17 +445,22 @@ export class Player {
   }
 
   /** Wall-jump branch: only when airborne, requires a charge.
+   *  Can fire while touching wall OR within wallCoyoteTimer window after leaving.
    *  Returns whether a wall jump fired. */
   private tryWallJump(ctx: FrameCtx): boolean {
     const jumpPressed = !this.placementMode && this.jumpBufferTimer > 0;
     if (!this.wallJumpEnabled || ctx.onGround || !jumpPressed || this.wallJumpsRemaining <= 0) return false;
-    if (!ctx.onWall) return false;
+    // Accept jump if touching wall OR within coyote window after leaving wall
+    const canWallJump = ctx.onWall || this.wallCoyoteTimer > 0;
+    if (!canWallJump) return false;
     const body = ctx.body;
-    const dir = body.blocked.left ? 1 : -1; // jump away from wall
+    // Direction: use current blocked state if touching wall, otherwise use lastWallSide from coyote
+    const dir = body.blocked.left ? 1 : body.blocked.right ? -1 : -this.lastWallSide;
     this.momentumX = dir * PLAYER_SPEED * 1.5;
     this.sprite.setVelocityX(this.momentumX);
     this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
     this.wallJumpsRemaining--;
+    this.wallCoyoteTimer = 0; // Consume coyote window on wall-jump fire
     AudioManager.play('player-jump');
     this._justWallJumped = true;
     return true;

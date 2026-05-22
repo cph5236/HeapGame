@@ -29,6 +29,7 @@ export const PLAYER_AIR_MAX_SPEED = 500;  // px/s max horizontal speed while air
 export const PLAYER_MAX_FALL_SPEED = 800; // px/s; reached after ~1.5 s at gravity 800
 export const PLAYER_DIVE_SPEED    = 1200; // px/s; instant downward velocity while diving
 export const WALL_SLIDE_SPEED     = 80;   // px/s downward cap while touching a wall
+export const WALL_COYOTE_MS       = 100;  // ms grace window to wall-jump after leaving the wall
 export const PLAYER_INVINCIBLE_MS = 400;  // post-stomp / post-spawn invincibility
 export const MAX_AIR_JUMPS        = 1;    // base value — actual value comes from SaveData/upgrades
 export const DASH_COOLDOWN_MS     = 800;  // ms between dashes
