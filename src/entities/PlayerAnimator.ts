@@ -99,9 +99,15 @@ export class PlayerAnimator {
       if (state.justLanded &&
           (this.state === AnimState.LAUNCHING || this.state === AnimState.AIR_JUMP)) {
         this.enterTimed(AnimState.LANDING, LANDING_DURATION);
+        this.applyKeyframes();
+        this.drawStrings();
+        return;
       } else if (state.justWallJumped &&
                  (this.state === AnimState.LAUNCHING || this.state === AnimState.AIR_JUMP)) {
         this.enterTimed(AnimState.LAUNCHING, LAUNCH_DURATION);
+        this.applyKeyframes();
+        this.drawStrings();
+        return;
       } else {
         this.stateTimer -= delta;
         if (this.stateTimer > 0) {
@@ -241,8 +247,8 @@ export class PlayerAnimator {
         // Strings flutter between straight-up and angled
         const wave = Math.sin((this.fallFlapTime / FALL_FLAP_PERIOD) * Math.PI * 2);
         sx = 0.88; sy = 1.15; angle = 0;
-        cpLx = -5 + wave * -7; cpLy = -10 + wave * 6; endLx = -6; endLy = -22;
-        cpRx =  5 + wave *  7; cpRy = -10 + wave * 6; endRx =  6; endRy = -22;
+        cpLx = -8.5 + wave * -3.5; cpLy = -7 + wave * 3; endLx = -6; endLy = -22;
+        cpRx =  8.5 + wave *  3.5; cpRy = -7 + wave * 3; endRx =  6; endRy = -22;
         break;
       }
       case AnimState.WALL_SLIDE: {
