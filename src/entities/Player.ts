@@ -27,6 +27,18 @@ import { AudioManager } from '../systems/AudioManager';
 
 const { KeyCodes } = Phaser.Input.Keyboard;
 
+export interface PlayerAnimState {
+  vy:             number;
+  onGround:       boolean;
+  onWall:         boolean;
+  frozen:         boolean;
+  justLanded:     boolean;
+  justJumped:     boolean;
+  justAirJumped:  boolean;
+  justWallJumped: boolean;
+  justDied:       boolean;
+}
+
 export class Player {
   readonly sprite: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
 
@@ -72,6 +84,13 @@ export class Player {
   private onLadder: boolean = false;
   private controlsEnabled = true;
   private _wasOnGround = false;
+  private _onGround       = false;
+  private _onWall         = false;
+  private _frozen         = false;
+  private _justLanded     = false;
+  private _justJumped     = false;
+  private _justAirJumped  = false;
+  private _justWallJumped = false;
 
   // ── HUD accessors ──────────────────────────────────────────────────────────
   get dashCooldownFraction(): number  { return this.dashCooldown / DASH_COOLDOWN_MS; }
@@ -82,8 +101,22 @@ export class Player {
   get hasDash():              boolean { return this.dashEnabled; }
   get hasActiveShield():      boolean { return this.shieldActive; }
 
+  get animState(): PlayerAnimState {
+    return {
+      vy:             this.sprite.body.velocity.y,
+      onGround:       this._onGround,
+      onWall:         this._onWall,
+      frozen:         this._frozen,
+      justLanded:     this._justLanded,
+      justJumped:     this._justJumped,
+      justAirJumped:  this._justAirJumped,
+      justWallJumped: this._justWallJumped,
+      justDied:       false,
+    };
+  }
+
   constructor(scene: Phaser.Scene, x: number, y: number, config: PlayerConfig) {
-    this.sprite = scene.physics.add.sprite(x, y, 'trashbag');
+    this.sprite = scene.physics.add.sprite(x, y, 'trashbag-nostrings');
     this.sprite.setDisplaySize(PLAYER_WIDTH, PLAYER_HEIGHT);
     // World bounds handled manually (X wrap + Y clamp) — do NOT setCollideWorldBounds
     this.sprite.body.setMaxVelocityY(PLAYER_MAX_FALL_SPEED);
@@ -146,8 +179,11 @@ export class Player {
 
     if (onGround && !this._wasOnGround) {
       AudioManager.play('player-land');
+      this._justLanded = true;
     }
     this._wasOnGround = onGround;
+    this._onGround    = onGround;
+    this._onWall      = onWall;
 
     // Landing resets air jump and wall jump counters, and refreshes coyote window
     if (onGround) {
@@ -247,12 +283,14 @@ export class Player {
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.coyoteTimer = 0; // consume coyote window so it can't be reused
         AudioManager.play('player-jump');
+        this._justJumped = true;
       } else if (!onWallForJump && this.airJumpsRemaining > 0) {
         this.momentumX = im.jumpVx !== 0 ? im.jumpVx : body.velocity.x;
         this.sprite.setVelocityX(this.momentumX);
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.airJumpsRemaining--;
         AudioManager.play('player-jump');
+        this._justAirJumped = true;
       }
     }
 
@@ -265,6 +303,7 @@ export class Player {
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.wallJumpsRemaining--;
         AudioManager.play('player-jump');
+        this._justWallJumped = true;
       }
     }
 
@@ -319,6 +358,12 @@ export class Player {
         this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
       }
     }
+
+    // Clear one-frame animation flags
+    this._justLanded     = false;
+    this._justJumped     = false;
+    this._justAirJumped  = false;
+    this._justWallJumped = false;
   }
 
   activateShield(): void {
@@ -371,5 +416,6 @@ export class Player {
     this.setControlsEnabled(false);
     this.sprite.setVelocity(0, 0);
     this.sprite.body.setAllowGravity(false);
+    this._frozen = true;
   }
 }
