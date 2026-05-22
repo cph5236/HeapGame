@@ -105,4 +105,48 @@ describe('buildCoinBreakdown', () => {
     expect(result.rows[1]).toEqual({ type: 'money_mult', multiplier: 1.5, runningTotal: 4 });
     expect(result.finalCoins).toBe(4);
   });
+
+  it('adds off_peak_bonus row when offPeakBonus > 0', () => {
+    const result = buildCoinBreakdown({
+      score: 500,
+      scoreToCoins: 100,
+      moneyMultiplier: 1,
+      isPeak: false,
+      peakMultiplier: 1.25,
+      isFailure: false,
+      offPeakBonus: 10,
+    });
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[1]).toEqual({ type: 'off_peak_bonus', multiplier: 10, runningTotal: 15 });
+    expect(result.finalCoins).toBe(15);
+  });
+
+  it('does NOT add off_peak_bonus row when offPeakBonus is 0 or absent', () => {
+    const result = buildCoinBreakdown({
+      score: 500,
+      scoreToCoins: 100,
+      moneyMultiplier: 1,
+      isPeak: false,
+      peakMultiplier: 1.25,
+      isFailure: false,
+    });
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].type).toBe('base');
+  });
+
+  it('applies off_peak_bonus before death_penalty when both present', () => {
+    const result = buildCoinBreakdown({
+      score: 500,
+      scoreToCoins: 100,
+      moneyMultiplier: 1,
+      isPeak: false,
+      peakMultiplier: 1.25,
+      isFailure: true,
+      offPeakBonus: 10,
+    });
+    // base: 5, off_peak_bonus: +10 = 15, death_penalty: floor(15 * 0.5) = 7
+    expect(result.rows[1]).toEqual({ type: 'off_peak_bonus', multiplier: 10, runningTotal: 15 });
+    expect(result.rows[2]).toEqual({ type: 'death_penalty', multiplier: 0.5, runningTotal: 7 });
+    expect(result.finalCoins).toBe(7);
+  });
 });

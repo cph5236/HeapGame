@@ -39,6 +39,10 @@ const PLACE_HEIGHT_GRACE_PX = 200;
 // above the summit on a fresh heap (no live-zone vertices yet).
 const HEAP_TOP_ZONE_PX = 300;
 
+const OFF_PEAK_THRESHOLD_PX = 100; // px below top_y that earns off-peak bonus
+const OFF_PEAK_BONUS_COINS  = 10;  // flat coins awarded for off-peak placement
+const GHOST_JITTER_RADIUS_PX = 80;  // max px offset from anchor when placing ghost points
+
 function validateDifficulty(d: number): string | null {
   if (!Number.isFinite(d)) return 'difficulty must be a finite number';
   if (d < 1 || d > 5) return 'difficulty must be between 1 and 5';
@@ -77,6 +81,9 @@ function resolveParams(input: Partial<HeapParams> | undefined): HeapParams | { e
     const err = validateMult(v, k);
     if (err) return { error: err };
   }
+
+  merged.ghostPointCount = Math.max(0, Math.floor(merged.ghostPointCount ?? 1));
+
   return merged;
 }
 
@@ -103,7 +110,8 @@ export function heapRoutes(
       vertices = body.vertices;
     } else {
       const seed = Number.isFinite(body.seed) ? Math.floor(body.seed!) : Math.floor(Math.random() * 1_000_000);
-      vertices = generateDefaultPolygon(seed, resolved.worldHeight);
+      const genOpts = Number.isFinite(body.numBlocks) && (body.numBlocks! > 0) ? { numBlocks: body.numBlocks! } : {};
+      vertices = generateDefaultPolygon(seed, resolved.worldHeight, genOpts);
     }
 
     const MAX_VERTICES = 10_000;
@@ -145,12 +153,13 @@ export function heapRoutes(
         createdAt: r.created_at,
         topY: r.top_y,
         params: {
-          name:          r.name,
-          difficulty:    r.difficulty,
-          spawnRateMult: r.spawn_rate_mult,
-          coinMult:      r.coin_mult,
-          scoreMult:     r.score_mult,
-          worldHeight:   r.world_height,
+          name:            r.name,
+          difficulty:      r.difficulty,
+          spawnRateMult:   r.spawn_rate_mult,
+          coinMult:        r.coin_mult,
+          scoreMult:       r.score_mult,
+          worldHeight:     r.world_height,
+          ghostPointCount: r.ghost_point_count,
         },
       })),
     } satisfies ListHeapsResponse);
@@ -221,12 +230,13 @@ export function heapRoutes(
       baseId: row.base_id,
       liveZone,
       params: {
-        name:          row.name,
-        difficulty:    row.difficulty,
-        spawnRateMult: row.spawn_rate_mult,
-        coinMult:      row.coin_mult,
-        scoreMult:     row.score_mult,
-        worldHeight:   row.world_height,
+        name:            row.name,
+        difficulty:      row.difficulty,
+        spawnRateMult:   row.spawn_rate_mult,
+        coinMult:        row.coin_mult,
+        scoreMult:       row.score_mult,
+        worldHeight:     row.world_height,
+        ghostPointCount: row.ghost_point_count,
       },
       enemyParams,
     } satisfies GetHeapResponse);
@@ -246,12 +256,13 @@ export function heapRoutes(
 
     if (Object.keys(bodyParams).length > 0) {
       const merged: HeapParams = {
-        name:          bodyParams.name          ?? row.name,
-        difficulty:    bodyParams.difficulty     ?? row.difficulty,
-        spawnRateMult: bodyParams.spawnRateMult  ?? row.spawn_rate_mult,
-        coinMult:      bodyParams.coinMult       ?? row.coin_mult,
-        scoreMult:     bodyParams.scoreMult      ?? row.score_mult,
-        worldHeight:   bodyParams.worldHeight    ?? row.world_height,
+        name:            bodyParams.name            ?? row.name,
+        difficulty:      bodyParams.difficulty      ?? row.difficulty,
+        spawnRateMult:   bodyParams.spawnRateMult   ?? row.spawn_rate_mult,
+        coinMult:        bodyParams.coinMult        ?? row.coin_mult,
+        scoreMult:       bodyParams.scoreMult       ?? row.score_mult,
+        worldHeight:     bodyParams.worldHeight     ?? row.world_height,
+        ghostPointCount: bodyParams.ghostPointCount ?? row.ghost_point_count,
       };
       await db.updateHeapParams(id, merged);
     }
@@ -282,12 +293,13 @@ export function heapRoutes(
 
     // Reuse resolveParams against the merged shape (existing values + edits).
     const merged = resolveParams({
-      name:          body.name          ?? existing.name,
-      difficulty:    body.difficulty    ?? existing.difficulty,
-      spawnRateMult: body.spawnRateMult ?? existing.spawn_rate_mult,
-      coinMult:      body.coinMult      ?? existing.coin_mult,
-      scoreMult:     body.scoreMult     ?? existing.score_mult,
-      worldHeight:   existing.world_height,
+      name:            body.name            ?? existing.name,
+      difficulty:      body.difficulty      ?? existing.difficulty,
+      spawnRateMult:   body.spawnRateMult   ?? existing.spawn_rate_mult,
+      coinMult:        body.coinMult        ?? existing.coin_mult,
+      scoreMult:       body.scoreMult       ?? existing.score_mult,
+      worldHeight:     existing.world_height,
+      ghostPointCount: body.ghostPointCount ?? existing.ghost_point_count,
     });
     if ('error' in merged) return c.json({ error: merged.error }, 400);
 
@@ -390,6 +402,22 @@ export function heapRoutes(
       liveZone.splice(insertIdx, 0, newVertex);
     }
 
+    // Ghost points: jitter near a random existing live zone vertex to keep heap shape organic
+    const ghostCount = Math.max(0, Math.floor(row.ghost_point_count ?? 1));
+    for (let i = 0; i < ghostCount; i++) {
+      const anchorIdx = Math.floor(Math.random() * liveZone.length);
+      const anchor = liveZone[anchorIdx];
+      const dx = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
+      const dy = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
+      const gx = Math.max(PLACE_X_MIN, Math.min(PLACE_X_MAX, anchor.x + dx));
+      const gy = Math.max(row.top_y, Math.min(liveZoneBottomY, anchor.y + dy));
+      const gv: Vertex = { x: gx, y: gy };
+      const gIdx = liveZone.findIndex((v) => v.y > gy);
+      if (gIdx === -1) liveZone.push(gv); else liveZone.splice(gIdx, 0, gv);
+    }
+
+    const bonusCoins = y > row.top_y + OFF_PEAK_THRESHOLD_PX ? OFF_PEAK_BONUS_COINS : undefined;
+
     let currentBaseId = row.base_id;
     let newFreezeY = row.freeze_y;
     let finalLiveZone = liveZone;
@@ -408,7 +436,7 @@ export function heapRoutes(
     await db.updateHeap(id, currentBaseId, newVersion, finalLiveZone, newFreezeY);
     await db.updateTopY(id, y);
 
-    return c.json({ accepted: true, version: newVersion } satisfies PlaceResponse);
+    return c.json({ accepted: true, version: newVersion, bonusCoins } satisfies PlaceResponse);
   });
 
   // DELETE /heaps/:id — remove heap and all its base snapshots

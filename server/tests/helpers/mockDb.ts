@@ -38,6 +38,7 @@ export class MockHeapDB implements HeapDB {
       score_mult:      row.score_mult,
       world_height:    row.world_height,
       top_y:           row.top_y,
+      ghost_point_count: row.ghost_point_count,
     }));
   }
 
@@ -56,6 +57,7 @@ export class MockHeapDB implements HeapDB {
     params: HeapParams = DEFAULT_HEAP_PARAMS,
   ): Promise<void> {
     const initialTopY = vertices.length > 0 ? Math.min(...vertices.map(v => v.y)) : 0;
+    const ghostPointCount = (params as any).ghostPointCount ?? 1;
     this.bases.set(baseId, {
       heap_id: heapId,
       vertices: JSON.stringify(vertices),
@@ -75,6 +77,7 @@ export class MockHeapDB implements HeapDB {
       score_mult:      params.scoreMult,
       world_height:    params.worldHeight,
       top_y: initialTopY,
+      ghost_point_count: ghostPointCount,
     });
   }
 
@@ -87,6 +90,7 @@ export class MockHeapDB implements HeapDB {
   async updateHeapParams(id: string, params: HeapParams): Promise<void> {
     const existing = this.heaps.get(id);
     if (!existing) return;
+    const ghostPointCount = (params as any).ghostPointCount ?? existing.ghost_point_count;
     this.heaps.set(id, {
       ...existing,
       name:            params.name,
@@ -95,6 +99,7 @@ export class MockHeapDB implements HeapDB {
       coin_mult:       params.coinMult,
       score_mult:      params.scoreMult,
       world_height:    params.worldHeight,
+      ghost_point_count: ghostPointCount,
     });
   }
 
@@ -121,6 +126,7 @@ export class MockHeapDB implements HeapDB {
 
   /** Test helper — seed a heap row directly without going through createHeap. */
   seedHeap(id: string, version: number, liveZone: Vertex[], baseId = id, freezeY = 0, params: HeapParams = DEFAULT_HEAP_PARAMS): void {
+    const ghostPointCount = (params as any).ghostPointCount ?? 1;
     this.heaps.set(id, {
       base_id: baseId,
       version,
@@ -134,6 +140,7 @@ export class MockHeapDB implements HeapDB {
       score_mult:      params.scoreMult,
       world_height:    params.worldHeight,
       top_y: 0,
+      ghost_point_count: ghostPointCount,
     });
   }
 

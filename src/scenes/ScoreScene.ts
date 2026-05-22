@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { AudioManager } from '../systems/AudioManager';
 import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N } from '../constants';
 import {
   addBalance,
@@ -40,6 +41,7 @@ export class ScoreScene extends Phaser.Scene {
   private _elapsedMs:    number                             = 0;
   private _scoreRows:    RunScoreRow[]                      = [];
   private _heapParams:   HeapParams                         = DEFAULT_HEAP_PARAMS;
+  private _bonusCoins:   number                             = 0;
 
   private _mockLeaderboard:    LeaderboardContext | null = null;
   private _forceBreakdownOpen: boolean                  = false;
@@ -62,6 +64,7 @@ export class ScoreScene extends Phaser.Scene {
     kills?:               Partial<Record<EnemyKind, number>>;
     elapsedMs?:           number;
     heapParams?:          HeapParams;
+    bonusCoins?:          number;
     mockLeaderboard?:     LeaderboardContext;
     forceBreakdownOpen?:  boolean;
     mockPlayerConfig?:    Partial<{ moneyMultiplier: number; peakMultiplier: number }>;
@@ -76,6 +79,7 @@ export class ScoreScene extends Phaser.Scene {
     this._elapsedMs          = data.elapsedMs           ?? 0;
     this._scoreRows          = [];
     this._heapParams         = data.heapParams          ?? DEFAULT_HEAP_PARAMS;
+    this._bonusCoins         = data.bonusCoins          ?? 0;
     this._mockLeaderboard    = data.mockLeaderboard     ?? null;
     this._forceBreakdownOpen = data.forceBreakdownOpen  ?? false;
     this._mockPlayerConfig   = data.mockPlayerConfig    ?? {};
@@ -96,6 +100,7 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   create(): void {
+    AudioManager.play('music-score');
     // Check and update local high score before rendering anything
     if (this.heapId && this.score > 0) {
       const prev = getLocalHighScore(this.heapId);
@@ -123,6 +128,7 @@ export class ScoreScene extends Phaser.Scene {
       isPeak:          this.isPeak,
       peakMultiplier:  cfg.peakMultiplier,
       isFailure:       this.isFailure,
+      offPeakBonus:    this._bonusCoins,
     });
 
     if (!this._coinsAwarded) {
@@ -471,6 +477,7 @@ export class ScoreScene extends Phaser.Scene {
       heap_coin_mult: { accent: 0x44dd88, accentHex: '#44dd88', labelHex: '#88ddaa' },
       peak_hunter:   { accent: 0xcc44ff, accentHex: '#cc44ff', labelHex: '#dd88ff' },
       death_penalty: { accent: 0xff4444, accentHex: '#ff4444', labelHex: '#ff8877' },
+      off_peak_bonus: { accent: 0x44aaff, accentHex: '#44aaff', labelHex: '#88ccff' },
     };
 
     // Collapse threshold
@@ -565,7 +572,10 @@ export class ScoreScene extends Phaser.Scene {
         rowBg.fillRect(PANEL_X - PANEL_W / 2 + 1, rowY, 2, ROW_H - 2);
         rowObjects.push(rowBg);
 
-        const label    = `\u00d7\u00a0${row.multiplier.toFixed(1)}\u2002${this.rowLabel(row.type)}`;
+        // off_peak_bonus is a flat add; others are multipliers
+        const label    = row.type === 'off_peak_bonus'
+          ? `+\u00a0${row.multiplier}\u2002${this.rowLabel(row.type)}`
+          : `\u00d7\u00a0${row.multiplier.toFixed(1)}\u2002${this.rowLabel(row.type)}`;
         const labelTxt = this.add.text(left + 8, mid, label, {
           fontSize: '11px', fontFamily: 'monospace', color: c.labelHex,
         }).setOrigin(0, 0.5);
@@ -651,12 +661,13 @@ export class ScoreScene extends Phaser.Scene {
     return PANEL_TOP + panelHeight(collapsed) + 40; // +20 matches the slide-down intro tween
   }
 
-  private rowLabel(type: 'money_mult' | 'heap_coin_mult' | 'peak_hunter' | 'death_penalty'): string {
+  private rowLabel(type: 'money_mult' | 'heap_coin_mult' | 'peak_hunter' | 'death_penalty' | 'off_peak_bonus'): string {
     const labels: Record<string, string> = {
       money_mult:     'Coin Multiplier',
       heap_coin_mult: 'Heap Coin Bonus',
       peak_hunter:    'Peak Bonus \u2736',
       death_penalty:  'Death Penalty \ud83d\udc80',
+      off_peak_bonus: 'Off-Peak Bonus',
     };
     return labels[type] ?? type;
   }

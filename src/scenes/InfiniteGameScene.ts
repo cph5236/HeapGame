@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
+import { PlayerAnimator } from '../entities/PlayerAnimator';
+import { AudioManager } from '../systems/AudioManager';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
@@ -39,6 +41,7 @@ import {
   PLAYER_INVINCIBLE_MS,
   CHUNK_BAND_HEIGHT,
   INFINITE_LOOKAHEAD_CHUNKS,
+  MAX_WALL_AUDIBLE_DISTANCE,
 } from '../constants';
 import { SCAN_STEP } from '../systems/HeapPolygon';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
@@ -57,6 +60,7 @@ function makeColBounds(): [number, number][] {
 
 export class InfiniteGameScene extends Phaser.Scene {
   private player!: Player;
+  private playerAnimator!: PlayerAnimator;
   private hud!: HUD;
   private im!: InputManager;
   private scoreText!: Phaser.GameObjects.Text;
@@ -77,6 +81,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   private invincible:    boolean = false;
   private _runStartTime: number | null = null;
   private _runKills:     Partial<Record<EnemyKind, number>> = {};
+  private _playerDead = false;
   private colBounds:        [number, number][] = [];
   private colSeeds:         number[] = [];
   private spawnedBands:     Set<number>[] = [];
@@ -151,6 +156,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
     this.player = new Player(this, gapX, this.spawnY, this.playerConfig);
     this.player.worldWidth = INFINITE_WORLD_WIDTH;
+    this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
 
     // ── Colliders ───────────────────────────────────────────────────────────────
     this.heapColliders = [];
@@ -214,6 +220,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     );
 
     // ── Trash wall ───────────────────────────────────────────────────────────────
+    AudioManager.play('music-game');
     this.trashWallManager = new TrashWallManager(this, TRASH_WALL_DEF, () => {
       this.handleDeath();
     }, INFINITE_WORLD_WIDTH);
@@ -304,6 +311,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     // ── Player + input ────────────────────────────────────────────────────────────
     this.im.update(delta, false);
     this.player.update(delta);
+    this.playerAnimator.update(delta, this.player.animState);
     this.snapPlayerToSurface();
     this.placeableManager.update();
     this.hud.update();
@@ -333,10 +341,17 @@ export class InfiniteGameScene extends Phaser.Scene {
 
     for (const em of this.enemyManagers) {
       em.setSpawnRateMult(spawnMult);
-      em.update(camTop, camBot);
+      if (!this._playerDead) {
+        em.update(camTop, camBot, this.player.sprite.x, this.player.sprite.y);
+      }
     }
 
     this.trashWallManager.update(this.player.sprite.y, delta);
+    if (!this._playerDead) {
+      const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
+      const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
+      AudioManager.setWallProximity(wallT);
+    }
     this.portalManager.update();
 
     // ── Noclip — refund air jump every frame so player has infinite jumps ─────────
@@ -389,7 +404,11 @@ export class InfiniteGameScene extends Phaser.Scene {
 
   private handleDeath(): void {
     if (!this.scene.isActive()) return;
+    if (this._playerDead) return;
+    this._playerDead = true;
+    AudioManager.onPlayerDeath();
     this.player.freeze();
+    this.playerAnimator.update(0, { ...this.player.animState, justDied: true });
     const score      = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
     const elapsedMs  = this._runStartTime !== null ? this.time.now - this._runStartTime : 0;
     const runResult  = buildRunScore(
@@ -455,6 +474,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     const kind = e.getData('kind') as EnemyKind;
     e.destroy();
 
+    AudioManager.play('enemy-kill');
     this._runKills[kind] = (this._runKills[kind] ?? 0) + 1;
     this.player.refundAirJump();
     this.player.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
@@ -514,5 +534,10 @@ export class InfiniteGameScene extends Phaser.Scene {
     if (Math.abs(targetY - this.player.sprite.y) <= SCAN_STEP * 2) {
       this.player.sprite.y = targetY;
     }
+  }
+
+  shutdown(): void {
+    this.playerAnimator.destroy();
+    AudioManager.stopAll();
   }
 }

@@ -2,6 +2,8 @@
 export const GAME_WIDTH  = 480;
 export const GAME_HEIGHT = 854;
 export const WORLD_WIDTH = 960;           // wider than the 480px canvas
+export const SKY_PAD     = 0.25;          // fraction of WORLD_WIDTH open sky beyond each edge
+export const SKY_INSET   = 0.00;          // fraction of WORLD_WIDTH inward from each edge where wrap lands
 
 export const MOCK_HEAP_HEIGHT_PX = 5_000_000;
 export const MOCK_SEED           = 12;
@@ -86,12 +88,13 @@ export const IBEAM_HEIGHT  = 16;
 
 // ── Parallax Background ────────────────────────────────────────────────────────
 export const CLOUD_POOL_SIZE       = 14;        // max number of clouds at once
-export const CLOUD_PARALLAX_FACTOR = 0.15;      // clouds move at 15% of camera speed
+export const CLOUD_PARALLAX_FACTOR = 0.30;      // clouds move at 15% of camera speed
 export const CLOUD_START_WORLD_Y   = 5_000_000; // show clouds everywhere; lower to gate by height
 export const GROUND_LAYER_HEIGHT   = 180;       // total depth of dirt cross-section in px
 
 // ── Enemies ────────────────────────────────────────────────────────────────────
 export const ENEMY_CULL_DISTANCE = 2000; // px below camera before destroy
+export const MAX_WALL_AUDIBLE_DISTANCE = 1200; // px gap at which wall rumble starts
 
 // ── Score / Economy ────────────────────────────────────────────────────────────
 export const SCORE_TO_COINS_DIVISOR = 100;

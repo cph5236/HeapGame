@@ -13,7 +13,9 @@ import type {
   ResetHeapResponse,
   DeleteHeapResponse,
   HeapEnemyParams,
+  HeapParams,
 } from '../../shared/heapTypes';
+import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 
 const VERTICES = [
   { x: 100, y: 400 },
@@ -229,7 +231,7 @@ describe('GET /heaps/:id', () => {
     const body = await res.json() as GetHeapResponse;
     expect(body.changed).toBe(true);
     if (body.changed) {
-      expect(body.params).toEqual({ name: 'X', difficulty: 2, spawnRateMult: 1.1, coinMult: 1.2, scoreMult: 1.3, worldHeight: 50_000 });
+      expect(body.params).toEqual({ name: 'X', difficulty: 2, spawnRateMult: 1.1, coinMult: 1.2, scoreMult: 1.3, worldHeight: 50_000, ghostPointCount: 1 });
     }
   });
 });
@@ -363,6 +365,109 @@ describe('POST /heaps/:id/place', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('inserts ghostPointCount extra points into liveZone alongside the player point', async () => {
+    const db = new MockHeapDB();
+    const params: HeapParams = { ...DEFAULT_HEAP_PARAMS, ghostPointCount: 2 };
+    db.seedHeap('h1', 1, [], 'base-1', 0, params);
+    db.seedBase('base-1', 'h1', []);
+
+    const app = createApp(db, new MockScoreDB());
+    const res = await app.request('/heaps/h1/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 300, y: 150 }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as PlaceResponse;
+    expect(body.accepted).toBe(true);
+
+    // Fetch the heap and verify liveZone has 1 player + 2 ghost = 3 points
+    const heapRes = await app.request('/heaps/h1?version=0');
+    const heap = await heapRes.json() as Extract<GetHeapResponse, { changed: true }>;
+    expect(heap.liveZone).toHaveLength(3);
+  });
+
+  it('inserts zero ghost points when ghostPointCount is 0', async () => {
+    const db = new MockHeapDB();
+    const params: HeapParams = { ...DEFAULT_HEAP_PARAMS, ghostPointCount: 0 };
+    db.seedHeap('h1', 1, [], 'base-1', 0, params);
+    db.seedBase('base-1', 'h1', []);
+
+    const app = createApp(db, new MockScoreDB());
+    const res = await app.request('/heaps/h1/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 300, y: 150 }),
+    });
+    const heap = await (await app.request('/heaps/h1?version=0')).json() as Extract<GetHeapResponse, { changed: true }>;
+    expect(heap.liveZone).toHaveLength(1); // only player point
+  });
+
+  it('returns bonusCoins when placement is more than 100px below top_y', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 1, [], 'base-1', 0, { ...DEFAULT_HEAP_PARAMS, ghostPointCount: 0 });
+    db.seedBase('base-1', 'h1', []);
+
+    const res = await createApp(db, new MockScoreDB()).request('/heaps/h1/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 300, y: 101 }), // 101 > 0 + 100
+    });
+    const body = await res.json() as PlaceResponse;
+    expect(body.accepted).toBe(true);
+    expect(body.bonusCoins).toBe(10);
+  });
+
+  it('does not return bonusCoins when placement is at or within 100px of top_y', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 1, [], 'base-1', 0, { ...DEFAULT_HEAP_PARAMS, ghostPointCount: 0 });
+    db.seedBase('base-1', 'h1', []);
+
+    const res = await createApp(db, new MockScoreDB()).request('/heaps/h1/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 300, y: 100 }), // 100 is NOT > 100
+    });
+    const body = await res.json() as PlaceResponse;
+    expect(body.accepted).toBe(true);
+    expect(body.bonusCoins).toBeUndefined();
+  });
+
+  it('ghost points land within GHOST_JITTER_RADIUS_PX of an existing live zone vertex', async () => {
+    // Seed a heap with one existing vertex far from the placement point
+    const db = new MockHeapDB();
+    db.seedHeap('h1', 1, [{ x: 600, y: 300 }], 'base-1', 0, {
+      ...DEFAULT_HEAP_PARAMS,
+      ghostPointCount: 1,
+    });
+    db.seedBase('base-1', 'h1', []);
+
+    const app = createApp(db, new MockScoreDB());
+    await app.request('/heaps/h1/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 400, y: 150 }),
+    });
+
+    const heapRes = await app.request('/heaps/h1?version=0');
+    const heap = await heapRes.json() as Extract<GetHeapResponse, { changed: true }>;
+    // 1 existing + 1 player + 1 ghost = 3
+    expect(heap.liveZone).toHaveLength(3);
+
+    const RADIUS = 80; // must match GHOST_JITTER_RADIUS_PX in heap.ts
+    // Possible anchors at the time ghost was inserted: existing (600,300) and player (400,150)
+    const anchors = [{ x: 600, y: 300 }, { x: 400, y: 150 }];
+    const ghostPoints = heap.liveZone.filter(
+      v => !(v.x === 400 && v.y === 150) && !(v.x === 600 && v.y === 300),
+    );
+    expect(ghostPoints).toHaveLength(1);
+    const ghost = ghostPoints[0];
+    const nearAnyAnchor = anchors.some(
+      a => Math.abs(ghost.x - a.x) <= RADIUS && Math.abs(ghost.y - a.y) <= RADIUS,
+    );
+    expect(nearAnyAnchor).toBe(true);
+  });
 });
 
 // ── DELETE /heaps/:id ────────────────────────────────────────────────────────
@@ -429,6 +534,7 @@ describe('POST /heaps with params', () => {
       coinMult: 1.3,
       scoreMult: 2.0,
       worldHeight: 50_000,
+      ghostPointCount: 1,
     });
   });
 
@@ -447,6 +553,7 @@ describe('POST /heaps with params', () => {
       coinMult: 1.0,
       scoreMult: 1.0,
       worldHeight: 50_000,
+      ghostPointCount: 1,
     });
   });
 

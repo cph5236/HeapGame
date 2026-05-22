@@ -3,7 +3,7 @@ import { ITEM_DEFS } from '../data/itemDefs';
 import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT } from '../constants';
 
 const SAVE_KEY = 'heap_save';
-const CURRENT_SCHEMA = 3;
+const CURRENT_SCHEMA = 4;
 
 // World height at each schema version — used to remap placed item Y values.
 const WORLD_HEIGHT_V2 = 50_000;
@@ -15,6 +15,22 @@ export interface PlacedItemSave {
   y:     number;
   meta?: Record<string, number>;
 }
+
+export interface SoundSettings {
+  master:    number;
+  music:     number;
+  playerSfx: number;
+  enemySfx:  number;
+  envSfx:    number;
+}
+
+const DEFAULT_SOUND_SETTINGS: SoundSettings = {
+  master:    1.0,
+  music:     0.7,
+  playerSfx: 1.0,
+  enemySfx:  0.8,
+  envSfx:    0.9,
+};
 
 export type { RawSave };
 
@@ -31,6 +47,7 @@ interface RawSave {
   highScores:     Record<string, number>;
   verboseLogging?: boolean;
   _legacyPlaced?: PlacedItemSave[];
+  soundSettings?: SoundSettings;
 }
 
 let _cache: RawSave | null = null;
@@ -58,6 +75,7 @@ function freshSave(): RawSave {
     playerGuid:     generateGuid(),
     playerName:     generateDefaultName(),
     highScores:     {},
+    soundSettings:  { ...DEFAULT_SOUND_SETTINGS },
   };
 }
 
@@ -75,9 +93,9 @@ function remapPlacedY(placed: Record<string, PlacedItemSave[]>, oldHeight: numbe
 function migrate(parsed: any): RawSave {
   const version = parsed?.schemaVersion ?? 1;
 
-  if (version === CURRENT_SCHEMA && !Array.isArray(parsed.placed)) {
+  if (version === CURRENT_SCHEMA) {
     return {
-      schemaVersion: CURRENT_SCHEMA,
+      schemaVersion:  CURRENT_SCHEMA,
       balance:        parsed.balance        ?? 0,
       upgrades:       parsed.upgrades       ?? {},
       inventory:      parsed.inventory      ?? {},
@@ -89,6 +107,7 @@ function migrate(parsed: any): RawSave {
       highScores:     parsed.highScores     ?? {},
       verboseLogging: parsed.verboseLogging,
       _legacyPlaced:  parsed._legacyPlaced,
+      soundSettings:  parsed.soundSettings  ?? { ...DEFAULT_SOUND_SETTINGS },
     };
   }
 
@@ -106,6 +125,7 @@ function migrate(parsed: any): RawSave {
       playerName:     parsed.playerName ?? generateDefaultName(),
       highScores:     parsed.highScores ?? {},
       verboseLogging: parsed.verboseLogging,
+      soundSettings:  { ...DEFAULT_SOUND_SETTINGS },
       // v1 items have no world-height context — leave Y as-is; can't safely remap
       _legacyPlaced:  legacyArray.length > 0 ? legacyArray : undefined,
     };
@@ -125,6 +145,7 @@ function migrate(parsed: any): RawSave {
     gpgsPlayerId:   parsed.gpgsPlayerId,
     highScores:     parsed.highScores     ?? {},
     verboseLogging: parsed.verboseLogging,
+    soundSettings:  { ...DEFAULT_SOUND_SETTINGS },
     _legacyPlaced:  parsed._legacyPlaced,
   };
 }
@@ -422,6 +443,18 @@ export function getRawSaveForCloudSync(): RawSave { return { ...load() }; }
 
 export function applyMergedSave(merged: RawSave): void {
   persist(merged);
+}
+
+// ── Sound settings ────────────────────────────────────────────────────────────
+
+export function getSoundSettings(): SoundSettings {
+  return { ...(load().soundSettings ?? DEFAULT_SOUND_SETTINGS) };
+}
+
+export function setSoundVolume(cat: keyof SoundSettings, v: number): void {
+  const data = load();
+  data.soundSettings = { ...(data.soundSettings ?? DEFAULT_SOUND_SETTINGS), [cat]: v };
+  persist(data);
 }
 
 // ── Test helpers ──────────────────────────────────────────────────────────────

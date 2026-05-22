@@ -4,7 +4,7 @@ export type BaseRow = {
 };
 
 export type MultiplierRow = {
-  type: 'money_mult' | 'heap_coin_mult' | 'peak_hunter' | 'death_penalty';
+  type: 'money_mult' | 'heap_coin_mult' | 'peak_hunter' | 'death_penalty' | 'off_peak_bonus';
   multiplier: number;
   runningTotal: number;
 };
@@ -19,6 +19,7 @@ export interface BreakdownInput {
   isPeak:          boolean;
   peakMultiplier:  number;
   isFailure:       boolean;
+  offPeakBonus?:   number;  // flat coins added when placement is off-peak
 }
 
 export interface BreakdownResult {
@@ -27,7 +28,7 @@ export interface BreakdownResult {
 }
 
 export function buildCoinBreakdown(input: BreakdownInput): BreakdownResult {
-  const { score, scoreToCoins, moneyMultiplier, heapCoinMult = 1, isPeak, peakMultiplier, isFailure } = input;
+  const { score, scoreToCoins, moneyMultiplier, heapCoinMult = 1, isPeak, peakMultiplier, isFailure, offPeakBonus = 0 } = input;
   const rows: BreakdownRow[] = [];
 
   const base = Math.floor(score / scoreToCoins);
@@ -43,6 +44,11 @@ export function buildCoinBreakdown(input: BreakdownInput): BreakdownResult {
   if (heapCoinMult !== 1) {
     running = Math.floor(running * heapCoinMult);
     rows.push({ type: 'heap_coin_mult', multiplier: heapCoinMult, runningTotal: running });
+  }
+
+  if (offPeakBonus > 0) {
+    running += offPeakBonus;
+    rows.push({ type: 'off_peak_bonus', multiplier: offPeakBonus, runningTotal: running });
   }
 
   if (isPeak && peakMultiplier > 1) {

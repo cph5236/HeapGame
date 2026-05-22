@@ -1,0 +1,35 @@
+###DEATH
+To match our whimsical, bouncy cartoon aesthetic, a player’s death animation shouldn't feel punitive—it should be hilariously physical, chaotic, and satisfying to watch!
+
+Here is how we can design and animate the "Garbage Splat Pop!" death animation:
+The 4-Stage Death Animation
+🎬 Stage 1: The Comic Shock Freeze (0–150ms)
+
+The instant the bag hits a fatal obstacle (like a sharp spikes plate or falling anvil):
+
+    Action: The game camera shakes violently, and the bag instantly freezes in place for a split-second "hit-stop."
+    Scale: It squashes into a ultra-wide, flat pancake (scaleY = 0.25, scaleX = 1.75) as if absorbing a cartoon impact.
+    Audio: A loud, rubbery slide-whistle "Bonk!" or "Splat!" sound plays.
+
+🎬 Stage 2: The "Pop!" Trash Fountain (150–500ms)
+
+The bag burst-opens at its seams, releasing its stored treasures in a glorious, physics-driven cartoon explosion!
+
+    Action: The black bag sprite disappears into a soft puff of grey comic dust.
+    Particles: A fountain of 10–15 physics-enabled garbage pieces (crumpled soda cans, yellow banana peels, glowing green apple cores, and a tiny fishbone) burst outward in a $360^\circ$ radial splash, bouncing off platforms.
+    Audio: A comedic plastic-bag pop sound.
+
+🎬 Stage 3: The Untied Deflation (Alternative Option)
+
+If we want a non-exploding route, the bag's red collar unties, and it zips frantically around the screen like a deflated balloon releasing air, shrinking down into a tiny, flat, crinkled black puddle.
+🎬 Stage 4: The Floating Ribbon Parachute (500–1500ms)
+
+To leave a cute, lingering image of the character:
+
+    Action: While the trash fragments fly away, the bright red collar and two white tie ears untie themselves, slowly drifting back down the screen.
+    Animation: They sway gently left and right like a falling autumn leaf or a tiny paper parachute, fading out slowly as they slip off-screen.
+
+🛠️ Two Suggestions to Make it Even Juicier:
+
+    Dizzy Halo: We can spawn 3-4 spinning yellow stars or cartoon fishbones circling above the squashed bag during Stage 1 before it pops.
+    Ghost Bag Ascent: A cute, transparent "Ghost Bag" with little white wings can float upwards from the splat point, playing a funny harp sound!

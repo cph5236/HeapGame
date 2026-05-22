@@ -80,6 +80,10 @@
     </div>
     <div class="row">
       <div><label>scoreMult</label><input type="number" step="0.05" id="ep-scoreMult" /></div>
+      <div><label>ghostPointCount</label><input type="number" step="1" min="0" id="ep-ghostPointCount" /></div>
+    </div>
+    <div class="row">
+      <div></div>
       <div><label>worldHeight <span class="muted">(locked)</span></label><input type="number" id="ep-worldHeight" disabled /></div>
     </div>
     <button id="saveParams">Save Params</button>
@@ -131,11 +135,15 @@
     </div>
     <div class="row">
       <div><label>scoreMult</label><input type="number" step="0.05" id="cp-scoreMult" value="1.0" /></div>
+      <div><label>ghostPointCount</label><input type="number" step="1" min="0" id="cp-ghostPointCount" value="1" /></div>
+    </div>
+    <div class="row">
       <div><label>worldHeight</label><input type="number" id="cp-worldHeight" value="50000" /></div>
+      <div></div>
     </div>
     <div class="row">
       <div><label>Seed <span class="muted">(blank = random)</span></label><input type="number" id="cp-seed" /></div>
-      <div></div>
+      <div><label>Num Blocks <span class="muted">(blank = 50)</span></label><input type="number" step="1" min="1" id="cp-numBlocks" /></div>
     </div>
     <button id="createHeap">Create Heap</button>
   </div>
@@ -272,6 +280,7 @@
       $('ep-spawnRateMult').value = heap.params.spawnRateMult;
       $('ep-coinMult').value      = heap.params.coinMult;
       $('ep-scoreMult').value     = heap.params.scoreMult;
+      $('ep-ghostPointCount').value = heap.params.ghostPointCount ?? 1;
       $('ep-worldHeight').value   = heap.params.worldHeight;
       loadEnemyParams(heap.id);
     }
@@ -333,6 +342,7 @@
         spawnRateMult: Number($('ep-spawnRateMult').value),
         coinMult:      Number($('ep-coinMult').value),
         scoreMult:     Number($('ep-scoreMult').value),
+        ghostPointCount: (v => isNaN(v) ? 1 : v)(parseInt($('ep-ghostPointCount').value, 10)),
       };
       try {
         const res = await adminFetch(`/heaps/${editingHeapId}/params`, {
@@ -367,11 +377,14 @@
         spawnRateMult: Number($('cp-spawnRateMult').value),
         coinMult:      Number($('cp-coinMult').value),
         scoreMult:     Number($('cp-scoreMult').value),
+        ghostPointCount: (v => isNaN(v) ? 1 : v)(parseInt($('cp-ghostPointCount').value, 10)),
         worldHeight:   Number($('cp-worldHeight').value),
       };
       const seedRaw = $('cp-seed').value;
+      const numBlocksRaw = $('cp-numBlocks').value;
       const body = { params };
       if (seedRaw !== '') body.seed = Number(seedRaw);
+      if (numBlocksRaw !== '') body.numBlocks = Number(numBlocksRaw);
 
       try {
         const res = await adminFetch('/heaps', {
@@ -385,6 +398,7 @@
         setStatus('heap created', 'ok');
         $('cp-name').value = '';
         $('cp-seed').value = '';
+        $('cp-numBlocks').value = '';
         await loadHeaps();
       } catch (e) {
         setStatus(String(e), 'err');

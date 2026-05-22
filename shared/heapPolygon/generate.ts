@@ -24,7 +24,7 @@ export function generateDefaultPolygon(
   worldHeight: number,
   opts: GenerateOptions = {},
 ): Vertex[] {
-  const numBlocks       = opts.numBlocks       ?? 1200;
+  const numBlocks       = opts.numBlocks       ?? 50;
   const simplifyEpsilon = opts.simplifyEpsilon ?? 2;
 
   const state = new HeapState(seed);

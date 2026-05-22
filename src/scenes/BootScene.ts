@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import trashbagUrl from '../sprites/player/trashbag.png?url';
+import trashbagUrl          from '../sprites/player/trashbag.png?url';
+import trashbagNoStringsUrl from '../sprites/player/trashbag-nostrings.png?url';
 import { HeapClient } from '../systems/HeapClient';
 import type { Vertex } from '../systems/HeapPolygon';
 import { generateAllTextures } from '../entities/TextureGenerators';
@@ -11,6 +12,7 @@ import type { RawSave } from '../systems/SaveData';
 import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
 import { initLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
+import { AudioManager } from '../systems/AudioManager';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -20,11 +22,13 @@ export class BootScene extends Phaser.Scene {
   preload(): void {
     // Only what MenuScene actually paints: the player figure.
     this.load.image('trashbag', trashbagUrl);
+    this.load.image('trashbag-nostrings', trashbagNoStringsUrl);
   }
 
   create(): void {
     // Procedural textures — synchronous, no network/disk.
     generateAllTextures(this);
+    AudioManager.init(this.sound);
 
     // Default registry state so MenuScene can render before catalog resolves.
     this.game.registry.set('heapCatalog',    [] as HeapSummary[]);
@@ -95,6 +99,7 @@ export class BootScene extends Phaser.Scene {
             scoreMult: 1.0,
             worldHeight: MOCK_HEAP_HEIGHT_PX,
             isInfinite: true,
+            ghostPointCount: 1,
           },
         };
         const deduped = summaries.filter(s => s.id !== INFINITE_HEAP_ID);

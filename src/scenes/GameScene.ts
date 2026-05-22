@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
+import { PlayerAnimator } from '../entities/PlayerAnimator';
+import { AudioManager } from '../systems/AudioManager';
 import { CameraController } from '../systems/CameraController';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import type { Vertex } from '../systems/HeapPolygon';
@@ -16,6 +18,7 @@ import { InputManager } from '../systems/InputManager';
 import { getLogger } from '../logging';
 import {
   WORLD_WIDTH,
+  SKY_PAD,
   MOCK_HEAP_HEIGHT_PX,
   GEN_LOOKAHEAD,
   HEAP_TOP_ZONE_PX,
@@ -25,6 +28,7 @@ import {
   PLAYER_INVINCIBLE_MS,
   PLACE_HOLD_DURATION_MS,
   SCORE_DISPLAY_DIVISOR,
+  MAX_WALL_AUDIBLE_DISTANCE,
 } from '../constants';
 import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
@@ -43,6 +47,7 @@ import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
+  private playerAnimator!: PlayerAnimator;
   private hud!: HUD;
   private heapWalkableGroup!: Phaser.Physics.Arcade.StaticGroup;
   private heapWallGroup!:     Phaser.Physics.Arcade.StaticGroup;
@@ -69,6 +74,7 @@ export class GameScene extends Phaser.Scene {
   private placeableManager!: PlaceableManager;
   private trashWallManager!: TrashWallManager;
   private _lastScore = -1;
+  private _playerDead = false;
   private _heapId = '';
   private _holdElapsed = 0;
   private _liveZoneBottomY: number | null = null;
@@ -105,12 +111,13 @@ export class GameScene extends Phaser.Scene {
     this.infoOverlayParts = [];
     this._runKills     = {};
     this._runStartTime = null;
+    this._playerDead   = false;
     this._reached100m    = false;
     this._reached1000m   = false;
     this._reachedStomp10 = false;
 
     // World: Y=0 is the summit (top), Y=worldHeight is the base (bottom)
-    this.physics.world.setBounds(0, 0, WORLD_WIDTH, this._worldHeight);
+    this.physics.world.setBounds(-SKY_PAD * WORLD_WIDTH, 0, WORLD_WIDTH * (1 + 2 * SKY_PAD), this._worldHeight);
 
     this.heapWalkableGroup = this.physics.add.staticGroup();
     this.heapWallGroup     = this.physics.add.staticGroup();
@@ -155,6 +162,7 @@ export class GameScene extends Phaser.Scene {
 
     this.player = new Player(this, WORLD_WIDTH * 0.0625, this.spawnY, this.playerConfig);
     this.player.worldHeight = this._worldHeight;
+    this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
 
     // If restarted via checkpoint respawn, reposition player and consume one spawn
     if (this.checkpointRespawn) {
@@ -171,8 +179,12 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    AudioManager.play('music-game');
     this.trashWallManager = new TrashWallManager(this, TRASH_WALL_DEF, () => {
+      this._playerDead = true;
+      AudioManager.onPlayerDeath();
       this.player.freeze();
+      this.playerAnimator.update(0.016, { ...this.player.animState, justDied: true });
       this.player.sprite.setDepth(4); // visually swallowed — below wall body (depth 5)
       this.time.delayedCall(800, () => {
         const checkpointAvailable = getPlaced(this._heapId).some(
@@ -211,7 +223,7 @@ export class GameScene extends Phaser.Scene {
         });
         this.scene.pause();
       });
-    }, WORLD_WIDTH, this._worldHeight);
+    }, WORLD_WIDTH * (1 + 2 * SKY_PAD), this._worldHeight);
     this.trashWallManager.spawn(this.player.sprite.y);
 
     // Stream an initial chunk synchronously so collision is ready before the first frame
@@ -243,7 +255,7 @@ export class GameScene extends Phaser.Scene {
 
     // Snap camera to player immediately so the first-frame cull threshold
     // is correct (otherwise camBottom ≈ 0 and all bottom-world chunks get culled).
-    CameraController.setup(this, this.player.sprite, WORLD_WIDTH, this._worldHeight);
+    CameraController.setup(this, this.player.sprite, WORLD_WIDTH * (1 + 2 * SKY_PAD), this._worldHeight, -SKY_PAD * WORLD_WIDTH);
 
     // Background layers (sky colour set in main.ts; this adds ground dirt + parallax clouds)
     this.parallaxBg = new ParallaxBackground(this, this._worldHeight);
@@ -310,7 +322,26 @@ export class GameScene extends Phaser.Scene {
     im.update(delta, inLiveZone);
 
     this.player.update(delta);
+    this.playerAnimator.update(delta, this.player.animState);
     this.snapPlayerToSurface();
+
+    // After a wrap, snap the camera so the player appears at the edge they came out of,
+    // then tween the follow offset back to zero so the camera re-centers naturally.
+    if (this.player.wrapDir !== 0) {
+      const halfW = this.cameras.main.width / 2;
+      // wrapDir -1 = came out right edge, offset pulls camera left so player is at right
+      // wrapDir  1 = came out left edge,  offset pulls camera right so player is at left
+      const startOffset = -this.player.wrapDir * halfW;
+      this.cameras.main.setFollowOffset(startOffset, 0);
+      this.tweens.killTweensOf(this.cameras.main);
+      this.tweens.addCounter({
+        from: startOffset, to: 0, duration: 2000, ease: 'Cubic.Out',
+        onUpdate: (tween) => {
+          this.cameras.main.setFollowOffset(tween.getValue() ?? 0, 0);
+        },
+      });
+    }
+
     this.parallaxBg.update();
     this.hud.update();
     this.placeableManager.update();
@@ -320,7 +351,14 @@ export class GameScene extends Phaser.Scene {
     const camBottom = cam.scrollY + cam.height;
 
     this.trashWallManager.update(this.player.sprite.y, delta);
-    this.enemyManager.update(camTop, camBottom);
+    if (!this._playerDead) {
+      const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
+      const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
+      AudioManager.setWallProximity(wallT);
+    }
+    if (!this._playerDead) {
+      this.enemyManager.update(camTop, camBottom, this.player.sprite.x, this.player.sprite.y);
+    }
     this.chunkRenderer.cullChunks(camBottom);
     this.edgeCollider.cullBands(camBottom, 2000);
 
@@ -459,9 +497,11 @@ export class GameScene extends Phaser.Scene {
     const py     = this.player.sprite.y;
     const isPeak = py <= this.heapGenerator.topY + PEAK_BONUS_ZONE_PX;
 
-    const appendDone = HeapClient.append(this._heapId, px, py).then(() =>
-      HeapClient.load(this._heapId),
-    ).then(freshPolygon => {
+    let bonusCoinsFromServer = 0;
+    const appendDone = HeapClient.append(this._heapId, px, py).then(placeResp => {
+      bonusCoinsFromServer = placeResp?.bonusCoins ?? 0;
+      return HeapClient.load(this._heapId);
+    }).then(freshPolygon => {
       applyPolygonToGenerator(freshPolygon, this.heapGenerator);
       this.heapGenerator.setPolygonTopY(polygonTopY(freshPolygon));
       this.game.registry.set('heapPolygon', freshPolygon);
@@ -498,6 +538,7 @@ export class GameScene extends Phaser.Scene {
           kills:        this._runKills,
           elapsedMs,
           heapParams:   this._heapParams,
+          bonusCoins:   bonusCoinsFromServer,
         });
         this.scene.pause();
       });
@@ -527,6 +568,7 @@ export class GameScene extends Phaser.Scene {
     enemy: Phaser.GameObjects.GameObject,
   ): void => {
     const e = enemy as Phaser.Physics.Arcade.Sprite;
+    AudioManager.play('enemy-kill');
     const stompX = e.x;
     const stompY = e.y;
     const kind = e.getData('kind') as EnemyKind;
@@ -614,6 +656,12 @@ export class GameScene extends Phaser.Scene {
       this.time.delayedCall(PLAYER_INVINCIBLE_MS * 4, () => { this.invincible = false; });
       return;
     }
+
+    if (this._playerDead) return;
+    this._playerDead = true;
+    AudioManager.onPlayerDeath();
+    this.player.freeze();
+    this.playerAnimator.update(0.016, { ...this.player.animState, justDied: true });
 
     const checkpointAvailable = getPlaced(this._heapId).some(
       p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
@@ -726,5 +774,10 @@ export class GameScene extends Phaser.Scene {
     for (const part of this.infoOverlayParts) {
       part.setVisible(this.infoOpen);
     }
+  }
+
+  shutdown(): void {
+    this.playerAnimator.destroy();
+    AudioManager.stopAll();
   }
 }
