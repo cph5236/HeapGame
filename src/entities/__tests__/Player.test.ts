@@ -19,6 +19,12 @@ import {
   PLAYER_MAX_FALL_SPEED,
   TERRAIN_STICK_SPEED,
   PLACEMENT_MOVE_SPEED,
+  JUMP_BUFFER_MS,
+  JUMP_CUT_FACTOR,
+  APEX_VY_THRESHOLD,
+  APEX_GRAVITY_FACTOR,
+  FALL_GRAVITY_FACTOR,
+  WORLD_GRAVITY_Y,
 } from '../../constants';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -83,7 +89,9 @@ interface MockBody {
   blocked: { left: boolean; right: boolean; down: boolean };
   velocity: { x: number; y: number };
   _maxVelocityY: number;
+  _gravityY: number;
   setMaxVelocityY: (v: number) => void;
+  setGravityY: (v: number) => void;
   setAllowGravity: (v: boolean) => void;
   setSize: () => void;
 }
@@ -112,7 +120,9 @@ function makeSprite(overrides: Partial<MockBody> = {}): MockSprite {
     blocked: { left: false, right: false, down: false },
     velocity: { x: 0, y: 0 },
     _maxVelocityY: PLAYER_MAX_FALL_SPEED,
+    _gravityY: 0,
     setMaxVelocityY(v) { this._maxVelocityY = v; },
+    setGravityY(v) { this._gravityY = v; },
     setAllowGravity: vi.fn(),
     setSize: vi.fn(),
     ...overrides,
@@ -766,5 +776,268 @@ describe('Player — air momentum', () => {
     imState.jumpVx = 0;
     player.update(16);
     expect((player as any).momentumX).toBe(150);
+  });
+});
+
+// ── 11. Jump buffer (#1) ──────────────────────────────────────────────────────
+
+describe('Player — jump buffer', () => {
+  it('press jump while airborne with no air jumps, then land within buffer window → jump fires', async () => {
+    const { player, spy, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 400 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).airJumpsRemaining = 0;
+
+    // Press jump while falling — buffer should be primed even though jump can't fire yet
+    imState.jumpJustPressed = true;
+    player.update(16);
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY); // can't jump yet
+
+    // Next frame: player lands. No new press, just the buffered one carrying over.
+    imState.jumpJustPressed = false;
+    sprite.body.blocked.down = true;
+    sprite.body.velocity.y = 0;
+    spy.setVelocityY.length = 0;
+    player.update(16);
+
+    // Buffered jump should fire on landing frame
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('buffer expires after JUMP_BUFFER_MS — landing after the window does NOT jump', async () => {
+    const { player, spy, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 400 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).airJumpsRemaining = 0;
+
+    // Press jump
+    imState.jumpJustPressed = true;
+    player.update(16);
+    imState.jumpJustPressed = false;
+
+    // Tick past the buffer window
+    player.update(JUMP_BUFFER_MS + 50);
+
+    // Now land — buffer should have expired
+    sprite.body.blocked.down = true;
+    sprite.body.velocity.y = 0;
+    spy.setVelocityY.length = 0;
+    player.update(16);
+
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('buffer is consumed once — jump does not retrigger on next frame', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+
+    // Clear and run another frame with no new press — buffer should be consumed
+    imState.jumpJustPressed = false;
+    spy.setVelocityY.length = 0;
+    player.update(16);
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('buffered jump preserves swipe jumpVx until consumed', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 400 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).airJumpsRemaining = 0;
+
+    // Swipe-jump while airborne — captures jumpVx into buffer
+    imState.jumpJustPressed = true;
+    imState.jumpVx = 200;
+    player.update(16);
+
+    // Next frame: pulse cleared but buffer still has the directional value
+    imState.jumpJustPressed = false;
+    imState.jumpVx = 0;
+    sprite.body.blocked.down = true;
+    sprite.body.velocity.y = 0;
+    player.update(16);
+
+    expect((player as any).momentumX).toBe(200);
+  });
+});
+
+// ── 12. Variable jump height (#2) ─────────────────────────────────────────────
+
+describe('Player — variable jump height (jump cut)', () => {
+  it('releasing jump key while rising cuts upward velocity by JUMP_CUT_FACTOR', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -300 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    // Frame 1: jump key held while rising
+    (player as any).jumpKeys[0].isDown = true;
+    player.update(16);
+
+    // Frame 2: jump key released — vy must be cut
+    (player as any).jumpKeys[0].isDown = false;
+    spy.setVelocityY.length = 0;
+    player.update(16);
+
+    const expectedCut = -300 * JUMP_CUT_FACTOR;
+    expect(spy.setVelocityY).toContain(expectedCut);
+  });
+
+  it('jump cut only fires once per jump', async () => {
+    const { player, spy, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -300 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    (player as any).jumpKeys[0].isDown = true;
+    player.update(16);
+
+    // Release
+    (player as any).jumpKeys[0].isDown = false;
+    sprite.body.velocity.y = -300 * JUMP_CUT_FACTOR;
+    player.update(16);
+
+    // Another frame — must not cut again
+    spy.setVelocityY.length = 0;
+    sprite.body.velocity.y = -100; // still rising slowly
+    player.update(16);
+    const cutAgain = -100 * JUMP_CUT_FACTOR;
+    expect(spy.setVelocityY).not.toContain(cutAgain);
+  });
+
+  it('jump cut does NOT fire while falling (vy > 0)', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    (player as any).jumpKeys[0].isDown = true;
+    player.update(16);
+
+    (player as any).jumpKeys[0].isDown = false;
+    spy.setVelocityY.length = 0;
+    player.update(16);
+
+    // No setVelocityY value should equal vy * JUMP_CUT_FACTOR (which would be 90)
+    expect(spy.setVelocityY).not.toContain(200 * JUMP_CUT_FACTOR);
+  });
+
+  it('holding jump key all the way up preserves full vy (no cut)', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -500 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).jumpKeys[0].isDown = true;
+
+    player.update(16);
+    spy.setVelocityY.length = 0;
+
+    // Still holding — no cut should happen
+    player.update(16);
+    expect(spy.setVelocityY).not.toContain(-500 * JUMP_CUT_FACTOR);
+  });
+
+  it('mobile swipe-jump (no held key) is never cut — full jump always', async () => {
+    // Swipes are one-shot pulses with no "release" — variable height must not apply
+    const { player, spy, sprite } = await makePlayer({ onGround: true });
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    // Now player is airborne, no keyboard key was ever down
+    sprite.body.blocked.down = false;
+    sprite.body.velocity.y = -400;
+    imState.jumpJustPressed = false;
+    spy.setVelocityY.length = 0;
+    player.update(16);
+
+    expect(spy.setVelocityY).not.toContain(-400 * JUMP_CUT_FACTOR);
+  });
+});
+
+// ── 13. Asymmetric gravity (#3) — apex hang + fast fall ───────────────────────
+
+describe('Player — asymmetric gravity', () => {
+  it('applies fast-fall gravity multiplier when falling', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 300 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    player.update(16);
+
+    // body.setGravityY is additive to world gravity — for a 1.4× multiplier, expect WORLD_GRAVITY_Y * 0.4
+    const expected = WORLD_GRAVITY_Y * (FALL_GRAVITY_FACTOR - 1);
+    expect(sprite.body._gravityY).toBeCloseTo(expected, 5);
+  });
+
+  it('applies apex hang gravity when |vy| < APEX_VY_THRESHOLD', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -50 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    player.update(16);
+
+    const expected = WORLD_GRAVITY_Y * (APEX_GRAVITY_FACTOR - 1);
+    expect(sprite.body._gravityY).toBeCloseTo(expected, 5);
+  });
+
+  it('applies normal gravity (0 additive) while rising fast', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -400 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    player.update(16);
+
+    expect(sprite.body._gravityY).toBe(0);
+  });
+
+  it('resets body gravity to 0 when grounded', async () => {
+    const { player, sprite } = await makePlayer({ onGround: true });
+    sprite.body._gravityY = WORLD_GRAVITY_Y * (FALL_GRAVITY_FACTOR - 1); // leftover from airborne frame
+
+    player.update(16);
+
+    expect(sprite.body._gravityY).toBe(0);
+  });
+
+  it('apex threshold edge: |vy| exactly at threshold uses normal gravity, not apex', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -APEX_VY_THRESHOLD } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    player.update(16);
+
+    // At the boundary we want strict |vy| < threshold to be apex; equal goes to normal
+    expect(sprite.body._gravityY).toBe(0);
   });
 });

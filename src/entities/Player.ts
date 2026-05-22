@@ -20,6 +20,12 @@ import {
   MOMENTUM_STOP_ADV_FACTOR,
   TERRAIN_STICK_SPEED,
   PLACEMENT_MOVE_SPEED,
+  WORLD_GRAVITY_Y,
+  JUMP_BUFFER_MS,
+  JUMP_CUT_FACTOR,
+  APEX_VY_THRESHOLD,
+  APEX_GRAVITY_FACTOR,
+  FALL_GRAVITY_FACTOR,
 } from '../constants';
 import { PlayerConfig } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
@@ -61,6 +67,11 @@ export class Player {
   private diveActive:         number = 0; // ms remaining of mobile dive burst
   private coyoteTimer:        number = 0; // ms remaining of coyote-time grace
   private momentumX:          number = 0; // airborne horizontal momentum (px/s)
+
+  // Jump feel — buffer + variable height
+  private jumpBufferTimer:    number = 0; // ms remaining of buffered jump input
+  private bufferedJumpVx:     number = 0; // captured im.jumpVx at press time
+  private jumpKeyWasHeld:     boolean = false; // for release-edge detection
 
   /** Set by GameScene's wall-group collision callback each frame. When true the
    *  player is resting on a steep wall surface and should be ejected outward. */
@@ -146,9 +157,28 @@ export class Player {
     this._justAirJumped  = false;
     this._justWallJumped = false;
 
+    const im = InputManager.getInstance();
+
+    // Jump buffer — decay last frame's buffered input, then prime on new press.
+    // Capturing the swipe direction here lets a buffered swipe-jump preserve its
+    // jumpVx even after the one-frame pulse has cleared.
+    this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - delta);
+    const jumpKeyJustDown = this.jumpKeys.some(k => Phaser.Input.Keyboard.JustDown(k));
+    if (jumpKeyJustDown || im.jumpJustPressed) {
+      this.jumpBufferTimer = JUMP_BUFFER_MS;
+      this.bufferedJumpVx  = im.jumpVx;
+    }
+
+    // Variable jump height — releasing the jump key while still rising cuts upward
+    // velocity. Mobile swipe-jumps never trigger this (no keyboard key is held).
+    const jumpKeyHeld = this.jumpKeys.some(k => k.isDown);
+    if (this.jumpKeyWasHeld && !jumpKeyHeld && this.sprite.body.velocity.y < 0) {
+      this.sprite.setVelocityY(this.sprite.body.velocity.y * JUMP_CUT_FACTOR);
+    }
+    this.jumpKeyWasHeld = jumpKeyHeld;
+
     // Ladder climbing mode — vertical movement only, gravity off, jump suppressed
     if (this.onLadder) {
-      const im = InputManager.getInstance();
       // Left/right exits the ladder
       const goLeft  = this.leftKeys.some(k => k.isDown)  || im.goLeft;
       const goRight = this.rightKeys.some(k => k.isDown) || im.goRight;
@@ -191,6 +221,21 @@ export class Player {
     this._onGround    = onGround;
     this._onWall      = onWall;
 
+    // Gravity scaling for snappier jumps — apex hang when |vy| is small,
+    // fast-fall multiplier when descending. setGravityY is additive to world gravity.
+    if (onGround) {
+      body.setGravityY(0);
+    } else {
+      const vy = body.velocity.y;
+      if (vy > 0) {
+        body.setGravityY(WORLD_GRAVITY_Y * (FALL_GRAVITY_FACTOR - 1));
+      } else if (Math.abs(vy) < APEX_VY_THRESHOLD) {
+        body.setGravityY(WORLD_GRAVITY_Y * (APEX_GRAVITY_FACTOR - 1));
+      } else {
+        body.setGravityY(0);
+      }
+    }
+
     // Landing resets air jump and wall jump counters, and refreshes coyote window
     if (onGround) {
       this.coyoteTimer        = 120;
@@ -207,7 +252,6 @@ export class Player {
     }
 
     // Horizontal movement — either scheme (skipped during active dash)
-    const im = InputManager.getInstance();
     const keyboardLeft  = this.leftKeys.some(k => k.isDown);
     const keyboardRight = this.rightKeys.some(k => k.isDown);
     this.dashActive = Math.max(0, this.dashActive - delta);
@@ -278,25 +322,29 @@ export class Player {
       }
     }
 
-    // Jump — JustDown prevents hold-spam; suppressed during item placement
-    const jumpPressed    = !this.placementMode && (this.jumpKeys.some(k => Phaser.Input.Keyboard.JustDown(k)) || im.jumpJustPressed);
+    // Jump — buffered input (set at top of update) lets presses up to JUMP_BUFFER_MS
+    // before a valid jump opportunity still fire. Suppressed during item placement.
+    const jumpPressed    = !this.placementMode && this.jumpBufferTimer > 0;
     const canGroundJump  = this.coyoteTimer > 0;
+    let jumpFired        = false;
     if (jumpPressed) {
       const onWallForJump = this.wallJumpEnabled && (body.blocked.left || body.blocked.right);
       if (canGroundJump) {
-        this.momentumX = im.jumpVx !== 0 ? im.jumpVx : body.velocity.x;
+        this.momentumX = this.bufferedJumpVx !== 0 ? this.bufferedJumpVx : body.velocity.x;
         this.sprite.setVelocityX(this.momentumX);
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.coyoteTimer = 0; // consume coyote window so it can't be reused
         AudioManager.play('player-jump');
         this._justJumped = true;
+        jumpFired = true;
       } else if (!onWallForJump && this.airJumpsRemaining > 0) {
-        this.momentumX = im.jumpVx !== 0 ? im.jumpVx : body.velocity.x;
+        this.momentumX = this.bufferedJumpVx !== 0 ? this.bufferedJumpVx : body.velocity.x;
         this.sprite.setVelocityX(this.momentumX);
         this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
         this.airJumpsRemaining--;
         AudioManager.play('player-jump');
         this._justAirJumped = true;
+        jumpFired = true;
       }
     }
 
@@ -310,7 +358,14 @@ export class Player {
         this.wallJumpsRemaining--;
         AudioManager.play('player-jump');
         this._justWallJumped = true;
+        jumpFired = true;
       }
+    }
+
+    // Consume the buffer once any jump path fires this frame
+    if (jumpFired) {
+      this.jumpBufferTimer = 0;
+      this.bufferedJumpVx  = 0;
     }
 
     // Wall slide — cap downward velocity when touching a wall while falling
