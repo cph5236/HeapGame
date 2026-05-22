@@ -53,6 +53,9 @@ export class PlayerAnimator {
   private readonly sprite: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
   private readonly gfx:    Phaser.GameObjects.Graphics;
 
+  private readonly baseScaleX: number;
+  private readonly baseScaleY: number;
+
   private state:      AnimState = AnimState.IDLE;
   private stateTimer: number    = 0;  // ms remaining in current timed state
   private dormant:    boolean   = false;
@@ -72,8 +75,10 @@ export class PlayerAnimator {
     sprite: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody,
     scene:  Phaser.Scene,
   ) {
-    this.sprite = sprite;
-    this.gfx    = scene.add.graphics().setDepth(11);
+    this.sprite     = sprite;
+    this.baseScaleX = sprite.scaleX;
+    this.baseScaleY = sprite.scaleY;
+    this.gfx        = scene.add.graphics().setDepth(11);
   }
 
   update(delta: number, state: PlayerAnimState): void {
@@ -81,9 +86,9 @@ export class PlayerAnimator {
 
     // ── Interrupts (checked before anything else) ──────────────────────────
     if (state.justDied) {
-      this.sprite.setScale(1, 1);
+      this.sprite.setScale(this.baseScaleX, this.baseScaleY);
       this.sprite.setAngle(0);
-      this.sprite.body.setSize(PLAYER_WIDTH, PLAYER_HEIGHT);
+      this.sprite.body.setSize(PLAYER_WIDTH / this.baseScaleX, PLAYER_HEIGHT / this.baseScaleY);
       this.gfx.clear();
       this.dormant = true;
       return;
@@ -159,9 +164,9 @@ export class PlayerAnimator {
   }
 
   destroy(): void {
-    this.sprite.setScale(1, 1);
+    this.sprite.setScale(this.baseScaleX, this.baseScaleY);
     this.sprite.setAngle(0);
-    this.sprite.body.setSize(PLAYER_WIDTH, PLAYER_HEIGHT);
+    this.sprite.body.setSize(PLAYER_WIDTH / this.baseScaleX, PLAYER_HEIGHT / this.baseScaleY);
     this.gfx.destroy();
   }
 
@@ -184,8 +189,10 @@ export class PlayerAnimator {
     const t  = 1 - this.stateTimer / duration;   // 0 → 1 progress
     const kf = this.sampleKeyframes(frames, t);
 
-    this.sprite.setScale(kf.scaleX, kf.scaleY);
-    this.sprite.body.setSize(PLAYER_WIDTH / kf.scaleX, PLAYER_HEIGHT / kf.scaleY);
+    const absSX = kf.scaleX * this.baseScaleX;
+    const absSY = kf.scaleY * this.baseScaleY;
+    this.sprite.setScale(absSX, absSY);
+    this.sprite.body.setSize(PLAYER_WIDTH / absSX, PLAYER_HEIGHT / absSY);
 
     // Snap string points to keyframe values (no lerp needed — keyframes are already smooth)
     this.cpLx  = kf.cpLx;  this.cpLy  = kf.cpLy;
@@ -265,8 +272,10 @@ export class PlayerAnimator {
     }
 
     const lerpF    = Math.min(1, (LERP_SPEED * delta) / 1000);
-    const curSX    = this.sprite.scaleX + (sx    - this.sprite.scaleX) * lerpF;
-    const curSY    = this.sprite.scaleY + (sy    - this.sprite.scaleY) * lerpF;
+    const targetSX = sx * this.baseScaleX;
+    const targetSY = sy * this.baseScaleY;
+    const curSX    = this.sprite.scaleX + (targetSX - this.sprite.scaleX) * lerpF;
+    const curSY    = this.sprite.scaleY + (targetSY - this.sprite.scaleY) * lerpF;
     const curAngle = this.sprite.angle  + (angle - this.sprite.angle)  * lerpF;
 
     this.sprite.setScale(curSX, curSY);
