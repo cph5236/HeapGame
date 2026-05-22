@@ -47,7 +47,7 @@ export const MOMENTUM_STOP_ADV_FACTOR = 1.5;  // multiplier when input opposes c
 // body gravity for apex hang and fast-fall. Keep both in sync.
 export const WORLD_GRAVITY_Y          = 800;   // px/s² — must match main.ts world gravity
 export const JUMP_BUFFER_MS           = 120;   // accepts a jump press up to this long before landing
-export const JUMP_CUT_FACTOR          = 0.45;  // upward vy is multiplied by this when jump key released early
+export const JUMP_CUT_FACTOR          = 0.65;  // upward vy is multiplied by this when jump key released early
 export const APEX_VY_THRESHOLD        = 120;   // |vy| under this triggers apex hang gravity
 export const APEX_GRAVITY_FACTOR      = 0.55;  // gravity multiplier near jump apex (floaty peak)
 export const FALL_GRAVITY_FACTOR      = 1.4;   // gravity multiplier while falling (snappy descent)

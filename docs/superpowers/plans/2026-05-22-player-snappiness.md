@@ -2,9 +2,14 @@
 
 **Branch:** `feature/player-snappiness` (continues from Tier-1 work: jump buffer, variable jump height, asymmetric gravity)
 
-**Context:** This plan covers the remaining audit items from the Player.ts movement review. Items #1–#3 (the highest-impact "feel" upgrades) have already been implemented on this branch. The items below are roughly ordered by impact; the user may trim before execution.
+**Context:** This plan covers the remaining audit items from the Player.ts movement review. Items #1–#3 (the highest-impact "feel" upgrades) have already been implemented on this branch. The items below are roughly ordered by impact.
 
-**Trim guidance for the user:** Tier-2 items (#4–#11) all change observable behavior; Tier-3 items (#12–#16) are polish or pure refactors. If you want to ship the Tier-1 work first and iterate, dropping everything below #11 still leaves a substantially snappier player.
+## Locked-in decisions (2026-05-22)
+
+- **#6 Dash refresh:** Ground-touch only. Walls do NOT refresh the dash.
+- **#8 Wall-jump charge system:** Option A — drop `wallJumpsRemaining` entirely. One wall-jump per wall contact, gated by a **2-second same-wall cooldown** so the player must leave and return before re-firing.
+- **#12 Ground turn-around easing:** SKIP. Instant ground velocity flip stays.
+- **#16 update() split:** Do FIRST, before any behavior changes. Behavior items land into the new structure.
 
 ---
 
@@ -64,28 +69,28 @@
 
 ---
 
-### #6 — Dash refresh on ground/wall contact
+### #6 — Dash refresh on ground contact
 
-**Problem.** Dash cooldown only ticks down with time. Cannot chain dash → land → dash within the cooldown window. Celeste-style "refresh on touch" feels much better for traversal.
+**Decision:** Ground-only (no wall refresh).
+
+**Problem.** Dash cooldown only ticks down with time. Cannot chain dash → land → dash within the cooldown window. Ground-touch refresh feels much better for traversal.
 
 **Implementation.**
-1. Add constant `DASH_REFRESH_ON_LAND = true` (gate, in case design wants pure-cooldown later).
-2. In the landing-reset block (currently lines that reset `airJumpsRemaining` and `wallJumpsRemaining`):
-   ```ts
-   if (DASH_REFRESH_ON_LAND && this.dashEnabled) {
-     this.dashCooldown = 0;
-   }
-   ```
-3. Optionally also refresh on `onWall && !onGround` if the design wants wall-contact refresh.
+In the landing-reset block (where `airJumpsRemaining` is reset):
+```ts
+if (this.dashEnabled) {
+  this.dashCooldown = 0;
+}
+```
+No wall refresh.
 
 **Tests.**
 - Dash → set `onGround = true` → update → `dashCooldown === 0`.
 - Pure cooldown decay without contact still works (no contact → cooldown ticks down only).
 - `dashEnabled = false` → no refresh logic runs.
+- Touch wall while airborne → dash cooldown is NOT refreshed.
 
 **Risk:** Low. Single conditional addition.
-
-**Design note:** Worth discussing whether wall-touch should also refresh, since it changes the optimal traversal pattern. Recommend ground-only initially.
 
 ---
 
@@ -113,26 +118,32 @@
 
 ---
 
-### #8 — Air jump fallback from wall
+### #8 — Drop wall-jump charges, gate by same-wall cooldown
 
-**Problem.** Pressing jump while touching a wall takes the wall-jump branch *only if* `wallJumpsRemaining > 0`. If exhausted, the conditional `!onWallForJump && this.airJumpsRemaining > 0` blocks the air-jump fallback. Player gets nothing.
+**Decision:** Option A with a **2-second cooldown**.
 
-**Implementation choice — present two options to user before coding:**
+**Problem.** Pressing jump while touching a wall takes the wall-jump branch *only if* `wallJumpsRemaining > 0`. If exhausted, the conditional `!onWallForJump && this.airJumpsRemaining > 0` blocks the air-jump fallback. Player gets nothing — and the per-landing charge system feels arbitrary.
 
-**Option A (recommended):** Drop wall-jump charge tracking entirely. One wall-jump per wall-touch is the more standard design.
-- Remove `wallJumpsRemaining` field and all references.
-- Wall-jump path always fires when `onWall && jumpPressed && !onGround && wallJumpEnabled`.
-- Add a "wall-jump cooldown" of ~150 ms to prevent re-firing on the same wall contact.
-
-**Option B:** Allow air-jump fallback when wall jumps exhausted.
-- Change condition to `(this.airJumpsRemaining > 0 && (!onWallForJump || this.wallJumpsRemaining === 0))`.
-- Keeps the per-landing charge system intact.
+**Implementation.**
+1. Add constant `WALL_JUMP_COOLDOWN_MS = 2000` to `constants.ts`.
+2. Remove `wallJumpsRemaining` field and all references to it (incl. `wallJumpsLeft`/`maxWallJumps` HUD accessors if present — audit before deleting).
+3. Add `private wallJumpCooldown: number = 0` and `private lastWallJumpSide: -1 | 0 | 1 = 0`.
+4. In `update()`, decay `wallJumpCooldown` each frame.
+5. Wall-jump fires when:
+   - `wallJumpEnabled && !onGround && jumpPressed && onWall`
+   - AND (`wallJumpCooldown === 0` OR `currentWallSide !== lastWallJumpSide` — i.e. you left this wall and contacted a different one).
+6. On fire: set `wallJumpCooldown = WALL_JUMP_COOLDOWN_MS`, `lastWallJumpSide = currentSide`.
+7. On leaving wall contact entirely (transition `onWall true → false`), reset `lastWallJumpSide = 0` so re-touching the same wall lets you fire again immediately. (Without this, a 2s same-wall lockout becomes a 2s any-wall lockout after one jump.)
 
 **Tests.**
-- (Option A) Touch wall, jump → fires. Jump again same contact within cooldown → does not fire. Leave wall, return → fires again.
-- (Option B) `wallJumpsRemaining = 0`, on wall, has air jump, press jump → air jump fires.
+- Touch left wall, jump → fires. Jump again on same contact → does NOT fire (cooldown active).
+- Leave wall, return to same wall → fires again (lastWallJumpSide cleared on leave).
+- Touch left wall, jump, immediately touch right wall, jump → second fires (different side).
+- `wallJumpEnabled = false` → no wall-jump regardless of cooldown.
 
-**Risk:** Medium (Option A) or Low (Option B). Option A is a design change; recommend asking the user first.
+**Risk:** Medium. Removing a field touches anywhere it's accessed (e.g. HUD). Audit references before deleting.
+
+**Order note:** Must be done AFTER #14 (so the lifted constant is in place) and AFTER #4 (wall-leave coyote needs the same `currentWallSide` tracking — share the logic).
 
 ---
 
@@ -198,13 +209,9 @@ const onGround = (groundedByPhysics && !wallFalseGround) || groundedByFloor;
 
 ## Tier 3 — Polish and structure
 
-### #12 — Ground turn-around easing (optional)
+### #12 — Ground turn-around easing — SKIPPED
 
-**Problem.** Ground turnaround is instant velocity flip — feels snappy but loses the trashbag's weight. Optional polish.
-
-**Implementation sketch.** Add a 30–50 ms transition timer; when direction changes on ground, ease vx from old → new value over the timer. This is a visual polish item and should only be done if the user wants more "weight" feel — current behavior is intentional snappiness.
-
-**Recommendation:** Skip unless playtesting flags this. Listed for completeness.
+**Decision:** Skip. Instant ground turn stays. Revisit only if playtesting flags it.
 
 ---
 
@@ -265,7 +272,9 @@ if (this.diveEnabled && !onGround && !jumpedThisFrame) {
 
 ---
 
-### #16 — Split `update()` into ordered sub-methods
+### #16 — Split `update()` into ordered sub-methods — DO FIRST
+
+**Decision:** Do this BEFORE the behavior changes. Reorders the file into a structure the rest of the plan lands cleanly into.
 
 **Problem.** `update()` is 226+ lines. Ordering between sub-systems is implicit. #15 is one symptom; future feel tweaks risk introducing more.
 
@@ -273,7 +282,7 @@ if (this.diveEnabled && !onGround && !jumpedThisFrame) {
 ```ts
 update(delta: number): void {
   this.clearOneFrameFlags();
-  this.updateJumpInput(delta);            // buffer decay, cut detection
+  this.updateJumpInputAndCut(delta);      // buffer decay, prime, transition cut
   if (this.handleLadder(delta)) return;   // returns true if ladder consumed the frame
   if (!this.controlsEnabled) return;
 
@@ -283,34 +292,40 @@ update(delta: number): void {
   this.updateHorizontal(ctx, delta);
   this.applyTerrainStick(ctx);
   this.updateDash(ctx, delta);
-  this.updateJump(ctx);                   // consumes buffer
-  this.updateWallJump(ctx);
+  const jumpFired = this.updateJump(ctx); // consumes buffer; returns whether a jump fired
+  this.updateWallJump(ctx, jumpFired);
+  this.consumeJumpBufferOnFire(ctx, jumpFired);  // cut-on-fire + cleanup
   this.applyWallSlide(ctx);
-  this.updateDive(ctx, delta);            // guards against same-frame jump
+  this.updateDive(ctx, delta, jumpFired); // guards against same-frame jump
   this.applyWorldBounds(ctx);
   this.resetPerFrameSlopeFlags();
 }
 ```
 
-**Tests.** All existing Player tests must continue to pass; this is a pure refactor.
+**Tests.** All 56 existing Player tests must continue to pass; this is a pure refactor.
 
-**Risk:** Medium. Touches every code path. Should be done last so other items don't conflict in review. Recommend doing this on its own follow-up branch *after* the rest of this plan lands.
+**Risk:** Medium. Touches every code path. Mitigated by running the full Player test suite after each helper extraction. Land as a single commit so a bisect can isolate it.
 
 ---
 
-## Suggested execution order
+## Locked-in execution order
 
-1. **#9** (coyote consume cleanup) — trivial, do alongside any change.
-2. **#11** (`onGround` extraction) — pure refactor, sets up cleaner tests for the rest.
-3. **#15** (dive ordering guard) — fixes a real bug, small change.
-4. **#10** (TERRAIN_STICK_SPEED) — investigate first; possibly just a value or comment fix.
-5. **#4** (wall-leave coyote) + **#13** (wall-slide momentum) — pair together; both fix wall feel.
-6. **#7** (dash exit smoothing) + **#6** (dash refresh on land) — pair together; both improve dash feel.
-7. **#14** (wall-jump constant) — trivial cleanup once the wall-jump path is otherwise touched.
-8. **#8** (wall-jump charge system) — design discussion required before coding.
-9. **#5** (corner correction) — biggest single-item; cross-system wiring.
-10. **#16** (`update()` split) — final refactor after behavior is stable.
-11. **#12** (ground turn-around easing) — optional; only if playtest demands it.
+1. **#16** — `update()` split (pure refactor; sets the structure)
+2. **#9** — coyote consume cleanup (small, fits naturally into the new structure)
+3. **#11** — `onGround` extraction (becomes the `computeGroundState()` helper)
+4. **#15** — dive ordering guard (uses the new `jumpFired` plumbing from #16)
+5. **#10** — investigate `TERRAIN_STICK_SPEED` (probably a one-line value restore)
+6. **#4** — wall-leave coyote
+7. **#13** — preserve outward momentum on wall slide
+8. **#7** — smooth dash exit (carry momentum)
+9. **#6** — ground-touch dash refresh
+10. **#14** — lift wall-jump push constant
+11. **#8** — drop wall-jump charges, add 2s same-wall cooldown (uses #14's constant)
+12. **#5** — corner / head-bump correction (biggest; last)
+
+**Skipped:** #12 (ground turn-around easing).
+
+**Per-item discipline:** TDD with failing tests first, single commit per item, full test suite must stay green throughout. Debug `console.log`s in `Player.ts` stay in place — they'll be removed in a final cleanup commit once the feel is locked.
 
 ## What's in scope vs out of scope
 

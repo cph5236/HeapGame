@@ -33,6 +33,14 @@ import { AudioManager } from '../systems/AudioManager';
 
 const { KeyCodes } = Phaser.Input.Keyboard;
 
+/** Per-frame physics context built once at the top of update() and passed through helpers. */
+interface FrameCtx {
+  body:     Phaser.Types.Physics.Arcade.SpriteWithDynamicBody['body'];
+  floorY:   number;
+  onGround: boolean;
+  onWall:   boolean;
+}
+
 export interface PlayerAnimState {
   vy:             number;
   onGround:       boolean;
@@ -73,6 +81,10 @@ export class Player {
   private bufferedJumpVx:            number = 0; // captured im.jumpVx at press time
   private bufferedJumpFromKeyboard:  boolean = false; // true if buffer set by keyboard (cuttable); false for mobile pulses
   private jumpKeyWasHeld:            boolean = false; // for release-edge detection (sustained press → release)
+
+  // Per-frame state captured by updateJumpInputAndCut() and read later in the same
+  // update() call by consumeJumpBufferOnFire(). Only meaningful during update().
+  private _frameJumpKeyHeld: boolean = false;
 
   /** Set by GameScene's wall-group collision callback each frame. When true the
    *  player is resting on a steep wall surface and should be ejected outward. */
@@ -152,17 +164,45 @@ export class Player {
   }
 
   update(delta: number): void {
-    // Clear one-frame animation flags from the previous frame
+    this.clearOneFrameFlags();
+    this.updateJumpInputAndCut(delta);
+
+    if (this.handleLadder()) return;
+    if (!this.controlsEnabled) return;
+
+    const ctx = this.computeGroundContext();
+    this.applyGravityScaling(ctx);
+    this.handleLandingResets(ctx, delta);
+    this.updateHorizontal(ctx, delta);
+    this.applyTerrainStick(ctx);
+    this.updateDash(ctx, delta);
+
+    const jumpFired     = this.tryGroundOrAirJump(ctx);
+    const wallJumpFired = this.tryWallJump(ctx);
+    this.consumeJumpBufferOnFire(jumpFired || wallJumpFired);
+
+    this.applyWallSlide(ctx);
+    this.updateDive(ctx, delta);
+    this.applyWorldBoundsX();
+    this.resetPerFrameSlopeFlags();
+    this.applyYClamp(ctx);
+  }
+
+  // ── update() helpers ──────────────────────────────────────────────────────
+  // Each helper does one slice of the per-frame work. Order in update() is the
+  // source of truth; helpers are deliberately small so ordering bugs are visible.
+
+  private clearOneFrameFlags(): void {
     this._justLanded     = false;
     this._justJumped     = false;
     this._justAirJumped  = false;
     this._justWallJumped = false;
+  }
 
+  /** Decay jump buffer, prime on new press, apply held→released transition cut.
+   *  Stashes jumpKeyHeld on the player for consumeJumpBufferOnFire to read later. */
+  private updateJumpInputAndCut(delta: number): void {
     const im = InputManager.getInstance();
-
-    // Jump buffer — decay last frame's buffered input, then prime on new press.
-    // Capturing the swipe direction here lets a buffered swipe-jump preserve its
-    // jumpVx even after the one-frame pulse has cleared.
     this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - delta);
     const jumpKeyJustDown = this.jumpKeys.some(k => Phaser.Input.Keyboard.JustDown(k));
     if (jumpKeyJustDown) {
@@ -175,42 +215,53 @@ export class Player {
       this.bufferedJumpFromKeyboard  = false; // mobile pulse — never cut
     }
 
-    // Variable jump height — releasing the jump key while still rising cuts upward
-    // velocity. Mobile swipe-jumps never trigger this (no keyboard key is held).
     const jumpKeyHeld = this.jumpKeys.some(k => k.isDown);
+    // [DEBUG-JUMP-CUT] temporary instrumentation — remove once feel is verified
+    if (jumpKeyJustDown || (this.jumpKeyWasHeld !== jumpKeyHeld)) {
+      console.log('[JUMP]', {
+        justDown: jumpKeyJustDown,
+        wasHeld: this.jumpKeyWasHeld,
+        nowHeld: jumpKeyHeld,
+        vy: Math.round(this.sprite.body.velocity.y),
+        bufferMs: Math.round(this.jumpBufferTimer),
+      });
+    }
     if (this.jumpKeyWasHeld && !jumpKeyHeld && this.sprite.body.velocity.y < 0) {
-      this.sprite.setVelocityY(this.sprite.body.velocity.y * JUMP_CUT_FACTOR);
+      const before = this.sprite.body.velocity.y;
+      this.sprite.setVelocityY(before * JUMP_CUT_FACTOR);
+      console.log('[JUMP-CUT-TRANSITION]', { before: Math.round(before), after: Math.round(before * JUMP_CUT_FACTOR) });
     }
-    this.jumpKeyWasHeld = jumpKeyHeld;
+    this.jumpKeyWasHeld     = jumpKeyHeld;
+    this._frameJumpKeyHeld  = jumpKeyHeld;
+  }
 
-    // Ladder climbing mode — vertical movement only, gravity off, jump suppressed
-    if (this.onLadder) {
-      // Left/right exits the ladder
-      const goLeft  = this.leftKeys.some(k => k.isDown)  || im.goLeft;
-      const goRight = this.rightKeys.some(k => k.isDown) || im.goRight;
-      if (goLeft || goRight) {
-        this.exitLadder();
-        // fall through to normal physics this frame
-      } else {
-        const goUp   = this.jumpKeys.some(k => k.isDown)  || im.jumpJustPressed || im.dragUp;
-        const goDown = this.downKeys.some(k => k.isDown) || im.dragDown;
-        this.sprite.setVelocityX(0);
-        this.sprite.setVelocityY(goUp ? -PLAYER_SPEED * 0.65 : goDown ? PLAYER_SPEED * 0.65 : 0);
-        // Ladder counts as grounded: keep jump charges full and coyote window fresh
-        this.airJumpsRemaining  = this.maxAirJumps;
-        this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
-        this.coyoteTimer        = 120;
-        // Still allow X-wrap so player doesn't get stuck at world edge on ladder
-        if (this.sprite.x < -SKY_PAD * this.worldWidth)
-          this.sprite.x = (1 - SKY_INSET) * this.worldWidth;
-        else if (this.sprite.x > (1 + SKY_PAD) * this.worldWidth)
-          this.sprite.x = SKY_INSET * this.worldWidth;
-        return; // skip all normal physics this frame
-      }
+  /** Returns true if the ladder consumed this frame (caller should early-return). */
+  private handleLadder(): boolean {
+    if (!this.onLadder) return false;
+    const im = InputManager.getInstance();
+    const goLeft  = this.leftKeys.some(k => k.isDown)  || im.goLeft;
+    const goRight = this.rightKeys.some(k => k.isDown) || im.goRight;
+    if (goLeft || goRight) {
+      this.exitLadder();
+      return false; // fall through to normal physics this frame
     }
+    const goUp   = this.jumpKeys.some(k => k.isDown)  || im.jumpJustPressed || im.dragUp;
+    const goDown = this.downKeys.some(k => k.isDown) || im.dragDown;
+    this.sprite.setVelocityX(0);
+    this.sprite.setVelocityY(goUp ? -PLAYER_SPEED * 0.65 : goDown ? PLAYER_SPEED * 0.65 : 0);
+    // Ladder counts as grounded: keep jump charges full and coyote window fresh
+    this.airJumpsRemaining  = this.maxAirJumps;
+    this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
+    this.coyoteTimer        = 120;
+    // Still allow X-wrap so player doesn't get stuck at world edge on ladder
+    if (this.sprite.x < -SKY_PAD * this.worldWidth)
+      this.sprite.x = (1 - SKY_INSET) * this.worldWidth;
+    else if (this.sprite.x > (1 + SKY_PAD) * this.worldWidth)
+      this.sprite.x = SKY_INSET * this.worldWidth;
+    return true;
+  }
 
-    if (!this.controlsEnabled) return;
-
+  private computeGroundContext(): FrameCtx {
     const body     = this.sprite.body;
     const floorY   = this.worldHeight - PLAYER_HEIGHT / 2;
     const onWall   = body.blocked.left || body.blocked.right;
@@ -227,23 +278,28 @@ export class Player {
     this._onGround    = onGround;
     this._onWall      = onWall;
 
-    // Gravity scaling for snappier jumps — apex hang when |vy| is small,
-    // fast-fall multiplier when descending. setGravityY is additive to world gravity.
-    if (onGround) {
-      body.setGravityY(0);
-    } else {
-      const vy = body.velocity.y;
-      if (vy > 0) {
-        body.setGravityY(WORLD_GRAVITY_Y * (FALL_GRAVITY_FACTOR - 1));
-      } else if (Math.abs(vy) < APEX_VY_THRESHOLD) {
-        body.setGravityY(WORLD_GRAVITY_Y * (APEX_GRAVITY_FACTOR - 1));
-      } else {
-        body.setGravityY(0);
-      }
-    }
+    return { body, floorY, onGround, onWall };
+  }
 
-    // Landing resets air jump and wall jump counters, and refreshes coyote window
-    if (onGround) {
+  /** Apex hang when |vy| is small, fast-fall multiplier when descending.
+   *  setGravityY is additive to world gravity. */
+  private applyGravityScaling(ctx: FrameCtx): void {
+    if (ctx.onGround) {
+      ctx.body.setGravityY(0);
+      return;
+    }
+    const vy = ctx.body.velocity.y;
+    if (vy > 0) {
+      ctx.body.setGravityY(WORLD_GRAVITY_Y * (FALL_GRAVITY_FACTOR - 1));
+    } else if (Math.abs(vy) < APEX_VY_THRESHOLD) {
+      ctx.body.setGravityY(WORLD_GRAVITY_Y * (APEX_GRAVITY_FACTOR - 1));
+    } else {
+      ctx.body.setGravityY(0);
+    }
+  }
+
+  private handleLandingResets(ctx: FrameCtx, delta: number): void {
+    if (ctx.onGround) {
       this.coyoteTimer        = 120;
       this.airJumpsRemaining  = this.maxAirJumps;
       this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
@@ -251,189 +307,209 @@ export class Player {
       // block so it would otherwise freeze on landing, re-triggering dive on the next jump.
       if (this.diveActive > 0) {
         this.diveActive = 0;
-        body.setMaxVelocityY(PLAYER_MAX_FALL_SPEED);
+        ctx.body.setMaxVelocityY(PLAYER_MAX_FALL_SPEED);
       }
     } else {
       this.coyoteTimer = Math.max(0, this.coyoteTimer - delta);
     }
+  }
 
-    // Horizontal movement — either scheme (skipped during active dash)
+  private updateHorizontal(ctx: FrameCtx, delta: number): void {
+    const im = InputManager.getInstance();
     const keyboardLeft  = this.leftKeys.some(k => k.isDown);
     const keyboardRight = this.rightKeys.some(k => k.isDown);
     this.dashActive = Math.max(0, this.dashActive - delta);
 
+    if (this.dashActive !== 0) return; // active dash protects horizontal velocity
+
     const moveSpeed = this.placementMode ? PLACEMENT_MOVE_SPEED : PLAYER_SPEED;
 
-    if (this.dashActive === 0) {
-      if (this.inSlopeZone && !keyboardLeft && !keyboardRight && im.tiltFactor === 0) {
-        // Eject outward along the wall surface until the player slides off the edge
-        this.sprite.setVelocityX(this.slopeEjectDir * moveSpeed);
-        this.momentumX = 0;
-      } else if (onGround || this.inSlopeZone) {
-        // Ground (or slope zone with active input): direct velocity control (unchanged feel)
-        this.momentumX = 0;
-        if (keyboardLeft) {
-          this.sprite.setVelocityX(-moveSpeed);
-          this.sprite.setFlipX(true);
-        } else if (keyboardRight) {
-          this.sprite.setVelocityX(moveSpeed);
-          this.sprite.setFlipX(false);
-        } else {
-          const tiltVx = im.tiltFactor * moveSpeed;
-          this.sprite.setVelocityX(tiltVx);
-          if (tiltVx < 0) this.sprite.setFlipX(true);
-          else if (tiltVx > 0) this.sprite.setFlipX(false);
+    if (this.inSlopeZone && !keyboardLeft && !keyboardRight && im.tiltFactor === 0) {
+      // Eject outward along the wall surface until the player slides off the edge
+      this.sprite.setVelocityX(this.slopeEjectDir * moveSpeed);
+      this.momentumX = 0;
+    } else if (ctx.onGround || this.inSlopeZone) {
+      // Ground (or slope zone with active input): direct velocity control
+      this.momentumX = 0;
+      if (keyboardLeft) {
+        this.sprite.setVelocityX(-moveSpeed);
+        this.sprite.setFlipX(true);
+      } else if (keyboardRight) {
+        this.sprite.setVelocityX(moveSpeed);
+        this.sprite.setFlipX(false);
+      } else {
+        const tiltVx = im.tiltFactor * moveSpeed;
+        this.sprite.setVelocityX(tiltVx);
+        if (tiltVx < 0) this.sprite.setFlipX(true);
+        else if (tiltVx > 0) this.sprite.setFlipX(false);
+      }
+    } else {
+      // Airborne: impulse-based momentum
+      const inputDir = keyboardLeft ? -1 : keyboardRight ? 1 : im.tiltFactor;
+      if (Math.abs(inputDir) > 0.01) {
+        const force = inputDir * AIR_TILT_FORCE * delta;
+        const opposing = this.momentumX !== 0 && Math.sign(force) !== Math.sign(this.momentumX);
+        // Input can decelerate freely, but can only accelerate up to PLAYER_SPEED;
+        // higher speeds (from dash or swipe-jump) must decay naturally.
+        if (opposing || Math.abs(this.momentumX) < PLAYER_SPEED) {
+          this.momentumX += opposing ? force * MOMENTUM_STOP_ADV_FACTOR : force;
         }
       } else {
-        // Airborne: impulse-based momentum
-        const inputDir = keyboardLeft ? -1 : keyboardRight ? 1 : im.tiltFactor;
-        if (Math.abs(inputDir) > 0.01) {
-          const force = inputDir * AIR_TILT_FORCE * delta;
-          const opposing = this.momentumX !== 0 && Math.sign(force) !== Math.sign(this.momentumX);
-          // Input can decelerate freely, but can only accelerate up to PLAYER_SPEED;
-          // higher speeds (from dash or swipe-jump) must decay naturally.
-          if (opposing || Math.abs(this.momentumX) < PLAYER_SPEED) {
-            this.momentumX += opposing ? force * MOMENTUM_STOP_ADV_FACTOR : force;
-          }
-        } else {
-          this.momentumX *= Math.pow(AIR_MOMENTUM_DECAY, delta);
-          if (Math.abs(this.momentumX) < 0.5) this.momentumX = 0;
-        }
-        this.momentumX = Math.max(-PLAYER_AIR_MAX_SPEED, Math.min(PLAYER_AIR_MAX_SPEED, this.momentumX));
-        this.sprite.setVelocityX(this.momentumX);
-        if (this.momentumX < 0) this.sprite.setFlipX(true);
-        else if (this.momentumX > 0) this.sprite.setFlipX(false);
+        this.momentumX *= Math.pow(AIR_MOMENTUM_DECAY, delta);
+        if (Math.abs(this.momentumX) < 0.5) this.momentumX = 0;
       }
+      this.momentumX = Math.max(-PLAYER_AIR_MAX_SPEED, Math.min(PLAYER_AIR_MAX_SPEED, this.momentumX));
+      this.sprite.setVelocityX(this.momentumX);
+      if (this.momentumX < 0) this.sprite.setFlipX(true);
+      else if (this.momentumX > 0) this.sprite.setFlipX(false);
     }
+  }
 
-    // Terrain stick: keep player pressed into surface so they don't float between
-    // slab colliders on slopes (4px slab spacing, gravity alone takes ~6 frames to close the gap).
-    // Skip when already moving upward — snapPlayerToSurface can leave a small slab overlap
-    // that keeps blocked.down=true one frame after a jump, which would cancel the jump velocity.
+  /** Keep player pressed into surface so they don't float between slab colliders on
+   *  slopes (4px slab spacing, gravity alone takes ~6 frames to close the gap).
+   *  Skip when already moving upward — a fresh jump's velocity must not be cancelled. */
+  private applyTerrainStick(ctx: FrameCtx): void {
+    const body = ctx.body;
     if (body.blocked.down && !this.inSlopeZone && body.velocity.y >= 0 && body.velocity.y < TERRAIN_STICK_SPEED) {
       this.sprite.setVelocityY(TERRAIN_STICK_SPEED);
     }
+  }
 
-    // Dash — horizontal burst with cooldown; direction from pressed keys or swipe
-    if (this.dashEnabled) {
-      this.dashCooldown = Math.max(0, this.dashCooldown - delta);
-      const dashTriggered = Phaser.Input.Keyboard.JustDown(this.dashKey) || im.dashJustFired;
-      if (dashTriggered && this.dashCooldown === 0) {
-        const dir = im.dashJustFired ? im.dashDir : (keyboardLeft ? -1 : keyboardRight ? 1 : (this.sprite.flipX ? -1 : 1));
-        this.momentumX = 0;
-        this.sprite.setVelocityX(dir * PLAYER_DASH_VELOCITY);
-        this.dashCooldown = DASH_COOLDOWN_MS;
-        this.dashActive   = DASH_DURATION_MS;
-        AudioManager.play('player-dash');
-      }
+  private updateDash(_ctx: FrameCtx, delta: number): void {
+    if (!this.dashEnabled) return;
+    const im = InputManager.getInstance();
+    const keyboardLeft  = this.leftKeys.some(k => k.isDown);
+    const keyboardRight = this.rightKeys.some(k => k.isDown);
+    this.dashCooldown = Math.max(0, this.dashCooldown - delta);
+    const dashTriggered = Phaser.Input.Keyboard.JustDown(this.dashKey) || im.dashJustFired;
+    if (dashTriggered && this.dashCooldown === 0) {
+      const dir = im.dashJustFired ? im.dashDir : (keyboardLeft ? -1 : keyboardRight ? 1 : (this.sprite.flipX ? -1 : 1));
+      this.momentumX = 0;
+      this.sprite.setVelocityX(dir * PLAYER_DASH_VELOCITY);
+      this.dashCooldown = DASH_COOLDOWN_MS;
+      this.dashActive   = DASH_DURATION_MS;
+      AudioManager.play('player-dash');
     }
+  }
 
-    // Jump — buffered input (set at top of update) lets presses up to JUMP_BUFFER_MS
-    // before a valid jump opportunity still fire. Suppressed during item placement.
-    const jumpPressed    = !this.placementMode && this.jumpBufferTimer > 0;
-    const canGroundJump  = this.coyoteTimer > 0;
-    let jumpFired        = false;
-    if (jumpPressed) {
-      const onWallForJump = this.wallJumpEnabled && (body.blocked.left || body.blocked.right);
-      if (canGroundJump) {
-        this.momentumX = this.bufferedJumpVx !== 0 ? this.bufferedJumpVx : body.velocity.x;
-        this.sprite.setVelocityX(this.momentumX);
-        this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
-        this.coyoteTimer = 0; // consume coyote window so it can't be reused
-        AudioManager.play('player-jump');
-        this._justJumped = true;
-        jumpFired = true;
-      } else if (!onWallForJump && this.airJumpsRemaining > 0) {
-        this.momentumX = this.bufferedJumpVx !== 0 ? this.bufferedJumpVx : body.velocity.x;
-        this.sprite.setVelocityX(this.momentumX);
-        this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
-        this.airJumpsRemaining--;
-        AudioManager.play('player-jump');
-        this._justAirJumped = true;
-        jumpFired = true;
-      }
+  /** Ground-jump (via coyote) or air-jump path. Returns whether a jump fired. */
+  private tryGroundOrAirJump(ctx: FrameCtx): boolean {
+    const jumpPressed = !this.placementMode && this.jumpBufferTimer > 0;
+    if (!jumpPressed) return false;
+    const body = ctx.body;
+    const onWallForJump = this.wallJumpEnabled && (body.blocked.left || body.blocked.right);
+    const canGroundJump = this.coyoteTimer > 0;
+    if (canGroundJump) {
+      this.momentumX = this.bufferedJumpVx !== 0 ? this.bufferedJumpVx : body.velocity.x;
+      this.sprite.setVelocityX(this.momentumX);
+      this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
+      this.coyoteTimer = 0; // consume coyote window so it can't be reused
+      AudioManager.play('player-jump');
+      this._justJumped = true;
+      return true;
     }
-
-    // Wall jump — jump off a wall surface (only when airborne, one charge per landing)
-    if (this.wallJumpEnabled && !onGround && jumpPressed && this.wallJumpsRemaining > 0) {
-      if (onWall) {
-        const dir = body.blocked.left ? 1 : -1; // jump away from wall
-        this.momentumX = dir * PLAYER_SPEED * 1.5;
-        this.sprite.setVelocityX(this.momentumX);
-        this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
-        this.wallJumpsRemaining--;
-        AudioManager.play('player-jump');
-        this._justWallJumped = true;
-        jumpFired = true;
-      }
+    if (!onWallForJump && this.airJumpsRemaining > 0) {
+      this.momentumX = this.bufferedJumpVx !== 0 ? this.bufferedJumpVx : body.velocity.x;
+      this.sprite.setVelocityX(this.momentumX);
+      this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
+      this.airJumpsRemaining--;
+      AudioManager.play('player-jump');
+      this._justAirJumped = true;
+      return true;
     }
+    return false;
+  }
 
-    // Consume the buffer once any jump path fires this frame
-    if (jumpFired) {
-      this.jumpBufferTimer = 0;
-      this.bufferedJumpVx  = 0;
-      // Tap-cut: keyboard-originated jump where the key isn't currently held.
-      // Catches sub-frame taps (Phaser sees JustDown=true but isDown=false because
-      // the keyup event arrived in the same tick) and buffered tap-then-land cases —
-      // both of which the held→released transition detection above cannot see.
-      if (this.bufferedJumpFromKeyboard && !jumpKeyHeld) {
-        this.sprite.setVelocityY((PLAYER_JUMP_VELOCITY - this.jumpBoost) * JUMP_CUT_FACTOR);
-      }
-      this.bufferedJumpFromKeyboard = false;
+  /** Wall-jump branch: only when airborne, requires a charge.
+   *  Returns whether a wall jump fired. */
+  private tryWallJump(ctx: FrameCtx): boolean {
+    const jumpPressed = !this.placementMode && this.jumpBufferTimer > 0;
+    if (!this.wallJumpEnabled || ctx.onGround || !jumpPressed || this.wallJumpsRemaining <= 0) return false;
+    if (!ctx.onWall) return false;
+    const body = ctx.body;
+    const dir = body.blocked.left ? 1 : -1; // jump away from wall
+    this.momentumX = dir * PLAYER_SPEED * 1.5;
+    this.sprite.setVelocityX(this.momentumX);
+    this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
+    this.wallJumpsRemaining--;
+    AudioManager.play('player-jump');
+    this._justWallJumped = true;
+    return true;
+  }
+
+  /** Clear buffer state and apply tap-cut if the keyboard-originated jump fired
+   *  while the key is not currently held (sub-frame tap, buffered tap-then-land). */
+  private consumeJumpBufferOnFire(jumpFired: boolean): void {
+    if (!jumpFired) return;
+    this.jumpBufferTimer = 0;
+    this.bufferedJumpVx  = 0;
+    if (this.bufferedJumpFromKeyboard && !this._frameJumpKeyHeld) {
+      this.sprite.setVelocityY((PLAYER_JUMP_VELOCITY - this.jumpBoost) * JUMP_CUT_FACTOR);
+      console.log('[JUMP-CUT-ONFIRE]', { jumpVy: PLAYER_JUMP_VELOCITY - this.jumpBoost, cutTo: (PLAYER_JUMP_VELOCITY - this.jumpBoost) * JUMP_CUT_FACTOR });
+    } else {
+      console.log('[JUMP-FIRE-FULL]', { fromKeyboard: this.bufferedJumpFromKeyboard, held: this._frameJumpKeyHeld });
     }
+    this.bufferedJumpFromKeyboard = false;
+  }
 
-    // Wall slide — cap downward velocity when touching a wall while falling
-    if (!onGround && onWall && body.velocity.y > WALL_SLIDE_SPEED) {
+  private applyWallSlide(ctx: FrameCtx): void {
+    if (!ctx.onGround && ctx.onWall && ctx.body.velocity.y > WALL_SLIDE_SPEED) {
       this.sprite.setVelocityY(WALL_SLIDE_SPEED);
       this.momentumX = 0;
     }
+  }
 
-    // Dive — slam downward while airborne; release to return to normal fall speed
-    if (this.diveEnabled && !onGround) {
-      const holdingDown = this.downKeys.some(k => k.isDown);
-      this.diveActive = Math.max(0, this.diveActive - delta);
+  /** Slam downward while airborne; release to return to normal fall speed. */
+  private updateDive(ctx: FrameCtx, delta: number): void {
+    if (!this.diveEnabled || ctx.onGround) return;
+    const im = InputManager.getInstance();
+    const holdingDown = this.downKeys.some(k => k.isDown);
+    this.diveActive = Math.max(0, this.diveActive - delta);
 
-      if (im.diveJustFired && !holdingDown) {
-        // Mobile: swipe-down fires a sustained burst
-        this.diveActive = DASH_DURATION_MS; // reuse same ~200ms window
-      }
-
-      if (holdingDown || this.diveActive > 0) {
-        body.setMaxVelocityY(PLAYER_DIVE_SPEED);
-        this.sprite.setVelocityY(PLAYER_DIVE_SPEED);
-      } else {
-        body.setMaxVelocityY(PLAYER_MAX_FALL_SPEED);
-        if (body.velocity.y > PLAYER_MAX_FALL_SPEED) {
-          this.sprite.setVelocityY(PLAYER_MAX_FALL_SPEED);
-        }
-      }
+    if (im.diveJustFired && !holdingDown) {
+      this.diveActive = DASH_DURATION_MS; // mobile swipe-down burst
     }
 
-    // X wrap — extended sky pad on each side, lands inset from the far edge
+    if (holdingDown || this.diveActive > 0) {
+      ctx.body.setMaxVelocityY(PLAYER_DIVE_SPEED);
+      this.sprite.setVelocityY(PLAYER_DIVE_SPEED);
+    } else {
+      ctx.body.setMaxVelocityY(PLAYER_MAX_FALL_SPEED);
+      if (ctx.body.velocity.y > PLAYER_MAX_FALL_SPEED) {
+        this.sprite.setVelocityY(PLAYER_MAX_FALL_SPEED);
+      }
+    }
+  }
+
+  /** Extended sky pad on each side; landing inset from the far edge. */
+  private applyWorldBoundsX(): void {
     this.wrapDir = 0;
     if (this.sprite.x < -SKY_PAD * this.worldWidth) {
       this.sprite.x = (1 - SKY_INSET) * this.worldWidth;
-      this.wrapDir = -1; // wrapped left→right, player exits right edge of camera
+      this.wrapDir = -1;
     } else if (this.sprite.x > (1 + SKY_PAD) * this.worldWidth) {
       this.sprite.x = SKY_INSET * this.worldWidth;
-      this.wrapDir = 1;  // wrapped right→left, player exits left edge of camera
+      this.wrapDir = 1;
     }
+  }
 
-    // Reset per-frame flags set by the wall-group collision callback (physics runs before update)
+  /** Slope flags are set by the wall-group collision callback (which runs before
+   *  update). Clear them at end of frame so a stale value doesn't leak into next frame. */
+  private resetPerFrameSlopeFlags(): void {
     this.inSlopeZone    = false;
     this.slopeEjectDir  = 0;
+  }
 
-    // Y clamp — prevent falling through the world floor; treat floor as ground
-    if (this.sprite.y >= floorY) {
-      this.sprite.y = floorY;
-      if (this.sprite.body.velocity.y >= 0) {
-        // Only cancel downward/stationary velocity — don't cancel a jump (velocity < 0)
-        this.sprite.setVelocityY(0);
-        this.airJumpsRemaining  = this.maxAirJumps;
-        this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
-      }
+  /** Floor clamp — prevent falling through the world floor; treat floor as ground. */
+  private applyYClamp(ctx: FrameCtx): void {
+    if (this.sprite.y < ctx.floorY) return;
+    this.sprite.y = ctx.floorY;
+    if (this.sprite.body.velocity.y >= 0) {
+      // Only cancel downward/stationary velocity — don't cancel a jump (velocity < 0)
+      this.sprite.setVelocityY(0);
+      this.airJumpsRemaining  = this.maxAirJumps;
+      this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
     }
-
   }
 
   activateShield(): void {
