@@ -387,8 +387,12 @@ export class MenuScene extends Phaser.Scene {
     panel.append(heap, subtitle, input, counterRow, confirmBtn, cancelEl);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
+    this.input.enabled = false;
 
-    const close = (): void => { document.body.removeChild(overlay); };
+    const close = (): void => {
+      this.input.enabled = true;
+      document.body.removeChild(overlay);
+    };
 
     const confirm = (): void => {
       setPlayerName(input.value);
