@@ -69,9 +69,10 @@ export class Player {
   private momentumX:          number = 0; // airborne horizontal momentum (px/s)
 
   // Jump feel — buffer + variable height
-  private jumpBufferTimer:    number = 0; // ms remaining of buffered jump input
-  private bufferedJumpVx:     number = 0; // captured im.jumpVx at press time
-  private jumpKeyWasHeld:     boolean = false; // for release-edge detection
+  private jumpBufferTimer:           number = 0; // ms remaining of buffered jump input
+  private bufferedJumpVx:            number = 0; // captured im.jumpVx at press time
+  private bufferedJumpFromKeyboard:  boolean = false; // true if buffer set by keyboard (cuttable); false for mobile pulses
+  private jumpKeyWasHeld:            boolean = false; // for release-edge detection (sustained press → release)
 
   /** Set by GameScene's wall-group collision callback each frame. When true the
    *  player is resting on a steep wall surface and should be ejected outward. */
@@ -164,9 +165,14 @@ export class Player {
     // jumpVx even after the one-frame pulse has cleared.
     this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - delta);
     const jumpKeyJustDown = this.jumpKeys.some(k => Phaser.Input.Keyboard.JustDown(k));
-    if (jumpKeyJustDown || im.jumpJustPressed) {
-      this.jumpBufferTimer = JUMP_BUFFER_MS;
-      this.bufferedJumpVx  = im.jumpVx;
+    if (jumpKeyJustDown) {
+      this.jumpBufferTimer           = JUMP_BUFFER_MS;
+      this.bufferedJumpVx            = im.jumpVx;
+      this.bufferedJumpFromKeyboard  = true;
+    } else if (im.jumpJustPressed) {
+      this.jumpBufferTimer           = JUMP_BUFFER_MS;
+      this.bufferedJumpVx            = im.jumpVx;
+      this.bufferedJumpFromKeyboard  = false; // mobile pulse — never cut
     }
 
     // Variable jump height — releasing the jump key while still rising cuts upward
@@ -366,6 +372,14 @@ export class Player {
     if (jumpFired) {
       this.jumpBufferTimer = 0;
       this.bufferedJumpVx  = 0;
+      // Tap-cut: keyboard-originated jump where the key isn't currently held.
+      // Catches sub-frame taps (Phaser sees JustDown=true but isDown=false because
+      // the keyup event arrived in the same tick) and buffered tap-then-land cases —
+      // both of which the held→released transition detection above cannot see.
+      if (this.bufferedJumpFromKeyboard && !jumpKeyHeld) {
+        this.sprite.setVelocityY((PLAYER_JUMP_VELOCITY - this.jumpBoost) * JUMP_CUT_FACTOR);
+      }
+      this.bufferedJumpFromKeyboard = false;
     }
 
     // Wall slide — cap downward velocity when touching a wall while falling

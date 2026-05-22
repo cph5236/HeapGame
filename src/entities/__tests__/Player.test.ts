@@ -33,6 +33,7 @@ import {
 // (KeyCodes lookup) and the instance methods called in update().
 vi.mock('phaser', () => {
   const JustDown = vi.fn(() => false);
+  const JustUp   = vi.fn(() => false);
   return {
     default: {
       Input: {
@@ -45,6 +46,7 @@ vi.mock('phaser', () => {
             SHIFT: 'SHIFT',
           },
           JustDown,
+          JustUp,
         },
       },
     },
@@ -954,6 +956,64 @@ describe('Player — variable jump height (jump cut)', () => {
     // Still holding — no cut should happen
     player.update(16);
     expect(spy.setVelocityY).not.toContain(-500 * JUMP_CUT_FACTOR);
+  });
+
+  it('sub-frame keyboard tap (JustDown true, isDown false) cuts on the fire frame', async () => {
+    // The bug: a fast tap completes (keydown + keyup) before the next Phaser tick.
+    // On the firing frame Phaser reports JustDown=true but isDown=false.
+    // The held→released transition detection can't catch this; cut-on-fire must.
+    const phaserMod = await import('phaser');
+    (phaserMod.default.Input.Keyboard.JustDown as any).mockReturnValueOnce(true);
+
+    const { player, spy } = await makePlayer({ onGround: true, config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 } });
+    // jumpKeys[0].isDown stays false — simulating already-released
+
+    player.update(16);
+
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY * JUMP_CUT_FACTOR);
+  });
+
+  it('buffered tap that fires on landing also cuts (no held key at fire time)', async () => {
+    // Press jump while falling with no air jumps available; release before landing.
+    // The buffered jump fires on landing — and since the key isn't held, it must cut.
+    const phaserMod = await import('phaser');
+
+    const { player, spy, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 400 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    // Frame 1: airborne, sub-frame tap (JustDown true, isDown false)
+    (phaserMod.default.Input.Keyboard.JustDown as any).mockReturnValueOnce(true);
+    player.update(16);
+    // No jump fired yet (no opportunity)
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+
+    // Frame 2: land — buffer fires the jump; key still not held → cut
+    sprite.body.blocked.down = true;
+    sprite.body.velocity.y = 0;
+    spy.setVelocityY.length = 0;
+    player.update(16);
+
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY * JUMP_CUT_FACTOR);
+  });
+
+  it('keyboard hold (JustDown true, isDown true) does NOT cut on fire frame', async () => {
+    // Sanity: a held jump fires at full height, only cut later on release.
+    const phaserMod = await import('phaser');
+    (phaserMod.default.Input.Keyboard.JustDown as any).mockReturnValueOnce(true);
+
+    const { player, spy } = await makePlayer({ onGround: true, config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 } });
+    (player as any).jumpKeys[0].isDown = true; // held
+
+    player.update(16);
+
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY * JUMP_CUT_FACTOR);
   });
 
   it('mobile swipe-jump (no held key) is never cut — full jump always', async () => {
