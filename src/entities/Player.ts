@@ -485,7 +485,8 @@ export class Player {
   private applyWallSlide(ctx: FrameCtx): void {
     if (!ctx.onGround && ctx.onWall && ctx.body.velocity.y > WALL_SLIDE_SPEED) {
       this.sprite.setVelocityY(WALL_SLIDE_SPEED);
-      this.momentumX = 0;
+      const outwardDir = ctx.body.blocked.left ? 1 : -1;
+      this.momentumX = outwardDir * Math.min(80, Math.abs(this.momentumX) + 30);
     }
   }
 

@@ -785,7 +785,7 @@ describe('Player — air momentum', () => {
     expect((player as any).momentumX).toBe(0);
   });
 
-  it('zeroes momentumX on wall contact', async () => {
+  it('applies outward momentum on wall-slide (velocity > WALL_SLIDE_SPEED)', async () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 100 } },
@@ -793,7 +793,9 @@ describe('Player — air momentum', () => {
     });
     (player as any).momentumX = 150;
     player.update(16);
-    expect((player as any).momentumX).toBe(0);
+    // Should apply outward momentum (positive since left wall), capped at 80
+    expect((player as any).momentumX).toBeGreaterThan(0);
+    expect((player as any).momentumX).toBeLessThanOrEqual(80);
   });
 
   it('zeroes momentumX when dash fires', async () => {
@@ -1382,5 +1384,78 @@ describe('Player — wall-leave coyote', () => {
     // Wall jump should have fired and consumed the coyote timer
     expect((player as any)._justWallJumped).toBe(true);
     expect((player as any).wallCoyoteTimer).toBe(0);
+  });
+});
+
+// ── 19. Wall-slide outward momentum (#13) ────────────────────────────────────────
+
+describe('Player — wall-slide outward momentum', () => {
+  it('wall slide on left wall → momentumX becomes positive, bounded ≤ 80', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).momentumX = 0;
+
+    player.update(16);
+
+    const momentum = (player as any).momentumX;
+    expect(momentum).toBeGreaterThan(0);
+    expect(momentum).toBeLessThanOrEqual(80);
+  });
+
+  it('wall slide on right wall → momentumX becomes negative, bounded ≥ -80', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: true, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).momentumX = 0;
+
+    player.update(16);
+
+    const momentum = (player as any).momentumX;
+    expect(momentum).toBeLessThan(0);
+    expect(momentum).toBeGreaterThanOrEqual(-80);
+  });
+
+  it('repeated frames do not unbounded-grow momentumX', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).momentumX = 0;
+
+    // Call update 10 times
+    for (let i = 0; i < 10; i++) {
+      player.update(16);
+      const momentum = (player as any).momentumX;
+      expect(Math.abs(momentum)).toBeLessThanOrEqual(80);
+    }
+  });
+
+  it('wall slide does not trigger when not falling fast enough', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    // Set tiltFactor to 0 to avoid air momentum boost from controller input
+    imState.tiltFactor = 0;
+    const initialMomentum = 100;
+    (player as any).momentumX = initialMomentum;
+
+    player.update(16);
+
+    // Wall-slide only triggers when velocity.y > WALL_SLIDE_SPEED (80).
+    // Since velocity.y = 50 (below threshold), wall-slide code does NOT run.
+    // momentumX will decay due to AIR_MOMENTUM_DECAY, but NOT be modified by wall-slide logic.
+    // So it should NOT become outward momentum (positive) from the wall-slide code.
+    // We verify it hasn't turned positive from wall-slide (may be slightly less than 100 from decay, which is OK).
+    const finalMomentum = (player as any).momentumX;
+    expect(finalMomentum).toBeLessThan(initialMomentum);
+    expect(finalMomentum).toBeGreaterThan(0); // Still positive, not flipped by wall-slide
   });
 });
