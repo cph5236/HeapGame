@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
+import { PlayerAnimator } from '../entities/PlayerAnimator';
 import { AudioManager } from '../systems/AudioManager';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
@@ -59,6 +60,7 @@ function makeColBounds(): [number, number][] {
 
 export class InfiniteGameScene extends Phaser.Scene {
   private player!: Player;
+  private playerAnimator!: PlayerAnimator;
   private hud!: HUD;
   private im!: InputManager;
   private scoreText!: Phaser.GameObjects.Text;
@@ -154,6 +156,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
     this.player = new Player(this, gapX, this.spawnY, this.playerConfig);
     this.player.worldWidth = INFINITE_WORLD_WIDTH;
+    this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
 
     // ── Colliders ───────────────────────────────────────────────────────────────
     this.heapColliders = [];
@@ -308,6 +311,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     // ── Player + input ────────────────────────────────────────────────────────────
     this.im.update(delta, false);
     this.player.update(delta);
+    this.playerAnimator.update(delta, this.player.animState);
     this.snapPlayerToSurface();
     this.placeableManager.update();
     this.hud.update();
@@ -404,6 +408,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     this._playerDead = true;
     AudioManager.onPlayerDeath();
     this.player.freeze();
+    this.playerAnimator.update(0, { ...this.player.animState, justDied: true });
     const score      = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
     const elapsedMs  = this._runStartTime !== null ? this.time.now - this._runStartTime : 0;
     const runResult  = buildRunScore(
@@ -532,6 +537,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    this.playerAnimator.destroy();
     AudioManager.stopAll();
   }
 }
