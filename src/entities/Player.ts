@@ -127,7 +127,7 @@ export class Player {
   get dashCooldownFraction(): number  { return this.dashCooldown / DASH_COOLDOWN_MS; }
   get airJumpsLeft():         number  { return this.airJumpsRemaining; }
   get maxAirJumpsCount():     number  { return this.maxAirJumps; }
-  get wallJumpsLeft():        number  { return this.wallJumpCooldown === 0 ? 1 : 0; }
+  get canWallJump():          boolean { return this.wallJumpCooldown === 0; }
   get hasWallJump():          boolean { return this.wallJumpEnabled; }
   get hasDash():              boolean { return this.dashEnabled; }
   get hasActiveShield():      boolean { return this.shieldActive; }
@@ -178,7 +178,7 @@ export class Player {
 
     const ctx = this.computeGroundContext();
     this.applyGravityScaling(ctx);
-    this.updateWallCoyote(ctx, delta);
+    this.updateWallTracking(ctx, delta);
     this.handleLandingResets(ctx, delta);
     this.updateHorizontal(ctx, delta);
     this.applyTerrainStick(ctx);
@@ -315,7 +315,14 @@ export class Player {
   /** Manage wall-leave coyote time window and wall-jump cooldown decay.
    *  When onWall, sets wallCoyoteTimer and lastWallSide. When off wall, decays timer.
    *  Also decays wallJumpCooldown and detects wall-leave transitions to reset lastWallJumpSide. */
-  private updateWallCoyote(ctx: FrameCtx, delta: number): void {
+  /** Update wall-related timers and transition state.
+   *
+   * Handles three concerns:
+   * (a) wall-coyote timer decay (allows wall-jump after leaving wall)
+   * (b) wall-jump cooldown decay (enforces same-wall cooldown gating)
+   * (c) wall-leave transition detection (resets lastWallJumpSide when leaving wall)
+   */
+  private updateWallTracking(ctx: FrameCtx, delta: number): void {
     if (ctx.onWall) {
       // Touching wall: refresh coyote window and record which side
       this.wallCoyoteTimer = WALL_COYOTE_MS;
