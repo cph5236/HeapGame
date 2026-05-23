@@ -26,6 +26,8 @@ import {
   APEX_GRAVITY_FACTOR,
   FALL_GRAVITY_FACTOR,
   WORLD_GRAVITY_Y,
+  DASH_DURATION_MS,
+  PLAYER_AIR_MAX_SPEED,
 } from '../../constants';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -832,6 +834,72 @@ describe('Player — air momentum', () => {
     imState.jumpVx = 0;
     player.update(16);
     expect((player as any).momentumX).toBe(150);
+  });
+});
+
+// ── 10.5. Dash exit smoothing ──────────────────────────────────────────────────
+
+describe('Player — dash exit smoothing', () => {
+  it('Dash with dir=1, expire airborne → momentumX equals clamped exit velocity', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 500, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    // Trigger dash
+    imState.dashJustFired = true;
+    imState.dashDir = 1;
+    player.update(16);
+    // After first update, dash is active (dashActive = DASH_DURATION_MS = 200)
+    expect((player as any).dashActive).toBe(200);
+    expect((player as any).momentumX).toBe(0); // zeroed when dash fires
+
+    // Clear dashJustFired and advance time by DASH_DURATION_MS + 1 to expire the dash
+    imState.dashJustFired = false;
+    player.update(DASH_DURATION_MS + 1);
+
+    // After this update, dashActive should be 0 (expired) and momentumX should be
+    // seeded from body.velocity.x (which is 500) clamped to PLAYER_AIR_MAX_SPEED
+    expect((player as any).dashActive).toBe(0);
+    expect((player as any).momentumX).toBe(PLAYER_AIR_MAX_SPEED); // 500 == PLAYER_AIR_MAX_SPEED
+  });
+
+  it('Dash ends while grounded → smooth exit does NOT fire', async () => {
+    const { player } = await makePlayer({
+      onGround: true,
+      bodyOverrides: { blocked: { left: false, right: false, down: true }, velocity: { x: 500, y: 0 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    // Trigger dash while on ground
+    imState.dashJustFired = true;
+    imState.dashDir = 1;
+    player.update(16);
+    expect((player as any).dashActive).toBe(200);
+
+    // Clear dashJustFired and advance past dash expiry
+    imState.dashJustFired = false;
+    player.update(DASH_DURATION_MS + 1);
+
+    // After expiry on ground, momentumX should be 0 (ground branch zeros it)
+    expect((player as any).momentumX).toBe(0);
+  });
+
+  it('No dash triggered → smooth-exit branch is inert', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 100, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    // Set momentumX directly without triggering dash
+    (player as any).momentumX = 42;
+
+    // Update without triggering dash
+    player.update(16);
+
+    // momentumX should decay (42 * Math.pow(0.997, 16) ≈ 40.0) but NOT be affected by smooth exit
+    // because prevDashActive = 0 and dashActive = 0 (smooth exit only fires when prevDashActive > 0)
+    expect((player as any).momentumX).toBeLessThan(42);
+    expect((player as any).momentumX).toBeGreaterThan(30);
   });
 });
 

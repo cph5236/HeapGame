@@ -342,7 +342,6 @@ export class Player {
     const im = InputManager.getInstance();
     const keyboardLeft  = this.leftKeys.some(k => k.isDown);
     const keyboardRight = this.rightKeys.some(k => k.isDown);
-    this.dashActive = Math.max(0, this.dashActive - delta);
 
     if (this.dashActive !== 0) return; // active dash protects horizontal velocity
 
@@ -399,11 +398,21 @@ export class Player {
     }
   }
 
-  private updateDash(_ctx: FrameCtx, delta: number): void {
+  private updateDash(ctx: FrameCtx, delta: number): void {
     if (!this.dashEnabled) return;
     const im = InputManager.getInstance();
     const keyboardLeft  = this.leftKeys.some(k => k.isDown);
     const keyboardRight = this.rightKeys.some(k => k.isDown);
+
+    const prevDashActive = this.dashActive;
+    this.dashActive = Math.max(0, this.dashActive - delta);
+    // Smooth dash exit: when dash just ended and player is airborne, carry the
+    // current horizontal velocity into momentumX so air control resumes smoothly
+    // instead of snapping to zero.
+    if (prevDashActive > 0 && this.dashActive === 0 && !ctx.onGround) {
+      this.momentumX = Math.max(-PLAYER_AIR_MAX_SPEED, Math.min(PLAYER_AIR_MAX_SPEED, ctx.body.velocity.x));
+    }
+
     this.dashCooldown = Math.max(0, this.dashCooldown - delta);
     const dashTriggered = Phaser.Input.Keyboard.JustDown(this.dashKey) || im.dashJustFired;
     if (dashTriggered && this.dashCooldown === 0) {
