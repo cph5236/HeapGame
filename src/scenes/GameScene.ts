@@ -164,6 +164,9 @@ export class GameScene extends Phaser.Scene {
     this.player.worldHeight = this._worldHeight;
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
 
+    // Wire corner correction callback to edge collider
+    this.player.headBumpProbe = (x, y) => this.edgeCollider.hasSlabAt(x, y);
+
     // If restarted via checkpoint respawn, reposition player and consume one spawn
     if (this.checkpointRespawn) {
       const placed = getPlaced(this._heapId);

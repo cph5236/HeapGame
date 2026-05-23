@@ -158,6 +158,9 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.player.worldWidth = INFINITE_WORLD_WIDTH;
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
 
+    // Wire corner correction callback to all edge colliders
+    this.player.headBumpProbe = (x, y) => this.edgeColliders.some(ec => ec.hasSlabAt(x, y));
+
     // ── Colliders ───────────────────────────────────────────────────────────────
     this.heapColliders = [];
     type AP = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;

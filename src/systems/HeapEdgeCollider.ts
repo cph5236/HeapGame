@@ -105,6 +105,22 @@ export class HeapEdgeCollider {
     return best;
   }
 
+  /**
+   * Returns true if any slab covers the point (worldX, worldY). Used by Player.applyCornerCorrection
+   * to probe whether shifting horizontally would clear a head-bumped ceiling.
+   */
+  hasSlabAt(worldX: number, worldY: number): boolean {
+    for (const rows of this.bandRows.values()) {
+      for (const row of rows) {
+        if (worldX < row.leftX || worldX > row.rightX) continue;
+        const top = row.y - FLOOR_BODY_HEIGHT / 2;
+        const bot = row.y + FLOOR_BODY_HEIGHT / 2;
+        if (worldY >= top && worldY <= bot) return true;
+      }
+    }
+    return false;
+  }
+
   cullBands(camBottom: number, cullDistance: number): void {
     const threshold = camBottom + cullDistance;
     for (const [bandTop] of this.bandBodies) {

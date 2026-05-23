@@ -92,7 +92,7 @@ type SpyCalls = {
 };
 
 interface MockBody {
-  blocked: { left: boolean; right: boolean; down: boolean };
+  blocked: { left: boolean; right: boolean; down: boolean; up?: boolean };
   velocity: { x: number; y: number };
   _maxVelocityY: number;
   _gravityY: number;
@@ -123,7 +123,7 @@ function makeSprite(overrides: Partial<MockBody> = {}): MockSprite {
   const spy: SpyCalls = { setVelocityX: [], setVelocityY: [], setFlipX: [] };
 
   const body: MockBody = {
-    blocked: { left: false, right: false, down: false },
+    blocked: { left: false, right: false, down: false, up: false },
     velocity: { x: 0, y: 0 },
     _maxVelocityY: PLAYER_MAX_FALL_SPEED,
     _gravityY: 0,
@@ -1743,5 +1743,144 @@ describe('Player — wall-jump cooldown (#8)', () => {
     // Wall-jump should NOT fire (feature disabled)
     expect((player as any)._justWallJumped).toBe(false);
     expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+  });
+});
+
+// ── 16. Corner correction / head-bump correction (#5) ──────────────────────────
+
+describe('Player — corner correction (#5)', () => {
+  it('left side clear, right side blocked → nudge left', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false, up: true }, velocity: { x: 0, y: -200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+
+    // Set position: sprite.x = 100, sprite.y = 50
+    sprite.x = 100;
+    sprite.y = 50;
+
+    // Mock headBumpProbe: returns true only at x+5 (right blocked), false at x-5 (left clear)
+    player.headBumpProbe = (x: number, _y: number) => x === 100 + 5;
+
+    player.update(16);
+
+    // Should nudge left by HEAD_BUMP_NUDGE_PX (4)
+    expect(sprite.x).toBe(100 - 4);
+  });
+
+  it('right side clear, left side blocked → nudge right', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false, up: true }, velocity: { x: 0, y: -200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+
+    sprite.x = 100;
+    sprite.y = 50;
+
+    // Mock headBumpProbe: returns true at x-5 (left blocked), false at x+5 (right clear)
+    player.headBumpProbe = (x: number, _y: number) => x === 100 - 5;
+
+    player.update(16);
+
+    // Should nudge right by HEAD_BUMP_NUDGE_PX (4)
+    expect(sprite.x).toBe(100 + 4);
+  });
+
+  it('both sides blocked → no nudge', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false, up: true }, velocity: { x: 0, y: -200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+
+    sprite.x = 100;
+    sprite.y = 50;
+
+    // Mock headBumpProbe: always returns true (both sides blocked)
+    player.headBumpProbe = (_x: number, _y: number) => true;
+
+    player.update(16);
+
+    // No nudge; position unchanged
+    expect(sprite.x).toBe(100);
+  });
+
+  it('both sides clear → no nudge (ambiguous)', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false, up: true }, velocity: { x: 0, y: -200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+
+    sprite.x = 100;
+    sprite.y = 50;
+
+    // Mock headBumpProbe: always returns false (both sides clear)
+    player.headBumpProbe = (_x: number, _y: number) => false;
+
+    player.update(16);
+
+    // No nudge; position unchanged
+    expect(sprite.x).toBe(100);
+  });
+
+  it('not blocked.up → no nudge', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false, up: false }, velocity: { x: 0, y: -200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+
+    sprite.x = 100;
+    sprite.y = 50;
+
+    // Mock headBumpProbe that would trigger if blocked.up was true
+    player.headBumpProbe = (x: number, _y: number) => x === 100 + 5;
+
+    player.update(16);
+
+    // blocked.up is false, so no nudge despite probe matching
+    expect(sprite.x).toBe(100);
+  });
+
+  it('vy >= 0 (falling) → no nudge', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false, up: true }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+
+    sprite.x = 100;
+    sprite.y = 50;
+
+    // Mock headBumpProbe that would trigger if vy < 0
+    player.headBumpProbe = (x: number, _y: number) => x === 100 + 5;
+
+    player.update(16);
+
+    // vy >= 0, so no nudge despite probe matching
+    expect(sprite.x).toBe(100);
+  });
+
+  it('no headBumpProbe set → no-op (no throw)', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false, up: true }, velocity: { x: 0, y: -200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+
+    sprite.x = 100;
+    sprite.y = 50;
+
+    // Do NOT set headBumpProbe
+    // (it defaults to undefined)
+
+    // Should not throw
+    player.update(16);
+
+    // Position unchanged
+    expect(sprite.x).toBe(100);
   });
 });
