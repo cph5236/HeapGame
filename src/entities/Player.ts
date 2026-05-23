@@ -29,8 +29,6 @@ import {
   APEX_VY_THRESHOLD,
   APEX_GRAVITY_FACTOR,
   FALL_GRAVITY_FACTOR,
-  HEAD_BUMP_PROBE_PX,
-  HEAD_BUMP_NUDGE_PX,
 } from '../constants';
 import { PlayerConfig } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
@@ -107,8 +105,6 @@ export class Player {
   public worldWidth: number = WORLD_WIDTH;
   /** Floor Y for the current heap — used as the ground fallback. */
   public worldHeight: number = MOCK_HEAP_HEIGHT_PX;
-  /** Set by scenes that own slab terrain. Returns true if a slab body covers (worldX, worldY). */
-  public headBumpProbe?: (x: number, y: number) => boolean;
 
   private placementMode: boolean = false;
   private shieldActive: boolean = false;
@@ -192,7 +188,6 @@ export class Player {
     const wallJumpFired = this.tryWallJump(ctx);
     this.consumeJumpBufferOnFire(jumpFired || wallJumpFired);
 
-    this.applyCornerCorrection(ctx);
     this.applyWallSlide(ctx);
     this.updateDive(ctx, delta);
     this.applyWorldBoundsX();
@@ -525,37 +520,6 @@ export class Player {
       console.log('[JUMP-FIRE-FULL]', { fromKeyboard: this.bufferedJumpFromKeyboard, held: this._frameJumpKeyHeld });
     }
     this.bufferedJumpFromKeyboard = false;
-  }
-
-  /**
-   * Corner correction: when head-bumped on a ceiling while rising, probe left and right
-   * to see if one side is clear. If so, nudge the player sideways to escape the corner.
-   */
-  private applyCornerCorrection(ctx: FrameCtx): void {
-    if (!this.headBumpProbe) return;
-    if (!ctx.body.blocked.up || ctx.body.velocity.y >= 0) return;
-    const headY = this.sprite.y - PLAYER_HEIGHT / 2;
-    const probe = HEAD_BUMP_PROBE_PX;
-    const nudge = HEAD_BUMP_NUDGE_PX;
-    const blockedCenter = this.headBumpProbe(this.sprite.x, headY);
-    const blockedLeft   = this.headBumpProbe(this.sprite.x - probe, headY);
-    const blockedRight  = this.headBumpProbe(this.sprite.x + probe, headY);
-    console.log('[CORNER-PROBE]', {
-      x: Math.round(this.sprite.x),
-      headY: Math.round(headY),
-      vy: Math.round(ctx.body.velocity.y),
-      center: blockedCenter,
-      left:   blockedLeft,
-      right:  blockedRight,
-    });
-    if (!blockedLeft && blockedRight) {
-      console.log('[CORNER-NUDGE]', { dir: 'left', from: Math.round(this.sprite.x), to: Math.round(this.sprite.x - nudge) });
-      this.sprite.x -= nudge;
-    } else if (blockedLeft && !blockedRight) {
-      console.log('[CORNER-NUDGE]', { dir: 'right', from: Math.round(this.sprite.x), to: Math.round(this.sprite.x + nudge) });
-      this.sprite.x += nudge;
-    }
-    // If both sides blocked OR both free → no clear direction, do nothing.
   }
 
   private applyWallSlide(ctx: FrameCtx): void {

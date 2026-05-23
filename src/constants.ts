@@ -86,8 +86,6 @@ export const PLATFORM_MAX_HEIGHT = 56;
 export const FLOOR_BODY_HEIGHT          = 8;  // short in Y
 export const MAX_WALKABLE_SLOPE_DEG     = 35; // surfaces steeper than this are walls
 export const MOUNTAIN_CLIMBER_INCREMENT = 3;  // degrees added per upgrade level
-export const HEAD_BUMP_PROBE_PX         = 5;  // ± px to sample horizontally when head-bumping
-export const HEAD_BUMP_NUDGE_PX         = 4;  // px to shift player when one side is clear
 
 // ── Placement ─────────────────────────────────────────────────────────────────
 export const PEAK_BONUS_ZONE_PX    = 80;    // px above heap topY that qualifies for peak bonus

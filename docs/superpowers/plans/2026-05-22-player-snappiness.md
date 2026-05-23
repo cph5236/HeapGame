@@ -37,9 +37,11 @@
 
 ---
 
-### #5 — Corner / head-bump correction
+### #5 — Corner / head-bump correction — REMOVED
 
-**Problem.** Jumping into a slab corner — even by 1–4 px overlap — stops the player dead. Phaser arcade has no built-in corner forgiveness.
+**Decision (2026-05-23):** Implemented, then removed during playtest. The `blocked.up && vy < 0` gate never matched the head-bump moment because Phaser zeroes vy during collision resolution before our update reads it. Widening the gate to `vy <= 0` and adjusting the probe Y still failed to find the slab — the probe consistently returned all-false even when `blocked.up` was true, suggesting the player was hitting something not in `bandRows` (bridge or other non-HeapEdgeCollider body) at most of the test points. After several iterations the user chose to drop the feature entirely and keep the other movement improvements.
+
+**Original problem.** Jumping into a slab corner — even by 1–4 px overlap — stops the player dead. Phaser arcade has no built-in corner forgiveness.
 
 **Implementation.**
 1. Add constants `HEAD_BUMP_PROBE_PX = 5` and `HEAD_BUMP_NUDGE_PX = 4`.
@@ -321,7 +323,7 @@ update(delta: number): void {
 9. **#6** — ground-touch dash refresh
 10. **#14** — lift wall-jump push constant
 11. **#8** — drop wall-jump charges, add 2s same-wall cooldown (uses #14's constant)
-12. **#5** — corner / head-bump correction (biggest; last)
+12. **#5** — corner / head-bump correction (biggest; last) — **dropped during playtest, see #5 section**
 
 **Skipped:** #12 (ground turn-around easing).
 
