@@ -788,17 +788,17 @@ describe('Player — air momentum', () => {
     expect((player as any).momentumX).toBe(0);
   });
 
-  it('applies outward momentum on wall-slide (velocity > WALL_SLIDE_SPEED)', async () => {
+  it('wall slide zeros momentumX (no push off wall while sliding)', async () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 100 } },
       config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
     });
     (player as any).momentumX = 150;
+    imState.tiltFactor = 0; // No input so no air momentum boost
     player.update(16);
-    // Should apply outward momentum (positive since left wall), capped at 80
-    expect((player as any).momentumX).toBeGreaterThan(0);
-    expect((player as any).momentumX).toBeLessThanOrEqual(80);
+    // While actively wall-sliding, momentumX should be zeroed
+    expect((player as any).momentumX).toBe(0);
   });
 
   it('zeroes momentumX when dash fires', async () => {
@@ -1459,49 +1459,83 @@ describe('Player — wall-leave coyote', () => {
 // ── 19. Wall-slide outward momentum (#13) ────────────────────────────────────────
 
 describe('Player — wall-slide outward momentum', () => {
-  it('wall slide on left wall → momentumX becomes positive, bounded ≤ 80', async () => {
+  it('wall slide on left wall keeps momentumX at 0 (no push off wall)', async () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 200 } },
       config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
     });
     (player as any).momentumX = 0;
+    imState.tiltFactor = 0; // No input, so no air momentum boost
 
     player.update(16);
 
     const momentum = (player as any).momentumX;
-    expect(momentum).toBeGreaterThan(0);
+    expect(momentum).toBe(0);
+  });
+
+  it('wall-leave on left side grants positive outward momentum (80)', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).momentumX = 0;
+    (player as any).lastWallSide = -1; // Mark that player is on left wall
+    imState.tiltFactor = 0;
+
+    // Frame A: sliding on left wall
+    player.update(16);
+    expect((player as any).momentumX).toBe(0); // Stays 0 while sliding
+
+    // Frame B: leave the wall
+    player.sprite.body.blocked.left = false;
+    player.update(16);
+
+    // After wall-leave, should have granted outward momentum (value will decay slightly during the frame)
+    const momentum = (player as any).momentumX;
+    expect(momentum).toBeGreaterThan(75); // Approximately 80, minus decay over 16ms
     expect(momentum).toBeLessThanOrEqual(80);
   });
 
-  it('wall slide on right wall → momentumX becomes negative, bounded ≥ -80', async () => {
+  it('wall-leave on right side grants negative outward momentum (-80)', async () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: true, down: false }, velocity: { x: 0, y: 200 } },
       config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
     });
     (player as any).momentumX = 0;
+    (player as any).lastWallSide = 1; // Mark that player is on right wall
+    imState.tiltFactor = 0;
 
+    // Frame A: sliding on right wall
+    player.update(16);
+    expect((player as any).momentumX).toBe(0); // Stays 0 while sliding
+
+    // Frame B: leave the wall
+    player.sprite.body.blocked.right = false;
     player.update(16);
 
+    // After wall-leave, should have granted outward momentum (value will decay slightly during the frame)
     const momentum = (player as any).momentumX;
-    expect(momentum).toBeLessThan(0);
     expect(momentum).toBeGreaterThanOrEqual(-80);
+    expect(momentum).toBeLessThan(-75); // Approximately -80, minus decay over 16ms
   });
 
-  it('repeated frames do not unbounded-grow momentumX', async () => {
+  it('repeated wall-slide frames keep momentumX at 0', async () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 200 } },
       config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
     });
     (player as any).momentumX = 0;
+    imState.tiltFactor = 0; // No input
 
-    // Call update 10 times
+    // Call update 10 times while still on wall
     for (let i = 0; i < 10; i++) {
       player.update(16);
       const momentum = (player as any).momentumX;
-      expect(Math.abs(momentum)).toBeLessThanOrEqual(80);
+      expect(momentum).toBe(0);
     }
   });
 
@@ -1635,7 +1669,7 @@ describe('Player — wall-jump cooldown (#8)', () => {
     expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
   });
 
-  it('leave wall, return to same wall → fires again (different wall resets lastWallJumpSide)', async () => {
+  it('leave wall, return to same wall WITHIN cooldown → does NOT fire (same-wall lockout)', async () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
@@ -1648,23 +1682,23 @@ describe('Player — wall-jump cooldown (#8)', () => {
     player.update(16);
     expect((player as any)._justWallJumped).toBe(true);
 
-    // Frame B: leave left wall (blocked.left = false) — triggers wall-leave transition, resets lastWallJumpSide
+    // Frame B: leave left wall (blocked.left = false) — mid-air, still within cooldown
     spy.setVelocityX.length = 0;
     spy.setVelocityY.length = 0;
     imState.jumpJustPressed = false;
     player.sprite.body.blocked.left = false;
     player.update(16);
 
-    // Frame C: return to left wall, press jump → should fire again despite cooldown still active
+    // Frame C: return to left wall still within 2s cooldown, press jump → should NOT fire (same-wall lockout)
     spy.setVelocityX.length = 0;
     spy.setVelocityY.length = 0;
     imState.jumpJustPressed = true;
     player.sprite.body.blocked.left = true;
     player.update(16);
 
-    // Wall-jump should have fired (cooldown bypassed because we left and returned to same wall)
-    expect((player as any)._justWallJumped).toBe(true);
-    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+    // Wall-jump should NOT fire (cooldown still active, and it's the same wall)
+    expect((player as any)._justWallJumped).toBe(false);
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
   });
 
   it('touch left wall, jump, then touch right wall → fires (different wall side)', async () => {
@@ -1749,7 +1783,7 @@ describe('Player — wall-jump cooldown (#8)', () => {
 // ── 16. Corner correction / head-bump correction (#5) ──────────────────────────
 
 describe('Player — corner correction (#5)', () => {
-  it('left side clear, right side blocked → nudge left', async () => {
+  it('left side clear, right side blocked → nudge left + log', async () => {
     const { player, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false, up: true }, velocity: { x: 0, y: -200 } },
@@ -1763,13 +1797,22 @@ describe('Player — corner correction (#5)', () => {
     // Mock headBumpProbe: returns true only at x+5 (right blocked), false at x-5 (left clear)
     player.headBumpProbe = (x: number, _y: number) => x === 100 + 5;
 
+    const consoleSpy = vi.spyOn(console, 'log');
+
     player.update(16);
 
     // Should nudge left by HEAD_BUMP_NUDGE_PX (4)
     expect(sprite.x).toBe(100 - 4);
+    // Should log corner nudge
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[CORNER-NUDGE]',
+      expect.objectContaining({ dir: 'left' })
+    );
+
+    consoleSpy.mockRestore();
   });
 
-  it('right side clear, left side blocked → nudge right', async () => {
+  it('right side clear, left side blocked → nudge right + log', async () => {
     const { player, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false, up: true }, velocity: { x: 0, y: -200 } },
@@ -1782,10 +1825,19 @@ describe('Player — corner correction (#5)', () => {
     // Mock headBumpProbe: returns true at x-5 (left blocked), false at x+5 (right clear)
     player.headBumpProbe = (x: number, _y: number) => x === 100 - 5;
 
+    const consoleSpy = vi.spyOn(console, 'log');
+
     player.update(16);
 
     // Should nudge right by HEAD_BUMP_NUDGE_PX (4)
     expect(sprite.x).toBe(100 + 4);
+    // Should log corner nudge
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[CORNER-NUDGE]',
+      expect.objectContaining({ dir: 'right' })
+    );
+
+    consoleSpy.mockRestore();
   });
 
   it('both sides blocked → no nudge', async () => {

@@ -335,9 +335,10 @@ export class Player {
     } else {
       // Not touching wall: decay coyote timer
       this.wallCoyoteTimer = Math.max(0, this.wallCoyoteTimer - delta);
-      // Wall-leave transition: reset lastWallJumpSide so re-touching the same wall allows wall-jump
+      // Wall-leave transition: grant small outward momentum so player has something to work with
       if (this._prevOnWall) {
-        this.lastWallJumpSide = 0;
+        const outwardDir = this.lastWallSide === -1 ? 1 : -1;
+        this.momentumX = outwardDir * 80;
       }
     }
     // Decay wall-jump cooldown every frame
@@ -539,8 +540,10 @@ export class Player {
     const blockedLeft  = this.headBumpProbe(this.sprite.x - probe, headY);
     const blockedRight = this.headBumpProbe(this.sprite.x + probe, headY);
     if (!blockedLeft && blockedRight) {
+      console.log('[CORNER-NUDGE]', { dir: 'left', from: Math.round(this.sprite.x), to: Math.round(this.sprite.x - nudge) });
       this.sprite.x -= nudge;
     } else if (blockedLeft && !blockedRight) {
+      console.log('[CORNER-NUDGE]', { dir: 'right', from: Math.round(this.sprite.x), to: Math.round(this.sprite.x + nudge) });
       this.sprite.x += nudge;
     }
     // If both sides blocked OR both free → no clear direction, do nothing.
@@ -549,8 +552,7 @@ export class Player {
   private applyWallSlide(ctx: FrameCtx): void {
     if (!ctx.onGround && ctx.onWall && ctx.body.velocity.y > WALL_SLIDE_SPEED) {
       this.sprite.setVelocityY(WALL_SLIDE_SPEED);
-      const outwardDir = ctx.body.blocked.left ? 1 : -1;
-      this.momentumX = outwardDir * Math.min(80, Math.abs(this.momentumX) + 30);
+      this.momentumX = 0; // No horizontal momentum while actively sliding; granted on wall-leave
     }
   }
 
