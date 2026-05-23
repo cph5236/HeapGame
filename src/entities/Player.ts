@@ -333,6 +333,10 @@ export class Player {
         this.diveActive = 0;
         ctx.body.setMaxVelocityY(PLAYER_MAX_FALL_SPEED);
       }
+      // Ground-touch dash refresh: allow chaining dash → land → dash within cooldown window
+      if (this.dashEnabled) {
+        this.dashCooldown = 0;
+      }
     } else {
       this.coyoteTimer = Math.max(0, this.coyoteTimer - delta);
     }

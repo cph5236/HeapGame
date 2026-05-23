@@ -27,6 +27,7 @@ import {
   FALL_GRAVITY_FACTOR,
   WORLD_GRAVITY_Y,
   DASH_DURATION_MS,
+  DASH_COOLDOWN_MS,
   PLAYER_AIR_MAX_SPEED,
 } from '../../constants';
 
@@ -1525,5 +1526,77 @@ describe('Player — wall-slide outward momentum', () => {
     const finalMomentum = (player as any).momentumX;
     expect(finalMomentum).toBeLessThan(initialMomentum);
     expect(finalMomentum).toBeGreaterThan(0); // Still positive, not flipped by wall-slide
+  });
+});
+
+// ── 16. Dash ground refresh ──────────────────────────────────────────────────────
+
+describe('Player — dash ground refresh', () => {
+  it('Dash → land → cooldown is 0', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+
+    // Trigger dash while airborne
+    imState.dashJustFired = true;
+    imState.dashDir = 1;
+    player.update(16);
+
+    // dashCooldown should now be DASH_COOLDOWN_MS (800)
+    expect((player as any).dashCooldown).toBe(DASH_COOLDOWN_MS);
+
+    // Now simulate landing by setting body.blocked.down
+    imState.dashJustFired = false;
+    sprite.body.blocked.down = true;
+    sprite.body.velocity.y = 0;
+    player.update(16);
+
+    // After landing, dashCooldown should be reset to 0
+    expect((player as any).dashCooldown).toBe(0);
+  });
+
+  it('Touching a wall (airborne) does NOT refresh dash', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+
+    // Set up airborne with left wall touch and dash enabled
+    sprite.body.blocked.left = true;
+    sprite.body.velocity.y = 100;
+
+    // Manually set dashCooldown to 500 ms remaining
+    (player as any).dashCooldown = 500;
+
+    // Verify we're NOT on ground (onGround should be false because blocked.down is not set)
+    player.update(16);
+
+    // dashCooldown should have decayed by delta (16), NOT been reset to 0
+    // Expected: 500 - 16 = 484
+    const expectedCooldown = 500 - 16;
+    expect((player as any).dashCooldown).toBe(expectedCooldown);
+  });
+
+  it('dashEnabled: false → no refresh logic runs', async () => {
+    const { player } = await makePlayer({
+      onGround: true,
+      bodyOverrides: { blocked: { left: false, right: false, down: true }, velocity: { x: 0, y: 0 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+
+    // Manually set dashCooldown to 500 ms
+    (player as any).dashCooldown = 500;
+
+    // Run update while on ground with dash disabled
+    player.update(16);
+
+    // Since dashEnabled is false, updateDash returns early and never decays dashCooldown.
+    // dashCooldown should remain at 500 (unchanged).
+    // NOTE: This test verifies the guard in updateDash (line 402: if (!this.dashEnabled) return;)
+    // which prevents dashCooldown decay and also protects the handleLandingResets refresh logic.
+    expect((player as any).dashCooldown).toBe(500);
   });
 });
