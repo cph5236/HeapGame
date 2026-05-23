@@ -17,6 +17,7 @@ import {
   WALL_SLIDE_SPEED,
   WALL_COYOTE_MS,
   WALL_JUMP_PUSH,
+  WALL_JUMP_COOLDOWN_MS,
   AIR_TILT_FORCE,
   AIR_MOMENTUM_DECAY,
   MOMENTUM_STOP_ADV_FACTOR,
@@ -70,11 +71,13 @@ export class Player {
   private readonly diveEnabled:      boolean;
   private readonly jumpBoost:        number;
 
-  private airJumpsRemaining:  number = 0;
-  private wallJumpsRemaining: number = 0;
-  private wallCoyoteTimer:    number = 0; // ms remaining of wall-leave coyote grace
-  private lastWallSide:       -1 | 0 | 1 = 0; // which side was player last touching: -1=left, 1=right, 0=none
-  private dashCooldown:       number = 0; // ms remaining
+  private airJumpsRemaining:   number = 0;
+  private wallJumpCooldown:    number = 0; // ms remaining of wall-jump cooldown (same-wall gating)
+  private lastWallJumpSide:    -1 | 0 | 1 = 0; // which side player last wall-jumped from: -1=left, 1=right, 0=none
+  private wallCoyoteTimer:     number = 0; // ms remaining of wall-leave coyote grace
+  private lastWallSide:        -1 | 0 | 1 = 0; // which side was player last touching: -1=left, 1=right, 0=none
+  private _prevOnWall:         boolean = false; // previous frame's onWall state for wall-leave transition detection
+  private dashCooldown:        number = 0; // ms remaining
   private dashActive:         number = 0; // ms remaining of active dash
   private diveActive:         number = 0; // ms remaining of mobile dive burst
   private coyoteTimer:        number = 0; // ms remaining of coyote-time grace
@@ -124,7 +127,7 @@ export class Player {
   get dashCooldownFraction(): number  { return this.dashCooldown / DASH_COOLDOWN_MS; }
   get airJumpsLeft():         number  { return this.airJumpsRemaining; }
   get maxAirJumpsCount():     number  { return this.maxAirJumps; }
-  get wallJumpsLeft():        number  { return this.wallJumpsRemaining; }
+  get wallJumpsLeft():        number  { return this.wallJumpCooldown === 0 ? 1 : 0; }
   get hasWallJump():          boolean { return this.wallJumpEnabled; }
   get hasDash():              boolean { return this.dashEnabled; }
   get hasActiveShield():      boolean { return this.shieldActive; }
@@ -157,7 +160,6 @@ export class Player {
     this.diveEnabled        = config.dive;
     this.jumpBoost          = config.jumpBoost;
     this.airJumpsRemaining  = this.maxAirJumps;
-    this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
 
     const kb = scene.input.keyboard!;
     this.leftKeys  = [kb.addKey(KeyCodes.LEFT),  kb.addKey(KeyCodes.A)];
@@ -256,7 +258,7 @@ export class Player {
     this.sprite.setVelocityY(goUp ? -PLAYER_SPEED * 0.65 : goDown ? PLAYER_SPEED * 0.65 : 0);
     // Ladder counts as grounded: keep jump charges full and coyote window fresh
     this.airJumpsRemaining  = this.maxAirJumps;
-    this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
+    this.wallJumpCooldown   = 0;
     this.coyoteTimer        = 120;
     // Still allow X-wrap so player doesn't get stuck at world edge on ladder
     if (this.sprite.x < -SKY_PAD * this.worldWidth)
@@ -310,8 +312,9 @@ export class Player {
     }
   }
 
-  /** Manage wall-leave coyote time window: refresh when touching wall, decay when not.
-   *  When onWall, sets wallCoyoteTimer and lastWallSide. When off wall, decays timer. */
+  /** Manage wall-leave coyote time window and wall-jump cooldown decay.
+   *  When onWall, sets wallCoyoteTimer and lastWallSide. When off wall, decays timer.
+   *  Also decays wallJumpCooldown and detects wall-leave transitions to reset lastWallJumpSide. */
   private updateWallCoyote(ctx: FrameCtx, delta: number): void {
     if (ctx.onWall) {
       // Touching wall: refresh coyote window and record which side
@@ -320,14 +323,22 @@ export class Player {
     } else {
       // Not touching wall: decay coyote timer
       this.wallCoyoteTimer = Math.max(0, this.wallCoyoteTimer - delta);
+      // Wall-leave transition: reset lastWallJumpSide so re-touching the same wall allows wall-jump
+      if (this._prevOnWall) {
+        this.lastWallJumpSide = 0;
+      }
     }
+    // Decay wall-jump cooldown every frame
+    this.wallJumpCooldown = Math.max(0, this.wallJumpCooldown - delta);
+    // Track wall state for next frame's wall-leave detection
+    this._prevOnWall = ctx.onWall;
   }
 
   private handleLandingResets(ctx: FrameCtx, delta: number): void {
     if (ctx.onGround) {
       this.coyoteTimer        = 120;
       this.airJumpsRemaining  = this.maxAirJumps;
-      this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
+      this.wallJumpCooldown   = 0;
       // Cancel any active dive burst — diveActive only decrements inside the !onGround
       // block so it would otherwise freeze on landing, re-triggering dive on the next jump.
       if (this.diveActive > 0) {
@@ -458,22 +469,29 @@ export class Player {
     return false;
   }
 
-  /** Wall-jump branch: only when airborne, requires a charge.
+  /** Wall-jump branch: only when airborne, gated by 2-second same-wall cooldown.
    *  Can fire while touching wall OR within wallCoyoteTimer window after leaving.
+   *  Cooldown gates fire: wallJumpCooldown must be 0 OR currentWallSide !== lastWallJumpSide.
    *  Returns whether a wall jump fired. */
   private tryWallJump(ctx: FrameCtx): boolean {
     const jumpPressed = !this.placementMode && this.jumpBufferTimer > 0;
-    if (!this.wallJumpEnabled || ctx.onGround || !jumpPressed || this.wallJumpsRemaining <= 0) return false;
+    if (!this.wallJumpEnabled || ctx.onGround || !jumpPressed) return false;
     // Accept jump if touching wall OR within coyote window after leaving wall
     const canWallJump = ctx.onWall || this.wallCoyoteTimer > 0;
     if (!canWallJump) return false;
     const body = ctx.body;
+    // Derive current wall side from physics contact, or use lastWallSide from coyote
+    const currentWallSide = body.blocked.left ? -1 : body.blocked.right ? 1 : this.lastWallSide;
+    // Check cooldown gate: can fire if cooldown expired OR touching a different wall
+    const canFireOnThisWall = this.wallJumpCooldown === 0 || currentWallSide !== this.lastWallJumpSide;
+    if (!canFireOnThisWall) return false;
     // Direction: use current blocked state if touching wall, otherwise use lastWallSide from coyote
     const dir = body.blocked.left ? 1 : body.blocked.right ? -1 : -this.lastWallSide;
     this.momentumX = dir * WALL_JUMP_PUSH;
     this.sprite.setVelocityX(this.momentumX);
     this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
-    this.wallJumpsRemaining--;
+    this.wallJumpCooldown = WALL_JUMP_COOLDOWN_MS;
+    this.lastWallJumpSide = currentWallSide;
     this.wallCoyoteTimer = 0; // Consume coyote window on wall-jump fire
     AudioManager.play('player-jump');
     this._justWallJumped = true;
@@ -556,8 +574,8 @@ export class Player {
     if (this.sprite.body.velocity.y >= 0) {
       // Only cancel downward/stationary velocity — don't cancel a jump (velocity < 0)
       this.sprite.setVelocityY(0);
-      this.airJumpsRemaining  = this.maxAirJumps;
-      this.wallJumpsRemaining = this.wallJumpEnabled ? 1 : 0;
+      this.airJumpsRemaining = this.maxAirJumps;
+      this.wallJumpCooldown = 0;
     }
   }
 

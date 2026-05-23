@@ -1600,3 +1600,148 @@ describe('Player — dash ground refresh', () => {
     expect((player as any).dashCooldown).toBe(500);
   });
 });
+
+// ── 23. Wall-jump cooldown (#8) ────────────────────────────────────────────────
+
+describe('Player — wall-jump cooldown (#8)', () => {
+  it('touch left wall, jump → fires. Jump again same contact within cooldown → does NOT fire', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    // Frame A: touch left wall and press jump
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    // Wall-jump should have fired
+    expect((player as any)._justWallJumped).toBe(true);
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+
+    // Clear flags and spies for Frame B
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    imState.jumpJustPressed = false;
+
+    // Frame B: still blocked.left, jump press again
+    player.sprite.body.blocked.left = true; // stay on wall
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    // Wall-jump should NOT fire (cooldown active)
+    expect((player as any)._justWallJumped).toBe(false);
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('leave wall, return to same wall → fires again (different wall resets lastWallJumpSide)', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    // Frame A: blocked.left, press jump → wall-jump fires
+    imState.jumpJustPressed = true;
+    player.update(16);
+    expect((player as any)._justWallJumped).toBe(true);
+
+    // Frame B: leave left wall (blocked.left = false) — triggers wall-leave transition, resets lastWallJumpSide
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    imState.jumpJustPressed = false;
+    player.sprite.body.blocked.left = false;
+    player.update(16);
+
+    // Frame C: return to left wall, press jump → should fire again despite cooldown still active
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    imState.jumpJustPressed = true;
+    player.sprite.body.blocked.left = true;
+    player.update(16);
+
+    // Wall-jump should have fired (cooldown bypassed because we left and returned to same wall)
+    expect((player as any)._justWallJumped).toBe(true);
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('touch left wall, jump, then touch right wall → fires (different wall side)', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    // Frame A: blocked.left, press jump → wall-jump fires
+    imState.jumpJustPressed = true;
+    player.update(16);
+    expect((player as any)._justWallJumped).toBe(true);
+
+    // Frame B: switch to right wall (blocked.left=false, blocked.right=true)
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    imState.jumpJustPressed = false;
+    player.sprite.body.blocked.left = false;
+    player.sprite.body.blocked.right = true;
+    player.update(16);
+
+    // Frame C: still on right wall, press jump → should fire (different wall side, cooldown bypassed)
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    // Wall-jump should have fired
+    expect((player as any)._justWallJumped).toBe(true);
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('cooldown expires after 2 seconds → can fire on same wall', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    // Frame A: wall-jump fires, cooldown = 2000ms
+    imState.jumpJustPressed = true;
+    player.update(16);
+    expect((player as any)._justWallJumped).toBe(true);
+
+    // Frame B: tick time > 2000ms to expire cooldown, stay on left wall
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    imState.jumpJustPressed = false;
+    player.update(2001); // Advance past WALL_JUMP_COOLDOWN_MS (2000)
+
+    // Frame C: press jump, still on left wall → should fire (cooldown expired)
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    expect((player as any)._justWallJumped).toBe(true);
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('wall-jump disabled (wallJump: false) → never fires regardless of cooldown', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    // Press jump on wall with wallJump disabled
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    // Wall-jump should NOT fire (feature disabled)
+    expect((player as any)._justWallJumped).toBe(false);
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+  });
+});
