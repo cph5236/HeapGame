@@ -537,8 +537,17 @@ export class Player {
     const headY = this.sprite.y - PLAYER_HEIGHT / 2;
     const probe = HEAD_BUMP_PROBE_PX;
     const nudge = HEAD_BUMP_NUDGE_PX;
-    const blockedLeft  = this.headBumpProbe(this.sprite.x - probe, headY);
-    const blockedRight = this.headBumpProbe(this.sprite.x + probe, headY);
+    const blockedCenter = this.headBumpProbe(this.sprite.x, headY);
+    const blockedLeft   = this.headBumpProbe(this.sprite.x - probe, headY);
+    const blockedRight  = this.headBumpProbe(this.sprite.x + probe, headY);
+    console.log('[CORNER-PROBE]', {
+      x: Math.round(this.sprite.x),
+      headY: Math.round(headY),
+      vy: Math.round(ctx.body.velocity.y),
+      center: blockedCenter,
+      left:   blockedLeft,
+      right:  blockedRight,
+    });
     if (!blockedLeft && blockedRight) {
       console.log('[CORNER-NUDGE]', { dir: 'left', from: Math.round(this.sprite.x), to: Math.round(this.sprite.x - nudge) });
       this.sprite.x -= nudge;
