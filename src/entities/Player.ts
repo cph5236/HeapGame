@@ -16,6 +16,7 @@ import {
   PLAYER_DIVE_SPEED,
   WALL_SLIDE_SPEED,
   WALL_COYOTE_MS,
+  WALL_JUMP_PUSH,
   AIR_TILT_FORCE,
   AIR_MOMENTUM_DECAY,
   MOMENTUM_STOP_ADV_FACTOR,
@@ -469,7 +470,7 @@ export class Player {
     const body = ctx.body;
     // Direction: use current blocked state if touching wall, otherwise use lastWallSide from coyote
     const dir = body.blocked.left ? 1 : body.blocked.right ? -1 : -this.lastWallSide;
-    this.momentumX = dir * PLAYER_SPEED * 1.5;
+    this.momentumX = dir * WALL_JUMP_PUSH;
     this.sprite.setVelocityX(this.momentumX);
     this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
     this.wallJumpsRemaining--;
