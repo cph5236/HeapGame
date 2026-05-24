@@ -1,4 +1,4 @@
-import type Phaser from 'phaser';
+import Phaser from 'phaser';
 import { HeapEntry } from '../data/heapTypes';
 import {
   CHUNK_BAND_HEIGHT,
