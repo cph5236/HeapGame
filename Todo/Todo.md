@@ -18,8 +18,6 @@ Call the Integrity API at important moments in your app to check that it's your 
 
 
 ### ORDER of importance --- V 0.2.0
-Sound effects - fix death sound.
-Animation for player
 Google Play closed beta
 itch.io upload
 Ad integration
