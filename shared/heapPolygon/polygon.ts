@@ -37,8 +37,12 @@ export function computeBandScanlines(
 
   // Scanline: collect leftmost and rightmost X per row
   const rows: ScanlineRow[] = [];
-  let lastLeft  = 480; // world center as fallback
-  let lastRight = 480;
+  // World X center used as a fallback when no rows are populated yet.
+  // Intentionally mirrors src/constants.ts WORLD_CENTER_X (= WORLD_WIDTH / 2).
+  // Do not import from src/ — this module is shared/framework-free.
+  const FALLBACK_CENTER_X = 480;
+  let lastLeft  = FALLBACK_CENTER_X;
+  let lastRight = FALLBACK_CENTER_X;
 
   for (let y = bandTop; y <= bandBottom; y += SCAN_STEP) {
     let minX =  Infinity;
@@ -147,6 +151,39 @@ function perpendicularDistance(p: Vertex, a: Vertex, b: Vertex): number {
   }
   const cross = Math.abs(dx * (a.y - p.y) - dy * (a.x - p.x));
   return cross / Math.sqrt(lenSq);
+}
+
+/**
+ * Convert a closed polygon (list of vertices) to ScanlineRow[] using a standard
+ * scanline rasterizer. Works for any convex or concave polygon. Uses SCAN_STEP
+ * for the Y resolution. Returns [] when given fewer than 3 vertices.
+ */
+export function verticesToScanlines(vertices: Vertex[]): ScanlineRow[] {
+  if (vertices.length < 3) return [];
+
+  const ys = vertices.map(v => v.y);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const rows: ScanlineRow[] = [];
+  const n = vertices.length;
+
+  for (let y = minY; y <= maxY; y += SCAN_STEP) {
+    const xs: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const a = vertices[i];
+      const b = vertices[(i + 1) % n];
+      // Edge crosses the horizontal scanline at y
+      if ((a.y <= y && b.y > y) || (b.y <= y && a.y > y)) {
+        const t = (y - a.y) / (b.y - a.y);
+        xs.push(a.x + t * (b.x - a.x));
+      }
+    }
+    if (xs.length >= 2) {
+      rows.push({ y, leftX: Math.min(...xs), rightX: Math.max(...xs) });
+    }
+  }
+
+  return rows;
 }
 
 /**

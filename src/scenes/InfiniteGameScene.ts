@@ -42,8 +42,9 @@ import {
   CHUNK_BAND_HEIGHT,
   INFINITE_LOOKAHEAD_CHUNKS,
   MAX_WALL_AUDIBLE_DISTANCE,
+  SURFACE_SNAP_TOLERANCE_PX,
 } from '../constants';
-import { SCAN_STEP } from '../systems/HeapPolygon';
+import { handleWallCollision, snapPlayerToSurface } from '../systems/HeapCollisionHelpers';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import type { EnemyKind } from '../entities/Enemy';
 
@@ -123,7 +124,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       const walkable = this.physics.add.staticGroup();
       const wall     = this.physics.add.staticGroup();
       const renderer = new HeapChunkRenderer(this, xMin, xMax - xMin);
-      const edge     = new HeapEdgeCollider(this, this.playerConfig.maxWalkableSlopeDeg);
+      const edge     = new HeapEdgeCollider(this.playerConfig.maxWalkableSlopeDeg);
       const gen      = new HeapGenerator(this, walkable, wall, [], renderer, edge);
 
       const layerGen = new LayerGenerator(seed, xMin, xMax, MOCK_HEAP_HEIGHT_PX);
@@ -165,7 +166,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.walkableGroups[i]));
       this.heapColliders.push(this.physics.add.collider(
         this.player.sprite, this.wallGroups[i],
-        this.onHeapWallCollide as unknown as AP, undefined, this,
+        ((p: Phaser.GameObjects.GameObject, w: Phaser.GameObjects.GameObject) => handleWallCollision(this.player, p, w)) as AP, undefined, this,
       ));
     }
 
@@ -312,7 +313,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.im.update(delta, false);
     this.player.update(delta);
     this.playerAnimator.update(delta, this.player.animState);
-    this.snapPlayerToSurface();
+    snapPlayerToSurface(this.player, this.edgeColliders, SURFACE_SNAP_TOLERANCE_PX);
     this.placeableManager.update();
     this.hud.update();
 
@@ -503,38 +504,6 @@ export class InfiniteGameScene extends Phaser.Scene {
     }
     this.handleDeath();
   };
-
-  private readonly onHeapWallCollide = (
-    playerObj: Phaser.GameObjects.GameObject,
-    wallObj: Phaser.GameObjects.GameObject,
-  ): void => {
-    const body = (playerObj as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody).body;
-    if (body.blocked.down) {
-      this.player.inSlopeZone = true;
-      const side = (wallObj as Phaser.GameObjects.Image).getData('wallSide') as 'left' | 'right';
-      this.player.slopeEjectDir = side === 'left' ? -1 : 1;
-    }
-  };
-
-  private snapPlayerToSurface(): void {
-    const body = this.player.sprite.body;
-    if (!body.blocked.down || this.player.inSlopeZone) return;
-
-    const playerX = this.player.sprite.x;
-    const feetY   = this.player.sprite.y + PLAYER_HEIGHT / 2;
-
-    let slabTop: number | null = null;
-    for (const ec of this.edgeColliders) {
-      const s = ec.getSurfaceYAtX(playerX, feetY);
-      if (s !== null && (slabTop === null || s < slabTop)) slabTop = s;
-    }
-    if (slabTop === null) return;
-
-    const targetY = slabTop - PLAYER_HEIGHT / 2;
-    if (Math.abs(targetY - this.player.sprite.y) <= SCAN_STEP * 2) {
-      this.player.sprite.y = targetY;
-    }
-  }
 
   shutdown(): void {
     this.playerAnimator.destroy();

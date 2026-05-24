@@ -5,7 +5,6 @@ import { AudioManager } from '../systems/AudioManager';
 import { CameraController } from '../systems/CameraController';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import type { Vertex } from '../systems/HeapPolygon';
-import { SCAN_STEP } from '../systems/HeapPolygon';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { getPlayConsoleId } from '../data/achievementDefs';
 import {
@@ -29,11 +28,13 @@ import {
   PLACE_HOLD_DURATION_MS,
   SCORE_DISPLAY_DIVISOR,
   MAX_WALL_AUDIBLE_DISTANCE,
+  SURFACE_SNAP_TOLERANCE_PX,
 } from '../constants';
 import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
+import { handleWallCollision, snapPlayerToSurface } from '../systems/HeapCollisionHelpers';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { HeapClient } from '../systems/HeapClient';
 import { PlaceableManager } from '../systems/PlaceableManager';
@@ -139,7 +140,7 @@ export class GameScene extends Phaser.Scene {
     // Spawn player at world floor (left clear zone) — player climbs up through the heap
     this.spawnY = this._worldHeight - PLAYER_HEIGHT / 2 - 1;
     this.playerConfig = getPlayerConfig();
-    this.edgeCollider = new HeapEdgeCollider(this, this.playerConfig.maxWalkableSlopeDeg);
+    this.edgeCollider = new HeapEdgeCollider(this.playerConfig.maxWalkableSlopeDeg);
     this.heapGenerator = new HeapGenerator(
       this, this.heapWalkableGroup, this.heapWallGroup, [], this.chunkRenderer, this.edgeCollider,
     );
@@ -235,7 +236,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player.sprite, this.heapWalkableGroup);
     this.physics.add.collider(
       this.player.sprite, this.heapWallGroup,
-      this.onHeapWallCollide as unknown as ArcadeProcess, undefined, this,
+      ((p: Phaser.GameObjects.GameObject, w: Phaser.GameObjects.GameObject) => handleWallCollision(this.player, p, w)) as ArcadeProcess, undefined, this,
     );
     // Enemies all have allowGravity(false) and are positioned explicitly — no heap colliders needed.
 
@@ -323,7 +324,7 @@ export class GameScene extends Phaser.Scene {
 
     this.player.update(delta);
     this.playerAnimator.update(delta, this.player.animState);
-    this.snapPlayerToSurface();
+    snapPlayerToSurface(this.player, [this.edgeCollider], SURFACE_SNAP_TOLERANCE_PX);
 
     // After a wrap, snap the camera so the player appears at the edge they came out of,
     // then tween the follow offset back to zero so the camera re-centers naturally.
@@ -607,46 +608,6 @@ export class GameScene extends Phaser.Scene {
     this.invincible = true;
     this.time.delayedCall(PLAYER_INVINCIBLE_MS, () => { this.invincible = false; });
   };
-
-  /**
-   * Process callback for player vs heapWallGroup collisions.
-   * Returning true lets the collision resolve (wall blocks horizontal movement).
-   * When the player somehow lands on the top of a wall slab (body.blocked.down),
-   * a small downward + lateral nudge slides them off so they cannot stand there.
-   */
-  private readonly onHeapWallCollide = (
-    playerObj: Phaser.GameObjects.GameObject,
-    wallObj: Phaser.GameObjects.GameObject,
-  ): void => {
-    const body = (playerObj as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody).body;
-    if (body.blocked.down) {
-      this.player.inSlopeZone = true;
-      const side = (wallObj as Phaser.GameObjects.Image).getData('wallSide') as 'left' | 'right';
-      this.player.slopeEjectDir = side === 'left' ? -1 : 1;
-    }
-  };
-
-  /**
-   * After physics resolves each frame, snap the player's Y to the exact surface
-   * height returned by the scanline query. This eliminates the 4px staircase
-   * artefact that occurs when traversing the discrete horizontal slab colliders
-   * on a slope.  Only runs when body.blocked.down (player is grounded and not
-   * on a steep wall surface).
-   */
-  private snapPlayerToSurface(): void {
-    const body = this.player.sprite.body;
-    if (!body.blocked.down || this.player.inSlopeZone) return;
-
-    const playerX = this.player.sprite.x;
-    const feetY   = this.player.sprite.y + PLAYER_HEIGHT / 2;
-    const slabTop = this.edgeCollider.getSurfaceYAtX(playerX, feetY);
-    if (slabTop === null) return;
-
-    const targetY = slabTop - PLAYER_HEIGHT / 2;
-    if (Math.abs(targetY - this.player.sprite.y) <= SCAN_STEP * 2) {
-      this.player.sprite.y = targetY;
-    }
-  }
 
   private readonly handleEnemyDamage = (): void => {
     // Shield absorbs the hit
