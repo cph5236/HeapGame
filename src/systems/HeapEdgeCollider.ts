@@ -13,6 +13,33 @@ import {
   Vertex,
 } from './HeapPolygon';
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Slab classification and geometry — internal to buildSlabs orchestration.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** What kind of body each row-side becomes. */
+type SlabKind =
+  | { kind: 'walkable' }
+  | { kind: 'wall'; side: 'left' | 'right'; isOverhang: boolean };
+
+/** Row-to-row classification: left and right edges. */
+interface RowClassification {
+  left:  SlabKind;
+  right: SlabKind;
+}
+
+/** Geometry of a single slab (half-row). */
+interface SlabSpan {
+  x: number;
+  w: number;
+}
+
+/** Geometry of both slabs from one row. */
+interface RowGeometry {
+  left:  SlabSpan;
+  right: SlabSpan;
+}
+
 /**
  * Manages static-body slabs placed along the left/right boundaries of each
  * heap chunk band. One 10×20px slab per ScanlineRow per edge → 16px Y overlap
@@ -28,9 +55,9 @@ import {
  */
 export class HeapEdgeCollider {
   /** All edge bodies per band, keyed by bandTop. */
-  private readonly bandBodies: Map<number, Phaser.Physics.Arcade.Image[]> = new Map();
+  private readonly bandBodies: Map<number, Phaser.Types.Physics.Arcade.ImageWithStaticBody[]> = new Map();
   /** Raw scanline rows per band — used for surface Y queries. */
-  private readonly bandRows:   Map<number, ScanlineRow[]>                  = new Map();
+  private readonly bandRows:   Map<number, ScanlineRow[]>                                        = new Map();
   private readonly walkableSlopeDeg: number;
 
   constructor(_scene: Phaser.Scene, walkableSlopeDeg = MAX_WALKABLE_SLOPE_DEG) {
@@ -114,6 +141,43 @@ export class HeapEdgeCollider {
 
   // ── Core: wall edges get narrow tall slabs; walkable rows get a full-width span ──
 
+  /**
+   * Classify a row's left and right edges as walkable or wall.
+   * Wall detection: slope > walkableSlopeDeg.
+   * Overhang detection: row extends further out than the row below.
+   */
+  private classifyRow(rows: ScanlineRow[], i: number): RowClassification {
+    const row      = rows[i];
+    const rowBelow = i + 1 < rows.length ? rows[i + 1] : null;
+
+    const leftIsWall  = computeRowSlopeAngleDeg(rows, i, 'left')  > this.walkableSlopeDeg;
+    const rightIsWall = computeRowSlopeAngleDeg(rows, i, 'right') > this.walkableSlopeDeg;
+
+    // Overhang: this row extends further out than the row below (heap gets wider going up).
+    // Overhang undersides should block the player jumping from below.
+    const leftIsOverhang  = rowBelow !== null && row.leftX  < rowBelow.leftX;
+    const rightIsOverhang = rowBelow !== null && row.rightX > rowBelow.rightX;
+
+    return {
+      left:  leftIsWall  ? { kind: 'wall', side: 'left',  isOverhang: leftIsOverhang  } : { kind: 'walkable' },
+      right: rightIsWall ? { kind: 'wall', side: 'right', isOverhang: rightIsOverhang } : { kind: 'walkable' },
+    };
+  }
+
+  /**
+   * Extract the geometry of the two half-width slabs from a row.
+   * Each row produces left and right slabs centered on their respective halves.
+   */
+  private slabGeometryForRow(row: ScanlineRow): RowGeometry {
+    const centerX     = (row.leftX + row.rightX) / 2;
+    const spanLeft    = Math.abs(row.leftX  - centerX);
+    const spanRight   = Math.abs(row.rightX - centerX);
+    return {
+      left:  { x: centerX - spanLeft  / 2, w: spanLeft  },
+      right: { x: centerX + spanRight / 2, w: spanRight },
+    };
+  }
+
   private buildSlabs(
     bandTop: number,
     rows: ScanlineRow[],
@@ -121,28 +185,15 @@ export class HeapEdgeCollider {
     wallGroup: Phaser.Physics.Arcade.StaticGroup,
   ): void {
     this.destroyBand(bandTop);
-    const bodies: Phaser.Physics.Arcade.Image[] = [];
+    const bodies: Phaser.Types.Physics.Arcade.ImageWithStaticBody[] = [];
 
     for (let i = 0; i < rows.length; i++) {
-      const row      = rows[i];
-      const rowBelow = i + 1 < rows.length ? rows[i + 1] : null;
+      const row    = rows[i];
+      const cls    = this.classifyRow(rows, i);
+      const geom   = this.slabGeometryForRow(row);
 
-      const leftIsWall  = computeRowSlopeAngleDeg(rows, i, 'left')  > this.walkableSlopeDeg;
-      const rightIsWall = computeRowSlopeAngleDeg(rows, i, 'right') > this.walkableSlopeDeg;
-
-      // Overhang: this row extends further out than the row below (heap gets wider going up).
-      // Overhang undersides should block the player jumping from below.
-      const leftIsOverhang  = rowBelow !== null && row.leftX  < rowBelow.leftX;
-      const rightIsOverhang = rowBelow !== null && row.rightX > rowBelow.rightX;
-
-      const centerX     = (row.leftX + row.rightX) / 2;
-      const spanleft    = Math.abs(row.leftX  - centerX);
-      const spanright   = Math.abs(row.rightX - centerX);
-      const middleLeft  = centerX - spanleft  / 2;
-      const middleRight = centerX + spanright / 2;
-
-      bodies.push(this.createSpan(leftIsWall  ? wallGroup : walkableGroup, middleLeft,  row.y, spanleft,  leftIsWall,  'left',  leftIsOverhang));
-      bodies.push(this.createSpan(rightIsWall ? wallGroup : walkableGroup, middleRight, row.y, spanright, rightIsWall, 'right', rightIsOverhang));
+      bodies.push(this.createSpan(walkableGroup, wallGroup, geom.left,  row.y, cls.left));
+      bodies.push(this.createSpan(walkableGroup, wallGroup, geom.right, row.y, cls.right));
     }
 
     this.bandBodies.set(bandTop, bodies);
@@ -150,24 +201,22 @@ export class HeapEdgeCollider {
   }
 
   private createSpan(
-    group: Phaser.Physics.Arcade.StaticGroup,
-    x: number,
+    walkableGroup: Phaser.Physics.Arcade.StaticGroup,
+    wallGroup: Phaser.Physics.Arcade.StaticGroup,
+    geom: SlabSpan,
     y: number,
-    width: number,
-    isWall: boolean = false,
-    wallSide?: 'left' | 'right',
-    isOverhang: boolean = false,
-  ): Phaser.Physics.Arcade.Image {
-    const img = group.create(x, y) as Phaser.Types.Physics.Arcade.ImageWithStaticBody;
+    slab: SlabKind,
+  ): Phaser.Types.Physics.Arcade.ImageWithStaticBody {
+    const group = slab.kind === 'wall' ? wallGroup : walkableGroup;
+    const img = group.create(geom.x, y) as Phaser.Types.Physics.Arcade.ImageWithStaticBody;
     img.setVisible(false);
-    img.setDisplaySize(width, FLOOR_BODY_HEIGHT);
-    img.setDebugBodyColor(isWall ? 0xff0000 : 0x00ff00);
+    img.setDisplaySize(geom.w, FLOOR_BODY_HEIGHT);
+    img.setDebugBodyColor(slab.kind === 'wall' ? 0xff0000 : 0x00ff00);
     img.refreshBody();
-    if (isWall) {
-      const staticBody = img.body as Phaser.Physics.Arcade.StaticBody;
-      if (!isOverhang) staticBody.checkCollision.down = false;
-      if (wallSide) img.setData('wallSide', wallSide);
+    if (slab.kind === 'wall') {
+      if (!slab.isOverhang) img.body.checkCollision.down = false;
+      img.setData('wallSide', slab.side);
     }
-    return img as unknown as Phaser.Physics.Arcade.Image;
+    return img;
   }
 }
