@@ -37,8 +37,12 @@ export function computeBandScanlines(
 
   // Scanline: collect leftmost and rightmost X per row
   const rows: ScanlineRow[] = [];
-  let lastLeft  = 480; // world center as fallback
-  let lastRight = 480;
+  // World X center used as a fallback when no rows are populated yet.
+  // Intentionally mirrors src/constants.ts WORLD_CENTER_X (= WORLD_WIDTH / 2).
+  // Do not import from src/ — this module is shared/framework-free.
+  const FALLBACK_CENTER_X = 480;
+  let lastLeft  = FALLBACK_CENTER_X;
+  let lastRight = FALLBACK_CENTER_X;
 
   for (let y = bandTop; y <= bandBottom; y += SCAN_STEP) {
     let minX =  Infinity;

@@ -4,6 +4,7 @@ import {
   CHUNK_BAND_HEIGHT,
   MAX_WALKABLE_SLOPE_DEG,
   FLOOR_BODY_HEIGHT,
+  SURFACE_QUERY_TOLERANCE_PX,
 } from '../constants';
 import {
   computeBandScanlines,
@@ -117,7 +118,7 @@ export class HeapEdgeCollider {
    * within a 2px tolerance below playerFeetY. Returns null when no slab qualifies.
    */
   getSurfaceYAtX(worldX: number, playerFeetY: number): number | null {
-    const tolerance = 2;
+    const tolerance = SURFACE_QUERY_TOLERANCE_PX;
     let best: number | null = null;
     for (const rows of this.bandRows.values()) {
       for (const row of rows) {

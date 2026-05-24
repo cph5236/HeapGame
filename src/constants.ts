@@ -5,6 +5,22 @@ export const WORLD_WIDTH = 960;           // wider than the 480px canvas
 export const SKY_PAD     = 0.25;          // fraction of WORLD_WIDTH open sky beyond each edge
 export const SKY_INSET   = 0.00;          // fraction of WORLD_WIDTH inward from each edge where wrap lands
 
+// ── Collision surface query / snap tolerances ──────────────────────────────────
+/** Tolerance (px) used by HeapEdgeCollider.getSurfaceYAtX when picking the
+ *  highest slab below the player's feet. Larger = more forgiving when the
+ *  player is slightly above a slab. */
+export const SURFACE_QUERY_TOLERANCE_PX = 2;
+
+/** Tolerance (px) used by snapPlayerToSurface when deciding whether to snap
+ *  the player onto a slab. Larger = snap from further away. Set to
+ *  SCAN_STEP (4) × 2 = 8 so the snap covers up to two slab-row gaps. */
+export const SURFACE_SNAP_TOLERANCE_PX = 8;
+
+/** World X of the center of the game world; used as the fallback origin for
+ *  scanline forward-fill when no heap rows are populated yet.
+ *  Derived from WORLD_WIDTH so it stays correct if the world width changes. */
+export const WORLD_CENTER_X = WORLD_WIDTH / 2;
+
 export const MOCK_HEAP_HEIGHT_PX = 5_000_000;
 export const MOCK_SEED           = 12;
 

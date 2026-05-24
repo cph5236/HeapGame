@@ -5,7 +5,6 @@ import { AudioManager } from '../systems/AudioManager';
 import { CameraController } from '../systems/CameraController';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import type { Vertex } from '../systems/HeapPolygon';
-import { SCAN_STEP } from '../systems/HeapPolygon';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { getPlayConsoleId } from '../data/achievementDefs';
 import {
@@ -29,6 +28,7 @@ import {
   PLACE_HOLD_DURATION_MS,
   SCORE_DISPLAY_DIVISOR,
   MAX_WALL_AUDIBLE_DISTANCE,
+  SURFACE_SNAP_TOLERANCE_PX,
 } from '../constants';
 import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
@@ -324,7 +324,7 @@ export class GameScene extends Phaser.Scene {
 
     this.player.update(delta);
     this.playerAnimator.update(delta, this.player.animState);
-    snapPlayerToSurface(this.player, [this.edgeCollider], SCAN_STEP * 2);
+    snapPlayerToSurface(this.player, [this.edgeCollider], SURFACE_SNAP_TOLERANCE_PX);
 
     // After a wrap, snap the camera so the player appears at the edge they came out of,
     // then tween the follow offset back to zero so the camera re-centers naturally.

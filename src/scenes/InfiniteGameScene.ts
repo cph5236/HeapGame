@@ -42,8 +42,8 @@ import {
   CHUNK_BAND_HEIGHT,
   INFINITE_LOOKAHEAD_CHUNKS,
   MAX_WALL_AUDIBLE_DISTANCE,
+  SURFACE_SNAP_TOLERANCE_PX,
 } from '../constants';
-import { SCAN_STEP } from '../systems/HeapPolygon';
 import { handleWallCollision, snapPlayerToSurface } from '../systems/HeapCollisionHelpers';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import type { EnemyKind } from '../entities/Enemy';
@@ -313,7 +313,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.im.update(delta, false);
     this.player.update(delta);
     this.playerAnimator.update(delta, this.player.animState);
-    snapPlayerToSurface(this.player, this.edgeColliders, SCAN_STEP * 2);
+    snapPlayerToSurface(this.player, this.edgeColliders, SURFACE_SNAP_TOLERANCE_PX);
     this.placeableManager.update();
     this.hud.update();
 
