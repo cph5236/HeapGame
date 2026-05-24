@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import type Phaser from 'phaser';
 import { HeapEntry } from '../data/heapTypes';
 import {
   CHUNK_BAND_HEIGHT,
@@ -61,7 +61,7 @@ export class HeapEdgeCollider {
   private readonly bandRows:   Map<number, ScanlineRow[]>                                        = new Map();
   private readonly walkableSlopeDeg: number;
 
-  constructor(_scene: Phaser.Scene, walkableSlopeDeg = MAX_WALKABLE_SLOPE_DEG) {
+  constructor(walkableSlopeDeg = MAX_WALKABLE_SLOPE_DEG) {
     this.walkableSlopeDeg = walkableSlopeDeg;
   }
 

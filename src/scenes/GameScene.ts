@@ -140,7 +140,7 @@ export class GameScene extends Phaser.Scene {
     // Spawn player at world floor (left clear zone) — player climbs up through the heap
     this.spawnY = this._worldHeight - PLAYER_HEIGHT / 2 - 1;
     this.playerConfig = getPlayerConfig();
-    this.edgeCollider = new HeapEdgeCollider(this, this.playerConfig.maxWalkableSlopeDeg);
+    this.edgeCollider = new HeapEdgeCollider(this.playerConfig.maxWalkableSlopeDeg);
     this.heapGenerator = new HeapGenerator(
       this, this.heapWalkableGroup, this.heapWallGroup, [], this.chunkRenderer, this.edgeCollider,
     );

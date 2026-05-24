@@ -43,7 +43,7 @@ const rows45deg: ScanlineRow[] = [
 
 describe('HeapEdgeCollider – getSurfaceYAtX', () => {
   it('returns the highest slab top (smallest Y) covering worldX', () => {
-    const collider = new HeapEdgeCollider(null as any);
+    const collider = new HeapEdgeCollider();
     collider.buildFromScanlines(0, [
       { y: 100, leftX: 50, rightX: 300 }, // slabTop = 96
       { y: 104, leftX: 50, rightX: 300 }, // slabTop = 100
@@ -55,7 +55,7 @@ describe('HeapEdgeCollider – getSurfaceYAtX', () => {
   });
 
   it('returns null when worldX is outside all rows', () => {
-    const collider = new HeapEdgeCollider(null as any);
+    const collider = new HeapEdgeCollider();
     collider.buildFromScanlines(0, [
       { y: 100, leftX: 50, rightX: 300 },
     ], makeMockGroup() as any, makeMockGroup() as any);
@@ -64,7 +64,7 @@ describe('HeapEdgeCollider – getSurfaceYAtX', () => {
   });
 
   it('returns null when the covering slab top is too far below the player', () => {
-    const collider = new HeapEdgeCollider(null as any);
+    const collider = new HeapEdgeCollider();
     collider.buildFromScanlines(0, [
       { y: 200, leftX: 50, rightX: 300 }, // slabTop = 196
     ], makeMockGroup() as any, makeMockGroup() as any);
@@ -74,7 +74,7 @@ describe('HeapEdgeCollider – getSurfaceYAtX', () => {
   });
 
   it('ignores far-off bands and returns the band nearest the player', () => {
-    const collider = new HeapEdgeCollider(null as any);
+    const collider = new HeapEdgeCollider();
     collider.buildFromScanlines(0,   [{ y: 100, leftX: 50, rightX: 300 }], makeMockGroup() as any, makeMockGroup() as any);
     collider.buildFromScanlines(500, [{ y: 600, leftX: 50, rightX: 300 }], makeMockGroup() as any, makeMockGroup() as any);
 
@@ -83,7 +83,7 @@ describe('HeapEdgeCollider – getSurfaceYAtX', () => {
   });
 
   it('returns null after destroyBand removes the only covering row', () => {
-    const collider = new HeapEdgeCollider(null as any);
+    const collider = new HeapEdgeCollider();
     collider.buildFromScanlines(0, [
       { y: 100, leftX: 50, rightX: 300 },
     ], makeMockGroup() as any, makeMockGroup() as any);
@@ -100,7 +100,7 @@ describe('HeapEdgeCollider – walkableSlopeDeg', () => {
     const walkableGroup = makeMockGroup();
     const wallGroup     = makeMockGroup();
 
-    const collider = new HeapEdgeCollider(null as any, 60);
+    const collider = new HeapEdgeCollider(60);
     collider.buildFromScanlines(0, rows45deg, walkableGroup as any, wallGroup as any);
 
     // Left spans (45° < 60°) go to walkableGroup
@@ -112,7 +112,7 @@ describe('HeapEdgeCollider – walkableSlopeDeg', () => {
     const wallGroup     = makeMockGroup();
 
     // No second argument → defaults to MAX_WALKABLE_SLOPE_DEG (35°)
-    const collider = new HeapEdgeCollider(null as any);
+    const collider = new HeapEdgeCollider();
     collider.buildFromScanlines(0, rows45deg, walkableGroup as any, wallGroup as any);
 
     // Both left (45°) and right (90°) exceed 35° → all slabs go to wallGroup
@@ -135,7 +135,7 @@ describe('HeapEdgeCollider – slope classification at threshold', () => {
       { y: 8, leftX: 114, rightX: 200 },
     ];
 
-    const collider = new HeapEdgeCollider(null as any, 35);
+    const collider = new HeapEdgeCollider(35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
     // Left edge is walkable; right edge is vertical (90°, wall)
@@ -155,7 +155,7 @@ describe('HeapEdgeCollider – slope classification at threshold', () => {
       { y: 8, leftX: 110, rightX: 200 },
     ];
 
-    const collider = new HeapEdgeCollider(null as any, 35);
+    const collider = new HeapEdgeCollider(35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
     // Both left (38.66°) and right (90°) exceed 35° → all go to wallGroup
@@ -179,7 +179,7 @@ describe('HeapEdgeCollider – overhang classification', () => {
       { y: 8, leftX: 100, rightX: 210 }, // row 2: continue slope
     ];
 
-    const collider = new HeapEdgeCollider(null as any, 35);
+    const collider = new HeapEdgeCollider(35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
     // wallGroup.created ordering: [r0L, r0R, r1L, r1R, r2L, r2R]
@@ -209,7 +209,7 @@ describe('HeapEdgeCollider – overhang classification', () => {
       { y: 8, leftX: 100, rightX: 210 }, // row 2: vertical
     ];
 
-    const collider = new HeapEdgeCollider(null as any, 35);
+    const collider = new HeapEdgeCollider(35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
     // wallGroup.created ordering: [r0L, r0R, r1L, r1R, r2L, r2R]
@@ -232,7 +232,7 @@ describe('HeapEdgeCollider – overhang classification', () => {
       { y: 8, leftX: 100, rightX: 210 }, // row 2: continue slope
     ];
 
-    const collider = new HeapEdgeCollider(null as any, 35);
+    const collider = new HeapEdgeCollider(35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
     // wallGroup.created ordering: [r0L, r0R, r1L, r1R, r2L, r2R]
@@ -265,7 +265,7 @@ describe('HeapEdgeCollider – wallSide setData', () => {
       { y: 8, leftX: 104, rightX: 200 },
     ];
 
-    const collider = new HeapEdgeCollider(null as any, 35);
+    const collider = new HeapEdgeCollider(35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
     // Both left and right are walls → wallGroup.created = [r0L, r0R, r1L, r1R, r2L, r2R]
@@ -290,7 +290,7 @@ describe('HeapEdgeCollider – wallSide setData', () => {
       { y: 8, leftX: 130, rightX: 200 },
     ];
 
-    const collider = new HeapEdgeCollider(null as any, 35);
+    const collider = new HeapEdgeCollider(35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
     // Left is walkable → goes to walkableGroup; right is wall → goes to wallGroup
@@ -313,7 +313,7 @@ describe('HeapEdgeCollider – wallSide setData', () => {
       { y: 8, leftX: 130, rightX: 170 },
     ];
 
-    const collider = new HeapEdgeCollider(null as any, 35);
+    const collider = new HeapEdgeCollider(35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
     // Both left and right are walkable → all go to walkableGroup, none to wallGroup
@@ -332,7 +332,7 @@ describe('HeapEdgeCollider – wallSide setData', () => {
 
 describe('HeapEdgeCollider – cullBands', () => {
   it('removes bands above the cull threshold', () => {
-    const collider = new HeapEdgeCollider(null as any);
+    const collider = new HeapEdgeCollider();
 
     // Build two bands: only band above cull threshold will be removed
     // Use bands that don't overlap in worldX so we can query them separately
@@ -359,7 +359,7 @@ describe('HeapEdgeCollider – cullBands', () => {
 
 describe('HeapEdgeCollider – destroyBand', () => {
   it('removes bandRows entries and prevents getSurfaceYAtX from returning stale data', () => {
-    const collider = new HeapEdgeCollider(null as any);
+    const collider = new HeapEdgeCollider();
 
     // Build first band
     collider.buildFromScanlines(0, [

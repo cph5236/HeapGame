@@ -124,7 +124,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       const walkable = this.physics.add.staticGroup();
       const wall     = this.physics.add.staticGroup();
       const renderer = new HeapChunkRenderer(this, xMin, xMax - xMin);
-      const edge     = new HeapEdgeCollider(this, this.playerConfig.maxWalkableSlopeDeg);
+      const edge     = new HeapEdgeCollider(this.playerConfig.maxWalkableSlopeDeg);
       const gen      = new HeapGenerator(this, walkable, wall, [], renderer, edge);
 
       const layerGen = new LayerGenerator(seed, xMin, xMax, MOCK_HEAP_HEIGHT_PX);
