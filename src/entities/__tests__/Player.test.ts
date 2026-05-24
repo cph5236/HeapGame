@@ -13,12 +13,22 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  PLAYER_HEIGHT,
   PLAYER_SPEED,
   PLAYER_JUMP_VELOCITY,
   PLAYER_DIVE_SPEED,
   PLAYER_MAX_FALL_SPEED,
   TERRAIN_STICK_SPEED,
   PLACEMENT_MOVE_SPEED,
+  JUMP_BUFFER_MS,
+  JUMP_CUT_FACTOR,
+  APEX_VY_THRESHOLD,
+  APEX_GRAVITY_FACTOR,
+  FALL_GRAVITY_FACTOR,
+  WORLD_GRAVITY_Y,
+  DASH_DURATION_MS,
+  DASH_COOLDOWN_MS,
+  PLAYER_AIR_MAX_SPEED,
 } from '../../constants';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -27,6 +37,7 @@ import {
 // (KeyCodes lookup) and the instance methods called in update().
 vi.mock('phaser', () => {
   const JustDown = vi.fn(() => false);
+  const JustUp   = vi.fn(() => false);
   return {
     default: {
       Input: {
@@ -39,6 +50,7 @@ vi.mock('phaser', () => {
             SHIFT: 'SHIFT',
           },
           JustDown,
+          JustUp,
         },
       },
     },
@@ -80,10 +92,12 @@ type SpyCalls = {
 };
 
 interface MockBody {
-  blocked: { left: boolean; right: boolean; down: boolean };
+  blocked: { left: boolean; right: boolean; down: boolean; up?: boolean };
   velocity: { x: number; y: number };
   _maxVelocityY: number;
+  _gravityY: number;
   setMaxVelocityY: (v: number) => void;
+  setGravityY: (v: number) => void;
   setAllowGravity: (v: boolean) => void;
   setSize: () => void;
 }
@@ -109,10 +123,12 @@ function makeSprite(overrides: Partial<MockBody> = {}): MockSprite {
   const spy: SpyCalls = { setVelocityX: [], setVelocityY: [], setFlipX: [] };
 
   const body: MockBody = {
-    blocked: { left: false, right: false, down: false },
+    blocked: { left: false, right: false, down: false, up: false },
     velocity: { x: 0, y: 0 },
     _maxVelocityY: PLAYER_MAX_FALL_SPEED,
+    _gravityY: 0,
     setMaxVelocityY(v) { this._maxVelocityY = v; },
+    setGravityY(v) { this._gravityY = v; },
     setAllowGravity: vi.fn(),
     setSize: vi.fn(),
     ...overrides,
@@ -481,6 +497,57 @@ describe('Player — mobile dive', () => {
     expect(spy.setVelocityY).toContain(PLAYER_DIVE_SPEED);
     expect(sprite.body._maxVelocityY).toBe(PLAYER_DIVE_SPEED);
   });
+
+  it('same-frame jump+down does NOT dive — jump velocity must not be overwritten', async () => {
+    // Player airborne, dive enabled, holding down, jump fires this frame with coyote.
+    // After update(16), the LAST setVelocityY must be PLAYER_JUMP_VELOCITY - jumpBoost,
+    // NOT PLAYER_DIVE_SPEED. The dive guard must check jump flags.
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: true, jumpBoost: 50 },
+    });
+    // Set up coyote window so ground jump can fire
+    (player as any).coyoteTimer = 50;
+    // Simulate holding down
+    (player as any).downKeys[0].isDown = true;
+    // Simulate jump press — will fire this frame
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+
+    // The last setVelocityY call should be the jump velocity (PLAYER_JUMP_VELOCITY - jumpBoost = -550 - 50 = -600)
+    // NOT the dive speed (1200)
+    const expectedJumpVy = PLAYER_JUMP_VELOCITY - 50; // -600
+    const lastVy = spy.setVelocityY[spy.setVelocityY.length - 1];
+    expect(lastVy).toBe(expectedJumpVy);
+    // Verify dive speed is NOT applied after the jump
+    const diveSpeedIndex = spy.setVelocityY.indexOf(PLAYER_DIVE_SPEED);
+    const jumpVyIndex = spy.setVelocityY.lastIndexOf(expectedJumpVy);
+    // If dive was applied, it would be after jump. Make sure it's not.
+    if (diveSpeedIndex !== -1) {
+      expect(diveSpeedIndex < jumpVyIndex).toBe(true); // dive (if present) must come before final jump vy
+    }
+  });
+
+  it('holding down with no jump still dives as normal', async () => {
+    // Player airborne, dive enabled, holding down, NO jump press.
+    // Dive should apply normally.
+    const { player, spy, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).downKeys[0].isDown = true;
+    // NO jump press
+    imState.jumpJustPressed = false;
+
+    player.update(16);
+
+    expect(spy.setVelocityY).toContain(PLAYER_DIVE_SPEED);
+    expect(sprite.body._maxVelocityY).toBe(PLAYER_DIVE_SPEED);
+  });
 });
 
 // ── 5. Ladder drag ────────────────────────────────────────────────────────────
@@ -721,14 +788,16 @@ describe('Player — air momentum', () => {
     expect((player as any).momentumX).toBe(0);
   });
 
-  it('zeroes momentumX on wall contact', async () => {
+  it('wall slide zeros momentumX (no push off wall while sliding)', async () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 100 } },
       config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
     });
     (player as any).momentumX = 150;
+    imState.tiltFactor = 0; // No input so no air momentum boost
     player.update(16);
+    // While actively wall-sliding, momentumX should be zeroed
     expect((player as any).momentumX).toBe(0);
   });
 
@@ -768,3 +837,946 @@ describe('Player — air momentum', () => {
     expect((player as any).momentumX).toBe(150);
   });
 });
+
+// ── 10.5. Dash exit smoothing ──────────────────────────────────────────────────
+
+describe('Player — dash exit smoothing', () => {
+  it('Dash with dir=1, expire airborne → momentumX equals clamped exit velocity', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 500, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    // Trigger dash
+    imState.dashJustFired = true;
+    imState.dashDir = 1;
+    player.update(16);
+    // After first update, dash is active (dashActive = DASH_DURATION_MS = 200)
+    expect((player as any).dashActive).toBe(200);
+    expect((player as any).momentumX).toBe(0); // zeroed when dash fires
+
+    // Clear dashJustFired and advance time by DASH_DURATION_MS + 1 to expire the dash
+    imState.dashJustFired = false;
+    player.update(DASH_DURATION_MS + 1);
+
+    // After this update, dashActive should be 0 (expired) and momentumX should be
+    // seeded from body.velocity.x (which is 500) clamped to PLAYER_AIR_MAX_SPEED
+    expect((player as any).dashActive).toBe(0);
+    expect((player as any).momentumX).toBe(PLAYER_AIR_MAX_SPEED); // 500 == PLAYER_AIR_MAX_SPEED
+  });
+
+  it('Dash ends while grounded → smooth exit does NOT fire', async () => {
+    const { player } = await makePlayer({
+      onGround: true,
+      bodyOverrides: { blocked: { left: false, right: false, down: true }, velocity: { x: 500, y: 0 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    // Trigger dash while on ground
+    imState.dashJustFired = true;
+    imState.dashDir = 1;
+    player.update(16);
+    expect((player as any).dashActive).toBe(200);
+
+    // Clear dashJustFired and advance past dash expiry
+    imState.dashJustFired = false;
+    player.update(DASH_DURATION_MS + 1);
+
+    // After expiry on ground, momentumX should be 0 (ground branch zeros it)
+    expect((player as any).momentumX).toBe(0);
+  });
+
+  it('No dash triggered → smooth-exit branch is inert', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 100, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    // Set momentumX directly without triggering dash
+    (player as any).momentumX = 42;
+
+    // Update without triggering dash
+    player.update(16);
+
+    // momentumX should decay (42 * Math.pow(0.997, 16) ≈ 40.0) but NOT be affected by smooth exit
+    // because prevDashActive = 0 and dashActive = 0 (smooth exit only fires when prevDashActive > 0)
+    expect((player as any).momentumX).toBeLessThan(42);
+    expect((player as any).momentumX).toBeGreaterThan(30);
+  });
+});
+
+// ── 11. Jump buffer (#1) ──────────────────────────────────────────────────────
+
+describe('Player — jump buffer', () => {
+  it('press jump while airborne with no air jumps, then land within buffer window → jump fires', async () => {
+    const { player, spy, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 400 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).airJumpsRemaining = 0;
+
+    // Press jump while falling — buffer should be primed even though jump can't fire yet
+    imState.jumpJustPressed = true;
+    player.update(16);
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY); // can't jump yet
+
+    // Next frame: player lands. No new press, just the buffered one carrying over.
+    imState.jumpJustPressed = false;
+    sprite.body.blocked.down = true;
+    sprite.body.velocity.y = 0;
+    spy.setVelocityY.length = 0;
+    player.update(16);
+
+    // Buffered jump should fire on landing frame
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('buffer expires after JUMP_BUFFER_MS — landing after the window does NOT jump', async () => {
+    const { player, spy, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 400 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).airJumpsRemaining = 0;
+
+    // Press jump
+    imState.jumpJustPressed = true;
+    player.update(16);
+    imState.jumpJustPressed = false;
+
+    // Tick past the buffer window
+    player.update(JUMP_BUFFER_MS + 50);
+
+    // Now land — buffer should have expired
+    sprite.body.blocked.down = true;
+    sprite.body.velocity.y = 0;
+    spy.setVelocityY.length = 0;
+    player.update(16);
+
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('buffer is consumed once — jump does not retrigger on next frame', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+
+    // Clear and run another frame with no new press — buffer should be consumed
+    imState.jumpJustPressed = false;
+    spy.setVelocityY.length = 0;
+    player.update(16);
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('buffered jump preserves swipe jumpVx until consumed', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 400 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).airJumpsRemaining = 0;
+
+    // Swipe-jump while airborne — captures jumpVx into buffer
+    imState.jumpJustPressed = true;
+    imState.jumpVx = 200;
+    player.update(16);
+
+    // Next frame: pulse cleared but buffer still has the directional value
+    imState.jumpJustPressed = false;
+    imState.jumpVx = 0;
+    sprite.body.blocked.down = true;
+    sprite.body.velocity.y = 0;
+    player.update(16);
+
+    expect((player as any).momentumX).toBe(200);
+  });
+});
+
+// ── 12. Variable jump height (#2) ─────────────────────────────────────────────
+
+describe('Player — variable jump height (jump cut)', () => {
+  it('releasing jump key while rising cuts upward velocity by JUMP_CUT_FACTOR', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -300 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    // Frame 1: jump key held while rising
+    (player as any).jumpKeys[0].isDown = true;
+    player.update(16);
+
+    // Frame 2: jump key released — vy must be cut
+    (player as any).jumpKeys[0].isDown = false;
+    spy.setVelocityY.length = 0;
+    player.update(16);
+
+    const expectedCut = -300 * JUMP_CUT_FACTOR;
+    expect(spy.setVelocityY).toContain(expectedCut);
+  });
+
+  it('jump cut only fires once per jump', async () => {
+    const { player, spy, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -300 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    (player as any).jumpKeys[0].isDown = true;
+    player.update(16);
+
+    // Release
+    (player as any).jumpKeys[0].isDown = false;
+    sprite.body.velocity.y = -300 * JUMP_CUT_FACTOR;
+    player.update(16);
+
+    // Another frame — must not cut again
+    spy.setVelocityY.length = 0;
+    sprite.body.velocity.y = -100; // still rising slowly
+    player.update(16);
+    const cutAgain = -100 * JUMP_CUT_FACTOR;
+    expect(spy.setVelocityY).not.toContain(cutAgain);
+  });
+
+  it('jump cut does NOT fire while falling (vy > 0)', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    (player as any).jumpKeys[0].isDown = true;
+    player.update(16);
+
+    (player as any).jumpKeys[0].isDown = false;
+    spy.setVelocityY.length = 0;
+    player.update(16);
+
+    // No setVelocityY value should equal vy * JUMP_CUT_FACTOR (which would be 90)
+    expect(spy.setVelocityY).not.toContain(200 * JUMP_CUT_FACTOR);
+  });
+
+  it('holding jump key all the way up preserves full vy (no cut)', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -500 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).jumpKeys[0].isDown = true;
+
+    player.update(16);
+    spy.setVelocityY.length = 0;
+
+    // Still holding — no cut should happen
+    player.update(16);
+    expect(spy.setVelocityY).not.toContain(-500 * JUMP_CUT_FACTOR);
+  });
+
+  it('sub-frame keyboard tap (JustDown true, isDown false) cuts on the fire frame', async () => {
+    // The bug: a fast tap completes (keydown + keyup) before the next Phaser tick.
+    // On the firing frame Phaser reports JustDown=true but isDown=false.
+    // The held→released transition detection can't catch this; cut-on-fire must.
+    const phaserMod = await import('phaser');
+    (phaserMod.default.Input.Keyboard.JustDown as any).mockReturnValueOnce(true);
+
+    const { player, spy } = await makePlayer({ onGround: true, config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 } });
+    // jumpKeys[0].isDown stays false — simulating already-released
+
+    player.update(16);
+
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY * JUMP_CUT_FACTOR);
+  });
+
+  it('buffered tap that fires on landing also cuts (no held key at fire time)', async () => {
+    // Press jump while falling with no air jumps available; release before landing.
+    // The buffered jump fires on landing — and since the key isn't held, it must cut.
+    const phaserMod = await import('phaser');
+
+    const { player, spy, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 400 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    // Frame 1: airborne, sub-frame tap (JustDown true, isDown false)
+    (phaserMod.default.Input.Keyboard.JustDown as any).mockReturnValueOnce(true);
+    player.update(16);
+    // No jump fired yet (no opportunity)
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+
+    // Frame 2: land — buffer fires the jump; key still not held → cut
+    sprite.body.blocked.down = true;
+    sprite.body.velocity.y = 0;
+    spy.setVelocityY.length = 0;
+    player.update(16);
+
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY * JUMP_CUT_FACTOR);
+  });
+
+  it('keyboard hold (JustDown true, isDown true) does NOT cut on fire frame', async () => {
+    // Sanity: a held jump fires at full height, only cut later on release.
+    const phaserMod = await import('phaser');
+    (phaserMod.default.Input.Keyboard.JustDown as any).mockReturnValueOnce(true);
+
+    const { player, spy } = await makePlayer({ onGround: true, config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 } });
+    (player as any).jumpKeys[0].isDown = true; // held
+
+    player.update(16);
+
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY * JUMP_CUT_FACTOR);
+  });
+
+  it('mobile swipe-jump (no held key) is never cut — full jump always', async () => {
+    // Swipes are one-shot pulses with no "release" — variable height must not apply
+    const { player, spy, sprite } = await makePlayer({ onGround: true });
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    // Now player is airborne, no keyboard key was ever down
+    sprite.body.blocked.down = false;
+    sprite.body.velocity.y = -400;
+    imState.jumpJustPressed = false;
+    spy.setVelocityY.length = 0;
+    player.update(16);
+
+    expect(spy.setVelocityY).not.toContain(-400 * JUMP_CUT_FACTOR);
+  });
+});
+
+// ── 13. Asymmetric gravity (#3) — apex hang + fast fall ───────────────────────
+
+describe('Player — asymmetric gravity', () => {
+  it('applies fast-fall gravity multiplier when falling', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 300 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    player.update(16);
+
+    // body.setGravityY is additive to world gravity — for a 1.4× multiplier, expect WORLD_GRAVITY_Y * 0.4
+    const expected = WORLD_GRAVITY_Y * (FALL_GRAVITY_FACTOR - 1);
+    expect(sprite.body._gravityY).toBeCloseTo(expected, 5);
+  });
+
+  it('applies apex hang gravity when |vy| < APEX_VY_THRESHOLD', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -50 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    player.update(16);
+
+    const expected = WORLD_GRAVITY_Y * (APEX_GRAVITY_FACTOR - 1);
+    expect(sprite.body._gravityY).toBeCloseTo(expected, 5);
+  });
+
+  it('applies normal gravity (0 additive) while rising fast', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -400 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    player.update(16);
+
+    expect(sprite.body._gravityY).toBe(0);
+  });
+
+  it('resets body gravity to 0 when grounded', async () => {
+    const { player, sprite } = await makePlayer({ onGround: true });
+    sprite.body._gravityY = WORLD_GRAVITY_Y * (FALL_GRAVITY_FACTOR - 1); // leftover from airborne frame
+
+    player.update(16);
+
+    expect(sprite.body._gravityY).toBe(0);
+  });
+
+  it('apex threshold edge: |vy| exactly at threshold uses normal gravity, not apex', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -APEX_VY_THRESHOLD } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    player.update(16);
+
+    // At the boundary we want strict |vy| < threshold to be apex; equal goes to normal
+    expect(sprite.body._gravityY).toBe(0);
+  });
+});
+
+// ── 14. Coyote consumption on every jump path (#9) ───────────────────────────
+
+describe('Player — coyote consumed on every jump path', () => {
+  it('ground jump fired while coyote was active consumes the window', async () => {
+    const { player } = await makePlayer({
+      onGround: true,
+      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 120;
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+
+    expect((player as any).coyoteTimer).toBe(0);
+    // Air jump must NOT have also fired (else-if guard) — preserves charges
+    expect((player as any).airJumpsRemaining).toBe(1);
+  });
+
+  it('wall jump path also consumes coyote (defensive — covers same-frame double-fire)', async () => {
+    // Player ran off a ledge onto a wall, coyote still active. Both ground and wall
+    // jump paths can fire in the same frame (latent issue tracked separately).
+    // What we DO guarantee: by end of update, coyote is 0.
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 100;
+    (player as any).wallJumpsRemaining = 1;
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+
+    expect((player as any).coyoteTimer).toBe(0);
+  });
+});
+
+// ── 15. onGround derivation extraction ─────────────────────────────────────────
+
+describe('Player — onGround derivation', () => {
+  it('blocked.down=true, inSlopeZone=false, onWall=false → grounded', async () => {
+    const { player } = await makePlayer({
+      bodyOverrides: {
+        blocked: { left: false, right: false, down: true },
+        velocity: { x: 0, y: 0 },
+      },
+    });
+    // Ensure inSlopeZone=false (should be default)
+    (player as any).inSlopeZone = false;
+
+    player.update(16);
+
+    expect((player as any)._onGround).toBe(true);
+  });
+
+  it('blocked.down=true, inSlopeZone=true → NOT grounded (slope zone blocks ground)', async () => {
+    const { player, sprite } = await makePlayer({
+      bodyOverrides: {
+        blocked: { left: false, right: false, down: true },
+        velocity: { x: 0, y: 0 },
+      },
+    });
+    // Set inSlopeZone to simulate being in a slope rejection zone
+    (player as any).inSlopeZone = true;
+    // Ensure sprite.y is below floorY so groundedByFloor is also false
+    sprite.y = 0;
+
+    player.update(16);
+
+    expect((player as any)._onGround).toBe(false);
+  });
+
+  it('blocked.down=true, onWall=true, vy=50 → NOT grounded (wall false-ground filter)', async () => {
+    const { player, sprite } = await makePlayer({
+      bodyOverrides: {
+        blocked: { left: true, right: false, down: true },
+        velocity: { x: 0, y: 50 },
+      },
+    });
+    (player as any).inSlopeZone = false;
+    sprite.y = 0; // Ensure groundedByFloor is false
+
+    player.update(16);
+
+    expect((player as any)._onGround).toBe(false);
+  });
+
+  it('blocked.down=true, onWall=true, vy=0 → grounded (wall filter only kicks in while sliding vy>10)', async () => {
+    const { player, sprite } = await makePlayer({
+      bodyOverrides: {
+        blocked: { left: true, right: false, down: true },
+        velocity: { x: 0, y: 0 },
+      },
+    });
+    (player as any).inSlopeZone = false;
+    sprite.y = 0; // Ensure groundedByFloor is false
+
+    player.update(16);
+
+    expect((player as any)._onGround).toBe(true);
+  });
+
+  it('blocked.down=false, sprite.y >= floorY → grounded (floor fallback)', async () => {
+    const { player, sprite } = await makePlayer({
+      bodyOverrides: {
+        blocked: { left: false, right: false, down: false },
+        velocity: { x: 0, y: 0 },
+      },
+    });
+    (player as any).inSlopeZone = false;
+    // Simulate player touching the floor via sprite.y
+    // floorY = worldHeight - PLAYER_HEIGHT/2
+    const floorY = (player as any).worldHeight - PLAYER_HEIGHT / 2;
+    sprite.y = floorY; // Exactly at floor
+
+    player.update(16);
+
+    expect((player as any)._onGround).toBe(true);
+  });
+});
+
+// ── 16. Wall-leave coyote time ────────────────────────────────────────────────
+
+describe('Player — wall-leave coyote', () => {
+  it('touch left wall → leave wall → press jump within window → fires with right push', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).wallJumpsRemaining = 1;
+
+    // First update: touch left wall to prime lastWallSide and wallCoyoteTimer
+    player.update(16);
+
+    // Verify wall coyote was activated: wallCoyoteTimer should be WALL_COYOTE_MS
+    const wallCoyoteTimerAfterTouch = (player as any).wallCoyoteTimer;
+    expect(wallCoyoteTimerAfterTouch).toBeGreaterThan(0);
+    expect((player as any).lastWallSide).toBe(-1); // left wall = -1
+
+    // Now unset the wall contact and press jump
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    player.sprite.body.blocked.left = false;
+    imState.jumpJustPressed = true;
+    (player as any).wallJumpsRemaining = 1; // Refund for this test
+
+    // Second update: off wall, within coyote window, jump pressed
+    player.update(16);
+
+    // Wall jump should have fired with positive vx (jump away from left wall = right)
+    expect(spy.setVelocityX).toContain(PLAYER_SPEED * 1.5); // rightward push
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+    expect((player as any)._justWallJumped).toBe(true);
+  });
+
+  it('past coyote window: jump does NOT fire as wall-jump', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).wallJumpsRemaining = 1;
+
+    // First update: touch left wall
+    player.update(16);
+    const wallCoyoteMS = (player as any).wallCoyoteTimer;
+
+    // Expire the coyote timer
+    player.sprite.body.blocked.left = false;
+    player.update(wallCoyoteMS + 50);
+
+    // Now jump
+    imState.jumpJustPressed = true;
+    (player as any).wallJumpsRemaining = 1; // Refund for this test
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+
+    player.update(16);
+
+    // Wall jump should NOT have fired
+    expect((player as any)._justWallJumped).toBe(false);
+  });
+
+  it('touching wall continues to refresh coyote window every frame', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).wallJumpsRemaining = 1;
+
+    // Touch wall and update 5 times, each time the timer should be refreshed to max
+    for (let i = 0; i < 5; i++) {
+      player.update(16); // Each update: 16ms passes
+      // While onWall, wallCoyoteTimer should be refreshed to WALL_COYOTE_MS each frame
+      const timer = (player as any).wallCoyoteTimer;
+      expect(timer).toBeGreaterThan(0); // Should not decay while touching wall
+    }
+  });
+
+  it('wall-jump in coyote consumes the timer', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).wallJumpsRemaining = 1;
+
+    // Touch wall to prime coyote
+    player.update(16);
+    const wallCoyoteAfterTouch = (player as any).wallCoyoteTimer;
+    expect(wallCoyoteAfterTouch).toBeGreaterThan(0);
+
+    // Leave wall and jump within coyote window
+    player.sprite.body.blocked.left = false;
+    imState.jumpJustPressed = true;
+    (player as any).wallJumpsRemaining = 1;
+
+    player.update(16);
+
+    // Wall jump should have fired and consumed the coyote timer
+    expect((player as any)._justWallJumped).toBe(true);
+    expect((player as any).wallCoyoteTimer).toBe(0);
+  });
+});
+
+// ── 19. Wall-slide outward momentum (#13) ────────────────────────────────────────
+
+describe('Player — wall-slide outward momentum', () => {
+  it('wall slide on left wall keeps momentumX at 0 (no push off wall)', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).momentumX = 0;
+    imState.tiltFactor = 0; // No input, so no air momentum boost
+
+    player.update(16);
+
+    const momentum = (player as any).momentumX;
+    expect(momentum).toBe(0);
+  });
+
+  it('wall-leave on left side grants positive outward momentum (80)', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).momentumX = 0;
+    (player as any).lastWallSide = -1; // Mark that player is on left wall
+    imState.tiltFactor = 0;
+
+    // Frame A: sliding on left wall
+    player.update(16);
+    expect((player as any).momentumX).toBe(0); // Stays 0 while sliding
+
+    // Frame B: leave the wall
+    player.sprite.body.blocked.left = false;
+    player.update(16);
+
+    // After wall-leave, should have granted outward momentum (value will decay slightly during the frame)
+    const momentum = (player as any).momentumX;
+    expect(momentum).toBeGreaterThan(75); // Approximately 80, minus decay over 16ms
+    expect(momentum).toBeLessThanOrEqual(80);
+  });
+
+  it('wall-leave on right side grants negative outward momentum (-80)', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: true, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).momentumX = 0;
+    (player as any).lastWallSide = 1; // Mark that player is on right wall
+    imState.tiltFactor = 0;
+
+    // Frame A: sliding on right wall
+    player.update(16);
+    expect((player as any).momentumX).toBe(0); // Stays 0 while sliding
+
+    // Frame B: leave the wall
+    player.sprite.body.blocked.right = false;
+    player.update(16);
+
+    // After wall-leave, should have granted outward momentum (value will decay slightly during the frame)
+    const momentum = (player as any).momentumX;
+    expect(momentum).toBeGreaterThanOrEqual(-80);
+    expect(momentum).toBeLessThan(-75); // Approximately -80, minus decay over 16ms
+  });
+
+  it('repeated wall-slide frames keep momentumX at 0', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).momentumX = 0;
+    imState.tiltFactor = 0; // No input
+
+    // Call update 10 times while still on wall
+    for (let i = 0; i < 10; i++) {
+      player.update(16);
+      const momentum = (player as any).momentumX;
+      expect(momentum).toBe(0);
+    }
+  });
+
+  it('wall slide does not trigger when not falling fast enough', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    // Set tiltFactor to 0 to avoid air momentum boost from controller input
+    imState.tiltFactor = 0;
+    const initialMomentum = 100;
+    (player as any).momentumX = initialMomentum;
+
+    player.update(16);
+
+    // Wall-slide only triggers when velocity.y > WALL_SLIDE_SPEED (80).
+    // Since velocity.y = 50 (below threshold), wall-slide code does NOT run.
+    // momentumX will decay due to AIR_MOMENTUM_DECAY, but NOT be modified by wall-slide logic.
+    // So it should NOT become outward momentum (positive) from the wall-slide code.
+    // We verify it hasn't turned positive from wall-slide (may be slightly less than 100 from decay, which is OK).
+    const finalMomentum = (player as any).momentumX;
+    expect(finalMomentum).toBeLessThan(initialMomentum);
+    expect(finalMomentum).toBeGreaterThan(0); // Still positive, not flipped by wall-slide
+  });
+});
+
+// ── 16. Dash ground refresh ──────────────────────────────────────────────────────
+
+describe('Player — dash ground refresh', () => {
+  it('Dash → land → cooldown is 0', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+
+    // Trigger dash while airborne
+    imState.dashJustFired = true;
+    imState.dashDir = 1;
+    player.update(16);
+
+    // dashCooldown should now be DASH_COOLDOWN_MS (800)
+    expect((player as any).dashCooldown).toBe(DASH_COOLDOWN_MS);
+
+    // Now simulate landing by setting body.blocked.down
+    imState.dashJustFired = false;
+    sprite.body.blocked.down = true;
+    sprite.body.velocity.y = 0;
+    player.update(16);
+
+    // After landing, dashCooldown should be reset to 0
+    expect((player as any).dashCooldown).toBe(0);
+  });
+
+  it('Touching a wall (airborne) does NOT refresh dash', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+
+    // Set up airborne with left wall touch and dash enabled
+    sprite.body.blocked.left = true;
+    sprite.body.velocity.y = 100;
+
+    // Manually set dashCooldown to 500 ms remaining
+    (player as any).dashCooldown = 500;
+
+    // Verify we're NOT on ground (onGround should be false because blocked.down is not set)
+    player.update(16);
+
+    // dashCooldown should have decayed by delta (16), NOT been reset to 0
+    // Expected: 500 - 16 = 484
+    const expectedCooldown = 500 - 16;
+    expect((player as any).dashCooldown).toBe(expectedCooldown);
+  });
+
+  it('dashEnabled: false → no refresh logic runs', async () => {
+    const { player } = await makePlayer({
+      onGround: true,
+      bodyOverrides: { blocked: { left: false, right: false, down: true }, velocity: { x: 0, y: 0 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+
+    // Manually set dashCooldown to 500 ms
+    (player as any).dashCooldown = 500;
+
+    // Run update while on ground with dash disabled
+    player.update(16);
+
+    // Since dashEnabled is false, updateDash returns early and never decays dashCooldown.
+    // dashCooldown should remain at 500 (unchanged).
+    // NOTE: This test verifies the guard in updateDash (line 402: if (!this.dashEnabled) return;)
+    // which prevents dashCooldown decay and also protects the handleLandingResets refresh logic.
+    expect((player as any).dashCooldown).toBe(500);
+  });
+});
+
+// ── 23. Wall-jump cooldown (#8) ────────────────────────────────────────────────
+
+describe('Player — wall-jump cooldown (#8)', () => {
+  it('touch left wall, jump → fires. Jump again same contact within cooldown → does NOT fire', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    // Frame A: touch left wall and press jump
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    // Wall-jump should have fired
+    expect((player as any)._justWallJumped).toBe(true);
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+
+    // Clear flags and spies for Frame B
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    imState.jumpJustPressed = false;
+
+    // Frame B: still blocked.left, jump press again
+    player.sprite.body.blocked.left = true; // stay on wall
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    // Wall-jump should NOT fire (cooldown active)
+    expect((player as any)._justWallJumped).toBe(false);
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('leave wall, return to same wall WITHIN cooldown → does NOT fire (same-wall lockout)', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    // Frame A: blocked.left, press jump → wall-jump fires
+    imState.jumpJustPressed = true;
+    player.update(16);
+    expect((player as any)._justWallJumped).toBe(true);
+
+    // Frame B: leave left wall (blocked.left = false) — mid-air, still within cooldown
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    imState.jumpJustPressed = false;
+    player.sprite.body.blocked.left = false;
+    player.update(16);
+
+    // Frame C: return to left wall still within 2s cooldown, press jump → should NOT fire (same-wall lockout)
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    imState.jumpJustPressed = true;
+    player.sprite.body.blocked.left = true;
+    player.update(16);
+
+    // Wall-jump should NOT fire (cooldown still active, and it's the same wall)
+    expect((player as any)._justWallJumped).toBe(false);
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('touch left wall, jump, then touch right wall → fires (different wall side)', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    // Frame A: blocked.left, press jump → wall-jump fires
+    imState.jumpJustPressed = true;
+    player.update(16);
+    expect((player as any)._justWallJumped).toBe(true);
+
+    // Frame B: switch to right wall (blocked.left=false, blocked.right=true)
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    imState.jumpJustPressed = false;
+    player.sprite.body.blocked.left = false;
+    player.sprite.body.blocked.right = true;
+    player.update(16);
+
+    // Frame C: still on right wall, press jump → should fire (different wall side, cooldown bypassed)
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    // Wall-jump should have fired
+    expect((player as any)._justWallJumped).toBe(true);
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('cooldown expires after 2 seconds → can fire on same wall', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    // Frame A: wall-jump fires, cooldown = 2000ms
+    imState.jumpJustPressed = true;
+    player.update(16);
+    expect((player as any)._justWallJumped).toBe(true);
+
+    // Frame B: tick time > 2000ms to expire cooldown, stay on left wall
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    imState.jumpJustPressed = false;
+    player.update(2001); // Advance past WALL_JUMP_COOLDOWN_MS (2000)
+
+    // Frame C: press jump, still on left wall → should fire (cooldown expired)
+    spy.setVelocityX.length = 0;
+    spy.setVelocityY.length = 0;
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    expect((player as any)._justWallJumped).toBe(true);
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('wall-jump disabled (wallJump: false) → never fires regardless of cooldown', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    // Press jump on wall with wallJump disabled
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    // Wall-jump should NOT fire (feature disabled)
+    expect((player as any)._justWallJumped).toBe(false);
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+  });
+});
+

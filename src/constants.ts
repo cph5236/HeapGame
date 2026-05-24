@@ -29,18 +29,31 @@ export const PLAYER_AIR_MAX_SPEED = 500;  // px/s max horizontal speed while air
 export const PLAYER_MAX_FALL_SPEED = 800; // px/s; reached after ~1.5 s at gravity 800
 export const PLAYER_DIVE_SPEED    = 1200; // px/s; instant downward velocity while diving
 export const WALL_SLIDE_SPEED     = 80;   // px/s downward cap while touching a wall
+export const WALL_COYOTE_MS       = 100;  // ms grace window to wall-jump after leaving the wall
+export const WALL_JUMP_PUSH       = 375;  // px/s outward velocity applied on wall jump (was PLAYER_SPEED * 1.5)
+export const WALL_JUMP_COOLDOWN_MS = 2000; // ms cooldown after wall-jump fires (same-wall cooldown: different wall bypass)
 export const PLAYER_INVINCIBLE_MS = 400;  // post-stomp / post-spawn invincibility
 export const MAX_AIR_JUMPS        = 1;    // base value — actual value comes from SaveData/upgrades
 export const DASH_COOLDOWN_MS     = 800;  // ms between dashes
 export const DASH_DURATION_MS     = 200;  // ms the dash velocity is protected from movement override
 
-export const TERRAIN_STICK_SPEED      = 100;  // px/s downward velocity applied while grounded — 300/60fps=5px/frame > 4px SCAN_STEP, bridges slab gaps in ≤1 frame
+export const TERRAIN_STICK_SPEED      = 300;  // px/s downward velocity applied while grounded — 300/60fps=5px/frame > 4px SCAN_STEP, bridges slab gaps in ≤1 frame
 export const PLACEMENT_MOVE_SPEED     = 50;   // px/s max horizontal speed while placing an item
 
 // ── Air momentum ───────────────────────────────────────────────────────────────
 export const AIR_TILT_FORCE           = 0.8;  // px/s added per ms at full tilt — reach PLAYER_SPEED in ~250ms
 export const AIR_MOMENTUM_DECAY       = 0.997; // per-ms decay factor when input is ~zero
 export const MOMENTUM_STOP_ADV_FACTOR = 1.5;  // multiplier when input opposes current momentum
+
+// ── Jump feel ──────────────────────────────────────────────────────────────────
+// World gravity is set in main.ts; Player.ts uses this value to scale per-frame
+// body gravity for apex hang and fast-fall. Keep both in sync.
+export const WORLD_GRAVITY_Y          = 800;   // px/s² — must match main.ts world gravity
+export const JUMP_BUFFER_MS           = 120;   // accepts a jump press up to this long before landing
+export const JUMP_CUT_FACTOR          = 0.65;  // upward vy is multiplied by this when jump key released early
+export const APEX_VY_THRESHOLD        = 120;   // |vy| under this triggers apex hang gravity
+export const APEX_GRAVITY_FACTOR      = 0.55;  // gravity multiplier near jump apex (floaty peak)
+export const FALL_GRAVITY_FACTOR      = 1.4;   // gravity multiplier while falling (snappy descent)
 
 // ── Mobile controls ────────────────────────────────────────────────────────────
 export const TILT_DEAD_ZONE_DEG        = 4;   // gamma degrees to ignore near center

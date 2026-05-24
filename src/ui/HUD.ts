@@ -143,7 +143,7 @@ export class HUD {
 
     // Wall jump icon
     if (this.wallJumpIcons.length > 0) {
-      this.wallJumpIcons[0].setAlpha(this.player.wallJumpsLeft > 0 ? 1.0 : 0.25);
+      this.wallJumpIcons[0].setAlpha(this.player.canWallJump ? 1.0 : 0.25);
     }
   }
 }

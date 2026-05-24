@@ -9,6 +9,7 @@ import { StoreScene } from './scenes/StoreScene';
 import { TexturePreviewScene } from './scenes/TexturePreviewScene';
 import { InfiniteGameScene } from './scenes/InfiniteGameScene';
 import { LeaderboardScene } from './scenes/LeaderboardScene';
+import { WORLD_GRAVITY_Y } from './constants';
 
 // Force Canvas renderer when using the dev scene shortcut — headless Chromium
 // has no GPU context so WebGL produces a black canvas.
@@ -21,7 +22,7 @@ const config: Phaser.Types.Core.GameConfig = {
   physics: {
     default: 'arcade',
     arcade: {
-      gravity: { x: 0, y: 800 },
+      gravity: { x: 0, y: WORLD_GRAVITY_Y },
       overlapBias: 4, // default 4; raises the threshold for separating colliding bodies, reducing jitter on slopes
       debug: false,
     },
