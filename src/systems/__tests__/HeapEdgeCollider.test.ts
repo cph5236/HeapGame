@@ -182,12 +182,19 @@ describe('HeapEdgeCollider – overhang classification', () => {
     const collider = new HeapEdgeCollider(null as any, 35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
-    // Row 0: leftIsOverhang = true (90 < 95)
-    // Wall slab for row 0 left should have checkCollision.down = true (overhang)
-    const hasOverhangWall = wallGroup.created.some(
-      (img) => img.body.checkCollision.down === true,
-    );
-    expect(hasOverhangWall).toBe(true);
+    // wallGroup.created ordering: [r0L, r0R, r1L, r1R, r2L, r2R]
+    // Row 0 left (index 0): leftIsOverhang = true (90 < 95) → checkCollision.down stays true
+    // Row 0 right (index 1): rightIsOverhang = false (210 >= 210) → checkCollision.down = false
+    // Row 1 left (index 2): leftIsOverhang = true (95 < 100) → checkCollision.down stays true
+    // Row 1 right (index 3): rightIsOverhang = false (210 >= 210) → checkCollision.down = false
+    // Row 2 left (index 4): no rowBelow → leftIsOverhang = false → checkCollision.down = false
+    // Row 2 right (index 5): no rowBelow → rightIsOverhang = false → checkCollision.down = false
+    expect(wallGroup.created[0].body.checkCollision.down).toBe(true); // r0 left overhang
+    expect(wallGroup.created[1].body.checkCollision.down).toBe(false); // r0 right non-overhang
+    expect(wallGroup.created[2].body.checkCollision.down).toBe(true); // r1 left overhang
+    expect(wallGroup.created[3].body.checkCollision.down).toBe(false); // r1 right non-overhang
+    expect(wallGroup.created[4].body.checkCollision.down).toBe(false); // r2 left no rowBelow
+    expect(wallGroup.created[5].body.checkCollision.down).toBe(false); // r2 right no rowBelow
   });
 
   it('marks wall slabs as non-overhang when upper row leftX >= row below leftX', () => {
@@ -205,12 +212,12 @@ describe('HeapEdgeCollider – overhang classification', () => {
     const collider = new HeapEdgeCollider(null as any, 35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
-    // Row 0: leftIsOverhang = false (100 >= 100), so checkCollision.down = false
-    // Check that at least one wall slab has checkCollision.down = false
-    const hasNonOverhangWall = wallGroup.created.some(
-      (img) => img.body.checkCollision.down === false,
-    );
-    expect(hasNonOverhangWall).toBe(true);
+    // wallGroup.created ordering: [r0L, r0R, r1L, r1R, r2L, r2R]
+    // All rows: leftIsOverhang = false (leftX never shrinks), rightIsOverhang = false (rightX constant)
+    // All indices should have checkCollision.down = false
+    for (let i = 0; i < wallGroup.created.length; i++) {
+      expect(wallGroup.created[i].body.checkCollision.down).toBe(false);
+    }
   });
 
   it('marks wall slabs as overhang when upper row rightX > row below rightX', () => {
@@ -228,12 +235,19 @@ describe('HeapEdgeCollider – overhang classification', () => {
     const collider = new HeapEdgeCollider(null as any, 35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
-    // Row 0: rightIsOverhang = true (220 > 215)
-    // Wall slab for row 0 right should have checkCollision.down = true (overhang)
-    const hasOverhangWall = wallGroup.created.some(
-      (img) => img.body.checkCollision.down === true,
-    );
-    expect(hasOverhangWall).toBe(true);
+    // wallGroup.created ordering: [r0L, r0R, r1L, r1R, r2L, r2R]
+    // Row 0 left (index 0): leftIsOverhang = false (100 >= 100) → checkCollision.down = false
+    // Row 0 right (index 1): rightIsOverhang = true (220 > 215) → checkCollision.down stays true
+    // Row 1 left (index 2): leftIsOverhang = false (100 >= 100) → checkCollision.down = false
+    // Row 1 right (index 3): rightIsOverhang = true (215 > 210) → checkCollision.down stays true
+    // Row 2 left (index 4): no rowBelow → leftIsOverhang = false → checkCollision.down = false
+    // Row 2 right (index 5): no rowBelow → rightIsOverhang = false → checkCollision.down = false
+    expect(wallGroup.created[0].body.checkCollision.down).toBe(false); // r0 left non-overhang
+    expect(wallGroup.created[1].body.checkCollision.down).toBe(true);  // r0 right overhang
+    expect(wallGroup.created[2].body.checkCollision.down).toBe(false); // r1 left non-overhang
+    expect(wallGroup.created[3].body.checkCollision.down).toBe(true);  // r1 right overhang
+    expect(wallGroup.created[4].body.checkCollision.down).toBe(false); // r2 left no rowBelow
+    expect(wallGroup.created[5].body.checkCollision.down).toBe(false); // r2 right no rowBelow
   });
 });
 
@@ -247,16 +261,22 @@ describe('HeapEdgeCollider – wallSide setData', () => {
     // Steep left edge (wall), vertical right edge (wall)
     const rows: ScanlineRow[] = [
       { y: 0, leftX: 100, rightX: 200 },
-      { y: 4, leftX: 102, rightX: 200 }, // deltaX = 2 → very steep
+      { y: 4, leftX: 102, rightX: 200 }, // deltaX = 2 → ≈ 63.43° (very steep, well above 35°)
       { y: 8, leftX: 104, rightX: 200 },
     ];
 
     const collider = new HeapEdgeCollider(null as any, 35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
-    // Both left and right are walls, so we expect setData calls on wall slabs.
-    // We can verify the wall group was used
-    expect(wallGroup.create).toHaveBeenCalled();
+    // Both left and right are walls → wallGroup.created = [r0L, r0R, r1L, r1R, r2L, r2R]
+    // Left slabs (indices 0, 2, 4) should have setData('wallSide', 'left')
+    expect(wallGroup.created[0].setData).toHaveBeenCalledWith('wallSide', 'left');
+    expect(wallGroup.created[2].setData).toHaveBeenCalledWith('wallSide', 'left');
+    expect(wallGroup.created[4].setData).toHaveBeenCalledWith('wallSide', 'left');
+    // Right slabs (indices 1, 3, 5) should have setData('wallSide', 'right')
+    expect(wallGroup.created[1].setData).toHaveBeenCalledWith('wallSide', 'right');
+    expect(wallGroup.created[3].setData).toHaveBeenCalledWith('wallSide', 'right');
+    expect(wallGroup.created[5].setData).toHaveBeenCalledWith('wallSide', 'right');
   });
 
   it("calls setData('wallSide', 'right') on right wall slabs", () => {
@@ -273,10 +293,13 @@ describe('HeapEdgeCollider – wallSide setData', () => {
     const collider = new HeapEdgeCollider(null as any, 35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
-    // Left is walkable, right is wall.
-    // Only right slabs go to wallGroup and should have setData('wallSide', 'right')
+    // Left is walkable → goes to walkableGroup; right is wall → goes to wallGroup
+    // wallGroup.created contains only right wall slabs [r0R, r1R, r2R] at indices 0, 1, 2
     expect(walkableGroup.create).toHaveBeenCalled();
     expect(wallGroup.create).toHaveBeenCalled();
+    expect(wallGroup.created[0].setData).toHaveBeenCalledWith('wallSide', 'right');
+    expect(wallGroup.created[1].setData).toHaveBeenCalledWith('wallSide', 'right');
+    expect(wallGroup.created[2].setData).toHaveBeenCalledWith('wallSide', 'right');
   });
 
   it('does not call setData on walkable slabs', () => {
@@ -293,10 +316,12 @@ describe('HeapEdgeCollider – wallSide setData', () => {
     const collider = new HeapEdgeCollider(null as any, 35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
-    // Both left and right are walkable → no setData('wallSide', ...) calls
+    // Both left and right are walkable → all go to walkableGroup, none to wallGroup
+    expect(wallGroup.create).not.toHaveBeenCalled();
+    // Verify walkable slabs do not have setData('wallSide', ...) calls
     for (const walkableImg of walkableGroup.created) {
       expect(walkableImg.setData).not.toHaveBeenCalledWith(
-        expect.stringContaining('wallSide'),
+        'wallSide',
         expect.anything(),
       );
     }
