@@ -10,12 +10,13 @@ import {
   computeBandPolygon,
   simplifyPolygon,
   computeRowSlopeAngleDeg,
+  verticesToScanlines,
   SCAN_STEP,
 } from '../../shared/heapPolygon/polygon';
 import type { ItemDefs, Vertex, ScanlineRow } from '../../shared/heapPolygon/types';
 
 export type { Vertex, ScanlineRow };
-export { computeRowSlopeAngleDeg, SCAN_STEP };
+export { computeRowSlopeAngleDeg, verticesToScanlines, SCAN_STEP };
 
 export function computeBandScanlines(
   entries: HeapEntry[],

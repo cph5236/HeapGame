@@ -150,6 +150,39 @@ function perpendicularDistance(p: Vertex, a: Vertex, b: Vertex): number {
 }
 
 /**
+ * Convert a closed polygon (list of vertices) to ScanlineRow[] using a standard
+ * scanline rasterizer. Works for any convex or concave polygon. Uses SCAN_STEP
+ * for the Y resolution. Returns [] when given fewer than 3 vertices.
+ */
+export function verticesToScanlines(vertices: Vertex[]): ScanlineRow[] {
+  if (vertices.length < 3) return [];
+
+  const ys = vertices.map(v => v.y);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const rows: ScanlineRow[] = [];
+  const n = vertices.length;
+
+  for (let y = minY; y <= maxY; y += SCAN_STEP) {
+    const xs: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const a = vertices[i];
+      const b = vertices[(i + 1) % n];
+      // Edge crosses the horizontal scanline at y
+      if ((a.y <= y && b.y > y) || (b.y <= y && a.y > y)) {
+        const t = (y - a.y) / (b.y - a.y);
+        xs.push(a.x + t * (b.x - a.x));
+      }
+    }
+    if (xs.length >= 2) {
+      rows.push({ y, leftX: Math.min(...xs), rightX: Math.max(...xs) });
+    }
+  }
+
+  return rows;
+}
+
+/**
  * Angle (degrees from horizontal) of the heap edge at scanline row i.
  * 90° = vertical wall, 0° = flat floor, 45° = 45° diagonal.
  *
