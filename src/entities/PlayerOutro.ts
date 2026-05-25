@@ -35,7 +35,7 @@ interface PaletteConfig {
 }
 
 const PALETTE: Record<OutroKind, PaletteConfig> = {
-  death:   { fadeColor: 0x000000, fadeAlphaTo: 1.0, gradientColor: 0xffffff },
+  death:   { fadeColor: 0x000000, fadeAlphaTo: 1.0, gradientColor: 0xffd060 },
   success: { fadeColor: 0x5b8fc9, fadeAlphaTo: 0.6, gradientColor: 0xffd060 },
 };
 
@@ -109,7 +109,7 @@ export class PlayerOutro {
     const w = this.scene.scale.width;
     const h = this.scene.scale.height;
     const destX = Math.floor(w / 2);
-    const destY = kind === 'death' ? Math.floor(h / 2) : Math.floor(h * 0.15);
+    const destY = Math.floor(h / 2);
 
     const driftTween = this.scene.tweens.add({
       targets: this.proxy,
@@ -285,6 +285,11 @@ export class PlayerOutro {
       this.starburstGfx.fillTriangle(cx + r, cy, cx, cy - r * 0.25, cx, cy + r * 0.25);
       this.starburstGfx.fillTriangle(cx, cy + r, cx - r * 0.25, cy, cx + r * 0.25, cy);
       this.starburstGfx.fillTriangle(cx - r, cy, cx, cy - r * 0.25, cx, cy + r * 0.25);
+      this.starburstGfx.lineStyle(1.5, 0x000000, this.starburstAlpha);
+      this.starburstGfx.strokeTriangle(cx, cy - r, cx - r * 0.25, cy, cx + r * 0.25, cy);
+      this.starburstGfx.strokeTriangle(cx + r, cy, cx, cy - r * 0.25, cx, cy + r * 0.25);
+      this.starburstGfx.strokeTriangle(cx, cy + r, cx - r * 0.25, cy, cx + r * 0.25, cy);
+      this.starburstGfx.strokeTriangle(cx - r, cy, cx, cy - r * 0.25, cx, cy + r * 0.25);
     }
   }
 

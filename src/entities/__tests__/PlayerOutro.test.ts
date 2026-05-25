@@ -280,12 +280,12 @@ describe('PlayerOutro — drift', () => {
     expect(driftTween).toBeDefined();
   });
 
-  it('play("success") drifts proxy to screen top-center (y = 15% of height) over 1800ms', () => {
-    // Screen is 480x854; top-center is 240, 128 (Math.floor(854 * 0.15) = 128)
+  it('play("success") drifts proxy to screen center over 1800ms', () => {
+    // Screen is 480x854; center is 240, 427
     outro.play('success', vi.fn());
     const driftTween = stub.tweens.find(t => {
       const cfg = t.config as { x?: { to?: number }; y?: { to?: number }; duration?: number };
-      return cfg.duration === 1800 && cfg.x?.to === 240 && Math.abs((cfg.y?.to ?? 0) - 128) <= 1;
+      return cfg.duration === 1800 && cfg.x?.to === 240 && cfg.y?.to === 427;
     });
     expect(driftTween).toBeDefined();
   });
