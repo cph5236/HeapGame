@@ -337,3 +337,39 @@ describe('PlayerOutro — squish + shrink', () => {
     expect(squishTween).toBeDefined();
   });
 });
+
+describe('PlayerOutro — twinkle', () => {
+  let stub: ReturnType<typeof makeStubScene>;
+  let sprite: ReturnType<typeof makeStubSprite>;
+  let outro: PlayerOutro;
+
+  beforeEach(() => {
+    stub = makeStubScene();
+    sprite = makeStubSprite();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    outro = new PlayerOutro(stub.scene as any, sprite as any);
+  });
+
+  it('schedules a twinkle beat at t=2400ms', () => {
+    outro.play('death', vi.fn());
+    const twinkleTimer = stub.timers.find(t => t.ms === 2400);
+    expect(twinkleTimer).toBeDefined();
+  });
+
+  it('twinkle spawns a third graphics object (starburst)', () => {
+    outro.play('death', vi.fn());
+    const twinkleTimer = stub.timers.find(t => t.ms === 2400);
+    expect(stub.scene.add.graphics).toHaveBeenCalledTimes(2);  // fade + gradient
+    twinkleTimer!.callback();
+    expect(stub.scene.add.graphics).toHaveBeenCalledTimes(3);  // + starburst
+  });
+
+  it('twinkle starburst is destroyed by finish()', () => {
+    outro.play('death', vi.fn());
+    const twinkleTimer = stub.timers.find(t => t.ms === 2400);
+    twinkleTimer!.callback();
+    const starburstCall = stub.scene.add.graphics.mock.results[2];
+    outro.skip();
+    expect(starburstCall.value.destroy).toHaveBeenCalled();
+  });
+});

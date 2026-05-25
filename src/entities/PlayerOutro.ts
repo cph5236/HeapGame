@@ -12,6 +12,13 @@ const SQUISH_DUR_MS = 80;
 const SQUISH_SETTLE_MS = 120;
 const SHRINK_DUR_MS = 400;
 
+const TWINKLE_T_MS = 2400;
+const TWINKLE_GROW_MS = 40;
+const TWINKLE_HOLD_MS = 30;
+const TWINKLE_FADE_MS = 30;
+const STARBURST_BASE_RADIUS = 28;
+const STARBURST_MAX_SCALE = 1.4;
+
 interface SquishConfig { scaleX: number; scaleY: number }
 
 const SQUISH: Record<OutroKind, SquishConfig> = {
@@ -49,6 +56,10 @@ export class PlayerOutro {
   private gradientGfx: Phaser.GameObjects.Graphics | null = null;
   private fadeAlpha = 0;
   private gradientRadius = 0;
+
+  private starburstGfx: Phaser.GameObjects.Graphics | null = null;
+  private starburstScale = 0;
+  private starburstAlpha = 1;
 
   constructor(
     scene: Phaser.Scene,
@@ -140,6 +151,9 @@ export class PlayerOutro {
     const shrinkTimer = this.scene.time.delayedCall(SHRINK_T_MS, () => this.runShrinkBeat());
     this.activeTweens.push({ stop: () => shrinkTimer.remove() });
 
+    const twinkleTimer = this.scene.time.delayedCall(TWINKLE_T_MS, () => this.runTwinkleBeat());
+    this.activeTweens.push({ stop: () => twinkleTimer.remove() });
+
     this.finalTimer = this.scene.time.delayedCall(TOTAL_DURATION_MS, () => this.finish());
   }
 
@@ -160,6 +174,7 @@ export class PlayerOutro {
     if (this.proxy)       { this.proxy.destroy();       this.proxy = null; }
     if (this.fadeGfx)     { this.fadeGfx.destroy();     this.fadeGfx = null; }
     if (this.gradientGfx) { this.gradientGfx.destroy(); this.gradientGfx = null; }
+    if (this.starburstGfx) { this.starburstGfx.destroy(); this.starburstGfx = null; }
   }
 
   private runSquishBeat(kind: OutroKind): void {
@@ -198,6 +213,37 @@ export class PlayerOutro {
     this.activeTweens.push(shrinkTween as unknown as { stop: () => void });
   }
 
+  private runTwinkleBeat(): void {
+    if (this.completed) return;
+    this.starburstGfx = this.scene.add.graphics()
+      .setScrollFactor(0)
+      .setDepth(OVERLAY_DEPTH + 3);
+    this.starburstScale = 0;
+    this.starburstAlpha = 1;
+
+    const growTween = this.scene.tweens.add({
+      targets: this,
+      starburstScale: { from: 0, to: STARBURST_MAX_SCALE },
+      duration: TWINKLE_GROW_MS,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        if (this.completed) return;
+        const holdTimer = this.scene.time.delayedCall(TWINKLE_HOLD_MS, () => {
+          if (this.completed) return;
+          const fadeTween = this.scene.tweens.add({
+            targets: this,
+            starburstAlpha: { from: 1, to: 0 },
+            duration: TWINKLE_FADE_MS,
+            ease: 'Linear',
+          });
+          this.activeTweens.push(fadeTween as unknown as { stop: () => void });
+        });
+        this.activeTweens.push({ stop: () => holdTimer.remove() });
+      },
+    });
+    this.activeTweens.push(growTween as unknown as { stop: () => void });
+  }
+
   private redrawOverlay(): void {
     if (!this.fadeGfx || !this.gradientGfx || !this.proxy) return;
     const palette = PALETTE[this.kind];
@@ -221,6 +267,20 @@ export class PlayerOutro {
         this.gradientGfx.fillStyle(palette.gradientColor, alpha);
         this.gradientGfx.fillCircle(this.proxy.x, this.proxy.y, r);
       }
+    }
+
+    if (this.starburstGfx && this.proxy && this.starburstScale > 0) {
+      const palette = PALETTE[this.kind];
+      this.starburstGfx.clear();
+      const r = STARBURST_BASE_RADIUS * this.starburstScale;
+      const cx = this.proxy.x;
+      const cy = this.proxy.y;
+      this.starburstGfx.fillStyle(palette.gradientColor, this.starburstAlpha);
+      // Four triangular points: up, right, down, left
+      this.starburstGfx.fillTriangle(cx, cy - r, cx - r * 0.25, cy, cx + r * 0.25, cy);
+      this.starburstGfx.fillTriangle(cx + r, cy, cx, cy - r * 0.25, cx, cy + r * 0.25);
+      this.starburstGfx.fillTriangle(cx, cy + r, cx - r * 0.25, cy, cx + r * 0.25, cy);
+      this.starburstGfx.fillTriangle(cx - r, cy, cx, cy - r * 0.25, cx, cy + r * 0.25);
     }
   }
 
