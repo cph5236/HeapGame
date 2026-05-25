@@ -170,7 +170,7 @@ export class PlayerOutro {
       scaleX: { from: 1, to: s.scaleX },
       scaleY: { from: 1, to: s.scaleY },
       duration: SQUISH_DUR_MS,
-      ease: 'Quad.easeOut',
+      ease: 'Linear.none',
       onComplete: () => {
         if (!this.proxy || this.completed) return;
         const settleTween = this.scene.tweens.add({
