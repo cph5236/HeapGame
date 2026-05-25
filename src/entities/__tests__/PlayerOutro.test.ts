@@ -123,18 +123,18 @@ describe('PlayerOutro — public API contract', () => {
     onComplete = vi.fn();
   });
 
-  it('play("death") schedules the final hand-off after ~2500ms', () => {
+  it('play("death") schedules the final hand-off after ~3000ms', () => {
     outro.play('death', onComplete);
-    const finalTimer = stub.timers.find(t => t.ms === 2500);
+    const finalTimer = stub.timers.find(t => t.ms === 3000);
     expect(finalTimer).toBeDefined();
     expect(onComplete).not.toHaveBeenCalled();
     finalTimer!.callback();
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
-  it('play("success") schedules the final hand-off after ~2500ms', () => {
+  it('play("success") schedules the final hand-off after ~3000ms', () => {
     outro.play('success', onComplete);
-    const finalTimer = stub.timers.find(t => t.ms === 2500);
+    const finalTimer = stub.timers.find(t => t.ms === 3000);
     expect(finalTimer).toBeDefined();
     finalTimer!.callback();
     expect(onComplete).toHaveBeenCalledTimes(1);
@@ -149,7 +149,7 @@ describe('PlayerOutro — public API contract', () => {
   it('onComplete fires exactly once even when skip races natural completion', () => {
     outro.play('death', onComplete);
     outro.skip();
-    const finalTimer = stub.timers.find(t => t.ms === 2500);
+    const finalTimer = stub.timers.find(t => t.ms === 3000);
     finalTimer!.callback();  // natural completion runs after skip
     expect(onComplete).toHaveBeenCalledTimes(1);
   });

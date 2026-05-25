@@ -2,9 +2,11 @@ import type Phaser from 'phaser';
 
 export type OutroKind = 'death' | 'success';
 
-const TOTAL_DURATION_MS = 2500;
+const TOTAL_DURATION_MS = 3000;
 const DRIFT_DURATION_MS = 1800;
 const OVERLAY_DEPTH = 1000;
+
+const PROXY_SCALE = 2 / 3;
 
 const SQUISH_T_MS = 1800;
 const SHRINK_T_MS = 2000;
@@ -13,11 +15,11 @@ const SQUISH_SETTLE_MS = 120;
 const SHRINK_DUR_MS = 400;
 
 const TWINKLE_T_MS = 2400;
-const TWINKLE_GROW_MS = 40;
-const TWINKLE_HOLD_MS = 30;
-const TWINKLE_FADE_MS = 30;
-const STARBURST_BASE_RADIUS = 28;
-const STARBURST_MAX_SCALE = 1.4;
+const TWINKLE_GROW_MS = 150;
+const TWINKLE_HOLD_MS = 300;
+const TWINKLE_FADE_MS = 150;
+const STARBURST_BASE_RADIUS = 50;
+const STARBURST_MAX_SCALE = 1.8;
 
 interface SquishConfig { scaleX: number; scaleY: number }
 
@@ -34,7 +36,7 @@ interface PaletteConfig {
 
 const PALETTE: Record<OutroKind, PaletteConfig> = {
   death:   { fadeColor: 0x000000, fadeAlphaTo: 1.0, gradientColor: 0xffffff },
-  success: { fadeColor: 0xffaa33, fadeAlphaTo: 0.6, gradientColor: 0xffd060 },
+  success: { fadeColor: 0x5b8fc9, fadeAlphaTo: 0.6, gradientColor: 0xffd060 },
 };
 
 export class PlayerOutro {
@@ -98,7 +100,8 @@ export class PlayerOutro {
     const textureKey = (this.sourceSprite as unknown as { texture: { key: string } }).texture.key;
     this.proxy = this.scene.add.sprite(screenX, screenY, textureKey)
       .setScrollFactor(0)
-      .setDepth(OVERLAY_DEPTH + 2);
+      .setDepth(OVERLAY_DEPTH + 2)
+      .setScale(PROXY_SCALE);
 
     this.sourceSprite.setVisible(false);
 
@@ -182,16 +185,16 @@ export class PlayerOutro {
     const s = SQUISH[kind];
     const squashTween = this.scene.tweens.add({
       targets: this.proxy,
-      scaleX: { from: 1, to: s.scaleX },
-      scaleY: { from: 1, to: s.scaleY },
+      scaleX: { from: PROXY_SCALE, to: s.scaleX },
+      scaleY: { from: PROXY_SCALE, to: s.scaleY },
       duration: SQUISH_DUR_MS,
       ease: 'Linear.none',
       onComplete: () => {
         if (!this.proxy || this.completed) return;
         const settleTween = this.scene.tweens.add({
           targets: this.proxy,
-          scaleX: { from: s.scaleX, to: 1 },
-          scaleY: { from: s.scaleY, to: 1 },
+          scaleX: { from: s.scaleX, to: PROXY_SCALE },
+          scaleY: { from: s.scaleY, to: PROXY_SCALE },
           duration: SQUISH_SETTLE_MS,
           ease: 'Quad.easeInOut',
         });
@@ -205,8 +208,8 @@ export class PlayerOutro {
     if (!this.proxy || this.completed) return;
     const shrinkTween = this.scene.tweens.add({
       targets: this.proxy,
-      scaleX: { from: 1, to: 0 },
-      scaleY: { from: 1, to: 0 },
+      scaleX: { from: PROXY_SCALE, to: 0 },
+      scaleY: { from: PROXY_SCALE, to: 0 },
       duration: SHRINK_DUR_MS,
       ease: 'Cubic.easeIn',
     });
