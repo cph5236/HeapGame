@@ -157,12 +157,57 @@ describe('PlayerOutro — public API contract', () => {
   it('destroy() removes all registered event listeners', () => {
     outro.play('death', onComplete);
     outro.destroy();
-    expect(stub.scene.events.off).toHaveBeenCalled();
     expect(stub.scene.input.off).toHaveBeenCalled();
   });
 
   it('play() throws if called twice without destroy or completion', () => {
     outro.play('death', onComplete);
     expect(() => outro.play('death', onComplete)).toThrow();
+  });
+});
+
+describe('PlayerOutro — overlay setup', () => {
+  let stub: ReturnType<typeof makeStubScene>;
+  let sprite: ReturnType<typeof makeStubSprite>;
+  let outro: PlayerOutro;
+
+  beforeEach(() => {
+    stub = makeStubScene();
+    sprite = makeStubSprite();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    outro = new PlayerOutro(stub.scene as any, sprite as any);
+  });
+
+  it('play() hides the source sprite', () => {
+    outro.play('death', vi.fn());
+    expect(sprite.setVisible).toHaveBeenCalledWith(false);
+  });
+
+  it('play() spawns a proxy sprite using the source texture key', () => {
+    outro.play('death', vi.fn());
+    expect(stub.scene.add.sprite).toHaveBeenCalledWith(
+      expect.any(Number), expect.any(Number), 'trashbag-nostrings',
+    );
+  });
+
+  it('play() converts source world position to screen coords via camera scroll', () => {
+    stub.scene.cameras.main.scrollX = 100;
+    stub.scene.cameras.main.scrollY = 200;
+    sprite.x = 240; sprite.y = 400;
+    outro.play('death', vi.fn());
+    // Screen pos = world pos - scroll
+    expect(stub.scene.add.sprite).toHaveBeenCalledWith(140, 200, 'trashbag-nostrings');
+  });
+
+  it('play() pauses physics world', () => {
+    outro.play('death', vi.fn());
+    expect(stub.scene.physics.world.pause).toHaveBeenCalled();
+  });
+
+  it('finish() destroys the proxy sprite', () => {
+    outro.play('death', vi.fn());
+    const proxySpriteCall = stub.scene.add.sprite.mock.results[0];
+    outro.skip();
+    expect(proxySpriteCall.value.destroy).toHaveBeenCalled();
   });
 });

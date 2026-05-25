@@ -3,15 +3,10 @@ import type Phaser from 'phaser';
 export type OutroKind = 'death' | 'success';
 
 const TOTAL_DURATION_MS = 2500;
+const OVERLAY_DEPTH = 1000;
 
-/**
- * Cinematic transition that lifts the player off the world onto a screen-space
- * overlay, runs a 4-beat sequence (drift → squish → shrink → twinkle), and
- * fires onComplete. Tap anywhere hard-cuts to onComplete.
- */
 export class PlayerOutro {
   private readonly scene: Phaser.Scene;
-  // @ts-expect-error used by future animation tasks
   private readonly sourceSprite: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
 
   private playing = false;
@@ -21,6 +16,8 @@ export class PlayerOutro {
   private finalTimer: Phaser.Time.TimerEvent | null = null;
   private activeTweens: Array<{ stop: () => void }> = [];
   private tapHandler: ((...args: unknown[]) => void) | null = null;
+
+  private proxy: Phaser.GameObjects.Sprite | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -36,6 +33,19 @@ export class PlayerOutro {
     this.completed = false;
     this.onComplete = onComplete;
 
+    this.scene.physics.world.pause();
+
+    const cam = this.scene.cameras.main;
+    const screenX = this.sourceSprite.x - cam.scrollX;
+    const screenY = this.sourceSprite.y - cam.scrollY;
+
+    const textureKey = (this.sourceSprite as unknown as { texture: { key: string } }).texture.key;
+    this.proxy = this.scene.add.sprite(screenX, screenY, textureKey)
+      .setScrollFactor(0)
+      .setDepth(OVERLAY_DEPTH + 2);
+
+    this.sourceSprite.setVisible(false);
+
     this.tapHandler = () => this.skip();
     this.scene.input.on('pointerdown', this.tapHandler);
 
@@ -49,18 +59,18 @@ export class PlayerOutro {
 
   destroy(): void {
     if (this.finalTimer) this.finalTimer.remove();
+    this.finalTimer = null;
     this.activeTweens.forEach(t => t.stop());
     this.activeTweens = [];
     if (this.tapHandler) this.scene.input.off('pointerdown', this.tapHandler);
     this.tapHandler = null;
-    this.scene.events.off('shutdown');  // no-op safety
+    if (this.proxy) { this.proxy.destroy(); this.proxy = null; }
   }
 
   private finish(): void {
     if (this.completed) return;
     this.completed = true;
     this.playing = false;
-
     const cb = this.onComplete;
     this.onComplete = null;
     this.destroy();
