@@ -3,7 +3,19 @@ import type Phaser from 'phaser';
 export type OutroKind = 'death' | 'success';
 
 const TOTAL_DURATION_MS = 2500;
+const DRIFT_DURATION_MS = 1800;
 const OVERLAY_DEPTH = 1000;
+
+interface PaletteConfig {
+  fadeColor: number;
+  fadeAlphaTo: number;
+  gradientColor: number;
+}
+
+const PALETTE: Record<OutroKind, PaletteConfig> = {
+  death:   { fadeColor: 0x000000, fadeAlphaTo: 1.0, gradientColor: 0xffffff },
+  success: { fadeColor: 0xffaa33, fadeAlphaTo: 0.6, gradientColor: 0xffd060 },
+};
 
 export class PlayerOutro {
   private readonly scene: Phaser.Scene;
@@ -12,12 +24,18 @@ export class PlayerOutro {
   private playing = false;
   private completed = false;
   private onComplete: (() => void) | null = null;
+  private kind: OutroKind = 'death';
 
   private finalTimer: Phaser.Time.TimerEvent | null = null;
   private activeTweens: Array<{ stop: () => void }> = [];
   private tapHandler: ((...args: unknown[]) => void) | null = null;
+  private updateHandler: (() => void) | null = null;
 
   private proxy: Phaser.GameObjects.Sprite | null = null;
+  private fadeGfx: Phaser.GameObjects.Graphics | null = null;
+  private gradientGfx: Phaser.GameObjects.Graphics | null = null;
+  alpha = 0;
+  private gradientRadius = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -27,10 +45,11 @@ export class PlayerOutro {
     this.sourceSprite = sourceSprite;
   }
 
-  play(_kind: OutroKind, onComplete: () => void): void {
+  play(kind: OutroKind, onComplete: () => void): void {
     if (this.playing) throw new Error('PlayerOutro: play() called while already playing');
     this.playing = true;
     this.completed = false;
+    this.kind = kind;
     this.onComplete = onComplete;
 
     this.scene.physics.world.pause();
@@ -39,6 +58,19 @@ export class PlayerOutro {
     const screenX = this.sourceSprite.x - cam.scrollX;
     const screenY = this.sourceSprite.y - cam.scrollY;
 
+    // Background fade graphics (depth: below gradient + proxy)
+    this.fadeGfx = this.scene.add.graphics()
+      .setScrollFactor(0)
+      .setDepth(OVERLAY_DEPTH);
+    this.alpha = 0;
+
+    // Radial gradient graphics (depth: above fade, below proxy)
+    this.gradientGfx = this.scene.add.graphics()
+      .setScrollFactor(0)
+      .setDepth(OVERLAY_DEPTH + 1);
+    this.gradientRadius = 0;
+
+    // Proxy sprite
     const textureKey = (this.sourceSprite as unknown as { texture: { key: string } }).texture.key;
     this.proxy = this.scene.add.sprite(screenX, screenY, textureKey)
       .setScrollFactor(0)
@@ -48,6 +80,29 @@ export class PlayerOutro {
 
     this.tapHandler = () => this.skip();
     this.scene.input.on('pointerdown', this.tapHandler);
+
+    this.updateHandler = () => this.redrawOverlay();
+    this.scene.events.on('update', this.updateHandler);
+
+    const palette = PALETTE[kind];
+
+    // Fade tween: alpha 0 → palette.fadeAlphaTo over 1800ms
+    const fadeTween = this.scene.tweens.add({
+      targets: this,
+      alpha: { from: 0, to: palette.fadeAlphaTo },
+      duration: DRIFT_DURATION_MS,
+      ease: 'Cubic.easeOut',
+    });
+    this.activeTweens.push(fadeTween as unknown as { stop: () => void });
+
+    // Gradient grow tween: radius 0 → 160 over 1800ms
+    const gradientTween = this.scene.tweens.add({
+      targets: this,
+      gradientRadius: { from: 0, to: 160 },
+      duration: DRIFT_DURATION_MS,
+      ease: 'Cubic.easeOut',
+    });
+    this.activeTweens.push(gradientTween as unknown as { stop: () => void });
 
     this.finalTimer = this.scene.time.delayedCall(TOTAL_DURATION_MS, () => this.finish());
   }
@@ -64,7 +119,37 @@ export class PlayerOutro {
     this.activeTweens = [];
     if (this.tapHandler) this.scene.input.off('pointerdown', this.tapHandler);
     this.tapHandler = null;
-    if (this.proxy) { this.proxy.destroy(); this.proxy = null; }
+    if (this.updateHandler) this.scene.events.off('update', this.updateHandler);
+    this.updateHandler = null;
+    if (this.proxy)       { this.proxy.destroy();       this.proxy = null; }
+    if (this.fadeGfx)     { this.fadeGfx.destroy();     this.fadeGfx = null; }
+    if (this.gradientGfx) { this.gradientGfx.destroy(); this.gradientGfx = null; }
+  }
+
+  private redrawOverlay(): void {
+    if (!this.fadeGfx || !this.gradientGfx || !this.proxy) return;
+    const palette = PALETTE[this.kind];
+    const w = this.scene.scale.width;
+    const h = this.scene.scale.height;
+
+    // Fade: solid rect over the whole screen, with current alpha
+    this.fadeGfx.clear();
+    if (this.alpha > 0) {
+      this.fadeGfx.fillStyle(palette.fadeColor, this.alpha);
+      this.fadeGfx.fillRect(0, 0, w, h);
+    }
+
+    // Gradient: approximate radial gradient with concentric circles at decreasing alpha
+    this.gradientGfx.clear();
+    if (this.gradientRadius > 0) {
+      const steps = 10;
+      for (let i = steps; i >= 1; i--) {
+        const r = (this.gradientRadius * i) / steps;
+        const alpha = (1 - (i - 1) / steps) * 0.6;
+        this.gradientGfx.fillStyle(palette.gradientColor, alpha);
+        this.gradientGfx.fillCircle(this.proxy.x, this.proxy.y, r);
+      }
+    }
   }
 
   private finish(): void {

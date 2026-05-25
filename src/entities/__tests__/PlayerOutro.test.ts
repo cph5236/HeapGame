@@ -211,3 +211,49 @@ describe('PlayerOutro — overlay setup', () => {
     expect(proxySpriteCall.value.destroy).toHaveBeenCalled();
   });
 });
+
+describe('PlayerOutro — overlay graphics', () => {
+  let stub: ReturnType<typeof makeStubScene>;
+  let sprite: ReturnType<typeof makeStubSprite>;
+  let outro: PlayerOutro;
+
+  beforeEach(() => {
+    stub = makeStubScene();
+    sprite = makeStubSprite();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    outro = new PlayerOutro(stub.scene as any, sprite as any);
+  });
+
+  it('play() creates a background fade graphics and a gradient graphics', () => {
+    outro.play('death', vi.fn());
+    // Two graphics objects expected: background fade, radial gradient (plus the proxy)
+    expect(stub.scene.add.graphics).toHaveBeenCalledTimes(2);
+  });
+
+  it('play("death") tweens fade alpha 0→1 over the drift window (1800ms)', () => {
+    outro.play('death', vi.fn());
+    const fadeTween = stub.tweens.find(t =>
+      (t.config as { alpha?: { from?: number; to?: number } }).alpha?.to === 1
+      && (t.config as { duration?: number }).duration === 1800,
+    );
+    expect(fadeTween).toBeDefined();
+  });
+
+  it('play("success") tweens fade alpha 0→0.6 over the drift window (1800ms)', () => {
+    outro.play('success', vi.fn());
+    const fadeTween = stub.tweens.find(t =>
+      (t.config as { alpha?: { from?: number; to?: number } }).alpha?.to === 0.6
+      && (t.config as { duration?: number }).duration === 1800,
+    );
+    expect(fadeTween).toBeDefined();
+  });
+
+  it('finish() destroys all graphics objects', () => {
+    outro.play('death', vi.fn());
+    const graphicsCalls = stub.scene.add.graphics.mock.results;
+    outro.skip();
+    graphicsCalls.forEach(call => {
+      expect(call.value.destroy).toHaveBeenCalled();
+    });
+  });
+});
