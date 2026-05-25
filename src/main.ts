@@ -10,6 +10,7 @@ import { TexturePreviewScene } from './scenes/TexturePreviewScene';
 import { InfiniteGameScene } from './scenes/InfiniteGameScene';
 import { LeaderboardScene } from './scenes/LeaderboardScene';
 import { WORLD_GRAVITY_Y } from './constants';
+import { installAudioFocusGuard } from './systems/AudioFocusGuard';
 
 // Force Canvas renderer when using the dev scene shortcut — headless Chromium
 // has no GPU context so WebGL produces a black canvas.
@@ -44,3 +45,4 @@ const config: Phaser.Types.Core.GameConfig = {
 };
 
 new Phaser.Game(config);
+installAudioFocusGuard();

@@ -176,6 +176,14 @@ class _AudioManager {
     this.play('player-die');
   }
 
+  pauseAll(): void {
+    this.sm?.pauseAll();
+  }
+
+  resumeAll(): void {
+    this.sm?.resumeAll();
+  }
+
   getVolumes(): VolumeMap {
     return { ...this.volumes };
   }
