@@ -290,3 +290,50 @@ describe('PlayerOutro — drift', () => {
     expect(driftTween).toBeDefined();
   });
 });
+
+describe('PlayerOutro — squish + shrink', () => {
+  let stub: ReturnType<typeof makeStubScene>;
+  let sprite: ReturnType<typeof makeStubSprite>;
+  let outro: PlayerOutro;
+
+  beforeEach(() => {
+    stub = makeStubScene();
+    sprite = makeStubSprite();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    outro = new PlayerOutro(stub.scene as any, sprite as any);
+  });
+
+  it('schedules a squish beat at t=1800ms for death (wide+flat)', () => {
+    outro.play('death', vi.fn());
+    const squishTimer = stub.timers.find(t => t.ms === 1800);
+    expect(squishTimer).toBeDefined();
+  });
+
+  it('schedules a shrink beat at t=2000ms (scale → 0 over 400ms)', () => {
+    outro.play('death', vi.fn());
+    const shrinkTimer = stub.timers.find(t => t.ms === 2000);
+    expect(shrinkTimer).toBeDefined();
+  });
+
+  it('death squish targets scaleX=1.6, scaleY=0.4', () => {
+    outro.play('death', vi.fn());
+    const squishTimer = stub.timers.find(t => t.ms === 1800);
+    squishTimer!.callback();
+    const squishTween = stub.tweens.find(t => {
+      const cfg = t.config as { scaleX?: { to?: number }; scaleY?: { to?: number } };
+      return cfg.scaleX?.to === 1.6 && cfg.scaleY?.to === 0.4;
+    });
+    expect(squishTween).toBeDefined();
+  });
+
+  it('success squish targets scaleX=0.85, scaleY=1.3 (stretch up)', () => {
+    outro.play('success', vi.fn());
+    const squishTimer = stub.timers.find(t => t.ms === 1800);
+    squishTimer!.callback();
+    const squishTween = stub.tweens.find(t => {
+      const cfg = t.config as { scaleX?: { to?: number }; scaleY?: { to?: number } };
+      return cfg.scaleX?.to === 0.85 && cfg.scaleY?.to === 1.3;
+    });
+    expect(squishTween).toBeDefined();
+  });
+});

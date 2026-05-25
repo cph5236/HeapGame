@@ -6,6 +6,19 @@ const TOTAL_DURATION_MS = 2500;
 const DRIFT_DURATION_MS = 1800;
 const OVERLAY_DEPTH = 1000;
 
+const SQUISH_T_MS = 1800;
+const SHRINK_T_MS = 2000;
+const SQUISH_DUR_MS = 80;
+const SQUISH_SETTLE_MS = 120;
+const SHRINK_DUR_MS = 400;
+
+interface SquishConfig { scaleX: number; scaleY: number }
+
+const SQUISH: Record<OutroKind, SquishConfig> = {
+  death:   { scaleX: 1.6,  scaleY: 0.4 },
+  success: { scaleX: 0.85, scaleY: 1.3 },
+};
+
 interface PaletteConfig {
   fadeColor: number;
   fadeAlphaTo: number;
@@ -119,6 +132,14 @@ export class PlayerOutro {
     });
     this.activeTweens.push(gradientTween as unknown as { stop: () => void });
 
+    // Squish beat at t=1800ms
+    const squishTimer = this.scene.time.delayedCall(SQUISH_T_MS, () => this.runSquishBeat(kind));
+    this.activeTweens.push({ stop: () => squishTimer.remove() });
+
+    // Shrink beat at t=2000ms
+    const shrinkTimer = this.scene.time.delayedCall(SHRINK_T_MS, () => this.runShrinkBeat());
+    this.activeTweens.push({ stop: () => shrinkTimer.remove() });
+
     this.finalTimer = this.scene.time.delayedCall(TOTAL_DURATION_MS, () => this.finish());
   }
 
@@ -139,6 +160,42 @@ export class PlayerOutro {
     if (this.proxy)       { this.proxy.destroy();       this.proxy = null; }
     if (this.fadeGfx)     { this.fadeGfx.destroy();     this.fadeGfx = null; }
     if (this.gradientGfx) { this.gradientGfx.destroy(); this.gradientGfx = null; }
+  }
+
+  private runSquishBeat(kind: OutroKind): void {
+    if (!this.proxy || this.completed) return;
+    const s = SQUISH[kind];
+    const squashTween = this.scene.tweens.add({
+      targets: this.proxy,
+      scaleX: { from: 1, to: s.scaleX },
+      scaleY: { from: 1, to: s.scaleY },
+      duration: SQUISH_DUR_MS,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        if (!this.proxy || this.completed) return;
+        const settleTween = this.scene.tweens.add({
+          targets: this.proxy,
+          scaleX: { from: s.scaleX, to: 1 },
+          scaleY: { from: s.scaleY, to: 1 },
+          duration: SQUISH_SETTLE_MS,
+          ease: 'Quad.easeInOut',
+        });
+        this.activeTweens.push(settleTween as unknown as { stop: () => void });
+      },
+    });
+    this.activeTweens.push(squashTween as unknown as { stop: () => void });
+  }
+
+  private runShrinkBeat(): void {
+    if (!this.proxy || this.completed) return;
+    const shrinkTween = this.scene.tweens.add({
+      targets: this.proxy,
+      scaleX: { from: 1, to: 0 },
+      scaleY: { from: 1, to: 0 },
+      duration: SHRINK_DUR_MS,
+      ease: 'Cubic.easeIn',
+    });
+    this.activeTweens.push(shrinkTween as unknown as { stop: () => void });
   }
 
   private redrawOverlay(): void {
