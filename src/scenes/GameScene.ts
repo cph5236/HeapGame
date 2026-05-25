@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { PlayerAnimator } from '../entities/PlayerAnimator';
+import { PlayerOutro } from '../entities/PlayerOutro';
 import { AudioManager } from '../systems/AudioManager';
 import { CameraController } from '../systems/CameraController';
 import { HeapGenerator } from '../systems/HeapGenerator';
@@ -49,6 +50,7 @@ import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 export class GameScene extends Phaser.Scene {
   private player!: Player;
   private playerAnimator!: PlayerAnimator;
+  private playerOutro!: PlayerOutro;
   private hud!: HUD;
   private heapWalkableGroup!: Phaser.Physics.Arcade.StaticGroup;
   private heapWallGroup!:     Phaser.Physics.Arcade.StaticGroup;
@@ -164,6 +166,7 @@ export class GameScene extends Phaser.Scene {
     this.player = new Player(this, WORLD_WIDTH * 0.0625, this.spawnY, this.playerConfig);
     this.player.worldHeight = this._worldHeight;
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
+    this.playerOutro    = new PlayerOutro(this, this.player.sprite);
 
     // If restarted via checkpoint respawn, reposition player and consume one spawn
     if (this.checkpointRespawn) {
@@ -187,7 +190,8 @@ export class GameScene extends Phaser.Scene {
       this.player.freeze();
       this.playerAnimator.update(0.016, { ...this.player.animState, justDied: true });
       this.player.sprite.setDepth(4); // visually swallowed — below wall body (depth 5)
-      this.time.delayedCall(800, () => {
+
+      this.playerOutro.play('death', () => {
         const checkpointAvailable = getPlaced(this._heapId).some(
           p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
         );
@@ -739,6 +743,7 @@ export class GameScene extends Phaser.Scene {
 
   shutdown(): void {
     this.playerAnimator.destroy();
+    this.playerOutro.destroy();
     AudioManager.stopAll();
   }
 }
