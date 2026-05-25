@@ -34,7 +34,7 @@ export class PlayerOutro {
   private proxy: Phaser.GameObjects.Sprite | null = null;
   private fadeGfx: Phaser.GameObjects.Graphics | null = null;
   private gradientGfx: Phaser.GameObjects.Graphics | null = null;
-  alpha = 0;
+  private fadeAlpha = 0;
   private gradientRadius = 0;
 
   constructor(
@@ -62,7 +62,7 @@ export class PlayerOutro {
     this.fadeGfx = this.scene.add.graphics()
       .setScrollFactor(0)
       .setDepth(OVERLAY_DEPTH);
-    this.alpha = 0;
+    this.fadeAlpha = 0;
 
     // Radial gradient graphics (depth: above fade, below proxy)
     this.gradientGfx = this.scene.add.graphics()
@@ -86,10 +86,10 @@ export class PlayerOutro {
 
     const palette = PALETTE[kind];
 
-    // Fade tween: alpha 0 → palette.fadeAlphaTo over 1800ms
+    // Fade tween: fadeAlpha 0 → palette.fadeAlphaTo over 1800ms
     const fadeTween = this.scene.tweens.add({
       targets: this,
-      alpha: { from: 0, to: palette.fadeAlphaTo },
+      fadeAlpha: { from: 0, to: palette.fadeAlphaTo },
       duration: DRIFT_DURATION_MS,
       ease: 'Cubic.easeOut',
     });
@@ -134,8 +134,8 @@ export class PlayerOutro {
 
     // Fade: solid rect over the whole screen, with current alpha
     this.fadeGfx.clear();
-    if (this.alpha > 0) {
-      this.fadeGfx.fillStyle(palette.fadeColor, this.alpha);
+    if (this.fadeAlpha > 0) {
+      this.fadeGfx.fillStyle(palette.fadeColor, this.fadeAlpha);
       this.fadeGfx.fillRect(0, 0, w, h);
     }
 

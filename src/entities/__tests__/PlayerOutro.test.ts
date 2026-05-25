@@ -233,7 +233,7 @@ describe('PlayerOutro — overlay graphics', () => {
   it('play("death") tweens fade alpha 0→1 over the drift window (1800ms)', () => {
     outro.play('death', vi.fn());
     const fadeTween = stub.tweens.find(t =>
-      (t.config as { alpha?: { from?: number; to?: number } }).alpha?.to === 1
+      (t.config as { fadeAlpha?: { from?: number; to?: number } }).fadeAlpha?.to === 1
       && (t.config as { duration?: number }).duration === 1800,
     );
     expect(fadeTween).toBeDefined();
@@ -242,7 +242,7 @@ describe('PlayerOutro — overlay graphics', () => {
   it('play("success") tweens fade alpha 0→0.6 over the drift window (1800ms)', () => {
     outro.play('success', vi.fn());
     const fadeTween = stub.tweens.find(t =>
-      (t.config as { alpha?: { from?: number; to?: number } }).alpha?.to === 0.6
+      (t.config as { fadeAlpha?: { from?: number; to?: number } }).fadeAlpha?.to === 0.6
       && (t.config as { duration?: number }).duration === 1800,
     );
     expect(fadeTween).toBeDefined();
