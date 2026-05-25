@@ -78,6 +78,21 @@ export class PlayerOutro {
 
     this.sourceSprite.setVisible(false);
 
+    // Destination: death → screen center; success → screen top-center
+    const w = this.scene.scale.width;
+    const h = this.scene.scale.height;
+    const destX = Math.floor(w / 2);
+    const destY = kind === 'death' ? Math.floor(h / 2) : Math.floor(h * 0.15);
+
+    const driftTween = this.scene.tweens.add({
+      targets: this.proxy,
+      x: { from: screenX, to: destX },
+      y: { from: screenY, to: destY },
+      duration: DRIFT_DURATION_MS,
+      ease: 'Cubic.easeOut',
+    });
+    this.activeTweens.push(driftTween as unknown as { stop: () => void });
+
     this.tapHandler = () => this.skip();
     this.scene.input.on('pointerdown', this.tapHandler);
 
