@@ -521,7 +521,10 @@ export class GameScene extends Phaser.Scene {
       false,
       this._heapParams.scoreMult,
     );
-    this.time.delayedCall(2000, () => {
+    this.player.freeze();
+    this.playerAnimator.update(0.016, { ...this.player.animState, justPlaced: true });
+
+    this.playerOutro.play('success', () => {
       void appendDone.then(() => {
         const killCount = Object.values(this._runKills).reduce((sum, val) => sum + val, 0);
         getLogger().event({
