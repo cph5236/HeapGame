@@ -322,8 +322,10 @@ export class GameScene extends Phaser.Scene {
     const initData = this.scene.settings.data as { _devOutro?: 'death' | 'success' } | undefined;
     if (initData?._devOutro) {
       const kind = initData._devOutro;
+      this._playerDead = true;
+      this.player.freeze();
+      this.physics.world.pause();
       this.time.delayedCall(500, () => {
-        this.player.freeze();
         this.playerAnimator.update(0.016, {
           ...this.player.animState,
           ...(kind === 'death' ? { justDied: true } : { justPlaced: true }),

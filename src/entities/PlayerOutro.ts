@@ -250,11 +250,12 @@ export class PlayerOutro {
     const w = this.scene.scale.width;
     const h = this.scene.scale.height;
 
-    // Fade: solid rect over the whole screen, with current alpha
+    // fillCircle covers every corner (radius > half-diagonal). fillRect(0,0,w,h) doesn't
+    // render in Phaser 3.90 Canvas mode on a scrollFactor=0 Graphics at world origin.
     this.fadeGfx.clear();
     if (this.fadeAlpha > 0) {
       this.fadeGfx.fillStyle(palette.fadeColor, this.fadeAlpha);
-      this.fadeGfx.fillRect(0, 0, w, h);
+      this.fadeGfx.fillCircle(w / 2, h / 2, Math.max(w, h));
     }
 
     // Gradient: approximate radial gradient with concentric circles at decreasing alpha
