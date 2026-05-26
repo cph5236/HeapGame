@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
-import trashbagUrl          from '../sprites/player/trashbag.png?url';
-import trashbagNoStringsUrl from '../sprites/player/trashbag-nostrings.png?url';
+import trashbagUrl from '../sprites/player/trashbag.png?url';
 import { HeapClient } from '../systems/HeapClient';
 import type { Vertex } from '../systems/HeapPolygon';
 import { generateAllTextures } from '../entities/TextureGenerators';
@@ -22,7 +21,6 @@ export class BootScene extends Phaser.Scene {
   preload(): void {
     // Only what MenuScene actually paints: the player figure.
     this.load.image('trashbag', trashbagUrl);
-    this.load.image('trashbag-nostrings', trashbagNoStringsUrl);
   }
 
   create(): void {

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { PlayerAnimator } from '../entities/PlayerAnimator';
+import { PlayerOutro } from '../entities/PlayerOutro';
 import { AudioManager } from '../systems/AudioManager';
 import { CameraController } from '../systems/CameraController';
 import { HeapGenerator } from '../systems/HeapGenerator';
@@ -49,6 +50,7 @@ import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 export class GameScene extends Phaser.Scene {
   private player!: Player;
   private playerAnimator!: PlayerAnimator;
+  private playerOutro!: PlayerOutro;
   private hud!: HUD;
   private heapWalkableGroup!: Phaser.Physics.Arcade.StaticGroup;
   private heapWallGroup!:     Phaser.Physics.Arcade.StaticGroup;
@@ -164,6 +166,7 @@ export class GameScene extends Phaser.Scene {
     this.player = new Player(this, WORLD_WIDTH * 0.0625, this.spawnY, this.playerConfig);
     this.player.worldHeight = this._worldHeight;
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
+    this.playerOutro    = new PlayerOutro(this, this.player.sprite);
 
     // If restarted via checkpoint respawn, reposition player and consume one spawn
     if (this.checkpointRespawn) {
@@ -187,7 +190,8 @@ export class GameScene extends Phaser.Scene {
       this.player.freeze();
       this.playerAnimator.update(0.016, { ...this.player.animState, justDied: true });
       this.player.sprite.setDepth(4); // visually swallowed — below wall body (depth 5)
-      this.time.delayedCall(800, () => {
+
+      this.playerOutro.play('death', () => {
         const checkpointAvailable = getPlaced(this._heapId).some(
           p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
         );
@@ -313,6 +317,24 @@ export class GameScene extends Phaser.Scene {
 
     // Info button (ⓘ) — top-right corner
     this.createInfoButton(im.isMobile);
+
+    // Dev preview: ?dev=GameScene&params={"_devOutro":"death"} or {"_devOutro":"success"}
+    const initData = this.scene.settings.data as { _devOutro?: 'death' | 'success' } | undefined;
+    if (initData?._devOutro) {
+      const kind = initData._devOutro;
+      this._playerDead = true;
+      this.player.freeze();
+      this.physics.world.pause();
+      this.time.delayedCall(500, () => {
+        this.playerAnimator.update(0.016, {
+          ...this.player.animState,
+          ...(kind === 'death' ? { justDied: true } : { justPlaced: true }),
+        });
+        this.playerOutro.play(kind, () => {
+          // dev preview: do not launch ScoreScene
+        });
+      });
+    }
   }
 
   update(_time: number, delta: number): void {
@@ -517,31 +539,36 @@ export class GameScene extends Phaser.Scene {
       false,
       this._heapParams.scoreMult,
     );
-    this.time.delayedCall(2000, () => {
-      void appendDone.then(() => {
-        const killCount = Object.values(this._runKills).reduce((sum, val) => sum + val, 0);
-        getLogger().event({
-          type: 'run:end',
-          heapId: this._heapId,
-          mode: 'normal',
-          score: runResult.finalScore,
-          height: baseHeightPx,
-          kills: killCount,
-          durationMs: elapsedMs,
-          cause: 'quit',
-          upgrades: getUpgrades(),
+    this.player.freeze();
+    this.playerAnimator.update(0.016, { ...this.player.animState, justPlaced: true });
+
+    this.time.delayedCall(500, () => {
+      this.playerOutro.play('success', () => {
+        void appendDone.then(() => {
+          const killCount = Object.values(this._runKills).reduce((sum, val) => sum + val, 0);
+          getLogger().event({
+            type: 'run:end',
+            heapId: this._heapId,
+            mode: 'normal',
+            score: runResult.finalScore,
+            height: baseHeightPx,
+            kills: killCount,
+            durationMs: elapsedMs,
+            cause: 'quit',
+            upgrades: getUpgrades(),
+          });
+          this.scene.launch('ScoreScene', {
+            score:        runResult.finalScore,
+            heapId:       this._heapId,
+            isPeak,
+            baseHeightPx,
+            kills:        this._runKills,
+            elapsedMs,
+            heapParams:   this._heapParams,
+            bonusCoins:   bonusCoinsFromServer,
+          });
+          this.scene.pause();
         });
-        this.scene.launch('ScoreScene', {
-          score:        runResult.finalScore,
-          heapId:       this._heapId,
-          isPeak,
-          baseHeightPx,
-          kills:        this._runKills,
-          elapsedMs,
-          heapParams:   this._heapParams,
-          bonusCoins:   bonusCoinsFromServer,
-        });
-        this.scene.pause();
       });
     });
   }
@@ -624,41 +651,45 @@ export class GameScene extends Phaser.Scene {
     this.player.freeze();
     this.playerAnimator.update(0.016, { ...this.player.animState, justDied: true });
 
-    const checkpointAvailable = getPlaced(this._heapId).some(
-      p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
-    );
-    const baseHeightPx = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
-    const elapsedMs    = this._runStartTime !== null ? (this.time.now - this._runStartTime) : 0;
-    const runResult    = buildRunScore(
-      { baseHeightPx, kills: this._runKills, elapsedMs },
-      ENEMY_DEFS,
-      true,
-      this._heapParams.scoreMult,
-    );
-    const killCount = Object.values(this._runKills).reduce((sum, val) => sum + val, 0);
-    getLogger().event({
-      type: 'run:end',
-      heapId: this._heapId,
-      mode: 'normal',
-      score: runResult.finalScore,
-      height: baseHeightPx,
-      kills: killCount,
-      durationMs: elapsedMs,
-      cause: 'death',
-      upgrades: getUpgrades(),
+    this.time.delayedCall(500, () => {
+      this.playerOutro.play('death', () => {
+        const checkpointAvailable = getPlaced(this._heapId).some(
+          p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
+        );
+        const baseHeightPx = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
+        const elapsedMs    = this._runStartTime !== null ? (this.time.now - this._runStartTime) : 0;
+        const runResult    = buildRunScore(
+          { baseHeightPx, kills: this._runKills, elapsedMs },
+          ENEMY_DEFS,
+          true,
+          this._heapParams.scoreMult,
+        );
+        const killCount = Object.values(this._runKills).reduce((sum, val) => sum + val, 0);
+        getLogger().event({
+          type: 'run:end',
+          heapId: this._heapId,
+          mode: 'normal',
+          score: runResult.finalScore,
+          height: baseHeightPx,
+          kills: killCount,
+          durationMs: elapsedMs,
+          cause: 'death',
+          upgrades: getUpgrades(),
+        });
+        this.scene.launch('ScoreScene', {
+          score:        runResult.finalScore,
+          heapId:       this._heapId,
+          isPeak:       false,
+          checkpointAvailable,
+          isFailure:    true,
+          baseHeightPx,
+          kills:        this._runKills,
+          elapsedMs,
+          heapParams:   this._heapParams,
+        });
+        this.scene.pause();
+      });
     });
-    this.scene.launch('ScoreScene', {
-      score:        runResult.finalScore,
-      heapId:       this._heapId,
-      isPeak:       false,
-      checkpointAvailable,
-      isFailure:    true,
-      baseHeightPx,
-      kills:        this._runKills,
-      elapsedMs,
-      heapParams:   this._heapParams,
-    });
-    this.scene.pause();
   };
 
   private createInfoButton(isMobile: boolean): void {
@@ -739,6 +770,7 @@ export class GameScene extends Phaser.Scene {
 
   shutdown(): void {
     this.playerAnimator.destroy();
+    this.playerOutro.destroy();
     AudioManager.stopAll();
   }
 }

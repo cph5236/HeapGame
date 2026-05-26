@@ -54,6 +54,7 @@ export interface PlayerAnimState {
   justAirJumped:  boolean;
   justWallJumped: boolean;
   justDied:       boolean;
+  justPlaced:     boolean;
 }
 
 export class Player {
@@ -143,6 +144,7 @@ export class Player {
       justAirJumped:  this._justAirJumped,
       justWallJumped: this._justWallJumped,
       justDied:       false,
+      justPlaced:     false,
     };
   }
 

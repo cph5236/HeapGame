@@ -93,7 +93,7 @@ export class PlayerAnimator {
     if (this.dormant) return;
 
     // ── Interrupts (checked before anything else) ──────────────────────────
-    if (state.justDied) {
+    if (state.justDied || state.justPlaced) {
       this.sprite.setScale(this.baseScaleX, this.baseScaleY);
       this.sprite.setAngle(0);
       this.sprite.body.setSize(PLAYER_WIDTH / this.baseScaleX, PLAYER_HEIGHT / this.baseScaleY);

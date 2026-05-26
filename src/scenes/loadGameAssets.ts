@@ -13,7 +13,9 @@ import tombstone2Url  from '../sprites/Placeables/TombStone (2).png?url';
 import bridgeUrl      from '../sprites/Bridge/Bridge.png?url';
 import vultureFlyLeftUrl  from '../sprites/Enemies/vulture/vulture-fly-left.png?url';
 import vultureFlyRightUrl from '../sprites/Enemies/vulture/vulture-fly-right.png?url';
-import ratUrl         from '../sprites/Enemies/Rat/rat.png?url';
+import ratUrl             from '../sprites/Enemies/Rat/rat.png?url';
+import trashbagNoStringsUrl from '../sprites/player/trashbag-nostrings.png?url';
+import outroDeathUrl        from '../sprites/outro/trashbag-Death.png';
 
 /** Default size of the per-session trash-wall sprite pool. */
 const TRASH_WALL_POOL_SIZE = 50;
@@ -58,7 +60,9 @@ export function loadGameAssets(scene: Phaser.Scene): void {
   scene.load.image('item-ladder',       ladderUrl);
   scene.load.image('item-checkpoint-1', tombstone1Url);
   scene.load.image('item-checkpoint-2', tombstone2Url);
-  scene.load.image('bridge',            bridgeUrl);
+  scene.load.image('bridge',              bridgeUrl);
+  scene.load.image('trashbag-nostrings', trashbagNoStringsUrl);
+  scene.load.image('outro-death',        outroDeathUrl);
 
   // ── Enemy spritesheets ───────────────────────────────────────────────────
   scene.load.spritesheet('vulture-fly-left',  vultureFlyLeftUrl,  { frameWidth: 64, frameHeight: 43 });

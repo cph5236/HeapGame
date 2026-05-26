@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { PlayerAnimator } from '../entities/PlayerAnimator';
+import { PlayerOutro } from '../entities/PlayerOutro';
 import { AudioManager } from '../systems/AudioManager';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
@@ -62,6 +63,7 @@ function makeColBounds(): [number, number][] {
 export class InfiniteGameScene extends Phaser.Scene {
   private player!: Player;
   private playerAnimator!: PlayerAnimator;
+  private playerOutro!: PlayerOutro;
   private hud!: HUD;
   private im!: InputManager;
   private scoreText!: Phaser.GameObjects.Text;
@@ -158,6 +160,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.player = new Player(this, gapX, this.spawnY, this.playerConfig);
     this.player.worldWidth = INFINITE_WORLD_WIDTH;
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
+    this.playerOutro = new PlayerOutro(this, this.player.sprite);
 
     // ── Colliders ───────────────────────────────────────────────────────────────
     this.heapColliders = [];
@@ -418,7 +421,8 @@ export class InfiniteGameScene extends Phaser.Scene {
       true,
       1.0,
     );
-    this.time.delayedCall(800, () => {
+
+    this.playerOutro.play('death', () => {
       const killCount = Object.values(this._runKills).reduce((sum, val) => sum + val, 0);
       getLogger().event({
         type: 'run:end',
@@ -507,6 +511,7 @@ export class InfiniteGameScene extends Phaser.Scene {
 
   shutdown(): void {
     this.playerAnimator.destroy();
+    this.playerOutro.destroy();
     AudioManager.stopAll();
   }
 }
