@@ -356,20 +356,39 @@ describe('PlayerOutro — twinkle', () => {
     expect(twinkleTimer).toBeDefined();
   });
 
-  it('twinkle spawns a third graphics object (starburst)', () => {
+  it('death twinkle spawns a sprite (not graphics) for the symbol', () => {
     outro.play('death', vi.fn());
+    const twinkleTimer = stub.timers.find(t => t.ms === 2400);
+    expect(stub.scene.add.graphics).toHaveBeenCalledTimes(2);  // fade + gradient only
+    expect(stub.scene.add.sprite).toHaveBeenCalledTimes(1);    // proxy only so far
+    twinkleTimer!.callback();
+    expect(stub.scene.add.graphics).toHaveBeenCalledTimes(2);  // still just 2
+    expect(stub.scene.add.sprite).toHaveBeenCalledTimes(2);    // + death symbol sprite
+  });
+
+  it('death symbol sprite is destroyed by finish()', () => {
+    outro.play('death', vi.fn());
+    const twinkleTimer = stub.timers.find(t => t.ms === 2400);
+    twinkleTimer!.callback();
+    const deathSymbolCall = stub.scene.add.sprite.mock.results[1]; // index 0 = proxy
+    outro.skip();
+    expect(deathSymbolCall.value.destroy).toHaveBeenCalled();
+  });
+
+  it('success twinkle spawns a graphics object for the star', () => {
+    outro.play('success', vi.fn());
     const twinkleTimer = stub.timers.find(t => t.ms === 2400);
     expect(stub.scene.add.graphics).toHaveBeenCalledTimes(2);  // fade + gradient
     twinkleTimer!.callback();
-    expect(stub.scene.add.graphics).toHaveBeenCalledTimes(3);  // + starburst
+    expect(stub.scene.add.graphics).toHaveBeenCalledTimes(3);  // + star graphics
   });
 
-  it('twinkle starburst is destroyed by finish()', () => {
-    outro.play('death', vi.fn());
+  it('success star graphics is destroyed by finish()', () => {
+    outro.play('success', vi.fn());
     const twinkleTimer = stub.timers.find(t => t.ms === 2400);
     twinkleTimer!.callback();
-    const starburstCall = stub.scene.add.graphics.mock.results[2];
+    const starCall = stub.scene.add.graphics.mock.results[2];
     outro.skip();
-    expect(starburstCall.value.destroy).toHaveBeenCalled();
+    expect(starCall.value.destroy).toHaveBeenCalled();
   });
 });

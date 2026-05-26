@@ -21,6 +21,11 @@ const TWINKLE_FADE_MS = 150;
 const STARBURST_BASE_RADIUS = 50;
 const STARBURST_MAX_SCALE = 1.8;
 
+// Texture key for the death outro symbol sprite.
+// Preload in BootScene: this.load.image('outro-death', outroDeathUrl)
+// Recommended source size: 180×180 px (matches STARBURST_BASE_RADIUS * 2 * STARBURST_MAX_SCALE)
+const DEATH_SYMBOL_KEY = 'outro-death';
+
 interface SquishConfig { scaleX: number; scaleY: number }
 
 const SQUISH: Record<OutroKind, SquishConfig> = {
@@ -62,6 +67,8 @@ export class PlayerOutro {
   private starburstGfx: Phaser.GameObjects.Graphics | null = null;
   private starburstScale = 0;
   private starburstAlpha = 1;
+
+  private deathSymbolSprite: Phaser.GameObjects.Sprite | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -174,10 +181,11 @@ export class PlayerOutro {
     this.tapHandler = null;
     if (this.updateHandler) this.scene.events.off('update', this.updateHandler);
     this.updateHandler = null;
-    if (this.proxy)       { this.proxy.destroy();       this.proxy = null; }
-    if (this.fadeGfx)     { this.fadeGfx.destroy();     this.fadeGfx = null; }
-    if (this.gradientGfx) { this.gradientGfx.destroy(); this.gradientGfx = null; }
-    if (this.starburstGfx) { this.starburstGfx.destroy(); this.starburstGfx = null; }
+    if (this.proxy)             { this.proxy.destroy();             this.proxy = null; }
+    if (this.fadeGfx)           { this.fadeGfx.destroy();           this.fadeGfx = null; }
+    if (this.gradientGfx)       { this.gradientGfx.destroy();       this.gradientGfx = null; }
+    if (this.starburstGfx)      { this.starburstGfx.destroy();      this.starburstGfx = null; }
+    if (this.deathSymbolSprite) { this.deathSymbolSprite.destroy(); this.deathSymbolSprite = null; }
   }
 
   private runSquishBeat(kind: OutroKind): void {
@@ -217,34 +225,70 @@ export class PlayerOutro {
   }
 
   private runTwinkleBeat(): void {
-    if (this.completed) return;
-    this.starburstGfx = this.scene.add.graphics()
-      .setScrollFactor(0)
-      .setDepth(OVERLAY_DEPTH + 3);
-    this.starburstScale = 0;
-    this.starburstAlpha = 1;
+    if (this.completed || !this.proxy) return;
+    const cx = this.proxy.x;
+    const cy = this.proxy.y;
 
-    const growTween = this.scene.tweens.add({
-      targets: this,
-      starburstScale: { from: 0, to: STARBURST_MAX_SCALE },
-      duration: TWINKLE_GROW_MS,
-      ease: 'Back.easeOut',
-      onComplete: () => {
-        if (this.completed) return;
-        const holdTimer = this.scene.time.delayedCall(TWINKLE_HOLD_MS, () => {
+    if (this.kind === 'death') {
+      const targetSize = STARBURST_BASE_RADIUS * 2 * STARBURST_MAX_SCALE;
+      this.deathSymbolSprite = this.scene.add.sprite(cx, cy, DEATH_SYMBOL_KEY)
+        .setScrollFactor(0)
+        .setDepth(OVERLAY_DEPTH + 3)
+        .setDisplaySize(targetSize, targetSize);
+      const targetScale = (this.deathSymbolSprite as unknown as { scaleX: number }).scaleX;
+      this.deathSymbolSprite.setScale(0);
+
+      const growTween = this.scene.tweens.add({
+        targets: this.deathSymbolSprite,
+        scaleX: targetScale,
+        scaleY: targetScale,
+        duration: TWINKLE_GROW_MS,
+        ease: 'Back.easeOut',
+        onComplete: () => {
           if (this.completed) return;
-          const fadeTween = this.scene.tweens.add({
-            targets: this,
-            starburstAlpha: { from: 1, to: 0 },
-            duration: TWINKLE_FADE_MS,
-            ease: 'Linear',
+          const holdTimer = this.scene.time.delayedCall(TWINKLE_HOLD_MS, () => {
+            if (this.completed) return;
+            const fadeTween = this.scene.tweens.add({
+              targets: this.deathSymbolSprite,
+              alpha: 0,
+              duration: TWINKLE_FADE_MS,
+              ease: 'Linear',
+            });
+            this.activeTweens.push(fadeTween as unknown as { stop: () => void });
           });
-          this.activeTweens.push(fadeTween as unknown as { stop: () => void });
-        });
-        this.activeTweens.push({ stop: () => holdTimer.remove() });
-      },
-    });
-    this.activeTweens.push(growTween as unknown as { stop: () => void });
+          this.activeTweens.push({ stop: () => holdTimer.remove() });
+        },
+      });
+      this.activeTweens.push(growTween as unknown as { stop: () => void });
+    } else {
+      this.starburstGfx = this.scene.add.graphics()
+        .setScrollFactor(0)
+        .setDepth(OVERLAY_DEPTH + 3);
+      this.starburstScale = 0;
+      this.starburstAlpha = 1;
+
+      const growTween = this.scene.tweens.add({
+        targets: this,
+        starburstScale: { from: 0, to: STARBURST_MAX_SCALE },
+        duration: TWINKLE_GROW_MS,
+        ease: 'Back.easeOut',
+        onComplete: () => {
+          if (this.completed) return;
+          const holdTimer = this.scene.time.delayedCall(TWINKLE_HOLD_MS, () => {
+            if (this.completed) return;
+            const fadeTween = this.scene.tweens.add({
+              targets: this,
+              starburstAlpha: { from: 1, to: 0 },
+              duration: TWINKLE_FADE_MS,
+              ease: 'Linear',
+            });
+            this.activeTweens.push(fadeTween as unknown as { stop: () => void });
+          });
+          this.activeTweens.push({ stop: () => holdTimer.remove() });
+        },
+      });
+      this.activeTweens.push(growTween as unknown as { stop: () => void });
+    }
   }
 
   private redrawOverlay(): void {
@@ -278,56 +322,7 @@ export class PlayerOutro {
       const r = STARBURST_BASE_RADIUS * this.starburstScale;
       const cx = this.proxy.x;
       const cy = this.proxy.y;
-      if (this.kind === 'death') {
-        this.drawSkull(cx, cy, r);
-      } else {
-        this.drawStar(cx, cy, r);
-      }
-    }
-  }
-
-  private drawSkull(cx: number, cy: number, r: number): void {
-    const g = this.starburstGfx!;
-    const a = this.starburstAlpha;
-    const color = PALETTE[this.kind].gradientColor;
-    const skullCy = cy - r * 0.05;
-
-    // Cranium
-    g.fillStyle(color, a);
-    g.fillCircle(cx, skullCy, r * 0.84);
-    g.lineStyle(2, 0x000000, a);
-    g.strokeCircle(cx, skullCy, r * 0.84);
-
-    // Eyes
-    g.fillStyle(0x000000, a);
-    g.fillCircle(cx - r * 0.29, skullCy - r * 0.15, r * 0.21);
-    g.fillCircle(cx + r * 0.29, skullCy - r * 0.15, r * 0.21);
-
-    // Angry brow furrows — triangles cutting down into each eye from above-center
-    g.fillTriangle(
-      cx - r * 0.52, skullCy - r * 0.42,
-      cx - r * 0.06, skullCy - r * 0.42,
-      cx - r * 0.06, skullCy - r * 0.06,
-    );
-    g.fillTriangle(
-      cx + r * 0.06, skullCy - r * 0.42,
-      cx + r * 0.52, skullCy - r * 0.42,
-      cx + r * 0.06, skullCy - r * 0.06,
-    );
-
-    // Nose — downward triangle
-    g.fillTriangle(
-      cx - r * 0.09, skullCy + r * 0.12,
-      cx + r * 0.09, skullCy + r * 0.12,
-      cx,            skullCy + r * 0.28,
-    );
-
-    // Teeth — 4 gaps implying 5 teeth
-    const gapW = r * 0.11;
-    const gapH = r * 0.36;
-    const gapY = skullCy + r * 0.42;
-    for (const gx of [cx - r * 0.33, cx - r * 0.11, cx + r * 0.11, cx + r * 0.33]) {
-      g.fillRect(gx - gapW / 2, gapY, gapW, gapH);
+      this.drawStar(cx, cy, r);
     }
   }
 
