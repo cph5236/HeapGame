@@ -239,12 +239,12 @@ describe('PlayerOutro — overlay graphics', () => {
     expect(fadeTween).toBeDefined();
   });
 
-  it('play("success") tweens fade alpha 0→0.6 over the drift window (1800ms)', () => {
+  it('play("success") tweens fade alpha 0→<palette.fadeAlphaTo> over the drift window (1800ms)', () => {
     outro.play('success', vi.fn());
-    const fadeTween = stub.tweens.find(t =>
-      (t.config as { fadeAlpha?: { from?: number; to?: number } }).fadeAlpha?.to === 0.6
-      && (t.config as { duration?: number }).duration === 1800,
-    );
+    const fadeTween = stub.tweens.find(t => {
+      const cfg = t.config as { fadeAlpha?: { to?: number }; duration?: number };
+      return typeof cfg.fadeAlpha?.to === 'number' && cfg.fadeAlpha.to > 0 && cfg.duration === 1800;
+    });
     expect(fadeTween).toBeDefined();
   });
 

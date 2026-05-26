@@ -35,8 +35,8 @@ interface PaletteConfig {
 }
 
 const PALETTE: Record<OutroKind, PaletteConfig> = {
-  death:   { fadeColor: 0x000000, fadeAlphaTo: 1.0, gradientColor: 0xffd060 },
-  success: { fadeColor: 0x5b8fc9, fadeAlphaTo: 0.6, gradientColor: 0xffd060 },
+  death:   { fadeColor: 0x000000, fadeAlphaTo: 1.0, gradientColor: 0xffffff },
+  success: { fadeColor: 0x5b8fc9, fadeAlphaTo: 0.8, gradientColor: 0xffd060 },
 };
 
 export class PlayerOutro {
@@ -274,23 +274,94 @@ export class PlayerOutro {
     }
 
     if (this.starburstGfx && this.proxy && this.starburstScale > 0) {
-      const palette = PALETTE[this.kind];
       this.starburstGfx.clear();
       const r = STARBURST_BASE_RADIUS * this.starburstScale;
       const cx = this.proxy.x;
       const cy = this.proxy.y;
-      this.starburstGfx.fillStyle(palette.gradientColor, this.starburstAlpha);
-      // Four triangular points: up, right, down, left
-      this.starburstGfx.fillTriangle(cx, cy - r, cx - r * 0.25, cy, cx + r * 0.25, cy);
-      this.starburstGfx.fillTriangle(cx + r, cy, cx, cy - r * 0.25, cx, cy + r * 0.25);
-      this.starburstGfx.fillTriangle(cx, cy + r, cx - r * 0.25, cy, cx + r * 0.25, cy);
-      this.starburstGfx.fillTriangle(cx - r, cy, cx, cy - r * 0.25, cx, cy + r * 0.25);
-      this.starburstGfx.lineStyle(1.5, 0x000000, this.starburstAlpha);
-      this.starburstGfx.strokeTriangle(cx, cy - r, cx - r * 0.25, cy, cx + r * 0.25, cy);
-      this.starburstGfx.strokeTriangle(cx + r, cy, cx, cy - r * 0.25, cx, cy + r * 0.25);
-      this.starburstGfx.strokeTriangle(cx, cy + r, cx - r * 0.25, cy, cx + r * 0.25, cy);
-      this.starburstGfx.strokeTriangle(cx - r, cy, cx, cy - r * 0.25, cx, cy + r * 0.25);
+      if (this.kind === 'death') {
+        this.drawSkull(cx, cy, r);
+      } else {
+        this.drawStar(cx, cy, r);
+      }
     }
+  }
+
+  private drawSkull(cx: number, cy: number, r: number): void {
+    const g = this.starburstGfx!;
+    const a = this.starburstAlpha;
+    const color = PALETTE[this.kind].gradientColor;
+    const skullCy = cy - r * 0.05;
+
+    // Cranium
+    g.fillStyle(color, a);
+    g.fillCircle(cx, skullCy, r * 0.84);
+    g.lineStyle(2, 0x000000, a);
+    g.strokeCircle(cx, skullCy, r * 0.84);
+
+    // Eyes
+    g.fillStyle(0x000000, a);
+    g.fillCircle(cx - r * 0.29, skullCy - r * 0.15, r * 0.21);
+    g.fillCircle(cx + r * 0.29, skullCy - r * 0.15, r * 0.21);
+
+    // Angry brow furrows — triangles cutting down into each eye from above-center
+    g.fillTriangle(
+      cx - r * 0.52, skullCy - r * 0.42,
+      cx - r * 0.06, skullCy - r * 0.42,
+      cx - r * 0.06, skullCy - r * 0.06,
+    );
+    g.fillTriangle(
+      cx + r * 0.06, skullCy - r * 0.42,
+      cx + r * 0.52, skullCy - r * 0.42,
+      cx + r * 0.06, skullCy - r * 0.06,
+    );
+
+    // Nose — downward triangle
+    g.fillTriangle(
+      cx - r * 0.09, skullCy + r * 0.12,
+      cx + r * 0.09, skullCy + r * 0.12,
+      cx,            skullCy + r * 0.28,
+    );
+
+    // Teeth — 4 gaps implying 5 teeth
+    const gapW = r * 0.11;
+    const gapH = r * 0.36;
+    const gapY = skullCy + r * 0.42;
+    for (const gx of [cx - r * 0.33, cx - r * 0.11, cx + r * 0.11, cx + r * 0.33]) {
+      g.fillRect(gx - gapW / 2, gapY, gapW, gapH);
+    }
+  }
+
+  private drawStar(cx: number, cy: number, r: number): void {
+    const g = this.starburstGfx!;
+    const a = this.starburstAlpha;
+    const color = PALETTE[this.kind].gradientColor;
+
+    // Outer 4-pointed star — clean perimeter outline, no inner crossings
+    const outer = PlayerOutro.starPolygon(cx, cy, r, r * 0.28, 4, -Math.PI / 2);
+    g.fillStyle(color, a);
+    g.fillPoints(outer, true);
+    g.lineStyle(1.5, 0x000000, a);
+    g.strokePoints(outer, true);
+
+    // Centre jewel — filled circle with outline, sits inside the star
+    g.fillStyle(0xffe8a0, a);
+    g.fillCircle(cx, cy, r * 0.2);
+    g.lineStyle(1.5, 0x000000, a);
+    g.strokeCircle(cx, cy, r * 0.2);
+  }
+
+  private static starPolygon(
+    cx: number, cy: number,
+    outerR: number, innerR: number,
+    numPoints: number, angleOffset: number,
+  ): { x: number; y: number }[] {
+    const pts: { x: number; y: number }[] = [];
+    for (let i = 0; i < numPoints * 2; i++) {
+      const rad = i % 2 === 0 ? outerR : innerR;
+      const a   = (i * Math.PI / numPoints) + angleOffset;
+      pts.push({ x: cx + rad * Math.cos(a), y: cy + rad * Math.sin(a) });
+    }
+    return pts;
   }
 
   private finish(): void {
