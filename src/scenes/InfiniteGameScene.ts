@@ -101,6 +101,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   create(): void {
     this._runKills     = {};
     this._runStartTime = null;
+    this._playerDead   = false;
     this.invincible    = false;
     this.generators    = [];
     this.layerGenerators = [];
