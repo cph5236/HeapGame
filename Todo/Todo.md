@@ -6,10 +6,8 @@
 Integration not started
 Call the Integrity API at important moments in your app to check that it's your app binary, installed by Google Play, running on a genuine Android device. Your app's backend server can decide what to do next to prevent abuse, unauthorized access, and attacks. Show less
 
-- Place random extra point when player adds to heap.
 - The claw elevator.
-- allow player to place specific objects on heap 
-- make cloudflare analytics engine delete data over 90 days
+- allow player to place specific objects on heap
 ### ENEMIES
 -   Jumper cables - spawn on walls and extend in and out slightly, if player touches them, player stunned loses controls
 
@@ -19,12 +17,4 @@ Call the Integrity API at important moments in your app to check that it's your 
 
 ### ORDER of importance --- V 0.2.0
 Google Play closed beta
-itch.io upload
 Ad integration
-
-### CI / DevOps
-- Upgrade GitHub Actions to Node.js 24-native versions (forced migration June 2, 2026)
-  - actions/checkout@v4 → latest v4 or v5 with Node.js 24 support
-  - actions/setup-node@v4 → latest with Node.js 24 support
-  - actions/setup-java@v4 → latest with Node.js 24 support
-  - FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true already added as stopgap
