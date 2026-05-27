@@ -161,13 +161,14 @@ export class MenuScene extends Phaser.Scene {
   // ── Heap silhouettes ─────────────────────────────────────────────────────────
 
   private createFarSilhouette(): void {
+    const sx = this.scale.width / 480;
     const points = [
-      { x: -20, y: this.scale.height }, { x: -20, y: 700 }, { x: 10,  y: 660 }, { x: 40,  y: 680 },
-      { x: 60,  y: 620 }, { x: 90,  y: 590 }, { x: 115, y: 610 }, { x: 140, y: 570 },
-      { x: 170, y: 540 }, { x: 195, y: 560 }, { x: 220, y: 510 }, { x: 240, y: 440 },
-      { x: 265, y: 480 }, { x: 290, y: 455 }, { x: 320, y: 490 }, { x: 345, y: 520 },
-      { x: 370, y: 500 }, { x: 395, y: 540 }, { x: 420, y: 580 }, { x: 440, y: 555 },
-      { x: 460, y: 610 }, { x: 490, y: 640 }, { x: 500, y: 700 }, { x: 500, y: this.scale.height },
+      { x: -20 * sx, y: this.scale.height }, { x: -20 * sx, y: 700 }, { x: 10  * sx, y: 660 }, { x: 40  * sx, y: 680 },
+      { x: 60  * sx, y: 620 }, { x: 90  * sx, y: 590 }, { x: 115 * sx, y: 610 }, { x: 140 * sx, y: 570 },
+      { x: 170 * sx, y: 540 }, { x: 195 * sx, y: 560 }, { x: 220 * sx, y: 510 }, { x: 240 * sx, y: 440 },
+      { x: 265 * sx, y: 480 }, { x: 290 * sx, y: 455 }, { x: 320 * sx, y: 490 }, { x: 345 * sx, y: 520 },
+      { x: 370 * sx, y: 500 }, { x: 395 * sx, y: 540 }, { x: 420 * sx, y: 580 }, { x: 440 * sx, y: 555 },
+      { x: 460 * sx, y: 610 }, { x: 490 * sx, y: 640 }, { x: 500 * sx, y: 700 }, { x: 500 * sx, y: this.scale.height },
     ];
     this.farSilhouette = this.add.graphics().setDepth(2).setAlpha(0);
     this.farSilhouette.fillStyle(0x1a1225, 1);
@@ -175,18 +176,19 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private createNearSilhouette(): void {
+    const sx = this.scale.width / 480;
     const points = [
-      { x: 0,   y: this.scale.height }, { x: 0,   y: 720 }, { x: 18,  y: 695 }, { x: 35,  y: 710 },
-      { x: 50,  y: 670 }, { x: 68,  y: 640 }, { x: 82,  y: 655 }, { x: 100, y: 615 },
-      { x: 118, y: 595 }, { x: 130, y: 610 }, { x: 148, y: 575 }, { x: 162, y: 548 },
-      { x: 175, y: 565 }, { x: 192, y: 530 }, { x: 208, y: 505 }, { x: 220, y: 520 },
-      { x: 235, y: 490 }, { x: 248, y: 465 }, { x: 255, y: 478 }, { x: 262, y: 450 },
-      { x: 268, y: 420 }, { x: 272, y: 395 }, { x: 278, y: 410 }, { x: 284, y: 388 },
-      { x: 290, y: 400 }, { x: 296, y: 415 }, { x: 304, y: 435 }, { x: 316, y: 455 },
-      { x: 328, y: 440 }, { x: 340, y: 465 }, { x: 355, y: 490 }, { x: 368, y: 475 },
-      { x: 382, y: 505 }, { x: 395, y: 530 }, { x: 408, y: 515 }, { x: 422, y: 545 },
-      { x: 438, y: 570 }, { x: 450, y: 555 }, { x: 462, y: 590 }, { x: 472, y: 625 },
-      { x: 480, y: 660 }, { x: 480, y: this.scale.height },
+      { x: 0,         y: this.scale.height }, { x: 0,         y: 720 }, { x: 18  * sx, y: 695 }, { x: 35  * sx, y: 710 },
+      { x: 50  * sx,  y: 670 }, { x: 68  * sx, y: 640 }, { x: 82  * sx, y: 655 }, { x: 100 * sx, y: 615 },
+      { x: 118 * sx,  y: 595 }, { x: 130 * sx, y: 610 }, { x: 148 * sx, y: 575 }, { x: 162 * sx, y: 548 },
+      { x: 175 * sx,  y: 565 }, { x: 192 * sx, y: 530 }, { x: 208 * sx, y: 505 }, { x: 220 * sx, y: 520 },
+      { x: 235 * sx,  y: 490 }, { x: 248 * sx, y: 465 }, { x: 255 * sx, y: 478 }, { x: 262 * sx, y: 450 },
+      { x: 268 * sx,  y: 420 }, { x: 272 * sx, y: 395 }, { x: 278 * sx, y: 410 }, { x: 284 * sx, y: 388 },
+      { x: 290 * sx,  y: 400 }, { x: 296 * sx, y: 415 }, { x: 304 * sx, y: 435 }, { x: 316 * sx, y: 455 },
+      { x: 328 * sx,  y: 440 }, { x: 340 * sx, y: 465 }, { x: 355 * sx, y: 490 }, { x: 368 * sx, y: 475 },
+      { x: 382 * sx,  y: 505 }, { x: 395 * sx, y: 530 }, { x: 408 * sx, y: 515 }, { x: 422 * sx, y: 545 },
+      { x: 438 * sx,  y: 570 }, { x: 450 * sx, y: 555 }, { x: 462 * sx, y: 590 }, { x: 472 * sx, y: 625 },
+      { x: 480 * sx,  y: 660 }, { x: 480 * sx, y: this.scale.height },
     ];
     this.nearSilhouette = this.add.graphics().setDepth(4).setAlpha(0);
     this.nearSilhouette.fillStyle(0x0d0910, 1);
@@ -251,7 +253,7 @@ export class MenuScene extends Phaser.Scene {
 
   private createFloatingClouds(): void {
     const data: [number, number, number, boolean, number][] = [
-      [480,  80,  2.2, true,  18000],
+      [this.scale.width, 80,  2.2, true,  18000],
       [300,  155, 1.4, true,  22000],
       [100,  220, 3.0, true,  28000],
       [-32,  310, 1.8, false, 20000],

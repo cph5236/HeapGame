@@ -20,7 +20,11 @@
         bottom: env(safe-area-inset-bottom, 0px);
         left: 50%;
         transform: translateX(-50%);
-        width: min(100vw, 480px);
+        /* Scale as wide as possible up to a 3:4 (width:height) cap */
+        width: min(
+          100vw,
+          calc((100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * 0.75)
+        );
       }
       canvas {
         display: block;

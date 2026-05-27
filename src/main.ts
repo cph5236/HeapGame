@@ -44,5 +44,37 @@ const config: Phaser.Types.Core.GameConfig = {
   parent: 'game',
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
 installAudioFocusGuard();
+
+// Restart UI scenes when the window is resized so they reposition their
+// objects at the new canvas size. Gameplay scenes are excluded because a
+// mid-game restart would discard all in-progress state.
+//
+// Guard: only restart once gameAssetsReady is true. If a resize fires during
+// the initial asset load, restarting the scene orphans the loader's COMPLETE
+// callback, which means gameAssetsReady never gets set and the START RUN
+// button stays stuck in LOADING forever.
+const RESIZE_SAFE_SCENES = ['MenuScene', 'HeapSelectScene', 'UpgradeScene', 'StoreScene', 'LeaderboardScene'];
+let _resizeTimer: ReturnType<typeof setTimeout>;
+let _lastResizeW = 0;
+let _lastResizeH = 0;
+
+game.scale.on(Phaser.Scale.Events.RESIZE, (gameSize: Phaser.Structs.Size) => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => {
+    if (game.registry.get('gameAssetsReady') !== true) return;
+
+    const w = Math.round(gameSize.width);
+    const h = Math.round(gameSize.height);
+    if (w === _lastResizeW && h === _lastResizeH) return;
+    _lastResizeW = w;
+    _lastResizeH = h;
+
+    for (const scene of game.scene.getScenes(true)) {
+      if (RESIZE_SAFE_SCENES.includes(scene.scene.key)) {
+        scene.scene.restart();
+      }
+    }
+  }, 200);
+});
