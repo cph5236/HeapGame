@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, LADDER_WIDTH, LADDER_HEIGHT, IBEAM_WIDTH, IBEAM_HEIGHT } from '../constants';
+import { LADDER_WIDTH, LADDER_HEIGHT, IBEAM_WIDTH, IBEAM_HEIGHT } from '../constants';
 
 interface TextureEntry {
   key: string;
@@ -23,7 +23,6 @@ const COLS      = 2;
 const CELL_W    = 210;
 const CELL_H    = 150;
 const CELL_GAP  = 12;
-const MARGIN_X  = (GAME_WIDTH - COLS * CELL_W - (COLS - 1) * CELL_GAP) / 2;
 const HEADER_H  = 64;
 const PREVIEW_BOX = 96; // max px for texture display inside a cell
 
@@ -33,14 +32,18 @@ export class TexturePreviewScene extends Phaser.Scene {
   }
 
   create(): void {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const marginX = (W - COLS * CELL_W - (COLS - 1) * CELL_GAP) / 2;
+
     // Background
-    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0c0c1a).setOrigin(0, 0);
+    this.add.rectangle(0, 0, W, H, 0x0c0c1a).setOrigin(0, 0);
 
     // Header
-    this.add.text(GAME_WIDTH / 2, 22, 'TEXTURE PREVIEW', {
+    this.add.text(W / 2, 22, 'TEXTURE PREVIEW', {
       fontSize: '20px', fontStyle: 'bold', color: '#99aabb',
     }).setOrigin(0.5);
-    this.add.text(GAME_WIDTH / 2, 46, 'tap a sprite to zoom', {
+    this.add.text(W / 2, 46, 'tap a sprite to zoom', {
       fontSize: '12px', color: '#445566',
     }).setOrigin(0.5);
 
@@ -48,13 +51,13 @@ export class TexturePreviewScene extends Phaser.Scene {
     ENTRIES.forEach((entry, i) => {
       const col = i % COLS;
       const row = Math.floor(i / COLS);
-      const cx = MARGIN_X + col * (CELL_W + CELL_GAP) + CELL_W / 2;
+      const cx = marginX + col * (CELL_W + CELL_GAP) + CELL_W / 2;
       const cy = HEADER_H + row * (CELL_H + CELL_GAP) + CELL_H / 2;
       this.createTile(cx, cy, entry);
     });
 
     // Footer
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 18, 'ESC or F2 — back to menu', {
+    this.add.text(W / 2, H - 18, 'ESC or F2 — back to menu', {
       fontSize: '12px', color: '#334455',
     }).setOrigin(0.5);
 
@@ -93,34 +96,36 @@ export class TexturePreviewScene extends Phaser.Scene {
 
   private showZoom(entry: TextureEntry): void {
     const ZOOM_DEPTH = 20;
+    const W = this.scale.width;
+    const H = this.scale.height;
 
-    const overlay = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.88)
+    const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.88)
       .setOrigin(0, 0)
       .setDepth(ZOOM_DEPTH)
       .setInteractive();
 
     // Scale to fill ~80% of whichever dimension is the constraint
-    const maxW = GAME_WIDTH  * 0.82;
-    const maxH = GAME_HEIGHT * 0.58;
+    const maxW = W * 0.82;
+    const maxH = H * 0.58;
     const scale = Math.min(maxW / entry.w, maxH / entry.h);
 
     const displayH = entry.h * scale;
 
-    const img = this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30, entry.key)
+    const img = this.add.image(W / 2, H / 2 - 30, entry.key)
       .setScale(scale)
       .setOrigin(0.5)
       .setDepth(ZOOM_DEPTH + 1);
 
     const info = this.add.text(
-      GAME_WIDTH / 2,
-      GAME_HEIGHT / 2 + displayH / 2 + 18,
+      W / 2,
+      H / 2 + displayH / 2 + 18,
       `${entry.label}   ·   ${scale.toFixed(1)}× zoom`,
       { fontSize: '14px', color: '#99aabb', align: 'center' },
     ).setOrigin(0.5).setDepth(ZOOM_DEPTH + 1);
 
     const hint = this.add.text(
-      GAME_WIDTH / 2,
-      GAME_HEIGHT / 2 + displayH / 2 + 44,
+      W / 2,
+      H / 2 + displayH / 2 + 44,
       'tap to close',
       { fontSize: '11px', color: '#334455' },
     ).setOrigin(0.5).setDepth(ZOOM_DEPTH + 1);
