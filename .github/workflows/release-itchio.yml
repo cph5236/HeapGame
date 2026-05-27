@@ -3,6 +3,8 @@ name: Release to itch.io
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -24,11 +26,13 @@ jobs:
 
       - name: Install butler
         run: |
-          curl -L -o butler "https://github.com/itchio/butler/releases/latest/download/butler-linux-amd64"
+          curl -L -o butler.zip "https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default"
+          unzip butler.zip
           chmod +x butler
           ./butler -V
 
       - name: Push to itch.io
+        if: github.event_name != 'pull_request'
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
         run: ./butler push dist/ hanlinsoftware/heap:html5
