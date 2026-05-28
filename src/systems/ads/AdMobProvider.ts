@@ -38,13 +38,13 @@ export class AdMobProvider implements AdProvider {
 
         const dismissedHandle = AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
           Promise.all([rewardedHandle, dismissedHandle])
-            .then(([rh, dh]) => { rh.remove(); dh.remove(); });
+            .then(([rh, dh]) => Promise.all([rh.remove(), dh.remove()]));
           resolve(rewarded);
         });
 
         AdMob.showRewardVideoAd().catch(() => {
           Promise.all([rewardedHandle, dismissedHandle])
-            .then(([rh, dh]) => { rh.remove(); dh.remove(); });
+            .then(([rh, dh]) => Promise.all([rh.remove(), dh.remove()]));
           resolve(false);
         });
       });
