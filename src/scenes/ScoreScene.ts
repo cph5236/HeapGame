@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../systems/AudioManager';
+import { AdClient } from '../systems/ads/AdClient';
 import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N } from '../constants';
 import {
   addBalance,
@@ -100,6 +101,7 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   create(): void {
+    AdClient.showInterstitial(); // fire-and-forget; native overlay, non-blocking
     AudioManager.play('music-score');
     // Check and update local high score before rendering anything
     if (this.heapId && this.score > 0) {
