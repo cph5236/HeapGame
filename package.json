@@ -1,6 +1,6 @@
 {
   "name": "heap-game",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -25,6 +25,7 @@
     "simplex-noise": "^4.0.3"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "8.2.0",
     "@playwright/test": "^1.60.0",
     "@types/node": "25.5.0",
