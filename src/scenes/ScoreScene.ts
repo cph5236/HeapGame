@@ -51,6 +51,10 @@ export class ScoreScene extends Phaser.Scene {
   private _breakdownOpen    = false;
   private _breakdownObjects: Phaser.GameObjects.GameObject[] = [];
 
+  private _rewardedUsed:   boolean                        = false;
+  private _balanceText:    Phaser.GameObjects.Text | null = null;
+  private _finalCoins:     number                         = 0;
+
   constructor() {
     super({ key: 'ScoreScene' });
   }
@@ -137,6 +141,7 @@ export class ScoreScene extends Phaser.Scene {
       this._coinsAwarded = true;
       addBalance(result.finalCoins);
     }
+    this._finalCoins = result.finalCoins;
     const balance = getBalance();
 
     this.createBackground();
@@ -148,6 +153,7 @@ export class ScoreScene extends Phaser.Scene {
     this.createScoreDisplay();
     if (this.isNewHighScore) this.createHighScoreBadge();
     const coinsPanelBottom = this.createCoinsPanel(result.rows, result.finalCoins, balance);
+    this.createRewardedAdButton(coinsPanelBottom);
     this.createLeaderboardPanel(coinsPanelBottom);
     this.createCheckpointButton();
     this.createMenuPrompt();
@@ -631,6 +637,7 @@ export class ScoreScene extends Phaser.Scene {
     const balVal     = this.add.text(balRight, 0, `${balance} coins`, {
       fontSize: '12px', fontFamily: 'monospace', color: coinColor, fontStyle: 'bold',
     }).setOrigin(1, 0.5);
+    this._balanceText = balVal;
 
     const repositionBalance = () => {
       const divY   = lastRowBottom + toggleSlot + 10;
@@ -672,6 +679,55 @@ export class ScoreScene extends Phaser.Scene {
       off_peak_bonus: 'Off-Peak Bonus',
     };
     return labels[type] ?? type;
+  }
+
+  // ── Rewarded Ad Button ────────────────────────────────────────────────────────
+
+  private createRewardedAdButton(panelBottom: number): void {
+    if (this._rewardedUsed) return;
+
+    const cx  = this.scale.width  / 2;
+    const btn = this.add.container(cx, panelBottom + 18);
+
+    const bg = this.add.graphics();
+    const W = 220, H = 36;
+    bg.fillStyle(0xffcc00, 0.15);
+    bg.lineStyle(1, 0xffcc00, 0.5);
+    bg.fillRoundedRect(-W / 2, -H / 2, W, H, 8);
+    bg.strokeRoundedRect(-W / 2, -H / 2, W, H, 8);
+
+    const label = this.add.text(0, 0, '▶  Watch ad → 2× coins', {
+      fontSize: '13px',
+      fontFamily: 'monospace',
+      color: '#ffdd66',
+    }).setOrigin(0.5);
+
+    btn.add([bg, label]);
+    btn.setSize(W, H);
+    btn.setInteractive({ cursor: 'pointer' });
+    btn.setAlpha(0);
+
+    this.time.delayedCall(1500, () => {
+      this.tweens.add({ targets: btn, alpha: 1, duration: 300, ease: 'Cubic.Out' });
+    });
+
+    btn.on('pointerdown', async () => {
+      if (this._rewardedUsed) return;
+      this._rewardedUsed = true;
+      btn.disableInteractive();
+      label.setText('Loading ad…');
+
+      const watched = await AdClient.showRewarded();
+      if (watched) {
+        addBalance(this._finalCoins);
+        const newBalance = getBalance();
+        this._balanceText?.setText(`${newBalance} coins`);
+        label.setText('2× coins awarded!');
+        this.time.delayedCall(1200, () => this.tweens.add({ targets: btn, alpha: 0, duration: 300 }));
+      } else {
+        this.tweens.add({ targets: btn, alpha: 0, duration: 200 });
+      }
+    });
   }
 
   // ── Leaderboard Panel ─────────────────────────────────────────────────────────
