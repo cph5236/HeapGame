@@ -4,5 +4,5 @@
     <string name="title_activity_main">Heap</string>
     <string name="package_name">com.hanlinsoftware.heapgame.app</string>
     <string name="custom_url_scheme">com.hanlinsoftware.heapgame.app</string>
-    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
+    <string name="admob_app_id">ca-app-pub-9580963584294486~3128171883</string>
 </resources>
