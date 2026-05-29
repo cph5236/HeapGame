@@ -24,10 +24,12 @@ jobs:
           java-version: 21
 
       - run: npm ci
-      - run: npm run build
+      - run: npm run build:android
         env:
           VITE_HEAP_SERVER_URL: ${{ secrets.VITE_HEAP_SERVER_URL }}
-      - run: npx cap sync android
+          VITE_AD_PROVIDER: admob
+          VITE_ADMOB_INTERSTITIAL_ID: ${{ secrets.VITE_ADMOB_INTERSTITIAL_ID }}
+          VITE_ADMOB_REWARDED_ID: ${{ secrets.VITE_ADMOB_REWARDED_ID }}
 
       # ---- PR path: unsigned verify build only (no secrets, no AAB upload) ----
       - name: Build (PR — unsigned verify)

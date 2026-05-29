@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../systems/AudioManager';
+import { AdClient } from '../systems/ads/AdClient';
+import * as AdCadence from '../systems/ads/AdCadence';
 import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N } from '../constants';
 import {
   addBalance,
@@ -32,7 +34,6 @@ export class ScoreScene extends Phaser.Scene {
   private isPeak:              boolean = false;
   private checkpointAvailable: boolean = false;
   private isFailure:           boolean = false;
-  private _coinsAwarded:       boolean = false;
   private heapId:              string  = '';
   private isNewHighScore:      boolean = false;
 
@@ -49,6 +50,19 @@ export class ScoreScene extends Phaser.Scene {
 
   private _breakdownOpen    = false;
   private _breakdownObjects: Phaser.GameObjects.GameObject[] = [];
+
+  private _rewardedUsed:   boolean = false;
+  private _multiplier:     number  = 1;
+  private _coinsCommitted: boolean = false;
+  private _finalCoins:     number  = 0;
+
+  private _isAdRun:        boolean = false;
+  private _rewardedWatched: boolean = false;
+
+  private _coinsPanelObjects:  Phaser.GameObjects.GameObject[] = [];
+  private _leaderboardObjects: Phaser.GameObjects.GameObject[] = [];
+  private _coinsPanelBottom:   number = 0;
+  private _breakdownInput: import('../systems/coinBreakdown').BreakdownInput | null = null;
 
   constructor() {
     super({ key: 'ScoreScene' });
@@ -84,6 +98,21 @@ export class ScoreScene extends Phaser.Scene {
     this._forceBreakdownOpen = data.forceBreakdownOpen  ?? false;
     this._mockPlayerConfig   = data.mockPlayerConfig    ?? {};
 
+    // Reset per-run state (Phaser reuses scene instances across restarts)
+    this._rewardedUsed     = false;
+    this._multiplier       = 1;
+    this._coinsCommitted   = false;
+    this._finalCoins       = 0;
+    this.isNewHighScore    = false;
+    this._breakdownOpen    = false;
+    this._breakdownObjects = [];
+    this._isAdRun          = false;
+    this._rewardedWatched  = false;
+    this._coinsPanelObjects  = [];
+    this._leaderboardObjects = [];
+    this._coinsPanelBottom   = 0;
+    this._breakdownInput     = null;
+
     // Achievements that trigger on any completed run (fire-and-forget)
     const firstClimbId = getPlayConsoleId('first_climb');
     if (firstClimbId) PlayGamesClient.unlockAchievement(firstClimbId);
@@ -101,6 +130,9 @@ export class ScoreScene extends Phaser.Scene {
 
   create(): void {
     AudioManager.play('music-score');
+    const isPreview = this._mockLeaderboard !== null || this._forceBreakdownOpen
+      || Object.keys(this._mockPlayerConfig).length > 0;
+    this._isAdRun = isPreview ? false : AdCadence.registerRun(AdClient.enabled);
     // Check and update local high score before rendering anything
     if (this.heapId && this.score > 0) {
       const prev = getLocalHighScore(this.heapId);
@@ -120,7 +152,7 @@ export class ScoreScene extends Phaser.Scene {
     }
 
     const cfg    = { ...getPlayerConfig(), ...this._mockPlayerConfig };
-    const result = buildCoinBreakdown({
+    const breakdownInput = {
       score:           this.score,
       scoreToCoins:    SCORE_TO_COINS_DIVISOR,
       moneyMultiplier: cfg.moneyMultiplier,
@@ -129,13 +161,12 @@ export class ScoreScene extends Phaser.Scene {
       peakMultiplier:  cfg.peakMultiplier,
       isFailure:       this.isFailure,
       offPeakBonus:    this._bonusCoins,
-    });
+    };
+    this._breakdownInput = breakdownInput;
+    const result = buildCoinBreakdown(breakdownInput);
 
-    if (!this._coinsAwarded) {
-      this._coinsAwarded = true;
-      addBalance(result.finalCoins);
-    }
-    const balance = getBalance();
+    this._finalCoins = result.finalCoins;
+    const balance = getBalance() + result.finalCoins * this._multiplier;
 
     this.createBackground();
     this.createStarField();
@@ -145,9 +176,9 @@ export class ScoreScene extends Phaser.Scene {
     this.createTitle();
     this.createScoreDisplay();
     if (this.isNewHighScore) this.createHighScoreBadge();
-    const coinsPanelBottom = this.createCoinsPanel(result.rows, result.finalCoins, balance);
-    this.createLeaderboardPanel(coinsPanelBottom);
-    this.createCheckpointButton();
+    this._coinsPanelBottom = this.createCoinsPanel(result.rows, result.finalCoins, balance);
+    this.createLeaderboardPanel(this._coinsPanelBottom);
+    this.createBottomButtons();
     this.createMenuPrompt();
 
     if (this._forceBreakdownOpen && this._scoreRows.length > 0) {
@@ -465,6 +496,10 @@ export class ScoreScene extends Phaser.Scene {
   // ── Coins Panel ───────────────────────────────────────────────────────────────
 
   private createCoinsPanel(rows: BreakdownRow[], finalCoins: number, balance: number): number {
+    // Destroy previous panel objects so they can be rebuilt
+    this._coinsPanelObjects.forEach(o => o.destroy());
+    this._coinsPanelObjects = [];
+
     const PANEL_X    = this.scale.width / 2;
     const PANEL_TOP  = this.scale.height * 0.37;
     const PANEL_W    = this.scale.width * 0.88;
@@ -478,6 +513,7 @@ export class ScoreScene extends Phaser.Scene {
       peak_hunter:   { accent: 0xcc44ff, accentHex: '#cc44ff', labelHex: '#dd88ff' },
       death_penalty: { accent: 0xff4444, accentHex: '#ff4444', labelHex: '#ff8877' },
       off_peak_bonus: { accent: 0x44aaff, accentHex: '#44aaff', labelHex: '#88ccff' },
+      ad_bonus:       { accent: 0xffcc00, accentHex: '#ffcc00', labelHex: '#ffdd66' },
     };
 
     // Collapse threshold
@@ -502,6 +538,7 @@ export class ScoreScene extends Phaser.Scene {
 
     // Panel background
     const bg = this.add.graphics();
+    this._coinsPanelObjects.push(bg);
     const drawBg = (collapsed: boolean) => {
       bg.clear();
       const h = panelHeight(collapsed);
@@ -523,11 +560,13 @@ export class ScoreScene extends Phaser.Scene {
       `+${finalCoins} coins earned`,
       { fontSize: '22px', fontFamily: 'monospace', color: coinColor, fontStyle: 'bold' },
     ).setOrigin(0.5, 0);
+    this._coinsPanelObjects.push(headerText);
 
     // Divider
     const divG = this.add.graphics();
     divG.lineStyle(1, this.isFailure ? 0xff5555 : 0x44ff88, 0.15);
     divG.lineBetween(PANEL_X - PANEL_W / 2 + 10, PANEL_TOP + 42, PANEL_X + PANEL_W / 2 - 10, PANEL_TOP + 42);
+    this._coinsPanelObjects.push(divG);
 
     // Row rendering helper
     const rowObjects: Phaser.GameObjects.GameObject[] = [];
@@ -591,6 +630,7 @@ export class ScoreScene extends Phaser.Scene {
 
     let collapsed     = shouldCollapse;
     let lastRowBottom = renderRows(collapsed);
+    this._coinsPanelObjects.push(...rowObjects);
 
     // Collapse toggle
     let toggleText: Phaser.GameObjects.Text | null = null;
@@ -611,11 +651,13 @@ export class ScoreScene extends Phaser.Scene {
       toggleText.on('pointerup', () => {
         collapsed     = !collapsed;
         lastRowBottom = renderRows(collapsed);
+        this._coinsPanelObjects.push(...rowObjects);
         drawBg(collapsed);
         toggleText!.setText(collapsed ? '\u25bc show' : '\u25b2 hide');
         toggleText!.setY(lastRowBottom + 4);
         repositionBalance();
       });
+      this._coinsPanelObjects.push(toggleText);
     }
 
     // Balance row \u2014 always visible at the bottom of the panel, below the toggle
@@ -629,6 +671,7 @@ export class ScoreScene extends Phaser.Scene {
     const balVal     = this.add.text(balRight, 0, `${balance} coins`, {
       fontSize: '12px', fontFamily: 'monospace', color: coinColor, fontStyle: 'bold',
     }).setOrigin(1, 0.5);
+    this._coinsPanelObjects.push(balDivG, balLbl, balVal);
 
     const repositionBalance = () => {
       const divY   = lastRowBottom + toggleSlot + 10;
@@ -658,18 +701,134 @@ export class ScoreScene extends Phaser.Scene {
       });
     });
 
-    return PANEL_TOP + panelHeight(collapsed) + 40; // +20 matches the slide-down intro tween
+    this._coinsPanelBottom = PANEL_TOP + panelHeight(collapsed) + 40;
+    return this._coinsPanelBottom;
   }
 
-  private rowLabel(type: 'money_mult' | 'heap_coin_mult' | 'peak_hunter' | 'death_penalty' | 'off_peak_bonus'): string {
+  private rowLabel(type: 'money_mult' | 'heap_coin_mult' | 'peak_hunter' | 'death_penalty' | 'off_peak_bonus' | 'ad_bonus'): string {
     const labels: Record<string, string> = {
       money_mult:     'Coin Multiplier',
       heap_coin_mult: 'Heap Coin Bonus',
       peak_hunter:    'Peak Bonus \u2736',
       death_penalty:  'Death Penalty \ud83d\udc80',
       off_peak_bonus: 'Off-Peak Bonus',
+      ad_bonus:       'Ad Bonus \u25b6',
     };
     return labels[type] ?? type;
+  }
+
+  private commitCoins(): void {
+    if (this._coinsCommitted) return;
+    this._coinsCommitted = true;
+    addBalance(this._finalCoins * this._multiplier);
+  }
+
+  // ── Bottom Buttons ────────────────────────────────────────────────────────────
+
+  private createBottomButtons(): void {
+    const btnY     = this.scale.height * 0.87;
+    const showAd   = this._isAdRun && !this._rewardedUsed;
+    const showCkpt = this.checkpointAvailable;
+
+    if (showAd && showCkpt) {
+      this.createCheckpointButtonAt(this.scale.width * 0.25, btnY, true);
+      this.createRewardedAdButtonAt(this.scale.width * 0.75, btnY, true);
+    } else if (showCkpt) {
+      this.createCheckpointButtonAt(this.scale.width / 2, btnY, false);
+    } else if (showAd) {
+      this.createRewardedAdButtonAt(this.scale.width / 2, btnY, false);
+    }
+  }
+
+  private createCheckpointButtonAt(cx: number, cy: number, compact: boolean): void {
+    const label    = compact ? 'CHECKPOINT' : 'RESPAWN AT CHECKPOINT';
+    const fontSize = compact ? '12px' : '14px';
+    const padX     = compact ? 14 : 20;
+
+    const btn = this.add.text(cx, cy, label, {
+      fontSize,
+      fontFamily:      'monospace',
+      color:           '#ffffff',
+      backgroundColor: '#1a6b3acc',
+      padding:         { x: padX, y: 10 },
+      fontStyle:       'bold',
+    }).setOrigin(0.5);
+
+    btn.on('pointerover', () => { btn.setColor('#aaffcc'); btn.setBackgroundColor('#22994ecc'); });
+    btn.on('pointerout',  () => { btn.setColor('#ffffff'); btn.setBackgroundColor('#1a6b3acc'); });
+
+    this.time.delayedCall(1500, () => {
+      btn.setInteractive({ useHandCursor: true });
+      btn.once('pointerup', () => {
+        this.commitCoins();
+        this.scene.stop('ScoreScene');
+        this.scene.stop('GameScene');
+        this.scene.start('GameScene', { useCheckpoint: true });
+      });
+    });
+  }
+
+  private createRewardedAdButtonAt(cx: number, cy: number, compact: boolean): void {
+    const W         = compact ? 200 : 220;
+    const H         = 36;
+    const labelText = compact ? '▶  2× coins' : '▶  Watch ad → 2× coins';
+    const fontSize  = compact ? '12px' : '13px';
+
+    const btn = this.add.container(cx, cy);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0xffcc00, 0.15);
+    bg.lineStyle(1, 0xffcc00, 0.5);
+    bg.fillRoundedRect(-W / 2, -H / 2, W, H, 8);
+    bg.strokeRoundedRect(-W / 2, -H / 2, W, H, 8);
+
+    const label = this.add.text(0, 0, labelText, {
+      fontSize,
+      fontFamily: 'monospace',
+      color: '#ffdd66',
+    }).setOrigin(0.5);
+
+    btn.add([bg, label]);
+    btn.setSize(W, H);
+    btn.setInteractive({ cursor: 'pointer' });
+    btn.setAlpha(0);
+
+    this.time.delayedCall(1500, () => {
+      this.tweens.add({ targets: btn, alpha: 1, duration: 300, ease: 'Cubic.Out' });
+    });
+
+    btn.on('pointerup', async () => {
+      if (this._rewardedUsed) return;
+      this._rewardedUsed = true;
+      btn.disableInteractive();
+      label.setText('Loading ad…');
+
+      const watched = await AdClient.showRewarded();
+      if (watched) {
+        this._rewardedWatched = true;
+        this._multiplier = 2;
+
+        const prevBottom = this._coinsPanelBottom;
+        const result2    = buildCoinBreakdown({ ...this._breakdownInput!, adBonusMultiplier: 2 });
+        const newBalance = getBalance() + result2.finalCoins;
+        const newBottom  = this.createCoinsPanel(result2.rows, result2.finalCoins, newBalance);
+
+        const delta = newBottom - prevBottom;
+        if (delta !== 0 && this._leaderboardObjects.length > 0) {
+          this.tweens.add({
+            targets:  this._leaderboardObjects,
+            y:        `+=${delta}`,
+            duration: 250,
+            ease:     'Cubic.Out',
+          });
+        }
+
+        label.setText('2× coins awarded!');
+        this.time.delayedCall(1200, () => this.tweens.add({ targets: btn, alpha: 0, duration: 300 }));
+      } else {
+        this.tweens.add({ targets: btn, alpha: 0, duration: 200 });
+      }
+    });
   }
 
   // ── Leaderboard Panel ─────────────────────────────────────────────────────────
@@ -755,11 +914,13 @@ export class ScoreScene extends Phaser.Scene {
     const PAD_X  = 14;
     const left   = this.scale.width / 2 - panelW / 2 + PAD_X;
     const right  = this.scale.width / 2 + panelW / 2 - PAD_X;
+    const lb     = this._leaderboardObjects;
 
     // "HIGH SCORES" label above the panel — styled like SCORE label but smaller, left-aligned
-    this.add.text(left, panelTop +4, 'HIGH SCORES', {
+    const highScoresLabel = this.add.text(left, panelTop +4, 'HIGH SCORES', {
       fontSize: '14px', fontFamily: 'monospace', color: '#ffdd44', letterSpacing: 2,
     }).setOrigin(0, 1);
+    lb.push(highScoresLabel);
 
     // Panel background
     const totalRows = ctx.top.length + (ctx.player && !this.playerInTop(ctx) ? 2 : 0); // +1 for gap, +1 for player
@@ -769,6 +930,7 @@ export class ScoreScene extends Phaser.Scene {
     bg.lineStyle(1, 0x336699, 0.3);
     bg.fillRoundedRect(this.scale.width / 2 - panelW / 2, panelTop, panelW, panelH, 6);
     bg.strokeRoundedRect(this.scale.width / 2 - panelW / 2, panelTop, panelW, panelH, 6);
+    lb.push(bg);
 
     let y = panelTop + 4;
 
@@ -784,71 +946,58 @@ export class ScoreScene extends Phaser.Scene {
       const stripe = this.add.graphics();
       stripe.fillStyle(i % 2 === 0 ? 0x0d3155 : 0x071d33, 0.5);
       stripe.fillRect(this.scale.width / 2 - panelW / 2, y, panelW, rowH);
+      lb.push(stripe);
 
-      this.add.text(left, mid, `#${entry.rank}`, {
+      const rankTxt = this.add.text(left, mid, `#${entry.rank}`, {
         fontSize: '11px', fontFamily: 'monospace', color: rankCol,
       }).setOrigin(0, 0.5);
-      this.add.text(left + 36, mid, entry.name, {
+      lb.push(rankTxt);
+
+      const nameTxt = this.add.text(left + 36, mid, entry.name, {
         fontSize: '11px', fontFamily: 'monospace', color: nameCol,
       }).setOrigin(0, 0.5);
-      this.add.text(right, mid, String(entry.score), {
+      lb.push(nameTxt);
+
+      const scoreTxt = this.add.text(right, mid, String(entry.score), {
         fontSize: '11px', fontFamily: 'monospace', color: nameCol,
       }).setOrigin(1, 0.5);
+      lb.push(scoreTxt);
+
       y += rowH;
     }
 
     // Gap + player row if player is not already in top N
     if (ctx.player && !this.playerInTop(ctx)) {
-      this.add.text(this.scale.width / 2, y + rowH / 2, '·  ·  ·', {
+      const gapDots = this.add.text(this.scale.width / 2, y + rowH / 2, '·  ·  ·', {
         fontSize: '10px', fontFamily: 'monospace', color: '#335566',
       }).setOrigin(0.5, 0.5);
+      lb.push(gapDots);
       y += rowH;
 
       const p      = ctx.player;
       const pColor = this.isNewHighScore ? '#ffdd44' : '#aaccee';
       const mid    = y + rowH / 2;
-      this.add.text(left, mid, `#${p.rank}`, {
+
+      const pRankTxt = this.add.text(left, mid, `#${p.rank}`, {
         fontSize: '11px', fontFamily: 'monospace', color: pColor,
       }).setOrigin(0, 0.5);
-      this.add.text(left + 36, mid, p.name, {
+      lb.push(pRankTxt);
+
+      const pNameTxt = this.add.text(left + 36, mid, p.name, {
         fontSize: '11px', fontFamily: 'monospace', color: pColor,
       }).setOrigin(0, 0.5);
-      this.add.text(right, mid, String(p.score), {
+      lb.push(pNameTxt);
+
+      const pScoreTxt = this.add.text(right, mid, String(p.score), {
         fontSize: '11px', fontFamily: 'monospace', color: pColor,
       }).setOrigin(1, 0.5);
+      lb.push(pScoreTxt);
     }
   }
 
   private playerInTop(ctx: LeaderboardContext): boolean {
     if (!ctx.player) return false;
     return ctx.top.some(e => e.playerId === ctx.player!.playerId);
-  }
-
-  // ── Checkpoint Button ─────────────────────────────────────────────────────────
-
-  private createCheckpointButton(): void {
-    if (!this.checkpointAvailable) return;
-
-    const btn = this.add.text(this.scale.width / 2, this.scale.height * 0.87, 'RESPAWN AT CHECKPOINT', {
-      fontSize:        '14px',
-      fontFamily:      'monospace',
-      color:           '#ffffff',
-      backgroundColor: '#1a6b3acc',
-      padding:         { x: 20, y: 10 },
-      fontStyle:       'bold',
-    }).setOrigin(0.5);
-
-    btn.on('pointerover', () => { btn.setColor('#aaffcc'); btn.setBackgroundColor('#22994ecc'); });
-    btn.on('pointerout',  () => { btn.setColor('#ffffff'); btn.setBackgroundColor('#1a6b3acc'); });
-
-    this.time.delayedCall(1500, () => {
-      btn.setInteractive({ useHandCursor: true });
-      btn.once('pointerup', () => {
-        this.scene.stop('ScoreScene');
-        this.scene.stop('GameScene');
-        this.scene.start('GameScene', { useCheckpoint: true });
-      });
-    });
   }
 
   // ── Menu Prompt ───────────────────────────────────────────────────────────────
@@ -866,6 +1015,8 @@ export class ScoreScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0.4);
 
     const goMenu = () => {
+      this.commitCoins();
+      if (this._isAdRun && !this._rewardedWatched) AdClient.showInterstitial();
       this.scene.stop(this._heapParams.isInfinite ? 'InfiniteGameScene' : 'GameScene');
       this.scene.start('MenuScene');
     };

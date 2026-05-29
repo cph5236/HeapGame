@@ -12,6 +12,7 @@ import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
 import { initLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { AudioManager } from '../systems/AudioManager';
+import { AdClient } from '../systems/ads/AdClient';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -27,6 +28,7 @@ export class BootScene extends Phaser.Scene {
     // Procedural textures — synchronous, no network/disk.
     generateAllTextures(this);
     AudioManager.init(this.sound);
+    AdClient.initialize().catch(() => { /* silent — ad init is optional */ });
 
     // Default registry state so MenuScene can render before catalog resolves.
     this.game.registry.set('heapCatalog',    [] as HeapSummary[]);

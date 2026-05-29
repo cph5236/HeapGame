@@ -29,6 +29,8 @@ import {
   setVerboseLogging,
   getSoundSettings,
   setSoundVolume,
+  getAdRunState,
+  setAdRunState,
 } from '../SaveData';
 
 // Stub localStorage — vitest runs in node environment
@@ -469,6 +471,14 @@ describe('mergeCloudSave', () => {
     expect(merged.highScores).toEqual({ 'heap-1': 1000, 'heap-2': 500 });
   });
 
+  it('keeps local device-local ad-run pacing state (not cloud-synced)', () => {
+    const local = { ...base(), adRunsSinceLast: 1, adRunTarget: 3 };
+    const cloud = { ...base(), adRunsSinceLast: 2, adRunTarget: 5 };
+    const merged = mergeCloudSave(local, cloud);
+    expect(merged.adRunsSinceLast).toBe(1);
+    expect(merged.adRunTarget).toBe(3);
+  });
+
   it('prefers the name/selectedHeapId from whichever has higher balance', () => {
     const local = { ...base(), balance: 100, playerName: 'Local',  selectedHeapId: 'heap-1' };
     const cloud = { ...base(), balance: 200, playerName: 'Cloud',  selectedHeapId: 'heap-2' };
@@ -538,5 +548,24 @@ describe('soundSettings – schema v4 migration', () => {
     setSoundVolume('music', 0.2);
     resetCacheForTests();
     expect(getSoundSettings().music).toBe(0.2);
+  });
+});
+
+// ── Ad-run pacing state ────────────────────────────────────────────────────────
+
+describe('ad-run pacing state', () => {
+  it('defaults to runsSinceLast 0 and target 0 (unseeded) on a fresh save', () => {
+    expect(getAdRunState()).toEqual({ runsSinceLast: 0, target: 0 });
+  });
+
+  it('round-trips through setAdRunState', () => {
+    setAdRunState({ runsSinceLast: 2, target: 4 });
+    expect(getAdRunState()).toEqual({ runsSinceLast: 2, target: 4 });
+  });
+
+  it('persists across a cache reset (reload from storage)', () => {
+    setAdRunState({ runsSinceLast: 1, target: 3 });
+    resetCacheForTests();
+    expect(getAdRunState()).toEqual({ runsSinceLast: 1, target: 3 });
   });
 });
