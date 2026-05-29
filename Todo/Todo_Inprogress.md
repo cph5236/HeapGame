@@ -106,7 +106,14 @@ Rough ideas captured for future sessions. Each section is a separate feature tra
 
 ---
 
-## Ad Integration
+## Ad Integration - Complete
+
+**Shipped (feature/ad-integration, PR #33)**
+- `AdProvider` interface + `NullProvider` (web/dev) and `AdMobProvider` (Android, `@capacitor-community/admob`)
+- Build-time provider selection: `build:android` sets `VITE_AD_PROVIDER=admob`; web/dev defaults to NullProvider; unused provider is tree-shaken
+- Interstitial on leaving ScoreScene; opt-in rewarded "2× coins" button doubles the run's coins
+- AdMob test ad-unit IDs default via `.env`; CI overrides with real unit IDs from secrets
+- Note: `tagForChildDirectedTreatment` ships as `false` (the spec note below predates the AdMob policy finding that `true` blocks rewarded ads)
 
 **Architecture — Ad Provider Pattern**
 - Define a single `AdProvider` interface in the game (`showInterstitial()`, `showRewarded()`)
