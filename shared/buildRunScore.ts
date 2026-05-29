@@ -6,10 +6,12 @@ export interface RunStats {
   baseHeightPx: number;
   kills:        Partial<Record<EnemyKind, number>>;
   elapsedMs:    number;
+  /** Summed bonus from salvage pickups carried to the top (0/undefined = none). */
+  salvageBonus?: number;
 }
 
 export interface RunScoreRow {
-  type:   'height' | 'kill' | 'pace';
+  type:   'height' | 'kill' | 'pace' | 'salvage';
   label:  string;
   detail: string;
   value:  number;
@@ -63,6 +65,17 @@ export function buildRunScore(
       value:  paceBonus,
     });
     total += paceBonus;
+  }
+
+  const salvageBonus = stats.salvageBonus ?? 0;
+  if (salvageBonus > 0) {
+    rows.push({
+      type:   'salvage',
+      label:  'SALVAGE',
+      detail: 'carried to top',
+      value:  salvageBonus,
+    });
+    total += salvageBonus;
   }
 
   return { rows, finalScore: Math.round(total * scoreMult) };

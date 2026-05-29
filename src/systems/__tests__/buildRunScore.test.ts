@@ -119,6 +119,46 @@ describe('buildRunScore', () => {
     expect(paceRow.detail).toBe('6000 / 85s x 10');
   });
 
+  describe('buildRunScore salvageBonus', () => {
+    it('adds a salvage row when salvageBonus > 0', () => {
+      const result = buildRunScore(
+        { baseHeightPx: 6000, kills: {}, elapsedMs: 0, salvageBonus: 750 },
+        TEST_DEFS,
+        true,
+      );
+      const row = result.rows.find(r => r.type === 'salvage')!;
+      expect(row).toBeDefined();
+      expect(row.value).toBe(750);
+      expect(result.finalScore).toBe(6750);
+    });
+
+    it('omits the salvage row when salvageBonus is 0 or undefined', () => {
+      const zero = buildRunScore(
+        { baseHeightPx: 6000, kills: {}, elapsedMs: 0, salvageBonus: 0 },
+        TEST_DEFS,
+        true,
+      );
+      const undef = buildRunScore(
+        { baseHeightPx: 6000, kills: {}, elapsedMs: 0 },
+        TEST_DEFS,
+        true,
+      );
+      expect(zero.rows.some(r => r.type === 'salvage')).toBe(false);
+      expect(undef.rows.some(r => r.type === 'salvage')).toBe(false);
+    });
+
+    it('includes salvageBonus in the scoreMult total', () => {
+      const result = buildRunScore(
+        { baseHeightPx: 1000, kills: {}, elapsedMs: 0, salvageBonus: 1000 },
+        TEST_DEFS,
+        true,
+        2.0,
+      );
+      // (1000 height + 1000 salvage) × 2
+      expect(result.finalScore).toBe(4000);
+    });
+  });
+
   describe('buildRunScore scoreMult', () => {
     it('multiplies finalScore by scoreMult', () => {
       const stats = { baseHeightPx: 1000, kills: {}, elapsedMs: 10_000 };

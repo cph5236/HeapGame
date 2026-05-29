@@ -1780,3 +1780,70 @@ describe('Player — wall-jump cooldown (#8)', () => {
   });
 });
 
+// ── 24. Carry modifiers (salvage pickups) ─────────────────────────────────────
+
+describe('Player — carry modifiers', () => {
+  it('default (no modifiers) leaves ground walk speed unchanged', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    imState.tiltFactor = 1;
+
+    player.update(16);
+
+    expect(spy.setVelocityX[spy.setVelocityX.length - 1]).toBeCloseTo(PLAYER_SPEED, 5);
+  });
+
+  it('speedMult scales ground walk speed', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    player.setCarryModifiers({ speedMult: 1.5, jumpBonus: 0, extraAirJumps: 0 });
+    imState.tiltFactor = 1;
+
+    player.update(16);
+
+    expect(spy.setVelocityX[spy.setVelocityX.length - 1]).toBeCloseTo(PLAYER_SPEED * 1.5, 5);
+  });
+
+  it('jumpBonus increases jump velocity (more negative)', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: true,
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 120, extraAirJumps: 0 });
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY - 120);
+  });
+
+  it('extraAirJumps refreshes available air jumps immediately on pickup', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).airJumpsRemaining = 0; // already spent the base air jump
+
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 1 });
+
+    // effective max = 1 + 1 = 2; granting the new jump should bump remaining
+    expect((player as any).airJumpsRemaining).toBe(2);
+  });
+
+  it('extraAirJumps raises the effective max restored on landing', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 2 });
+    (player as any).airJumpsRemaining = 0;
+
+    // Land
+    sprite.body.blocked.down = true;
+    sprite.body.velocity.y = 0;
+    player.update(16);
+
+    expect((player as any).airJumpsRemaining).toBe(3); // 1 base + 2 extra
+  });
+});
+

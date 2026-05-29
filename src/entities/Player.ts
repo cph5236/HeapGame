@@ -31,6 +31,7 @@ import {
   FALL_GRAVITY_FACTOR,
 } from '../constants';
 import { PlayerConfig } from '../systems/SaveData';
+import type { CarryModifiers } from '../data/pickupDefs';
 import { InputManager } from '../systems/InputManager';
 import { AudioManager } from '../systems/AudioManager';
 
@@ -108,6 +109,10 @@ export class Player {
   public worldHeight: number = MOCK_HEAP_HEIGHT_PX;
 
   private placementMode: boolean = false;
+  // Salvage-carry modifiers (aggregated from carried pickups). Identity = no effect.
+  private carrySpeedMult:     number = 1;
+  private carryJumpBonus:     number = 0;
+  private carryExtraAirJumps: number = 0;
   private shieldActive: boolean = false;
   private shieldAura?: Phaser.GameObjects.Arc;
   private readonly syncAura = (): void => {
@@ -132,6 +137,16 @@ export class Player {
   get hasWallJump():          boolean { return this.wallJumpEnabled; }
   get hasDash():              boolean { return this.dashEnabled; }
   get hasActiveShield():      boolean { return this.shieldActive; }
+
+  /** Jump launch velocity including base jumpBoost and any carried jump bonus. */
+  private get jumpVelocity(): number {
+    return PLAYER_JUMP_VELOCITY - (this.jumpBoost + this.carryJumpBonus);
+  }
+
+  /** Max air jumps including extras granted by carried salvage. */
+  private get effectiveMaxAirJumps(): number {
+    return this.maxAirJumps + this.carryExtraAirJumps;
+  }
 
   get animState(): PlayerAnimState {
     return {
@@ -161,7 +176,7 @@ export class Player {
     this.dashEnabled        = config.dash;
     this.diveEnabled        = config.dive;
     this.jumpBoost          = config.jumpBoost;
-    this.airJumpsRemaining  = this.maxAirJumps;
+    this.airJumpsRemaining  = this.effectiveMaxAirJumps;
 
     const kb = scene.input.keyboard!;
     this.leftKeys  = [kb.addKey(KeyCodes.LEFT),  kb.addKey(KeyCodes.A)];
@@ -259,7 +274,7 @@ export class Player {
     this.sprite.setVelocityX(0);
     this.sprite.setVelocityY(goUp ? -PLAYER_SPEED * 0.65 : goDown ? PLAYER_SPEED * 0.65 : 0);
     // Ladder counts as grounded: keep jump charges full and coyote window fresh
-    this.airJumpsRemaining  = this.maxAirJumps;
+    this.airJumpsRemaining  = this.effectiveMaxAirJumps;
     this.wallJumpCooldown   = 0;
     this.coyoteTimer        = 120;
     // Still allow X-wrap so player doesn't get stuck at world edge on ladder
@@ -347,7 +362,7 @@ export class Player {
   private handleLandingResets(ctx: FrameCtx, delta: number): void {
     if (ctx.onGround) {
       this.coyoteTimer        = 120;
-      this.airJumpsRemaining  = this.maxAirJumps;
+      this.airJumpsRemaining  = this.effectiveMaxAirJumps;
       this.wallJumpCooldown   = 0;
       // Cancel any active dive burst — diveActive only decrements inside the !onGround
       // block so it would otherwise freeze on landing, re-triggering dive on the next jump.
@@ -371,7 +386,7 @@ export class Player {
 
     if (this.dashActive !== 0) return; // active dash protects horizontal velocity
 
-    const moveSpeed = this.placementMode ? PLACEMENT_MOVE_SPEED : PLAYER_SPEED;
+    const moveSpeed = this.placementMode ? PLACEMENT_MOVE_SPEED : PLAYER_SPEED * this.carrySpeedMult;
 
     if (this.inSlopeZone && !keyboardLeft && !keyboardRight && im.tiltFactor === 0) {
       // Eject outward along the wall surface until the player slides off the edge
@@ -461,7 +476,7 @@ export class Player {
     if (canGroundJump) {
       this.momentumX = this.bufferedJumpVx !== 0 ? this.bufferedJumpVx : body.velocity.x;
       this.sprite.setVelocityX(this.momentumX);
-      this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
+      this.sprite.setVelocityY(this.jumpVelocity);
       // Coyote consumed in consumeJumpBufferOnFire() so every jump path clears it.
       AudioManager.play('player-jump');
       this._justJumped = true;
@@ -470,7 +485,7 @@ export class Player {
     if (!onWallForJump && this.airJumpsRemaining > 0) {
       this.momentumX = this.bufferedJumpVx !== 0 ? this.bufferedJumpVx : body.velocity.x;
       this.sprite.setVelocityX(this.momentumX);
-      this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
+      this.sprite.setVelocityY(this.jumpVelocity);
       this.airJumpsRemaining--;
       AudioManager.play('player-jump');
       this._justAirJumped = true;
@@ -499,7 +514,7 @@ export class Player {
     const dir = body.blocked.left ? 1 : body.blocked.right ? -1 : -this.lastWallSide;
     this.momentumX = dir * WALL_JUMP_PUSH;
     this.sprite.setVelocityX(this.momentumX);
-    this.sprite.setVelocityY(PLAYER_JUMP_VELOCITY - this.jumpBoost);
+    this.sprite.setVelocityY(this.jumpVelocity);
     this.wallJumpCooldown = WALL_JUMP_COOLDOWN_MS;
     this.lastWallJumpSide = currentWallSide;
     this.wallCoyoteTimer = 0; // Consume coyote window on wall-jump fire
@@ -516,8 +531,8 @@ export class Player {
     this.bufferedJumpVx  = 0;
     this.coyoteTimer     = 0; // any jump path consumes the coyote window (#9 defensive)
     if (this.bufferedJumpFromKeyboard && !this._frameJumpKeyHeld) {
-      this.sprite.setVelocityY((PLAYER_JUMP_VELOCITY - this.jumpBoost) * JUMP_CUT_FACTOR);
-      console.log('[JUMP-CUT-ONFIRE]', { jumpVy: PLAYER_JUMP_VELOCITY - this.jumpBoost, cutTo: (PLAYER_JUMP_VELOCITY - this.jumpBoost) * JUMP_CUT_FACTOR });
+      this.sprite.setVelocityY((this.jumpVelocity) * JUMP_CUT_FACTOR);
+      console.log('[JUMP-CUT-ONFIRE]', { jumpVy: this.jumpVelocity, cutTo: (this.jumpVelocity) * JUMP_CUT_FACTOR });
     } else {
       console.log('[JUMP-FIRE-FULL]', { fromKeyboard: this.bufferedJumpFromKeyboard, held: this._frameJumpKeyHeld });
     }
@@ -583,7 +598,7 @@ export class Player {
     if (this.sprite.body.velocity.y >= 0) {
       // Only cancel downward/stationary velocity — don't cancel a jump (velocity < 0)
       this.sprite.setVelocityY(0);
-      this.airJumpsRemaining = this.maxAirJumps;
+      this.airJumpsRemaining = this.effectiveMaxAirJumps;
       this.wallJumpCooldown = 0;
     }
   }
@@ -622,7 +637,19 @@ export class Player {
   }
 
   refundAirJump(): void {
-    this.airJumpsRemaining = Math.min(this.maxAirJumps, this.airJumpsRemaining + 1);
+    this.airJumpsRemaining = Math.min(this.effectiveMaxAirJumps, this.airJumpsRemaining + 1);
+  }
+
+  /** Apply aggregated salvage-carry modifiers. Granting a new air jump refills
+   *  the air-jump pool so the benefit is usable immediately. */
+  setCarryModifiers(mods: Pick<CarryModifiers, 'speedMult' | 'jumpBonus' | 'extraAirJumps'>): void {
+    const gainedAirJump = mods.extraAirJumps > this.carryExtraAirJumps;
+    this.carrySpeedMult     = mods.speedMult;
+    this.carryJumpBonus     = mods.jumpBonus;
+    this.carryExtraAirJumps = mods.extraAirJumps;
+    if (gainedAirJump) {
+      this.airJumpsRemaining = this.effectiveMaxAirJumps;
+    }
   }
 
   setControlsEnabled(enabled: boolean): void {
