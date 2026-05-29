@@ -471,6 +471,14 @@ describe('mergeCloudSave', () => {
     expect(merged.highScores).toEqual({ 'heap-1': 1000, 'heap-2': 500 });
   });
 
+  it('keeps local device-local ad-run pacing state (not cloud-synced)', () => {
+    const local = { ...base(), adRunsSinceLast: 1, adRunTarget: 3 };
+    const cloud = { ...base(), adRunsSinceLast: 2, adRunTarget: 5 };
+    const merged = mergeCloudSave(local, cloud);
+    expect(merged.adRunsSinceLast).toBe(1);
+    expect(merged.adRunTarget).toBe(3);
+  });
+
   it('prefers the name/selectedHeapId from whichever has higher balance', () => {
     const local = { ...base(), balance: 100, playerName: 'Local',  selectedHeapId: 'heap-1' };
     const cloud = { ...base(), balance: 200, playerName: 'Cloud',  selectedHeapId: 'heap-2' };
