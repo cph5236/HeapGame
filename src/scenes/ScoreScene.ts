@@ -89,6 +89,15 @@ export class ScoreScene extends Phaser.Scene {
     this._forceBreakdownOpen = data.forceBreakdownOpen  ?? false;
     this._mockPlayerConfig   = data.mockPlayerConfig    ?? {};
 
+    // Reset per-run state (Phaser reuses scene instances across restarts)
+    this._rewardedUsed     = false;
+    this._coinsAwarded     = false;
+    this._balanceText      = null;
+    this._finalCoins       = 0;
+    this.isNewHighScore    = false;
+    this._breakdownOpen    = false;
+    this._breakdownObjects = [];
+
     // Achievements that trigger on any completed run (fire-and-forget)
     const firstClimbId = getPlayConsoleId('first_climb');
     if (firstClimbId) PlayGamesClient.unlockAchievement(firstClimbId);
@@ -105,7 +114,6 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   create(): void {
-    AdClient.showInterstitial(); // fire-and-forget; native overlay, non-blocking
     AudioManager.play('music-score');
     // Check and update local high score before rendering anything
     if (this.heapId && this.score > 0) {
@@ -753,7 +761,7 @@ export class ScoreScene extends Phaser.Scene {
       this.tweens.add({ targets: btn, alpha: 1, duration: 300, ease: 'Cubic.Out' });
     });
 
-    btn.on('pointerdown', async () => {
+    btn.on('pointerup', async () => {
       if (this._rewardedUsed) return;
       this._rewardedUsed = true;
       btn.disableInteractive();
@@ -939,6 +947,7 @@ export class ScoreScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0.4);
 
     const goMenu = () => {
+      AdClient.showInterstitial(); // fire-and-forget; shows as menu loads
       this.scene.stop(this._heapParams.isInfinite ? 'InfiniteGameScene' : 'GameScene');
       this.scene.start('MenuScene');
     };
