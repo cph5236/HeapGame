@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../systems/AudioManager';
-import { AdClient, AD_PROVIDER_NAME } from '../systems/ads/AdClient';
+import { AdClient } from '../systems/ads/AdClient';
 import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N } from '../constants';
 import {
   addBalance,
@@ -114,8 +114,6 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   create(): void {
-    // DEBUG — remove before merge
-    this.add.text(4, 4, `ad:${AD_PROVIDER_NAME}`, { fontSize: '9px', fontFamily: 'monospace', color: '#ffffff' }).setAlpha(0.4);
     AudioManager.play('music-score');
     // Check and update local high score before rendering anything
     if (this.heapId && this.score > 0) {
@@ -679,13 +677,14 @@ export class ScoreScene extends Phaser.Scene {
     return PANEL_TOP + panelHeight(collapsed) + 40; // +20 matches the slide-down intro tween
   }
 
-  private rowLabel(type: 'money_mult' | 'heap_coin_mult' | 'peak_hunter' | 'death_penalty' | 'off_peak_bonus'): string {
+  private rowLabel(type: 'money_mult' | 'heap_coin_mult' | 'peak_hunter' | 'death_penalty' | 'off_peak_bonus' | 'ad_bonus'): string {
     const labels: Record<string, string> = {
       money_mult:     'Coin Multiplier',
       heap_coin_mult: 'Heap Coin Bonus',
       peak_hunter:    'Peak Bonus \u2736',
       death_penalty:  'Death Penalty \ud83d\udc80',
       off_peak_bonus: 'Off-Peak Bonus',
+      ad_bonus:       'Ad Bonus',
     };
     return labels[type] ?? type;
   }
