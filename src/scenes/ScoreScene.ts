@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../systems/AudioManager';
 import { AdClient } from '../systems/ads/AdClient';
+import * as AdCadence from '../systems/ads/AdCadence';
 import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N } from '../constants';
 import {
   addBalance,
@@ -56,6 +57,9 @@ export class ScoreScene extends Phaser.Scene {
   private _balanceText:    Phaser.GameObjects.Text | null = null;
   private _finalCoins:     number                         = 0;
 
+  private _isAdRun:        boolean = false;
+  private _rewardedWatched: boolean = false;
+
   constructor() {
     super({ key: 'ScoreScene' });
   }
@@ -99,6 +103,8 @@ export class ScoreScene extends Phaser.Scene {
     this.isNewHighScore    = false;
     this._breakdownOpen    = false;
     this._breakdownObjects = [];
+    this._isAdRun          = false;
+    this._rewardedWatched  = false;
 
     // Achievements that trigger on any completed run (fire-and-forget)
     const firstClimbId = getPlayConsoleId('first_climb');
@@ -117,6 +123,9 @@ export class ScoreScene extends Phaser.Scene {
 
   create(): void {
     AudioManager.play('music-score');
+    const isPreview = this._mockLeaderboard !== null || this._forceBreakdownOpen
+      || Object.keys(this._mockPlayerConfig).length > 0;
+    this._isAdRun = isPreview ? false : AdCadence.registerRun(AdClient.enabled);
     // Check and update local high score before rendering anything
     if (this.heapId && this.score > 0) {
       const prev = getLocalHighScore(this.heapId);
@@ -697,7 +706,7 @@ export class ScoreScene extends Phaser.Scene {
 
   private createBottomButtons(): void {
     const btnY     = this.scale.height * 0.87;
-    const showAd   = !this._rewardedUsed;
+    const showAd   = this._isAdRun && !this._rewardedUsed;
     const showCkpt = this.checkpointAvailable;
 
     if (showAd && showCkpt) {
@@ -775,6 +784,7 @@ export class ScoreScene extends Phaser.Scene {
 
       const watched = await AdClient.showRewarded();
       if (watched) {
+        this._rewardedWatched = true;
         this._multiplier = 2;
         const newBalance = getBalance() + this._finalCoins * this._multiplier;
         this._balanceText?.setText(`${newBalance} coins`);
@@ -954,7 +964,7 @@ export class ScoreScene extends Phaser.Scene {
 
     const goMenu = () => {
       this.commitCoins();
-      AdClient.showInterstitial(); // fire-and-forget; shows as menu loads
+      if (this._isAdRun && !this._rewardedWatched) AdClient.showInterstitial();
       this.scene.stop(this._heapParams.isInfinite ? 'InfiniteGameScene' : 'GameScene');
       this.scene.start('MenuScene');
     };
