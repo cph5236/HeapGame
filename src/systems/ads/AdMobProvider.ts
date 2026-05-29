@@ -12,7 +12,7 @@ const REWARDED_ID     = import.meta.env.VITE_ADMOB_REWARDED_ID as string;
 export class AdMobProvider implements AdProvider {
   async initialize(): Promise<void> {
     try {
-      await AdMob.initialize({ tagForChildDirectedTreatment: true });
+      await AdMob.initialize({ tagForChildDirectedTreatment: false });
       this._preloadInterstitial();
     } catch { /* silent — never interrupt boot */ }
   }
