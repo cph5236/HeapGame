@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../systems/AudioManager';
-import { AdClient } from '../systems/ads/AdClient';
+import { AdClient, AD_PROVIDER_NAME } from '../systems/ads/AdClient';
 import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N } from '../constants';
 import {
   addBalance,
@@ -114,6 +114,8 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   create(): void {
+    // DEBUG — remove before merge
+    this.add.text(4, 4, `ad:${AD_PROVIDER_NAME}`, { fontSize: '9px', fontFamily: 'monospace', color: '#ffffff' }).setAlpha(0.4);
     AudioManager.play('music-score');
     // Check and update local high score before rendering anything
     if (this.heapId && this.score > 0) {
