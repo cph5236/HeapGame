@@ -33,7 +33,6 @@ export class ScoreScene extends Phaser.Scene {
   private isPeak:              boolean = false;
   private checkpointAvailable: boolean = false;
   private isFailure:           boolean = false;
-  private _coinsAwarded:       boolean = false;
   private heapId:              string  = '';
   private isNewHighScore:      boolean = false;
 
@@ -52,6 +51,8 @@ export class ScoreScene extends Phaser.Scene {
   private _breakdownObjects: Phaser.GameObjects.GameObject[] = [];
 
   private _rewardedUsed:   boolean                        = false;
+  private _multiplier:     number                         = 1;
+  private _coinsCommitted: boolean                        = false;
   private _balanceText:    Phaser.GameObjects.Text | null = null;
   private _finalCoins:     number                         = 0;
 
@@ -91,7 +92,8 @@ export class ScoreScene extends Phaser.Scene {
 
     // Reset per-run state (Phaser reuses scene instances across restarts)
     this._rewardedUsed     = false;
-    this._coinsAwarded     = false;
+    this._multiplier       = 1;
+    this._coinsCommitted   = false;
     this._balanceText      = null;
     this._finalCoins       = 0;
     this.isNewHighScore    = false;
@@ -145,12 +147,8 @@ export class ScoreScene extends Phaser.Scene {
       offPeakBonus:    this._bonusCoins,
     });
 
-    if (!this._coinsAwarded) {
-      this._coinsAwarded = true;
-      addBalance(result.finalCoins);
-    }
     this._finalCoins = result.finalCoins;
-    const balance = getBalance();
+    const balance = getBalance() + result.finalCoins * this._multiplier;
 
     this.createBackground();
     this.createStarField();
@@ -689,6 +687,12 @@ export class ScoreScene extends Phaser.Scene {
     return labels[type] ?? type;
   }
 
+  private commitCoins(): void {
+    if (this._coinsCommitted) return;
+    this._coinsCommitted = true;
+    addBalance(this._finalCoins * this._multiplier);
+  }
+
   // ── Bottom Buttons ────────────────────────────────────────────────────────────
 
   private createBottomButtons(): void {
@@ -726,6 +730,7 @@ export class ScoreScene extends Phaser.Scene {
     this.time.delayedCall(1500, () => {
       btn.setInteractive({ useHandCursor: true });
       btn.once('pointerup', () => {
+        this.commitCoins();
         this.scene.stop('ScoreScene');
         this.scene.stop('GameScene');
         this.scene.start('GameScene', { useCheckpoint: true });
@@ -770,8 +775,8 @@ export class ScoreScene extends Phaser.Scene {
 
       const watched = await AdClient.showRewarded();
       if (watched) {
-        addBalance(this._finalCoins);
-        const newBalance = getBalance();
+        this._multiplier = 2;
+        const newBalance = getBalance() + this._finalCoins * this._multiplier;
         this._balanceText?.setText(`${newBalance} coins`);
         label.setText('2× coins awarded!');
         this.time.delayedCall(1200, () => this.tweens.add({ targets: btn, alpha: 0, duration: 300 }));
@@ -948,6 +953,7 @@ export class ScoreScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0.4);
 
     const goMenu = () => {
+      this.commitCoins();
       AdClient.showInterstitial(); // fire-and-forget; shows as menu loads
       this.scene.stop(this._heapParams.isInfinite ? 'InfiniteGameScene' : 'GameScene');
       this.scene.start('MenuScene');
