@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:android": "VITE_AD_PROVIDER=admob tsc && vite build && cap sync",
+    "build:android": "tsc && VITE_AD_PROVIDER=admob vite build && cap sync",
     "preview": "vite preview",
     "test": "vitest run",
     "cap:sync": "cap sync",
