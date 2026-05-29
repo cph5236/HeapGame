@@ -152,10 +152,9 @@ export class ScoreScene extends Phaser.Scene {
     this.createTitle();
     this.createScoreDisplay();
     if (this.isNewHighScore) this.createHighScoreBadge();
-    const coinsPanelBottom  = this.createCoinsPanel(result.rows, result.finalCoins, balance);
-    const rewardedBottom    = this.createRewardedAdButton(coinsPanelBottom);
-    this.createLeaderboardPanel(rewardedBottom);
-    this.createCheckpointButton();
+    const coinsPanelBottom = this.createCoinsPanel(result.rows, result.finalCoins, balance);
+    this.createLeaderboardPanel(coinsPanelBottom);
+    this.createBottomButtons();
     this.createMenuPrompt();
 
     if (this._forceBreakdownOpen && this._scoreRows.length > 0) {
@@ -681,23 +680,66 @@ export class ScoreScene extends Phaser.Scene {
     return labels[type] ?? type;
   }
 
-  // ── Rewarded Ad Button ────────────────────────────────────────────────────────
+  // ── Bottom Buttons ────────────────────────────────────────────────────────────
 
-  private createRewardedAdButton(panelBottom: number): number {
-    if (this._rewardedUsed) return panelBottom;
+  private createBottomButtons(): void {
+    const btnY     = this.scale.height * 0.87;
+    const showAd   = !this._rewardedUsed;
+    const showCkpt = this.checkpointAvailable;
 
-    const cx  = this.scale.width  / 2;
-    const btn = this.add.container(cx, panelBottom + 18);
+    if (showAd && showCkpt) {
+      this.createCheckpointButtonAt(this.scale.width * 0.25, btnY, true);
+      this.createRewardedAdButtonAt(this.scale.width * 0.75, btnY, true);
+    } else if (showCkpt) {
+      this.createCheckpointButtonAt(this.scale.width / 2, btnY, false);
+    } else if (showAd) {
+      this.createRewardedAdButtonAt(this.scale.width / 2, btnY, false);
+    }
+  }
+
+  private createCheckpointButtonAt(cx: number, cy: number, compact: boolean): void {
+    const label    = compact ? 'CHECKPOINT' : 'RESPAWN AT CHECKPOINT';
+    const fontSize = compact ? '12px' : '14px';
+    const padX     = compact ? 14 : 20;
+
+    const btn = this.add.text(cx, cy, label, {
+      fontSize,
+      fontFamily:      'monospace',
+      color:           '#ffffff',
+      backgroundColor: '#1a6b3acc',
+      padding:         { x: padX, y: 10 },
+      fontStyle:       'bold',
+    }).setOrigin(0.5);
+
+    btn.on('pointerover', () => { btn.setColor('#aaffcc'); btn.setBackgroundColor('#22994ecc'); });
+    btn.on('pointerout',  () => { btn.setColor('#ffffff'); btn.setBackgroundColor('#1a6b3acc'); });
+
+    this.time.delayedCall(1500, () => {
+      btn.setInteractive({ useHandCursor: true });
+      btn.once('pointerup', () => {
+        this.scene.stop('ScoreScene');
+        this.scene.stop('GameScene');
+        this.scene.start('GameScene', { useCheckpoint: true });
+      });
+    });
+  }
+
+  private createRewardedAdButtonAt(cx: number, cy: number, compact: boolean): void {
+    const W         = compact ? 200 : 220;
+    const H         = 36;
+    const labelText = compact ? '▶  2× coins' : '▶  Watch ad → 2× coins';
+    const fontSize  = compact ? '12px' : '13px';
+
+    const btn = this.add.container(cx, cy);
 
     const bg = this.add.graphics();
-    const W = 220, H = 36;
     bg.fillStyle(0xffcc00, 0.15);
     bg.lineStyle(1, 0xffcc00, 0.5);
     bg.fillRoundedRect(-W / 2, -H / 2, W, H, 8);
     bg.strokeRoundedRect(-W / 2, -H / 2, W, H, 8);
 
-    const label = this.add.text(0, 0, '▶  Watch ad → 2× coins', {
-      fontSize: '13px',
+    const label = this.add.text(0, 0, labelText, {
+      fontSize,
       fontFamily: 'monospace',
       color: '#ffdd66',
     }).setOrigin(0.5);
@@ -728,9 +770,6 @@ export class ScoreScene extends Phaser.Scene {
         this.tweens.add({ targets: btn, alpha: 0, duration: 200 });
       }
     });
-
-    // button occupies 36px height centred at panelBottom+18; return bottom edge + gap
-    return panelBottom + 36 + 12;
   }
 
   // ── Leaderboard Panel ─────────────────────────────────────────────────────────
@@ -883,33 +922,6 @@ export class ScoreScene extends Phaser.Scene {
   private playerInTop(ctx: LeaderboardContext): boolean {
     if (!ctx.player) return false;
     return ctx.top.some(e => e.playerId === ctx.player!.playerId);
-  }
-
-  // ── Checkpoint Button ─────────────────────────────────────────────────────────
-
-  private createCheckpointButton(): void {
-    if (!this.checkpointAvailable) return;
-
-    const btn = this.add.text(this.scale.width / 2, this.scale.height * 0.87, 'RESPAWN AT CHECKPOINT', {
-      fontSize:        '14px',
-      fontFamily:      'monospace',
-      color:           '#ffffff',
-      backgroundColor: '#1a6b3acc',
-      padding:         { x: 20, y: 10 },
-      fontStyle:       'bold',
-    }).setOrigin(0.5);
-
-    btn.on('pointerover', () => { btn.setColor('#aaffcc'); btn.setBackgroundColor('#22994ecc'); });
-    btn.on('pointerout',  () => { btn.setColor('#ffffff'); btn.setBackgroundColor('#1a6b3acc'); });
-
-    this.time.delayedCall(1500, () => {
-      btn.setInteractive({ useHandCursor: true });
-      btn.once('pointerup', () => {
-        this.scene.stop('ScoreScene');
-        this.scene.stop('GameScene');
-        this.scene.start('GameScene', { useCheckpoint: true });
-      });
-    });
   }
 
   // ── Menu Prompt ───────────────────────────────────────────────────────────────
