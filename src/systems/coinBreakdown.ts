@@ -4,7 +4,7 @@ export type BaseRow = {
 };
 
 export type MultiplierRow = {
-  type: 'money_mult' | 'heap_coin_mult' | 'peak_hunter' | 'death_penalty' | 'off_peak_bonus';
+  type: 'money_mult' | 'heap_coin_mult' | 'peak_hunter' | 'death_penalty' | 'off_peak_bonus' | 'ad_bonus';
   multiplier: number;
   runningTotal: number;
 };
@@ -20,6 +20,7 @@ export interface BreakdownInput {
   peakMultiplier:  number;
   isFailure:       boolean;
   offPeakBonus?:   number;  // flat coins added when placement is off-peak
+  adBonusMultiplier?: number; // rewarded-ad multiplier applied last (default 1)
 }
 
 export interface BreakdownResult {
@@ -28,7 +29,7 @@ export interface BreakdownResult {
 }
 
 export function buildCoinBreakdown(input: BreakdownInput): BreakdownResult {
-  const { score, scoreToCoins, moneyMultiplier, heapCoinMult = 1, isPeak, peakMultiplier, isFailure, offPeakBonus = 0 } = input;
+  const { score, scoreToCoins, moneyMultiplier, heapCoinMult = 1, isPeak, peakMultiplier, isFailure, offPeakBonus = 0, adBonusMultiplier = 1 } = input;
   const rows: BreakdownRow[] = [];
 
   const base = Math.floor(score / scoreToCoins);
@@ -59,6 +60,11 @@ export function buildCoinBreakdown(input: BreakdownInput): BreakdownResult {
   if (isFailure) {
     running = Math.floor(running * 0.5);
     rows.push({ type: 'death_penalty', multiplier: 0.5, runningTotal: running });
+  }
+
+  if (adBonusMultiplier > 1) {
+    running = Math.floor(running * adBonusMultiplier);
+    rows.push({ type: 'ad_bonus', multiplier: adBonusMultiplier, runningTotal: running });
   }
 
   return { rows, finalCoins: running };

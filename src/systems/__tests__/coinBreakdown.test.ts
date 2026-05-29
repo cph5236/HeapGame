@@ -149,4 +149,50 @@ describe('buildCoinBreakdown', () => {
     expect(result.rows[2]).toEqual({ type: 'death_penalty', multiplier: 0.5, runningTotal: 7 });
     expect(result.finalCoins).toBe(7);
   });
+
+  describe('adBonusMultiplier', () => {
+    it('appends an ad_bonus row and doubles finalCoins when set to 2', () => {
+      const result = buildCoinBreakdown({
+        score: 500,
+        scoreToCoins: 100,
+        moneyMultiplier: 1,
+        isPeak: false,
+        peakMultiplier: 1.25,
+        isFailure: false,
+        adBonusMultiplier: 2,
+      });
+      // base = 5, then x2 ad bonus = 10
+      expect(result.finalCoins).toBe(10);
+      expect(result.rows).toHaveLength(2);
+      expect(result.rows[1]).toEqual({ type: 'ad_bonus', multiplier: 2, runningTotal: 10 });
+    });
+
+    it('is a no-op when omitted (default 1)', () => {
+      const result = buildCoinBreakdown({
+        score: 500,
+        scoreToCoins: 100,
+        moneyMultiplier: 1,
+        isPeak: false,
+        peakMultiplier: 1.25,
+        isFailure: false,
+      });
+      expect(result.rows).toHaveLength(1);
+      expect(result.rows.some(r => r.type === 'ad_bonus')).toBe(false);
+      expect(result.finalCoins).toBe(5);
+    });
+
+    it('applies after the death penalty', () => {
+      const result = buildCoinBreakdown({
+        score: 1000,
+        scoreToCoins: 100,
+        moneyMultiplier: 1,
+        isPeak: false,
+        peakMultiplier: 1.25,
+        isFailure: true,          // base 10 -> x0.5 = 5
+        adBonusMultiplier: 2,     // -> x2 = 10
+      });
+      expect(result.finalCoins).toBe(10);
+      expect(result.rows[result.rows.length - 1]).toEqual({ type: 'ad_bonus', multiplier: 2, runningTotal: 10 });
+    });
+  });
 });
