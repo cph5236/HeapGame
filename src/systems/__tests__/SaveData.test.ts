@@ -29,6 +29,8 @@ import {
   setVerboseLogging,
   getSoundSettings,
   setSoundVolume,
+  getAdRunState,
+  setAdRunState,
 } from '../SaveData';
 
 // Stub localStorage — vitest runs in node environment
@@ -538,5 +540,24 @@ describe('soundSettings – schema v4 migration', () => {
     setSoundVolume('music', 0.2);
     resetCacheForTests();
     expect(getSoundSettings().music).toBe(0.2);
+  });
+});
+
+// ── Ad-run pacing state ────────────────────────────────────────────────────────
+
+describe('ad-run pacing state', () => {
+  it('defaults to runsSinceLast 0 and target 0 (unseeded) on a fresh save', () => {
+    expect(getAdRunState()).toEqual({ runsSinceLast: 0, target: 0 });
+  });
+
+  it('round-trips through setAdRunState', () => {
+    setAdRunState({ runsSinceLast: 2, target: 4 });
+    expect(getAdRunState()).toEqual({ runsSinceLast: 2, target: 4 });
+  });
+
+  it('persists across a cache reset (reload from storage)', () => {
+    setAdRunState({ runsSinceLast: 1, target: 3 });
+    resetCacheForTests();
+    expect(getAdRunState()).toEqual({ runsSinceLast: 1, target: 3 });
   });
 });

@@ -48,6 +48,8 @@ interface RawSave {
   verboseLogging?: boolean;
   _legacyPlaced?: PlacedItemSave[];
   soundSettings?: SoundSettings;
+  adRunsSinceLast?: number;
+  adRunTarget?:     number;
 }
 
 let _cache: RawSave | null = null;
@@ -108,6 +110,8 @@ function migrate(parsed: any): RawSave {
       verboseLogging: parsed.verboseLogging,
       _legacyPlaced:  parsed._legacyPlaced,
       soundSettings:  parsed.soundSettings  ?? { ...DEFAULT_SOUND_SETTINGS },
+      adRunsSinceLast: parsed.adRunsSinceLast,
+      adRunTarget:     parsed.adRunTarget,
     };
   }
 
@@ -179,6 +183,20 @@ export function getBalance(): number { return load().balance; }
 export function addBalance(amount: number): void {
   const data = load();
   data.balance = Math.max(0, data.balance + amount);
+  persist(data);
+}
+
+// ── Ad-run pacing (device-local; not cloud-synced) ──────────────────────────────
+
+export function getAdRunState(): { runsSinceLast: number; target: number } {
+  const data = load();
+  return { runsSinceLast: data.adRunsSinceLast ?? 0, target: data.adRunTarget ?? 0 };
+}
+
+export function setAdRunState(state: { runsSinceLast: number; target: number }): void {
+  const data = load();
+  data.adRunsSinceLast = state.runsSinceLast;
+  data.adRunTarget     = state.target;
   persist(data);
 }
 
@@ -434,6 +452,8 @@ export function mergeCloudSave(local: RawSave, cloud: RawSave): RawSave {
     gpgsPlayerId:   local.gpgsPlayerId ?? cloud.gpgsPlayerId,
     highScores,
     verboseLogging: local.verboseLogging,
+    adRunsSinceLast: local.adRunsSinceLast,
+    adRunTarget:     local.adRunTarget,
   };
 }
 
