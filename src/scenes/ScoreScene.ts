@@ -152,9 +152,9 @@ export class ScoreScene extends Phaser.Scene {
     this.createTitle();
     this.createScoreDisplay();
     if (this.isNewHighScore) this.createHighScoreBadge();
-    const coinsPanelBottom = this.createCoinsPanel(result.rows, result.finalCoins, balance);
-    this.createRewardedAdButton(coinsPanelBottom);
-    this.createLeaderboardPanel(coinsPanelBottom);
+    const coinsPanelBottom  = this.createCoinsPanel(result.rows, result.finalCoins, balance);
+    const rewardedBottom    = this.createRewardedAdButton(coinsPanelBottom);
+    this.createLeaderboardPanel(rewardedBottom);
     this.createCheckpointButton();
     this.createMenuPrompt();
 
@@ -683,8 +683,8 @@ export class ScoreScene extends Phaser.Scene {
 
   // ── Rewarded Ad Button ────────────────────────────────────────────────────────
 
-  private createRewardedAdButton(panelBottom: number): void {
-    if (this._rewardedUsed) return;
+  private createRewardedAdButton(panelBottom: number): number {
+    if (this._rewardedUsed) return panelBottom;
 
     const cx  = this.scale.width  / 2;
     const btn = this.add.container(cx, panelBottom + 18);
@@ -728,6 +728,9 @@ export class ScoreScene extends Phaser.Scene {
         this.tweens.add({ targets: btn, alpha: 0, duration: 200 });
       }
     });
+
+    // button occupies 36px height centred at panelBottom+18; return bottom edge + gap
+    return panelBottom + 36 + 12;
   }
 
   // ── Leaderboard Panel ─────────────────────────────────────────────────────────
