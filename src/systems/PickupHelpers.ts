@@ -23,6 +23,32 @@ export function shouldSpawnPickup(
   return rand < chance;
 }
 
+interface Pt { x: number; y: number; }
+
+/** Midpoints of real heap surface edges within a band, for spawning pickups along
+ *  the climbable terrain. Excludes the artificial horizontal cut edges inserted at
+ *  the band's top/bottom clip boundaries (these cross the heap interior, not a
+ *  surface). Mirrors the edge filtering used for enemy surface spawns. */
+export function surfaceSpawnCandidates(
+  vertices:   readonly Pt[],
+  bandTopY:   number,
+  bandHeight: number,
+): Pt[] {
+  if (vertices.length < 2) return [];
+  const bandBottomY = bandTopY + bandHeight;
+  const EPS = 0.5;
+  const out: Pt[] = [];
+  for (let i = 0; i < vertices.length; i++) {
+    const v1 = vertices[i];
+    const v2 = vertices[(i + 1) % vertices.length];
+    const atTopCut    = Math.abs(v1.y - bandTopY)    < EPS && Math.abs(v2.y - bandTopY)    < EPS;
+    const atBottomCut = Math.abs(v1.y - bandBottomY) < EPS && Math.abs(v2.y - bandBottomY) < EPS;
+    if (atTopCut || atBottomCut) continue;
+    out.push({ x: (v1.x + v2.x) / 2, y: (v1.y + v2.y) / 2 });
+  }
+  return out;
+}
+
 interface PickupPos { x: number; y: number; collected: boolean; }
 
 /** Index of the nearest uncollected pickup within rangePx of the player, or -1. */

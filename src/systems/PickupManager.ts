@@ -13,8 +13,9 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { PICKUP_DEFS, PickupDef, aggregateModifiers, CarryModifiers } from '../data/pickupDefs';
-import { shouldSpawnPickup, findNearestInRange } from './PickupHelpers';
+import { shouldSpawnPickup, findNearestInRange, surfaceSpawnCandidates } from './PickupHelpers';
 import { SALVAGE_MIN_SPACING_PX } from '../../shared/pickupScores';
+import { CHUNK_BAND_HEIGHT } from '../constants';
 import { InputManager } from './InputManager';
 import { AudioManager } from './AudioManager';
 import { getLogger } from '../logging';
@@ -72,14 +73,27 @@ export class PickupManager {
 
   // ── Public API ────────────────────────────────────────────────────────────
 
-  /** Hook from HeapGenerator.onPlatformSpawned — maybe spawn a pickup here. */
+  /** Hook from HeapGenerator.onPlatformSpawned — maybe spawn on a placed object. */
   onPlatformSpawned(x: number, platformTopY: number): void {
-    if (!shouldSpawnPickup(Math.random(), this.lastSpawnY, platformTopY, SPAWN_MIN_GAP, SPAWN_CHANCE)) {
+    this.trySpawnAt(x, platformTopY);
+  }
+
+  /** Hook from HeapGenerator.onBandLoaded — spawn along the climbable surface
+   *  edges (where the player actually goes), mirroring enemy surface spawns. */
+  onBandLoaded(bandTopY: number, vertices: readonly { x: number; y: number }[]): void {
+    for (const c of surfaceSpawnCandidates(vertices, bandTopY, CHUNK_BAND_HEIGHT)) {
+      this.trySpawnAt(c.x, c.y);
+    }
+  }
+
+  /** Spawn a random pickup at a surface point if chance + spacing allow. */
+  private trySpawnAt(x: number, surfaceY: number): void {
+    if (!shouldSpawnPickup(Math.random(), this.lastSpawnY, surfaceY, SPAWN_MIN_GAP, SPAWN_CHANCE)) {
       return;
     }
     const def = PICKUP_DEFS[Math.floor(Math.random() * PICKUP_DEFS.length)];
-    this.spawnPickup(def, x, platformTopY);
-    this.lastSpawnY = platformTopY;
+    this.spawnPickup(def, x, surfaceY);
+    this.lastSpawnY = surfaceY;
   }
 
   /** Called every frame from GameScene.update(). */

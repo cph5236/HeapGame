@@ -160,6 +160,7 @@ export class GameScene extends Phaser.Scene {
     this.heapGenerator.onBandLoaded = (bandTopY, vertices) => {
       if (!this.blockPlaced) {
         this.enemyManager.onBandLoaded(bandTopY, vertices);
+        this.pickupManager?.onBandLoaded(bandTopY, vertices);
       }
     };
 
