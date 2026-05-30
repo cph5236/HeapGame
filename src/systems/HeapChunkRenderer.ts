@@ -4,6 +4,7 @@ import { OBJECT_DEFS } from '../data/heapObjectDefs'; // used by addEntry for bo
 import { CHUNK_BAND_HEIGHT, HEAP_FILL_TEXTURE, ENEMY_CULL_DISTANCE, WORLD_WIDTH } from '../constants';
 import { computeBandScanlines, computeBandPolygon, Vertex } from './HeapPolygon';
 import { HEAP_TILE_COUNT } from '../data/heapTileUrls';
+import { createGrimeTile, applyColourGrade } from './heapGrime';
 
 /** Composite texture tile height in px — must match the generated PNG height. */
 const TEX_H = 1024;
@@ -57,6 +58,9 @@ export class HeapChunkRenderer {
   private readonly xOffset: number;
   private readonly colWidth: number;
 
+  /** Vertically-seamless grime overlay, sized to this column; built once. */
+  private readonly grimeTile: HTMLCanvasElement;
+
   /** entries bucketed by bandTop — an entry may appear in up to 2 buckets if it crosses a boundary. */
   private readonly buckets: Map<number, HeapEntry[]> = new Map();
 
@@ -70,6 +74,8 @@ export class HeapChunkRenderer {
     this.scene    = scene;
     this.xOffset  = xOffset;
     this.colWidth = colWidth;
+    // Seed off the column offset so adjacent columns differ slightly.
+    this.grimeTile = createGrimeTile(colWidth, TEX_H, Math.floor(xOffset) + 1);
   }
 
   /**
@@ -222,6 +228,19 @@ export class HeapChunkRenderer {
       const tileSrc   = this.scene.textures.get(tileKey).getSourceImage() as CanvasImageSource;
       ctx.drawImage(tileSrc, 0, ty);
     }
+
+    // Mild warm colour-grade over the filled pixels (alpha-scoped, so the
+    // surrounding halo/sky is untouched aside from negligible dark pixels).
+    applyColourGrade(ctx, 0, 0, W, H);
+
+    // Grime overlay — multiply, world-Y aligned (reusing tileOffsetY) and
+    // seamless, so it is continuous across band boundaries (no horizontal seam).
+    ctx.globalCompositeOperation = 'multiply';
+    for (let ty = tileOffsetY; ty < H; ty += TEX_H) {
+      ctx.drawImage(this.grimeTile, 0, ty);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
     for (const [w, a] of HEAP_AO_PASSES) strokeRuns(w, `rgba(${HEAP_AO_COLOR},${a})`);
     ctx.restore();
 
