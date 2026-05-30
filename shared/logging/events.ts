@@ -30,6 +30,7 @@ export type GameEvent =
       rejectionReason?: string;
     }
   | { type: 'placement:made'; heapId: string; itemType: string }
+  | { type: 'pickup:grab'; itemId: string; bonus: number }
   | {
       type: 'upgrade:purchased';
       itemType: string;

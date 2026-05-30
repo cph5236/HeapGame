@@ -39,6 +39,8 @@ import { handleWallCollision, snapPlayerToSurface } from '../systems/HeapCollisi
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { HeapClient } from '../systems/HeapClient';
 import { PlaceableManager } from '../systems/PlaceableManager';
+import { PickupManager } from '../systems/PickupManager';
+import { PICKUP_DEFS } from '../data/pickupDefs';
 import { TrashWallManager } from '../systems/TrashWallManager';
 import { TRASH_WALL_DEF } from '../data/trashWallDef';
 import type { EnemyKind } from '../entities/Enemy';
@@ -75,6 +77,7 @@ export class GameScene extends Phaser.Scene {
   private playerConfig!: PlayerConfig;
   private im!: InputManager;
   private placeableManager!: PlaceableManager;
+  private pickupManager!: PickupManager;
   private trashWallManager!: TrashWallManager;
   private _lastScore = -1;
   private _playerDead = false;
@@ -149,6 +152,9 @@ export class GameScene extends Phaser.Scene {
 
     this.heapGenerator.onPlatformSpawned = (entry, platformTopY) => {
       this.enemyManager.onPlatformSpawned(entry.x, platformTopY, this.blockPlaced, entry);
+      if (!this.blockPlaced) {
+        this.pickupManager?.onPlatformSpawned(entry.x, platformTopY);
+      }
     };
 
     this.heapGenerator.onBandLoaded = (bandTopY, vertices) => {
@@ -167,6 +173,10 @@ export class GameScene extends Phaser.Scene {
     this.player.worldHeight = this._worldHeight;
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
     this.playerOutro    = new PlayerOutro(this, this.player.sprite);
+
+    // Salvage pickups — created before initial generation so onPlatformSpawned
+    // can populate the first chunk.
+    this.pickupManager = new PickupManager(this, this.player);
 
     // If restarted via checkpoint respawn, reposition player and consume one spawn
     if (this.checkpointRespawn) {
@@ -319,7 +329,13 @@ export class GameScene extends Phaser.Scene {
     this.createInfoButton(im.isMobile);
 
     // Dev preview: ?dev=GameScene&params={"_devOutro":"death"} or {"_devOutro":"success"}
-    const initData = this.scene.settings.data as { _devOutro?: 'death' | 'success' } | undefined;
+    // or {"_devPickup":"spring-coil"} to force-spawn a salvage pickup beside the player.
+    const initData = this.scene.settings.data as
+      { _devOutro?: 'death' | 'success'; _devPickup?: string } | undefined;
+    if (initData?._devPickup) {
+      const def = PICKUP_DEFS.find(d => d.id === initData._devPickup) ?? PICKUP_DEFS[0];
+      this.pickupManager.devForceSpawn(def, this.player.sprite.x + 40, this.spawnY + PLAYER_HEIGHT / 2);
+    }
     if (initData?._devOutro) {
       const kind = initData._devOutro;
       this._playerDead = true;
@@ -368,6 +384,7 @@ export class GameScene extends Phaser.Scene {
     this.parallaxBg.update();
     this.hud.update();
     this.placeableManager.update();
+    this.pickupManager.update(this.player.sprite.x, this.player.sprite.y);
 
     const cam       = this.cameras.main;
     const camTop    = cam.scrollY;
@@ -534,7 +551,7 @@ export class GameScene extends Phaser.Scene {
     const baseHeightPx = Math.max(0, Math.floor(this.spawnY - py));
     const elapsedMs    = this._runStartTime !== null ? (this.time.now - this._runStartTime) : 0;
     const runResult    = buildRunScore(
-      { baseHeightPx, kills: this._runKills, elapsedMs },
+      { baseHeightPx, kills: this._runKills, elapsedMs, salvageBonus: this.pickupManager.getCarriedBonus() },
       ENEMY_DEFS,
       false,
       this._heapParams.scoreMult,
@@ -564,6 +581,7 @@ export class GameScene extends Phaser.Scene {
             baseHeightPx,
             kills:        this._runKills,
             elapsedMs,
+            salvageBonus: this.pickupManager.getCarriedBonus(),
             heapParams:   this._heapParams,
             bonusCoins:   bonusCoinsFromServer,
           });
