@@ -14,14 +14,15 @@ import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { PICKUP_DEFS, PickupDef, aggregateModifiers, CarryModifiers } from '../data/pickupDefs';
 import { shouldSpawnPickup, findNearestInRange } from './PickupHelpers';
+import { SALVAGE_MIN_SPACING_PX } from '../../shared/pickupScores';
 import { InputManager } from './InputManager';
 import { AudioManager } from './AudioManager';
 import { getLogger } from '../logging';
 
-const PICKUP_SIZE     = 28;   // px square
-const PICKUP_RANGE    = 72;   // px proximity radius for overlay + grab
-const SPAWN_MIN_GAP   = 700;  // px minimum vertical spacing between pickups
-const SPAWN_CHANCE    = 0.33; // per eligible platform
+const PICKUP_SIZE     = 28;                    // px square
+const PICKUP_RANGE    = 72;                    // px proximity radius for overlay + grab
+const SPAWN_MIN_GAP   = SALVAGE_MIN_SPACING_PX; // px min vertical spacing (shared w/ server cap)
+const SPAWN_CHANCE    = 0.33;                  // per eligible platform
 const CULL_MARGIN      = 2400; // px below camera before a pickup is dropped
 
 interface SpawnedPickup {
@@ -102,6 +103,8 @@ export class PickupManager {
   getCarriedBonus(): number { return this.aggregate.totalBonus; }
   /** Number of salvage items currently carried. */
   getCarriedCount(): number { return this.carried.length; }
+  /** Ids of carried items — sent to the server for authoritative score validation. */
+  getCarriedIds(): string[] { return this.carried.map(d => d.id); }
 
   // ── Spawning ──────────────────────────────────────────────────────────────
 

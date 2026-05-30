@@ -579,11 +579,11 @@ export class GameScene extends Phaser.Scene {
             heapId:       this._heapId,
             isPeak,
             baseHeightPx,
-            kills:        this._runKills,
+            kills:          this._runKills,
             elapsedMs,
-            salvageBonus: this.pickupManager.getCarriedBonus(),
-            heapParams:   this._heapParams,
-            bonusCoins:   bonusCoinsFromServer,
+            salvageItemIds: this.pickupManager.getCarriedIds(),
+            heapParams:     this._heapParams,
+            bonusCoins:     bonusCoinsFromServer,
           });
           this.scene.pause();
         });

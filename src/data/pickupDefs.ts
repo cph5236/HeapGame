@@ -4,6 +4,11 @@
 // run. Picking one up applies its effect to the player (mixed good/bad) and adds
 // its scoreBonus to the run total when the player reaches the top. Carried items
 // stack — effects compose and bonuses sum (see aggregateModifiers).
+//
+// Point values come from shared/pickupScores so the client and the
+// score-authoritative server agree on every bonus.
+
+import { PICKUP_BONUS } from '../../shared/pickupScores';
 
 export interface PickupEffect {
   /** Multiplies PLAYER_SPEED. 1 = no change, >1 faster, <1 heavier/slower. */
@@ -54,7 +59,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: '+ Jump height',
     color:       0x66ddff,
     effect:      { speedMult: 1.0, jumpBonus: 120, extraAirJumps: 0 },
-    scoreBonus:  250,
+    scoreBonus:  PICKUP_BONUS['spring-coil'],
   },
   {
     id:          'worn-boot',
@@ -62,7 +67,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: '+ Move speed',
     color:       0xc8a060,
     effect:      { speedMult: 1.25, jumpBonus: 0, extraAirJumps: 0 },
-    scoreBonus:  250,
+    scoreBonus:  PICKUP_BONUS['worn-boot'],
   },
   {
     id:          'balloon',
@@ -70,7 +75,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: '+1 Air jump',
     color:       0xff77cc,
     effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 1 },
-    scoreBonus:  500,
+    scoreBonus:  PICKUP_BONUS['balloon'],
   },
   {
     id:          'engine-block',
@@ -78,7 +83,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Heavy: − speed, big points',
     color:       0x888888,
     effect:      { speedMult: 0.7, jumpBonus: 0, extraAirJumps: 0 },
-    scoreBonus:  1200,
+    scoreBonus:  PICKUP_BONUS['engine-block'],
   },
   {
     id:          'rusty-anchor',
@@ -86,6 +91,6 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Heavy: − speed & jump, huge points',
     color:       0x9a5a3a,
     effect:      { speedMult: 0.8, jumpBonus: -80, extraAirJumps: 0 },
-    scoreBonus:  1800,
+    scoreBonus:  PICKUP_BONUS['rusty-anchor'],
   },
 ];
