@@ -22,7 +22,10 @@ import sharp from 'sharp';
 import { writeFileSync, readdirSync, mkdirSync } from 'fs';
 import { join, extname, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { FOLDER_RARITY, FOLDER_SCALE, SPRITES_SUBDIR, TILE_COUNT, STAMPS_PER_TILE } from './sprite-config.mjs';
+import {
+  FOLDER_RARITY, FOLDER_SCALE, SPRITES_SUBDIR, TILE_COUNT, STAMPS_PER_TILE,
+  BACKGROUND_COLOR, SHADOW_COLOR, SHADOW_OPACITY, SHADOW_BLUR_SIGMA, SHADOW_OFFSET,
+} from './sprite-config.mjs';
 
 const __dirname   = dirname(fileURLToPath(import.meta.url));
 const SPRITES_DIR = join(__dirname, '..', 'src', 'sprites', SPRITES_SUBDIR);
@@ -132,7 +135,7 @@ let canvas = await sharp({
     width:    CANVAS_W,
     height:   CANVAS_H,
     channels: 4,
-    background: { r: 18, g: 20, b: 35, alpha: 1 },
+    background: { ...BACKGROUND_COLOR, alpha: 1 },
   },
 }).png().toBuffer();
 
@@ -158,9 +161,28 @@ for (let i = 0; i < STAMP_COUNT; i++) {
   const clampedLeft = Math.max(0, Math.min(left, CANVAS_W - 1));
   const clampedTop  = Math.max(0, Math.min(top,  CANVAS_H - 1));
 
-  composites.push({ input: rotated, left: clampedLeft, top: clampedTop, blend: 'over' });
+  // Build a soft drop shadow from the sprite's alpha, tinted SHADOW_COLOR.
+  const shadowAlpha = await sharp(rotated)
+    .ensureAlpha()
+    .extractChannel(3)
+    .linear(SHADOW_OPACITY, 0)        // scale alpha by opacity
+    .raw()
+    .toBuffer();
+  const shadowBuf = await sharp({
+    create: { width: rw, height: rh, channels: 3, background: SHADOW_COLOR },
+  })
+    .joinChannel(shadowAlpha, { raw: { width: rw, height: rh, channels: 1 } })
+    .blur(SHADOW_BLUR_SIGMA)
+    .png()
+    .toBuffer();
 
-  if (composites.length === 100 || i === STAMP_COUNT - 1) {
+  const shLeft = Math.max(0, Math.min(clampedLeft + SHADOW_OFFSET.x, CANVAS_W - 1));
+  const shTop  = Math.max(0, Math.min(clampedTop  + SHADOW_OFFSET.y, CANVAS_H - 1));
+
+  composites.push({ input: shadowBuf, left: shLeft,      top: shTop,      blend: 'over' });
+  composites.push({ input: rotated,   left: clampedLeft, top: clampedTop, blend: 'over' });
+
+  if (composites.length >= 100 || i === STAMP_COUNT - 1) {
     canvas = await sharp(canvas).composite(composites).png().toBuffer();
     composites.length = 0;
     process.stdout.write(`  stamps: ${i + 1}/${STAMP_COUNT}\r`);
