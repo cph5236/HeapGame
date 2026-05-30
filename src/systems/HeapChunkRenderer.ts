@@ -11,6 +11,42 @@ const TEX_H = 1024;
 /** Depth for heap visuals — below invisible physics sprites (depth 5). */
 const HEAP_VISUAL_DEPTH = 3;
 
+// ── Heap silhouette styling ───────────────────────────────────────────────
+// The heap is drawn as a single textured mass per band. To make it read as a
+// solid, lit pile (rather than a flat sticker cut-out) we layer, in order:
+//   1. a soft dark halo behind the silhouette to ground it against the sky,
+//   2. an inner ambient-occlusion shadow that hugs the silhouette rim,
+//   3. a two-tone beveled outline, and
+//   4. a warm rim light on up-facing edges.
+// Crucially, all of these trace only the *silhouette* (left/right) edges — the
+// horizontal edges where a band is cut at its top/bottom boundary are skipped,
+// so vertically-adjacent bands blend seamlessly with no horizontal seam line.
+
+/** Outer grounding halo: soft dark glow cast outward from the silhouette. */
+const HEAP_HALO_COLOR  = 'rgba(0,0,0,0.45)';
+const HEAP_HALO_BLUR   = 12;
+
+/** Inner ambient occlusion: [strokeWidth, alpha] passes, widest/faintest first. */
+const HEAP_AO_PASSES: ReadonlyArray<readonly [number, number]> = [
+  [44, 0.06], [30, 0.08], [18, 0.11], [10, 0.15], [5, 0.22],
+];
+const HEAP_AO_COLOR = '8,6,3';
+
+/** Two-tone beveled outline: a dark base with a warmer brown sitting inside it. */
+const HEAP_OUTLINE_DARK   = '#241307';
+const HEAP_OUTLINE_DARK_W = 8;
+const HEAP_OUTLINE_WARM   = '#7c4a23';
+const HEAP_OUTLINE_WARM_W = 4;
+
+/** Rim light on up-facing edges (outward normal y below -threshold). */
+const HEAP_RIM_COLOR  = '235,208,162';
+const HEAP_RIM_ALPHA  = 0.8;
+const HEAP_RIM_WIDTH  = 2.6;
+const HEAP_RIM_THRESH = 0.3;
+
+/** Local-space 2D point used while baking a chunk. */
+interface LocalPt { x: number; y: number; }
+
 interface ChunkObjects {
   image:      Phaser.GameObjects.Image;
   textureKey: string;
@@ -128,9 +164,9 @@ export class HeapChunkRenderer {
       this.disposeChunk(existing);
     }
 
-    // Bake fill + border into a single canvas via canvas2d's native path
-    // rasterizer (no JS earcut, no per-frame BitmapMask). Result is a single
-    // textured quad rendered through the standard ImageWebGLRenderer path.
+    // Bake fill + shading + outline into a single canvas via canvas2d's native
+    // path rasterizer (no JS earcut, no per-frame BitmapMask). Result is a
+    // single textured quad rendered through the standard ImageWebGLRenderer path.
     const W = this.colWidth;
     const H = CHUNK_BAND_HEIGHT;
     const canvas = document.createElement('canvas');
@@ -139,17 +175,45 @@ export class HeapChunkRenderer {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Build the polygon path once — used for both clip() and stroke().
-    // Polygon is translated from world space into local (canvas) space.
-    ctx.beginPath();
-    ctx.moveTo(polygon[0].x - this.xOffset, polygon[0].y - bandTop);
-    for (let i = 1; i < polygon.length; i++) {
-      ctx.lineTo(polygon[i].x - this.xOffset, polygon[i].y - bandTop);
-    }
-    ctx.closePath();
+    // Translate the polygon from world space into local (canvas) space.
+    const pts: LocalPt[] = polygon.map(p => ({ x: p.x - this.xOffset, y: p.y - bandTop }));
 
-    // Clip to polygon, draw the heap-fill tiles, restore.
+    // Silhouette = contiguous runs of edges that are NOT the horizontal
+    // band-boundary connectors (top edge at y≈0, bottom edge at y≈H). Shading
+    // and outlines trace only these, so adjacent bands meet without a seam.
+    const runs = HeapChunkRenderer.silhouetteRuns(pts, H);
+
+    const tracePath = () => {
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.closePath();
+    };
+    const strokeRuns = (width: number, style: string) => {
+      ctx.lineJoin = 'round';
+      ctx.lineCap  = 'round';
+      ctx.lineWidth   = width;
+      ctx.strokeStyle = style;
+      for (const run of runs) {
+        ctx.beginPath();
+        ctx.moveTo(run[0].x, run[0].y);
+        for (let i = 1; i < run.length; i++) ctx.lineTo(run[i].x, run[i].y);
+        ctx.stroke();
+      }
+    };
+
+    // 1. Soft grounding halo — a blurred dark glow around the silhouette that
+    //    sits behind the fill, separating the heap from the sky.
     ctx.save();
+    ctx.shadowColor = HEAP_HALO_COLOR;
+    ctx.shadowBlur  = HEAP_HALO_BLUR;
+    strokeRuns(2, 'rgba(25,15,8,1)');
+    ctx.restore();
+
+    // 2. Fill: clip to the polygon, draw the tiled heap texture, then layer the
+    //    inner ambient-occlusion shadow (clipped, so it darkens only the rim).
+    ctx.save();
+    tracePath();
     ctx.clip();
     const tileOffsetY = -(bandTop % TEX_H);
     for (let ty = tileOffsetY; ty < H; ty += TEX_H) {
@@ -158,13 +222,15 @@ export class HeapChunkRenderer {
       const tileSrc   = this.scene.textures.get(tileKey).getSourceImage() as CanvasImageSource;
       ctx.drawImage(tileSrc, 0, ty);
     }
+    for (const [w, a] of HEAP_AO_PASSES) strokeRuns(w, `rgba(${HEAP_AO_COLOR},${a})`);
     ctx.restore();
 
-    // Stroke the border on top (after restore so the line can sit on the
-    // polygon edge — same visual as the prior borderGfx layer).
-    ctx.lineWidth   = 8;
-    ctx.strokeStyle = '#6b3a1f';
-    ctx.stroke();
+    // 3. Two-tone beveled outline on the silhouette (dark base, warm inner).
+    strokeRuns(HEAP_OUTLINE_DARK_W, HEAP_OUTLINE_DARK);
+    strokeRuns(HEAP_OUTLINE_WARM_W, HEAP_OUTLINE_WARM);
+
+    // 4. Warm rim light on up-facing edges — simulates sky light on the pile.
+    HeapChunkRenderer.strokeRimLight(ctx, pts, runs);
 
     const textureKey = `chunk-${++HeapChunkRenderer._textureSeq}`;
     this.scene.textures.addCanvas(textureKey, canvas);
@@ -175,5 +241,83 @@ export class HeapChunkRenderer {
       .setDepth(HEAP_VISUAL_DEPTH);
 
     this.chunkObjects.set(bandTop, { image, textureKey });
+  }
+
+  /**
+   * Split a band polygon into contiguous silhouette runs, dropping the
+   * horizontal connector edges that lie along the band's top (y≈0) or bottom
+   * (y≈H) cut line. These connectors are internal boundaries shared with the
+   * neighbouring band, so leaving them un-stroked makes stacked bands blend.
+   */
+  private static silhouetteRuns(pts: LocalPt[], H: number): LocalPt[][] {
+    const eps = 2;
+    const isConnector = (a: LocalPt, b: LocalPt): boolean =>
+      (Math.abs(a.y)     <= eps && Math.abs(b.y)     <= eps) ||
+      (Math.abs(a.y - H) <= eps && Math.abs(b.y - H) <= eps);
+
+    const runs: LocalPt[][] = [];
+    let cur: LocalPt[] | null = null;
+    const n = pts.length;
+    for (let i = 0; i < n; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % n];
+      if (isConnector(a, b)) {
+        if (cur) { runs.push(cur); cur = null; }
+        continue;
+      }
+      if (!cur) cur = [a];
+      cur.push(b);
+    }
+    if (cur) runs.push(cur);
+    return runs;
+  }
+
+  /** Stroke a warm highlight on edges whose outward normal faces upward. */
+  private static strokeRimLight(
+    ctx: CanvasRenderingContext2D,
+    pts: LocalPt[],
+    runs: LocalPt[][],
+  ): void {
+    ctx.lineCap   = 'round';
+    ctx.lineWidth = HEAP_RIM_WIDTH;
+    for (const run of runs) {
+      for (let i = 0; i < run.length - 1; i++) {
+        const a = run[i];
+        const b = run[i + 1];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const len = Math.hypot(dx, dy) || 1;
+        dx /= len; dy /= len;
+        // Outward normal: pick the candidate that points out of the polygon.
+        let nx = dy;
+        let ny = -dx;
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        if (HeapChunkRenderer.pointInPolygon(pts, mx + nx * 3, my + ny * 3)) {
+          nx = -nx; ny = -ny;
+        }
+        if (ny < -HEAP_RIM_THRESH) {
+          const strength = Math.min(1, (-ny - HEAP_RIM_THRESH) / (1 - HEAP_RIM_THRESH));
+          ctx.strokeStyle = `rgba(${HEAP_RIM_COLOR},${HEAP_RIM_ALPHA * strength})`;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  /** Standard even-odd ray-cast point-in-polygon test. */
+  private static pointInPolygon(pts: LocalPt[], x: number, y: number): boolean {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const xi = pts[i].x, yi = pts[i].y;
+      const xj = pts[j].x, yj = pts[j].y;
+      if (((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+    }
+    return inside;
   }
 }
