@@ -13,6 +13,7 @@ import { initLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { AudioManager } from '../systems/AudioManager';
 import { AdClient } from '../systems/ads/AdClient';
+import { loadGameAssets } from './loadGameAssets';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -78,7 +79,7 @@ export class BootScene extends Phaser.Scene {
         } catch {
           // invalid JSON — use empty params, scene falls back to its own defaults
         }
-        this.scene.start(sceneName, params);
+        void this.startDevScene(sceneName, params);
         return;
       }
     }
@@ -135,5 +136,40 @@ export class BootScene extends Phaser.Scene {
 
     // Start MenuScene immediately — does not wait on the network call.
     this.scene.start('MenuScene');
+  }
+
+  /**
+   * Dev-only: boot directly into a scene for screenshot/preview tooling.
+   * Gameplay scenes assume MenuScene already ran `loadGameAssets`, so load the
+   * full asset set (heap tiles, enemies, audio) here. The server-driven
+   * GameScene additionally needs a heap polygon in the registry, so fetch one
+   * before starting; InfiniteGameScene is procedural and needs only the assets.
+   */
+  private async startDevScene(sceneName: string, params: Record<string, unknown>): Promise<void> {
+    loadGameAssets(this);
+
+    if (sceneName === 'GameScene') {
+      try {
+        const summaries = await HeapClient.list();
+        const pick = summaries
+          .filter(s => s.id !== INFINITE_HEAP_ID)
+          .sort((a, b) => a.params.difficulty - b.params.difficulty
+            || a.createdAt.localeCompare(b.createdAt))[0];
+        if (pick) {
+          setSelectedHeapId(pick.id);
+          this.game.registry.set('activeHeapId', pick.id);
+          this.game.registry.set('heapParams',   pick.params);
+          this.game.registry.set('heapPolygon',  await HeapClient.load(pick.id));
+        }
+      } catch {
+        // Offline / no worker — GameScene falls back to an empty heap.
+      }
+    }
+
+    if (this.registry.get('gameAssetsReady') === true) {
+      this.scene.start(sceneName, params);
+    } else {
+      this.game.events.once('gameAssetsReady', () => this.scene.start(sceneName, params));
+    }
   }
 }

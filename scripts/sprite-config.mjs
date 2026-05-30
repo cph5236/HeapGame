@@ -56,3 +56,18 @@ export const TILE_COUNT = 4;
  * Total stamps = STAMPS_PER_TILE × TILE_COUNT.
  */
 export const STAMPS_PER_TILE = 1500;
+
+/**
+ * Background colour for the composite canvas. Warm-dark brown so the gaps
+ * between stamped items read as shadowed pile rather than cold void.
+ */
+export const BACKGROUND_COLOR = { r: 30, g: 24, b: 17 };
+
+/**
+ * Per-stamp drop shadow — composited under each sprite to ground items and
+ * create depth/crevices between them.
+ */
+export const SHADOW_COLOR      = { r: 8, g: 6, b: 4 };
+export const SHADOW_OPACITY    = 0.5;   // 0..1 multiplier on the sprite's alpha
+export const SHADOW_BLUR_SIGMA = 4;     // gaussian blur sigma (px)
+export const SHADOW_OFFSET     = { x: 3, y: 5 }; // px, down/right

@@ -47,6 +47,11 @@ const config: Phaser.Types.Core.GameConfig = {
 const game = new Phaser.Game(config);
 installAudioFocusGuard();
 
+// Dev-only: expose the game instance for scene-preview / debugging tooling.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  (window as unknown as { game: Phaser.Game }).game = game;
+}
+
 // Restart UI scenes when the window is resized so they reposition their
 // objects at the new canvas size. Gameplay scenes are excluded because a
 // mid-game restart would discard all in-progress state.
