@@ -13,7 +13,7 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { PICKUP_DEFS, PickupDef, aggregateModifiers, CarryModifiers } from '../data/pickupDefs';
-import { shouldSpawnPickup, findNearestInRange, surfaceSpawnCandidates } from './PickupHelpers';
+import { shouldSpawnPickup, findNearestInRange, surfaceSpawnCandidates, pickPolarity } from './PickupHelpers';
 import { SALVAGE_MIN_SPACING_PX } from '../../shared/pickupScores';
 import { CHUNK_BAND_HEIGHT } from '../constants';
 import { InputManager } from './InputManager';
@@ -23,8 +23,14 @@ import { getLogger } from '../logging';
 const PICKUP_SIZE     = 28;                    // px square
 const PICKUP_RANGE    = 72;                    // px proximity radius for overlay + grab
 const SPAWN_MIN_GAP   = SALVAGE_MIN_SPACING_PX; // px min vertical spacing (shared w/ server cap)
-const SPAWN_CHANCE    = 0.33;                  // per eligible platform
 const CULL_MARGIN      = 2400; // px below camera before a pickup is dropped
+
+/** Spawn tuning sourced from the heap's params. */
+export interface PickupSpawnRates {
+  base:     number;  // 0..1 chance a pickup spawns per surface candidate
+  positive: number;  // weight for choosing a beneficial item
+  negative: number;  // weight for choosing a hindering item
+}
 
 interface SpawnedPickup {
   def:       PickupDef;
@@ -37,6 +43,7 @@ interface SpawnedPickup {
 export class PickupManager {
   private readonly scene:  Phaser.Scene;
   private readonly player: Player;
+  private readonly rates:  PickupSpawnRates;
 
   private pickups:    SpawnedPickup[] = [];
   private carried:    PickupDef[]     = [];
@@ -61,9 +68,10 @@ export class PickupManager {
   // Carried-salvage HUD indicator (screen-space)
   private carriedText!: Phaser.GameObjects.Text;
 
-  constructor(scene: Phaser.Scene, player: Player) {
+  constructor(scene: Phaser.Scene, player: Player, rates: PickupSpawnRates) {
     this.scene  = scene;
     this.player = player;
+    this.rates  = rates;
     this.grabKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
 
     this.createOverlay();
@@ -86,12 +94,16 @@ export class PickupManager {
     }
   }
 
-  /** Spawn a random pickup at a surface point if chance + spacing allow. */
+  /** Spawn a pickup at a surface point if base chance + spacing allow. Polarity
+   *  (positive vs negative item) is chosen by the heap's pos/neg rate weights. */
   private trySpawnAt(x: number, surfaceY: number): void {
-    if (!shouldSpawnPickup(Math.random(), this.lastSpawnY, surfaceY, SPAWN_MIN_GAP, SPAWN_CHANCE)) {
+    if (!shouldSpawnPickup(Math.random(), this.lastSpawnY, surfaceY, SPAWN_MIN_GAP, this.rates.base)) {
       return;
     }
-    const def = PICKUP_DEFS[Math.floor(Math.random() * PICKUP_DEFS.length)];
+    const polarity = pickPolarity(Math.random(), this.rates.positive, this.rates.negative);
+    const pool = PICKUP_DEFS.filter(d => d.polarity === polarity);
+    const defs = pool.length > 0 ? pool : PICKUP_DEFS; // fall back if a pool is empty
+    const def = defs[Math.floor(Math.random() * defs.length)];
     this.spawnPickup(def, x, surfaceY);
     this.lastSpawnY = surfaceY;
   }

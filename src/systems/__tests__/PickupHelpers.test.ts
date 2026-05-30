@@ -90,3 +90,31 @@ describe('surfaceSpawnCandidates', () => {
     expect(cands).toContainEqual({ x: 50, y: 100 });
   });
 });
+
+import { pickPolarity } from '../PickupHelpers';
+
+describe('pickPolarity', () => {
+  it('splits 50/50 on equal rates', () => {
+    expect(pickPolarity(0.4, 0.5, 0.5)).toBe('positive'); // pPos = 0.5
+    expect(pickPolarity(0.6, 0.5, 0.5)).toBe('negative');
+  });
+
+  it('always positive when negative rate is 0', () => {
+    expect(pickPolarity(0.99, 1, 0)).toBe('positive');
+    expect(pickPolarity(0.0, 1, 0)).toBe('positive');
+  });
+
+  it('always negative when positive rate is 0', () => {
+    expect(pickPolarity(0.0, 0, 1)).toBe('negative');
+    expect(pickPolarity(0.99, 0, 1)).toBe('negative');
+  });
+
+  it('honours weighting (3:1 → 75% positive)', () => {
+    expect(pickPolarity(0.7, 3, 1)).toBe('positive');  // < 0.75
+    expect(pickPolarity(0.8, 3, 1)).toBe('negative');  // >= 0.75
+  });
+
+  it('defaults to positive when both rates are 0 (no division by zero)', () => {
+    expect(pickPolarity(0.5, 0, 0)).toBe('positive');
+  });
+});

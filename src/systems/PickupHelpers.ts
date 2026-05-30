@@ -23,6 +23,21 @@ export function shouldSpawnPickup(
   return rand < chance;
 }
 
+export type PickupPolarity = 'positive' | 'negative';
+
+/** Choose positive vs negative polarity weighted by the two rates.
+ *  P(positive) = positiveRate / (positiveRate + negativeRate). When both rates
+ *  are 0 there is no preference, so default to positive (avoids /0). */
+export function pickPolarity(
+  rand:         number,
+  positiveRate: number,
+  negativeRate: number,
+): PickupPolarity {
+  const total = positiveRate + negativeRate;
+  if (total <= 0) return 'positive';
+  return rand < positiveRate / total ? 'positive' : 'negative';
+}
+
 interface Pt { x: number; y: number; }
 
 /** Midpoints of real heap surface edges within a band, for spawning pickups along

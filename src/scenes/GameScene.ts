@@ -164,20 +164,27 @@ export class GameScene extends Phaser.Scene {
       }
     };
 
+    // Player + salvage pickups MUST be constructed before applyPolygonToGenerator
+    // below: that call eagerly fires onBandLoaded for every band of the loaded
+    // heap, and the onBandLoaded callback spawns pickups via this.pickupManager.
+    // If the manager doesn't exist yet, optional chaining silently drops every
+    // initial surface spawn (the bug that made pickups never appear).
+    this.player = new Player(this, WORLD_WIDTH * 0.0625, this.spawnY, this.playerConfig);
+    this.player.worldHeight = this._worldHeight;
+    this.pickupManager = new PickupManager(this, this.player, {
+      base:     this._heapParams.baseItemSpawnRate     ?? DEFAULT_HEAP_PARAMS.baseItemSpawnRate,
+      positive: this._heapParams.positiveItemSpawnRate ?? DEFAULT_HEAP_PARAMS.positiveItemSpawnRate,
+      negative: this._heapParams.negativeItemSpawnRate ?? DEFAULT_HEAP_PARAMS.negativeItemSpawnRate,
+    });
+
     if (polygon.length > 0) {
       this.enemyManager.setPolygon(polygon);
       applyPolygonToGenerator(polygon, this.heapGenerator, this._worldHeight);
       this.heapGenerator.setPolygonTopY(polygonTopY(polygon, this._worldHeight));
     }
 
-    this.player = new Player(this, WORLD_WIDTH * 0.0625, this.spawnY, this.playerConfig);
-    this.player.worldHeight = this._worldHeight;
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
     this.playerOutro    = new PlayerOutro(this, this.player.sprite);
-
-    // Salvage pickups — created before initial generation so onPlatformSpawned
-    // can populate the first chunk.
-    this.pickupManager = new PickupManager(this, this.player);
 
     // If restarted via checkpoint respawn, reposition player and consume one spawn
     if (this.checkpointRespawn) {

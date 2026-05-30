@@ -19,6 +19,8 @@ export interface PickupEffect {
   extraAirJumps: number;
 }
 
+export type PickupPolarity = 'positive' | 'negative';
+
 export interface PickupDef {
   id:          string;
   name:        string;
@@ -26,6 +28,9 @@ export interface PickupDef {
   description: string;
   /** Tint / fallback rectangle colour. */
   color:       number;
+  /** Whether the net effect helps (positive) or hinders (negative) the player.
+   *  Drives the positive/negative spawn-rate mix from the heap params. */
+  polarity:    PickupPolarity;
   effect:      PickupEffect;
   /** Points cashed in when carried to the top of the heap. */
   scoreBonus:  number;
@@ -58,6 +63,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     name:        'Spring Coil',
     description: '+ Jump height',
     color:       0x66ddff,
+    polarity:    'positive',
     effect:      { speedMult: 1.0, jumpBonus: 120, extraAirJumps: 0 },
     scoreBonus:  PICKUP_BONUS['spring-coil'],
   },
@@ -66,6 +72,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     name:        'Worn Boot',
     description: '+ Move speed',
     color:       0xc8a060,
+    polarity:    'positive',
     effect:      { speedMult: 1.25, jumpBonus: 0, extraAirJumps: 0 },
     scoreBonus:  PICKUP_BONUS['worn-boot'],
   },
@@ -74,6 +81,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     name:        'Balloon',
     description: '+1 Air jump',
     color:       0xff77cc,
+    polarity:    'positive',
     effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 1 },
     scoreBonus:  PICKUP_BONUS['balloon'],
   },
@@ -82,6 +90,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     name:        'Engine Block',
     description: 'Heavy: − speed, big points',
     color:       0x888888,
+    polarity:    'negative',
     effect:      { speedMult: 0.7, jumpBonus: 0, extraAirJumps: 0 },
     scoreBonus:  PICKUP_BONUS['engine-block'],
   },
@@ -90,6 +99,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     name:        'Rusty Anchor',
     description: 'Heavy: − speed & jump, huge points',
     color:       0x9a5a3a,
+    polarity:    'negative',
     effect:      { speedMult: 0.8, jumpBonus: -80, extraAirJumps: 0 },
     scoreBonus:  PICKUP_BONUS['rusty-anchor'],
   },

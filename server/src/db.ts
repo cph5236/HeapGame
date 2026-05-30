@@ -17,6 +17,9 @@ export interface HeapRow {
   world_height: number;
   top_y: number;
   ghost_point_count: number;
+  base_item_spawn_rate: number;
+  positive_item_spawn_rate: number;
+  negative_item_spawn_rate: number;
 }
 
 export interface HeapSummaryRow {
@@ -31,6 +34,9 @@ export interface HeapSummaryRow {
   world_height: number;
   top_y: number;
   ghost_point_count: number;
+  base_item_spawn_rate: number;
+  positive_item_spawn_rate: number;
+  negative_item_spawn_rate: number;
 }
 
 export interface HeapDB {
@@ -60,7 +66,7 @@ export class D1HeapDB implements HeapDB {
   async listHeaps(): Promise<HeapSummaryRow[]> {
     const result = await this.d1
       .prepare(
-        'SELECT id, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height, top_y, ghost_point_count FROM heap',
+        'SELECT id, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height, top_y, ghost_point_count, base_item_spawn_rate, positive_item_spawn_rate, negative_item_spawn_rate FROM heap',
       )
       .all<HeapSummaryRow>();
     return result.results;
@@ -69,7 +75,7 @@ export class D1HeapDB implements HeapDB {
   async getHeap(id: string): Promise<HeapRow | null> {
     const row = await this.d1
       .prepare(
-        'SELECT id, base_id, live_zone, freeze_y, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height, top_y, ghost_point_count FROM heap WHERE id = ?1',
+        'SELECT id, base_id, live_zone, freeze_y, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height, top_y, ghost_point_count, base_item_spawn_rate, positive_item_spawn_rate, negative_item_spawn_rate FROM heap WHERE id = ?1',
       )
       .bind(id)
       .first<HeapRow>();
@@ -95,8 +101,9 @@ export class D1HeapDB implements HeapDB {
       this.d1
         .prepare(
           `INSERT INTO heap (id, base_id, live_zone, freeze_y, version, created_at,
-                             name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height, top_y, ghost_point_count)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`,
+                             name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height, top_y, ghost_point_count,
+                             base_item_spawn_rate, positive_item_spawn_rate, negative_item_spawn_rate)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)`,
         )
         .bind(
           heapId, baseId, '[]', 0, 1, now,
@@ -104,6 +111,7 @@ export class D1HeapDB implements HeapDB {
           params.spawnRateMult, params.coinMult, params.scoreMult, params.worldHeight,
           initialTopY,
           ghostPointCount,
+          params.baseItemSpawnRate, params.positiveItemSpawnRate, params.negativeItemSpawnRate,
         ),
     ]);
   }
@@ -119,10 +127,12 @@ export class D1HeapDB implements HeapDB {
     const ghostPointCount = (params as any).ghostPointCount ?? 1;
     await this.d1
       .prepare(
-        `UPDATE heap SET name = ?1, difficulty = ?2, spawn_rate_mult = ?3, coin_mult = ?4, score_mult = ?5, world_height = ?6, ghost_point_count = ?7
-         WHERE id = ?8`,
+        `UPDATE heap SET name = ?1, difficulty = ?2, spawn_rate_mult = ?3, coin_mult = ?4, score_mult = ?5, world_height = ?6, ghost_point_count = ?7,
+                         base_item_spawn_rate = ?8, positive_item_spawn_rate = ?9, negative_item_spawn_rate = ?10
+         WHERE id = ?11`,
       )
-      .bind(params.name, params.difficulty, params.spawnRateMult, params.coinMult, params.scoreMult, params.worldHeight, ghostPointCount, id)
+      .bind(params.name, params.difficulty, params.spawnRateMult, params.coinMult, params.scoreMult, params.worldHeight, ghostPointCount,
+            params.baseItemSpawnRate, params.positiveItemSpawnRate, params.negativeItemSpawnRate, id)
       .run();
   }
 

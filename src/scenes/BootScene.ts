@@ -100,6 +100,9 @@ export class BootScene extends Phaser.Scene {
             worldHeight: MOCK_HEAP_HEIGHT_PX,
             isInfinite: true,
             ghostPointCount: 1,
+            baseItemSpawnRate: 0.33,
+            positiveItemSpawnRate: 0.5,
+            negativeItemSpawnRate: 0.5,
           },
         };
         const deduped = summaries.filter(s => s.id !== INFINITE_HEAP_ID);

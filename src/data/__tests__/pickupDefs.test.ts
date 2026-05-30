@@ -7,6 +7,7 @@ function def(over: Partial<PickupDef>): PickupDef {
     name:        'X',
     description: '',
     color:       0xffffff,
+    polarity:    'positive',
     effect:      { speedMult: 1, jumpBonus: 0, extraAirJumps: 0 },
     scoreBonus:  0,
     ...over,
@@ -47,6 +48,12 @@ describe('PICKUP_DEFS', () => {
       expect(d.name).toBeTruthy();
       expect(typeof d.effect.speedMult).toBe('number');
       expect(d.scoreBonus).toBeGreaterThan(0);
+      expect(['positive', 'negative']).toContain(d.polarity);
     }
+  });
+
+  it('has at least one item of each polarity (pools non-empty)', () => {
+    expect(PICKUP_DEFS.some(d => d.polarity === 'positive')).toBe(true);
+    expect(PICKUP_DEFS.some(d => d.polarity === 'negative')).toBe(true);
   });
 });
