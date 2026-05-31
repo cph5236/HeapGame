@@ -152,9 +152,6 @@ export class GameScene extends Phaser.Scene {
 
     this.heapGenerator.onPlatformSpawned = (entry, platformTopY) => {
       this.enemyManager.onPlatformSpawned(entry.x, platformTopY, this.blockPlaced, entry);
-      if (!this.blockPlaced) {
-        this.pickupManager?.onPlatformSpawned(entry.x, platformTopY);
-      }
     };
 
     this.heapGenerator.onBandLoaded = (bandTopY, vertices) => {
@@ -179,6 +176,7 @@ export class GameScene extends Phaser.Scene {
 
     if (polygon.length > 0) {
       this.enemyManager.setPolygon(polygon);
+      this.pickupManager.setPolygon(polygon);
       applyPolygonToGenerator(polygon, this.heapGenerator, this._worldHeight);
       this.heapGenerator.setPolygonTopY(polygonTopY(polygon, this._worldHeight));
     }

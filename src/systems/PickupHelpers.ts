@@ -2,6 +2,9 @@
 //
 // Pure helpers for PickupManager — no Phaser dependency, fully unit-testable.
 
+import type { Vertex } from './HeapPolygon';
+import { computeSurfaceAngle, isPointInsidePolygon } from './EnemySpawnMath';
+
 /** Decide whether to spawn a salvage pickup on a freshly-spawned platform.
  *
  * @param rand         A random value in [0, 1) (injected for determinism).
@@ -40,14 +43,23 @@ export function pickPolarity(
 
 interface Pt { x: number; y: number; }
 
-/** Midpoints of real heap surface edges within a band, for spawning pickups along
- *  the climbable terrain. Excludes the artificial horizontal cut edges inserted at
- *  the band's top/bottom clip boundaries (these cross the heap interior, not a
- *  surface). Mirrors the edge filtering used for enemy surface spawns. */
-export function surfaceSpawnCandidates(
-  vertices:   readonly Pt[],
-  bandTopY:   number,
-  bandHeight: number,
+/** Midpoints of *walkable exterior* heap surface edges within a band, for spawning
+ *  pickups only where the player can actually stand — never on walls, undersides,
+ *  or interior ledges. Mirrors the enemy surface-spawn filtering:
+ *   - skips the artificial horizontal cut edges at the band's top/bottom clip lines
+ *   - skips steep edges (angle >= angleThresholdDeg) — those are walls, not surfaces
+ *   - skips edges with heap *above* them (the point just above is inside the full
+ *     polygon) — those are undersides / interior edges, i.e. "inside the heap"
+ *
+ *  `fullPolygon` must be the complete heap polygon (not the band-clipped vertices),
+ *  so the interior test isn't fooled by the artificial band cut edges. When it is
+ *  empty the interior test is skipped (angle filtering still applies). */
+export function walkableSurfaceCandidates(
+  vertices:         readonly Pt[],
+  bandTopY:         number,
+  bandHeight:       number,
+  fullPolygon:      readonly Pt[],
+  angleThresholdDeg: number,
 ): Pt[] {
   if (vertices.length < 2) return [];
   const bandBottomY = bandTopY + bandHeight;
@@ -56,10 +68,21 @@ export function surfaceSpawnCandidates(
   for (let i = 0; i < vertices.length; i++) {
     const v1 = vertices[i];
     const v2 = vertices[(i + 1) % vertices.length];
+
     const atTopCut    = Math.abs(v1.y - bandTopY)    < EPS && Math.abs(v2.y - bandTopY)    < EPS;
     const atBottomCut = Math.abs(v1.y - bandBottomY) < EPS && Math.abs(v2.y - bandBottomY) < EPS;
     if (atTopCut || atBottomCut) continue;
-    out.push({ x: (v1.x + v2.x) / 2, y: (v1.y + v2.y) / 2 });
+
+    if (computeSurfaceAngle(v1 as Vertex, v2 as Vertex) >= angleThresholdDeg) continue;
+
+    const mx = (v1.x + v2.x) / 2;
+    const my = (v1.y + v2.y) / 2;
+
+    // Open air must be just above the surface; if it's inside the heap this edge
+    // is an underside / interior ledge, not a standable surface.
+    if (fullPolygon.length >= 3 && isPointInsidePolygon(mx, my - 1, fullPolygon as Vertex[])) continue;
+
+    out.push({ x: mx, y: my });
   }
   return out;
 }

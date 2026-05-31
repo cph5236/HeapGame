@@ -13,7 +13,8 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { PICKUP_DEFS, PickupDef, aggregateModifiers, CarryModifiers } from '../data/pickupDefs';
-import { shouldSpawnPickup, findNearestInRange, surfaceSpawnCandidates, pickPolarity } from './PickupHelpers';
+import { shouldSpawnPickup, findNearestInRange, walkableSurfaceCandidates, pickPolarity } from './PickupHelpers';
+import type { Vertex } from './HeapPolygon';
 import { SALVAGE_MIN_SPACING_PX } from '../../shared/pickupScores';
 import { CHUNK_BAND_HEIGHT } from '../constants';
 import { InputManager } from './InputManager';
@@ -24,6 +25,7 @@ const PICKUP_SIZE     = 28;                    // px square
 const PICKUP_RANGE    = 72;                    // px proximity radius for overlay + grab
 const SPAWN_MIN_GAP   = SALVAGE_MIN_SPACING_PX; // px min vertical spacing (shared w/ server cap)
 const CULL_MARGIN      = 2400; // px below camera before a pickup is dropped
+const SURFACE_ANGLE_THRESHOLD = 30; // deg — below this an edge is a walkable surface, above is a wall
 
 /** Spawn tuning sourced from the heap's params. */
 export interface PickupSpawnRates {
@@ -49,6 +51,7 @@ export class PickupManager {
   private carried:    PickupDef[]     = [];
   private aggregate:  CarryModifiers  = aggregateModifiers([]);
   private lastSpawnY: number | null   = null;
+  private heapPolygon: Vertex[]       = [];  // full heap polygon for interior/underside rejection
   private activeIndex = -1;
 
   private readonly grabKey: Phaser.Input.Keyboard.Key;
@@ -81,15 +84,19 @@ export class PickupManager {
 
   // ── Public API ────────────────────────────────────────────────────────────
 
-  /** Hook from HeapGenerator.onPlatformSpawned — maybe spawn on a placed object. */
-  onPlatformSpawned(x: number, platformTopY: number): void {
-    this.trySpawnAt(x, platformTopY);
+  /** Set the full heap polygon, used to reject underside/interior spawn points.
+   *  Call before the heap's bands are applied (and after any polygon reload). */
+  setPolygon(polygon: Vertex[]): void {
+    this.heapPolygon = polygon;
   }
 
-  /** Hook from HeapGenerator.onBandLoaded — spawn along the climbable surface
-   *  edges (where the player actually goes), mirroring enemy surface spawns. */
+  /** Hook from HeapGenerator.onBandLoaded — spawn only on walkable *exterior*
+   *  surface edges (never walls, undersides, or interior ledges). */
   onBandLoaded(bandTopY: number, vertices: readonly { x: number; y: number }[]): void {
-    for (const c of surfaceSpawnCandidates(vertices, bandTopY, CHUNK_BAND_HEIGHT)) {
+    const candidates = walkableSurfaceCandidates(
+      vertices, bandTopY, CHUNK_BAND_HEIGHT, this.heapPolygon, SURFACE_ANGLE_THRESHOLD,
+    );
+    for (const c of candidates) {
       this.trySpawnAt(c.x, c.y);
     }
   }

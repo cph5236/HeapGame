@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shouldSpawnPickup, findNearestInRange, surfaceSpawnCandidates } from '../PickupHelpers';
+import { shouldSpawnPickup, findNearestInRange } from '../PickupHelpers';
 
 describe('shouldSpawnPickup', () => {
   const MIN_GAP = 600;
@@ -53,44 +53,6 @@ describe('findNearestInRange', () => {
   });
 });
 
-describe('surfaceSpawnCandidates', () => {
-  // A simple closed band: top edge sits on the band-top cut line (y=0).
-  const verts = [
-    { x: 0,   y: 0   }, // A
-    { x: 100, y: 0   }, // B  → edge A-B is the artificial top cut (skip)
-    { x: 100, y: 200 }, // C
-    { x: 0,   y: 200 }, // D
-  ];
-
-  it('returns [] for fewer than 2 vertices', () => {
-    expect(surfaceSpawnCandidates([{ x: 0, y: 0 }], 0, 500)).toEqual([]);
-  });
-
-  it('excludes the artificial top-cut edge', () => {
-    const cands = surfaceSpawnCandidates(verts, 0, 500);
-    expect(cands).not.toContainEqual({ x: 50, y: 0 }); // midpoint of the top-cut edge
-  });
-
-  it('includes real surface edges as midpoints', () => {
-    const cands = surfaceSpawnCandidates(verts, 0, 500);
-    expect(cands).toContainEqual({ x: 50, y: 200 });  // bottom surface edge midpoint
-    expect(cands.length).toBe(3);                     // B-C, C-D, D-A (A-B excluded)
-  });
-
-  it('excludes the artificial bottom-cut edge', () => {
-    // Band 0..500; a flat edge sitting on the bottom cut line (y=500) is excluded.
-    const v = [
-      { x: 0,   y: 100 },
-      { x: 100, y: 100 }, // real surface edge
-      { x: 100, y: 500 },
-      { x: 0,   y: 500 }, // edge (100,500)-(0,500) is the bottom cut (skip)
-    ];
-    const cands = surfaceSpawnCandidates(v, 0, 500);
-    expect(cands).not.toContainEqual({ x: 50, y: 500 });
-    expect(cands).toContainEqual({ x: 50, y: 100 });
-  });
-});
-
 import { pickPolarity } from '../PickupHelpers';
 
 describe('pickPolarity', () => {
@@ -116,5 +78,49 @@ describe('pickPolarity', () => {
 
   it('defaults to positive when both rates are 0 (no division by zero)', () => {
     expect(pickPolarity(0.5, 0, 0)).toBe('positive');
+  });
+});
+
+import { walkableSurfaceCandidates } from '../PickupHelpers';
+
+describe('walkableSurfaceCandidates', () => {
+  // Rectangular heap body: interior is y 100..300, x 0..100. Sky is above (y<100).
+  //   A-B  top surface (open air above) -> walkable
+  //   B-C  right wall (vertical)        -> excluded (steep)
+  //   C-D  bottom face (heap above)     -> excluded (interior/underside)
+  //   D-A  left wall (vertical)         -> excluded (steep)
+  const hill = [
+    { x: 0,   y: 100 },
+    { x: 100, y: 100 },
+    { x: 100, y: 300 },
+    { x: 0,   y: 300 },
+  ];
+
+  it('keeps only the exterior walkable top surface', () => {
+    expect(walkableSurfaceCandidates(hill, 0, 500, hill, 30)).toEqual([{ x: 50, y: 100 }]);
+  });
+
+  it('excludes steep wall edges', () => {
+    const cands = walkableSurfaceCandidates(hill, 0, 500, hill, 30);
+    expect(cands).not.toContainEqual({ x: 100, y: 200 }); // B-C wall
+    expect(cands).not.toContainEqual({ x: 0, y: 200 });   // D-A wall
+  });
+
+  it('excludes undersides / interior edges (heap above the surface)', () => {
+    const cands = walkableSurfaceCandidates(hill, 0, 500, hill, 30);
+    expect(cands).not.toContainEqual({ x: 50, y: 300 }); // C-D underside
+  });
+
+  it('excludes the artificial band cut edges', () => {
+    const v = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 200 }, { x: 0, y: 200 }];
+    expect(walkableSurfaceCandidates(v, 0, 500, v, 30)).not.toContainEqual({ x: 50, y: 0 });
+  });
+
+  it('falls back to angle-only filtering when no full polygon is supplied', () => {
+    // Without the polygon the underside can't be detected, but walls still are.
+    const cands = walkableSurfaceCandidates(hill, 0, 500, [], 30);
+    expect(cands).toContainEqual({ x: 50, y: 100 }); // top
+    expect(cands).toContainEqual({ x: 50, y: 300 }); // underside now allowed (no polygon)
+    expect(cands).not.toContainEqual({ x: 100, y: 200 }); // wall still excluded
   });
 });
