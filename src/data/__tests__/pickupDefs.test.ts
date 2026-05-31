@@ -17,14 +17,16 @@ function def(over: Partial<PickupDef>): PickupDef {
 describe('aggregateModifiers', () => {
   it('returns identity for an empty stack', () => {
     expect(aggregateModifiers([])).toEqual({
-      speedMult: 1, jumpBonus: 0, extraAirJumps: 0, totalBonus: 0,
+      speedMult: 1, jumpBonus: 0, extraAirJumps: 0,
+      gravityMult: 1, cooldownMult: 1, wallSpeedMult: 1, totalBonus: 0,
     });
   });
 
   it('returns a single item unchanged', () => {
     const d = def({ effect: { speedMult: 1.25, jumpBonus: 120, extraAirJumps: 1 }, scoreBonus: 250 });
     expect(aggregateModifiers([d])).toEqual({
-      speedMult: 1.25, jumpBonus: 120, extraAirJumps: 1, totalBonus: 250,
+      speedMult: 1.25, jumpBonus: 120, extraAirJumps: 1,
+      gravityMult: 1, cooldownMult: 1, wallSpeedMult: 1, totalBonus: 250,
     });
   });
 
@@ -37,6 +39,23 @@ describe('aggregateModifiers', () => {
     expect(agg.extraAirJumps).toBe(1);
     expect(agg.totalBonus).toBe(2050);
   });
+
+  it('composes gravity, cooldown, and wall-speed multipliers multiplicatively', () => {
+    const a = def({ effect: { speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 0.7, cooldownMult: 0.5 } });
+    const b = def({ effect: { speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 2.0, wallSpeedMult: 1.5 } });
+    const agg = aggregateModifiers([a, b]);
+    expect(agg.gravityMult).toBeCloseTo(1.4);   // 0.7 * 2.0
+    expect(agg.cooldownMult).toBeCloseTo(0.5);  // 0.5 * 1 (b omits → 1)
+    expect(agg.wallSpeedMult).toBeCloseTo(1.5); // 1 * 1.5
+  });
+
+  it('treats omitted multiplier levers as identity (1)', () => {
+    const d = def({ effect: { speedMult: 1.2, jumpBonus: 0, extraAirJumps: 0 } });
+    const agg = aggregateModifiers([d]);
+    expect(agg.gravityMult).toBe(1);
+    expect(agg.cooldownMult).toBe(1);
+    expect(agg.wallSpeedMult).toBe(1);
+  });
 });
 
 describe('PICKUP_DEFS', () => {
@@ -47,8 +66,10 @@ describe('PICKUP_DEFS', () => {
     for (const d of PICKUP_DEFS) {
       expect(d.name).toBeTruthy();
       expect(typeof d.effect.speedMult).toBe('number');
-      expect(d.scoreBonus).toBeGreaterThan(0);
       expect(['positive', 'negative']).toContain(d.polarity);
+      // Carry items award points; instant items (e.g. the free shield) award none.
+      if (d.grantsShield) expect(d.scoreBonus).toBe(0);
+      else                expect(d.scoreBonus).toBeGreaterThan(0);
     }
   });
 

@@ -113,6 +113,8 @@ export class Player {
   private carrySpeedMult:     number = 1;
   private carryJumpBonus:     number = 0;
   private carryExtraAirJumps: number = 0;
+  private carryGravityMult:   number = 1;
+  private carryCooldownMult:  number = 1;
   private shieldActive: boolean = false;
   private shieldAura?: Phaser.GameObjects.Arc;
   private readonly syncAura = (): void => {
@@ -320,13 +322,14 @@ export class Player {
       return;
     }
     const vy = ctx.body.velocity.y;
-    if (vy > 0) {
-      ctx.body.setGravityY(WORLD_GRAVITY_Y * (FALL_GRAVITY_FACTOR - 1));
-    } else if (Math.abs(vy) < APEX_VY_THRESHOLD) {
-      ctx.body.setGravityY(WORLD_GRAVITY_Y * (APEX_GRAVITY_FACTOR - 1));
-    } else {
-      ctx.body.setGravityY(0);
-    }
+    // Per-phase gravity factor (descend / apex-hang / rise), scaled by any carried
+    // gravity modifier. setGravityY is additive to world gravity, so the body
+    // component is world*(factor*mult - 1) to make total = world*factor*mult.
+    let factor: number;
+    if (vy > 0)                            factor = FALL_GRAVITY_FACTOR;
+    else if (Math.abs(vy) < APEX_VY_THRESHOLD) factor = APEX_GRAVITY_FACTOR;
+    else                                   factor = 1;
+    ctx.body.setGravityY(WORLD_GRAVITY_Y * (factor * this.carryGravityMult - 1));
   }
 
   /** Manage wall-leave coyote time window and wall-jump cooldown decay.
@@ -460,7 +463,7 @@ export class Player {
       const dir = im.dashJustFired ? im.dashDir : (keyboardLeft ? -1 : keyboardRight ? 1 : (this.sprite.flipX ? -1 : 1));
       this.momentumX = 0;
       this.sprite.setVelocityX(dir * PLAYER_DASH_VELOCITY);
-      this.dashCooldown = DASH_COOLDOWN_MS;
+      this.dashCooldown = DASH_COOLDOWN_MS * this.carryCooldownMult;
       this.dashActive   = DASH_DURATION_MS;
       AudioManager.play('player-dash');
     }
@@ -515,7 +518,7 @@ export class Player {
     this.momentumX = dir * WALL_JUMP_PUSH;
     this.sprite.setVelocityX(this.momentumX);
     this.sprite.setVelocityY(this.jumpVelocity);
-    this.wallJumpCooldown = WALL_JUMP_COOLDOWN_MS;
+    this.wallJumpCooldown = WALL_JUMP_COOLDOWN_MS * this.carryCooldownMult;
     this.lastWallJumpSide = currentWallSide;
     this.wallCoyoteTimer = 0; // Consume coyote window on wall-jump fire
     AudioManager.play('player-jump');
@@ -642,11 +645,16 @@ export class Player {
 
   /** Apply aggregated salvage-carry modifiers. Granting a new air jump refills
    *  the air-jump pool so the benefit is usable immediately. */
-  setCarryModifiers(mods: Pick<CarryModifiers, 'speedMult' | 'jumpBonus' | 'extraAirJumps'>): void {
+  setCarryModifiers(
+    mods: Pick<CarryModifiers, 'speedMult' | 'jumpBonus' | 'extraAirJumps'>
+        & Partial<Pick<CarryModifiers, 'gravityMult' | 'cooldownMult'>>,
+  ): void {
     const gainedAirJump = mods.extraAirJumps > this.carryExtraAirJumps;
     this.carrySpeedMult     = mods.speedMult;
     this.carryJumpBonus     = mods.jumpBonus;
     this.carryExtraAirJumps = mods.extraAirJumps;
+    this.carryGravityMult   = mods.gravityMult  ?? 1;
+    this.carryCooldownMult  = mods.cooldownMult ?? 1;
     if (gainedAirJump) {
       this.airJumpsRemaining = this.effectiveMaxAirJumps;
     }

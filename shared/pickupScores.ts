@@ -7,11 +7,16 @@
 
 /** id → score bonus awarded when the item is carried to the top. */
 export const PICKUP_BONUS: Record<string, number> = {
-  'spring-coil':  250,
-  'worn-boot':    250,
-  'balloon':      500,
-  'engine-block': 1200,
-  'rusty-anchor': 1800,
+  'spring-coil':    250,
+  'worn-boot':      250,
+  'balloon':        500,
+  'engine-block':   1200,
+  'rusty-anchor':   1800,
+  'feather':        400,
+  'overclock-chip': 500,
+  'concrete-boots': 1300,
+  'fuel-canister':  2000,
+  'bubble-wrap':    0,    // free instant shield — never carried, never scored
 };
 
 /** Minimum vertical spacing between spawned pickups (must match PickupManager). */

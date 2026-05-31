@@ -17,6 +17,12 @@ export interface PickupEffect {
   jumpBonus:     number;
   /** Added to the player's max air-jumps. */
   extraAirJumps: number;
+  /** Multiplies the player's gravity. <1 floats, >1 sinks. (default 1) */
+  gravityMult?:  number;
+  /** Multiplies dash + wall-jump cooldowns. <1 = faster recharge. (default 1) */
+  cooldownMult?: number;
+  /** Multiplies the rising trash-wall speed. >1 = wall climbs faster. (default 1) */
+  wallSpeedMult?: number;
 }
 
 export type PickupPolarity = 'positive' | 'negative';
@@ -34,26 +40,37 @@ export interface PickupDef {
   effect:      PickupEffect;
   /** Points cashed in when carried to the top of the heap. */
   scoreBonus:  number;
+  /** Instant-use item: on grab it activates a shield and is NOT carried (no
+   *  stacking effect, no score bonus, no carry-cap cost). */
+  grantsShield?: boolean;
 }
 
 export interface CarryModifiers {
   speedMult:     number;
   jumpBonus:     number;
   extraAirJumps: number;
+  gravityMult:   number;
+  cooldownMult:  number;
+  wallSpeedMult: number;
   totalBonus:    number;
 }
 
 /** Aggregate a carried stack into a single set of modifiers + total bonus.
- *  Speed multipliers compose multiplicatively; everything else sums. */
+ *  Multiplier levers compose multiplicatively (omitted = identity 1); jump,
+ *  air-jumps, and bonus sum. */
 export function aggregateModifiers(carried: readonly PickupDef[]): CarryModifiers {
   return carried.reduce<CarryModifiers>(
     (acc, d) => ({
       speedMult:     acc.speedMult * d.effect.speedMult,
       jumpBonus:     acc.jumpBonus + d.effect.jumpBonus,
       extraAirJumps: acc.extraAirJumps + d.effect.extraAirJumps,
+      gravityMult:   acc.gravityMult * (d.effect.gravityMult ?? 1),
+      cooldownMult:  acc.cooldownMult * (d.effect.cooldownMult ?? 1),
+      wallSpeedMult: acc.wallSpeedMult * (d.effect.wallSpeedMult ?? 1),
       totalBonus:    acc.totalBonus + d.scoreBonus,
     }),
-    { speedMult: 1, jumpBonus: 0, extraAirJumps: 0, totalBonus: 0 },
+    { speedMult: 1, jumpBonus: 0, extraAirJumps: 0,
+      gravityMult: 1, cooldownMult: 1, wallSpeedMult: 1, totalBonus: 0 },
   );
 }
 
@@ -102,5 +119,51 @@ export const PICKUP_DEFS: PickupDef[] = [
     polarity:    'negative',
     effect:      { speedMult: 0.8, jumpBonus: -80, extraAirJumps: 0 },
     scoreBonus:  PICKUP_BONUS['rusty-anchor'],
+  },
+  {
+    id:          'feather',
+    name:        'Feather',
+    description: 'Floaty: lower gravity',
+    color:       0xeeeeaa,
+    polarity:    'positive',
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, gravityMult: 0.7 },
+    scoreBonus:  PICKUP_BONUS['feather'],
+  },
+  {
+    id:          'overclock-chip',
+    name:        'Overclock Chip',
+    description: 'Faster dash & wall-jump',
+    color:       0x44ff44,
+    polarity:    'positive',
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, cooldownMult: 0.5 },
+    scoreBonus:  PICKUP_BONUS['overclock-chip'],
+  },
+  {
+    id:          'bubble-wrap',
+    name:        'Bubble Wrap',
+    description: 'Absorb one hit · FREE',
+    color:       0xaaffff,
+    polarity:    'positive',
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0 },
+    scoreBonus:  PICKUP_BONUS['bubble-wrap'],
+    grantsShield: true,
+  },
+  {
+    id:          'concrete-boots',
+    name:        'Concrete Boots',
+    description: 'Heavy: sink faster',
+    color:       0x777788,
+    polarity:    'negative',
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1.4 },
+    scoreBonus:  PICKUP_BONUS['concrete-boots'],
+  },
+  {
+    id:          'fuel-canister',
+    name:        'Fuel Canister',
+    description: 'Risky: trash wall rises faster!',
+    color:       0xff5522,
+    polarity:    'negative',
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, wallSpeedMult: 1.5 },
+    scoreBonus:  PICKUP_BONUS['fuel-canister'],
   },
 ];

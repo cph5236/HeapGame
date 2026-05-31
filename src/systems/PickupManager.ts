@@ -138,6 +138,8 @@ export class PickupManager {
   getCarriedCount(): number { return this.carried.length; }
   /** Ids of carried items — sent to the server for authoritative score validation. */
   getCarriedIds(): string[] { return this.carried.map(d => d.id); }
+  /** Aggregate trash-wall speed multiplier from carried items (1 = unaffected). */
+  getWallSpeedMult(): number { return this.aggregate.wallSpeedMult; }
 
   // ── Spawning ──────────────────────────────────────────────────────────────
 
@@ -162,14 +164,19 @@ export class PickupManager {
     pickup.collected = true;
     this.pickups.splice(index, 1);
 
-    this.carried.push(pickup.def);
-    this.aggregate = aggregateModifiers(this.carried);
-    this.player.setCarryModifiers(this.aggregate);
+    if (pickup.def.grantsShield) {
+      // Instant item: activate a shield, do not carry (no stack effect, no bonus).
+      this.player.activateShield();
+      this.spawnFloatingText(pickup.x, pickup.y, 'SHIELD');
+    } else {
+      this.carried.push(pickup.def);
+      this.aggregate = aggregateModifiers(this.carried);
+      this.player.setCarryModifiers(this.aggregate);
+      this.spawnFloatingText(pickup.x, pickup.y, `+${pickup.def.scoreBonus}`);
+      this.refreshCarriedHud();
+    }
 
     AudioManager.play('enemy-kill');
-    this.spawnFloatingText(pickup.x, pickup.y, `+${pickup.def.scoreBonus}`);
-    this.refreshCarriedHud();
-
     getLogger().event({ type: 'pickup:grab', itemId: pickup.def.id, bonus: pickup.def.scoreBonus });
 
     // Collect animation, then destroy.
@@ -254,7 +261,9 @@ export class PickupManager {
     this.overlayBg.setPosition(cx, topY).setVisible(true);
     this.overlayName.setPosition(cx, topY - 56).setText(p.def.name).setVisible(true);
     this.overlayEffect.setPosition(cx, topY - 38).setText(p.def.description).setVisible(true);
-    this.overlayBonus.setPosition(cx, topY - 20).setText(`+${p.def.scoreBonus} pts`).setVisible(true);
+    // Carry items show their point value; instant/free items (e.g. shield) show FREE.
+    const bonusLabel = p.def.scoreBonus > 0 ? `+${p.def.scoreBonus} pts` : 'FREE';
+    this.overlayBonus.setPosition(cx, topY - 20).setText(bonusLabel).setVisible(true);
 
     const isMobile = InputManager.getInstance().isMobile;
     if (isMobile) {

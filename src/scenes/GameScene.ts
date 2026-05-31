@@ -396,7 +396,7 @@ export class GameScene extends Phaser.Scene {
     const camTop    = cam.scrollY;
     const camBottom = cam.scrollY + cam.height;
 
-    this.trashWallManager.update(this.player.sprite.y, delta);
+    this.trashWallManager.update(this.player.sprite.y, delta, this.pickupManager.getWallSpeedMult());
     if (!this._playerDead) {
       const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
       const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
