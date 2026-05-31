@@ -81,7 +81,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: '+ Jump height',
     color:       0x66ddff,
     polarity:    'positive',
-    effect:      { speedMult: 1.0, jumpBonus: 120, extraAirJumps: 0 },
+    effect:      { speedMult: 1.0, jumpBonus: 50, extraAirJumps: 0 },
     scoreBonus:  PICKUP_BONUS['spring-coil'],
   },
   {
@@ -90,7 +90,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: '+ Move speed',
     color:       0xc8a060,
     polarity:    'positive',
-    effect:      { speedMult: 1.25, jumpBonus: 0, extraAirJumps: 0 },
+    effect:      { speedMult: 1.15, jumpBonus: 0, extraAirJumps: 0 },
     scoreBonus:  PICKUP_BONUS['worn-boot'],
   },
   {
@@ -108,7 +108,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Heavy: − speed, big points',
     color:       0x888888,
     polarity:    'negative',
-    effect:      { speedMult: 0.7, jumpBonus: 0, extraAirJumps: 0 },
+    effect:      { speedMult: 0.75, jumpBonus: 0, extraAirJumps: 0 },
     scoreBonus:  PICKUP_BONUS['engine-block'],
   },
   {
@@ -126,7 +126,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Floaty: lower gravity',
     color:       0xeeeeaa,
     polarity:    'positive',
-    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, gravityMult: 0.7 },
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, gravityMult: 0.92 },
     scoreBonus:  PICKUP_BONUS['feather'],
   },
   {
@@ -135,7 +135,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Faster dash & wall-jump',
     color:       0x44ff44,
     polarity:    'positive',
-    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, cooldownMult: 0.5 },
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, cooldownMult: 0.25 },
     scoreBonus:  PICKUP_BONUS['overclock-chip'],
   },
   {
@@ -154,7 +154,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Heavy: sink faster',
     color:       0x777788,
     polarity:    'negative',
-    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1.4 },
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1.25 },
     scoreBonus:  PICKUP_BONUS['concrete-boots'],
   },
   {
