@@ -231,7 +231,7 @@ describe('GET /heaps/:id', () => {
     const body = await res.json() as GetHeapResponse;
     expect(body.changed).toBe(true);
     if (body.changed) {
-      expect(body.params).toEqual({ name: 'X', difficulty: 2, spawnRateMult: 1.1, coinMult: 1.2, scoreMult: 1.3, worldHeight: 50_000, ghostPointCount: 1, baseItemSpawnRate: 0.33, positiveItemSpawnRate: 0.5, negativeItemSpawnRate: 0.5 });
+      expect(body.params).toEqual({ name: 'X', difficulty: 2, spawnRateMult: 1.1, coinMult: 1.2, scoreMult: 1.3, worldHeight: 50_000, ghostPointCount: 1, baseItemSpawnRate: 0.33, positiveItemSpawnRate: 0.15, negativeItemSpawnRate: 0.85 });
     }
   });
 });
@@ -536,8 +536,8 @@ describe('POST /heaps with params', () => {
       worldHeight: 50_000,
       ghostPointCount: 1,
       baseItemSpawnRate: 0.33,
-      positiveItemSpawnRate: 0.5,
-      negativeItemSpawnRate: 0.5,
+      positiveItemSpawnRate: 0.15,
+      negativeItemSpawnRate: 0.85,
     });
   });
 
@@ -558,8 +558,8 @@ describe('POST /heaps with params', () => {
       worldHeight: 50_000,
       ghostPointCount: 1,
       baseItemSpawnRate: 0.33,
-      positiveItemSpawnRate: 0.5,
-      negativeItemSpawnRate: 0.5,
+      positiveItemSpawnRate: 0.15,
+      negativeItemSpawnRate: 0.85,
     });
   });
 

@@ -28,8 +28,8 @@ export const DEFAULT_HEAP_PARAMS: HeapParams = {
   worldHeight: 50_000,
   ghostPointCount: 1,
   baseItemSpawnRate: 0.33,
-  positiveItemSpawnRate: 0.5,
-  negativeItemSpawnRate: 0.5,
+  positiveItemSpawnRate: 0.15,  // 15% positive / 85% negative spawn mix by default
+  negativeItemSpawnRate: 0.85,
 };
 
 // ── Enemy spawn params (served per-heap, replaces EnemyDef fraction fields) ──

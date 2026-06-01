@@ -101,8 +101,8 @@ export class BootScene extends Phaser.Scene {
             isInfinite: true,
             ghostPointCount: 1,
             baseItemSpawnRate: 0.33,
-            positiveItemSpawnRate: 0.5,
-            negativeItemSpawnRate: 0.5,
+            positiveItemSpawnRate: 0.15,
+            negativeItemSpawnRate: 0.85,
           },
         };
         const deduped = summaries.filter(s => s.id !== INFINITE_HEAP_ID);
