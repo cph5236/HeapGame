@@ -30,7 +30,8 @@ export type PickupPolarity = 'positive' | 'negative';
 export interface PickupDef {
   id:          string;
   name:        string;
-  /** Short effect summary shown in the proximity overlay. */
+  /** Punchy on-brand flavour text shown in the overlay. The mechanical effect is
+   *  auto-summarised separately (see formatEffectSummary). */
   description: string;
   /** Tint / fallback rectangle colour. */
   color:       number;
@@ -74,11 +75,28 @@ export function aggregateModifiers(carried: readonly PickupDef[]): CarryModifier
   );
 }
 
+/** Compact human-readable summary of an effect, for the proximity overlay.
+ *  Multiplier levers read as words (float/heavy, fast/slow cd, wall±); speed is a
+ *  signed %, jump/air are signed numbers. Empty when the item has no stat effect
+ *  (e.g. the instant shield). */
+export function formatEffectSummary(effect: PickupEffect): string {
+  const parts: string[] = [];
+  if (effect.speedMult !== 1) {
+    parts.push(`${effect.speedMult > 1 ? '+' : ''}${Math.round((effect.speedMult - 1) * 100)}% spd`);
+  }
+  if (effect.jumpBonus !== 0)     parts.push(`${effect.jumpBonus > 0 ? '+' : ''}${effect.jumpBonus} jump`);
+  if (effect.extraAirJumps !== 0) parts.push(`${effect.extraAirJumps > 0 ? '+' : ''}${effect.extraAirJumps} air`);
+  if ((effect.gravityMult  ?? 1) !== 1) parts.push(effect.gravityMult!  < 1 ? 'float'   : 'heavy');
+  if ((effect.cooldownMult ?? 1) !== 1) parts.push(effect.cooldownMult! < 1 ? 'fast cd' : 'slow cd');
+  if ((effect.wallSpeedMult ?? 1) !== 1) parts.push(effect.wallSpeedMult! > 1 ? 'wall+' : 'wall-');
+  return parts.join(' · ');
+}
+
 export const PICKUP_DEFS: PickupDef[] = [
   {
     id:          'spring-coil',
     name:        'Spring Coil',
-    description: '+ Jump height',
+    description: 'Still has some spring left.',
     color:       0x66ddff,
     polarity:    'positive',
     effect:      { speedMult: 1.0, jumpBonus: 50, extraAirJumps: 0 },
@@ -87,7 +105,7 @@ export const PICKUP_DEFS: PickupDef[] = [
   {
     id:          'worn-boot',
     name:        'Worn Boot',
-    description: '+ Move speed',
+    description: 'One careful owner. Mostly.',
     color:       0xc8a060,
     polarity:    'positive',
     effect:      { speedMult: 1.15, jumpBonus: 0, extraAirJumps: 0 },
@@ -96,7 +114,7 @@ export const PICKUP_DEFS: PickupDef[] = [
   {
     id:          'balloon',
     name:        'Balloon',
-    description: '+1 Air jump',
+    description: "Leftover from someone's party.",
     color:       0xff77cc,
     polarity:    'positive',
     effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 1 },
@@ -105,7 +123,7 @@ export const PICKUP_DEFS: PickupDef[] = [
   {
     id:          'engine-block',
     name:        'Engine Block',
-    description: 'Heavy: − speed, big points',
+    description: 'Heavy hunk of nope.',
     color:       0x888888,
     polarity:    'negative',
     effect:      { speedMult: 0.75, jumpBonus: 0, extraAirJumps: 0 },
@@ -114,7 +132,7 @@ export const PICKUP_DEFS: PickupDef[] = [
   {
     id:          'rusty-anchor',
     name:        'Rusty Anchor',
-    description: 'Heavy: − speed & jump, huge points',
+    description: 'Going nowhere fast.',
     color:       0x9a5a3a,
     polarity:    'negative',
     effect:      { speedMult: 0.8, jumpBonus: -80, extraAirJumps: 0 },
@@ -123,7 +141,7 @@ export const PICKUP_DEFS: PickupDef[] = [
   {
     id:          'feather',
     name:        'Feather',
-    description: 'Floaty: lower gravity',
+    description: 'Light as, well, a feather.',
     color:       0xeeeeaa,
     polarity:    'positive',
     effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, gravityMult: 0.92 },
@@ -132,7 +150,7 @@ export const PICKUP_DEFS: PickupDef[] = [
   {
     id:          'overclock-chip',
     name:        'Overclock Chip',
-    description: 'Faster dash & wall-jump',
+    description: 'Runs hot. Runs fast.',
     color:       0x44ff44,
     polarity:    'positive',
     effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, cooldownMult: 0.25 },
@@ -141,7 +159,7 @@ export const PICKUP_DEFS: PickupDef[] = [
   {
     id:          'bubble-wrap',
     name:        'Bubble Wrap',
-    description: 'Absorb one hit · FREE',
+    description: 'Pop in case of emergency.',
     color:       0xaaffff,
     polarity:    'positive',
     effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0 },
@@ -151,7 +169,7 @@ export const PICKUP_DEFS: PickupDef[] = [
   {
     id:          'concrete-boots',
     name:        'Concrete Boots',
-    description: 'Heavy: sink faster',
+    description: 'A gift from the mob.',
     color:       0x777788,
     polarity:    'negative',
     effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1.25 },
@@ -160,10 +178,102 @@ export const PICKUP_DEFS: PickupDef[] = [
   {
     id:          'fuel-canister',
     name:        'Fuel Canister',
-    description: 'Risky: trash wall rises faster!',
+    description: 'Do not expose to open flame.',
     color:       0xff5522,
     polarity:    'negative',
     effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, wallSpeedMult: 1.5 },
     scoreBonus:  PICKUP_BONUS['fuel-canister'],
+  },
+
+  // ── Mixed-tradeoff negatives (each has an upside + a downside) ──────────────
+  {
+    id:          'skateboard',
+    name:        'Skateboard',
+    description: 'Old worn-out skateboard.',
+    color:       0xcc4444,
+    polarity:    'negative',
+    effect:      { speedMult: 1.15, jumpBonus: -50, extraAirJumps: 0 },
+    scoreBonus:  PICKUP_BONUS['skateboard'],
+  },
+  {
+    id:          'box-spring',
+    name:        'Box Spring',
+    description: "Yesterday's mattress, still bouncy.",
+    color:       0xbbaa66,
+    polarity:    'negative',
+    effect:      { speedMult: 0.85, jumpBonus: 90, extraAirJumps: 0 },
+    scoreBonus:  PICKUP_BONUS['box-spring'],
+  },
+  {
+    id:          'greasy-pizza-box',
+    name:        'Greasy Pizza Box',
+    description: 'Smells like pizza and a good time.',
+    color:       0xddaa55,
+    polarity:    'negative',
+    effect:      { speedMult: 1.15, jumpBonus: 0, extraAirJumps: 0, cooldownMult: 1.5 },
+    scoreBonus:  PICKUP_BONUS['greasy-pizza-box'],
+  },
+  {
+    id:          'leaky-helium-tank',
+    name:        'Leaky Helium Tank',
+    description: "The party's running out of air.",
+    color:       0x99ddee,
+    polarity:    'negative',
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, gravityMult: 0.85, wallSpeedMult: 1.2 },
+    scoreBonus:  PICKUP_BONUS['leaky-helium-tank'],
+  },
+  {
+    id:          'outboard-motor',
+    name:        'Outboard Motor',
+    description: 'Still runs. Wakes the whole heap.',
+    color:       0x556677,
+    polarity:    'negative',
+    effect:      { speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0, wallSpeedMult: 1.3 },
+    scoreBonus:  PICKUP_BONUS['outboard-motor'],
+  },
+  {
+    id:          'folding-lawn-chair',
+    name:        'Folding Lawn Chair',
+    description: 'Seen better summers.',
+    color:       0x55bb88,
+    polarity:    'negative',
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 1, gravityMult: 1.15 },
+    scoreBonus:  PICKUP_BONUS['folding-lawn-chair'],
+  },
+  {
+    id:          'anchor-chain',
+    name:        'Anchor Chain',
+    description: 'Goes down with the ship.',
+    color:       0x667788,
+    polarity:    'negative',
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1.3, wallSpeedMult: 0.75 },
+    scoreBonus:  PICKUP_BONUS['anchor-chain'],
+  },
+  {
+    id:          'rusted-roller-skates',
+    name:        'Rusted Roller Skates',
+    description: "Fast. Stopping's your problem.",
+    color:       0xbb6644,
+    polarity:    'negative',
+    effect:      { speedMult: 1.3, jumpBonus: -90, extraAirJumps: 0 },
+    scoreBonus:  PICKUP_BONUS['rusted-roller-skates'],
+  },
+  {
+    id:          'diving-board',
+    name:        'Diving Board',
+    description: 'No pool for miles.',
+    color:       0x88aacc,
+    polarity:    'negative',
+    effect:      { speedMult: 1.0, jumpBonus: 70, extraAirJumps: 0, cooldownMult: 1.5 },
+    scoreBonus:  PICKUP_BONUS['diving-board'],
+  },
+  {
+    id:          'sandbag-vest',
+    name:        'Sandbag Vest',
+    description: 'Heavy, but it buys you time.',
+    color:       0xaa9966,
+    polarity:    'negative',
+    effect:      { speedMult: 0.8, jumpBonus: 0, extraAirJumps: 0, wallSpeedMult: 0.7 },
+    scoreBonus:  PICKUP_BONUS['sandbag-vest'],
   },
 ];

@@ -12,7 +12,7 @@
 
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
-import { PICKUP_DEFS, PickupDef, aggregateModifiers, CarryModifiers } from '../data/pickupDefs';
+import { PICKUP_DEFS, PickupDef, aggregateModifiers, formatEffectSummary, CarryModifiers } from '../data/pickupDefs';
 import { shouldSpawnPickup, findNearestInRange, walkableSurfaceCandidates, pickPolarity } from './PickupHelpers';
 import type { Vertex } from './HeapPolygon';
 import { SALVAGE_MIN_SPACING_PX } from '../../shared/pickupScores';
@@ -59,6 +59,7 @@ export class PickupManager {
   // Proximity overlay (world-space, anchored above the in-range pickup)
   private overlayBg!:     Phaser.GameObjects.Rectangle;
   private overlayName!:   Phaser.GameObjects.Text;
+  private overlayFlavor!: Phaser.GameObjects.Text;
   private overlayEffect!: Phaser.GameObjects.Text;
   private overlayBonus!:  Phaser.GameObjects.Text;
   private overlayPrompt!: Phaser.GameObjects.Text;
@@ -226,14 +227,18 @@ export class PickupManager {
 
   private createOverlay(): void {
     const s = this.scene;
-    this.overlayBg = s.add.rectangle(0, 0, 190, 70, 0x0a0818, 0.92)
+    this.overlayBg = s.add.rectangle(0, 0, 200, 88, 0x0a0818, 0.92)
       .setOrigin(0.5, 1).setDepth(31).setStrokeStyle(1, 0x4455aa);
     this.overlayName = s.add.text(0, 0, '', {
       fontSize: '14px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(32);
+    this.overlayFlavor = s.add.text(0, 0, '', {
+      fontSize: '10px', color: '#9aa0b8', fontStyle: 'italic', stroke: '#000000', strokeThickness: 1,
+      align: 'center', wordWrap: { width: 190 },
+    }).setOrigin(0.5).setDepth(32);
     this.overlayEffect = s.add.text(0, 0, '', {
       fontSize: '11px', color: '#cfd6ff', stroke: '#000000', strokeThickness: 1, align: 'center',
-      wordWrap: { width: 180 },
+      wordWrap: { width: 190 },
     }).setOrigin(0.5).setDepth(32);
     this.overlayBonus = s.add.text(0, 0, '', {
       fontSize: '12px', color: '#ffdd44', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
@@ -243,7 +248,7 @@ export class PickupManager {
     }).setOrigin(0.5).setDepth(32);
 
     this.overlayParts = [
-      this.overlayBg, this.overlayName, this.overlayEffect, this.overlayBonus, this.overlayPrompt,
+      this.overlayBg, this.overlayName, this.overlayFlavor, this.overlayEffect, this.overlayBonus, this.overlayPrompt,
     ];
     this.hideOverlay();
   }
@@ -259,11 +264,14 @@ export class PickupManager {
     const topY = p.y - PICKUP_SIZE / 2 - 8; // panel bottom sits just above the item
 
     this.overlayBg.setPosition(cx, topY).setVisible(true);
-    this.overlayName.setPosition(cx, topY - 56).setText(p.def.name).setVisible(true);
-    this.overlayEffect.setPosition(cx, topY - 38).setText(p.def.description).setVisible(true);
+    this.overlayName.setPosition(cx, topY - 74).setText(p.def.name).setVisible(true);
+    this.overlayFlavor.setPosition(cx, topY - 56).setText(p.def.description).setVisible(true);
+    // Auto-summarised mechanical effect (so flavour text doesn't hide what it does).
+    const effLabel = p.def.grantsShield ? 'Absorb 1 hit' : formatEffectSummary(p.def.effect);
+    this.overlayEffect.setPosition(cx, topY - 38).setText(effLabel).setVisible(true);
     // Carry items show their point value; instant/free items (e.g. shield) show FREE.
     const bonusLabel = p.def.scoreBonus > 0 ? `+${p.def.scoreBonus} pts` : 'FREE';
-    this.overlayBonus.setPosition(cx, topY - 20).setText(bonusLabel).setVisible(true);
+    this.overlayBonus.setPosition(cx, topY - 22).setText(bonusLabel).setVisible(true);
 
     const isMobile = InputManager.getInstance().isMobile;
     if (isMobile) {

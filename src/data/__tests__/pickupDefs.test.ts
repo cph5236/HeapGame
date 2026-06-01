@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PICKUP_DEFS, aggregateModifiers, PickupDef } from '../pickupDefs';
+import { PICKUP_DEFS, aggregateModifiers, formatEffectSummary, PickupDef } from '../pickupDefs';
 
 function def(over: Partial<PickupDef>): PickupDef {
   return {
@@ -55,6 +55,37 @@ describe('aggregateModifiers', () => {
     expect(agg.gravityMult).toBe(1);
     expect(agg.cooldownMult).toBe(1);
     expect(agg.wallSpeedMult).toBe(1);
+  });
+});
+
+describe('formatEffectSummary', () => {
+  const base = { speedMult: 1, jumpBonus: 0, extraAirJumps: 0 };
+
+  it('formats speed as a signed percentage and jump as a signed number', () => {
+    expect(formatEffectSummary({ speedMult: 1.15, jumpBonus: -50, extraAirJumps: 0 }))
+      .toBe('+15% spd · -50 jump');
+  });
+
+  it('formats air jumps', () => {
+    expect(formatEffectSummary({ ...base, extraAirJumps: 1 })).toBe('+1 air');
+  });
+
+  it('uses words for gravity / cooldown / wall levers', () => {
+    expect(formatEffectSummary({ ...base, gravityMult: 0.85 })).toBe('float');
+    expect(formatEffectSummary({ ...base, gravityMult: 1.3 })).toBe('heavy');
+    expect(formatEffectSummary({ ...base, cooldownMult: 0.5 })).toBe('fast cd');
+    expect(formatEffectSummary({ ...base, cooldownMult: 2 })).toBe('slow cd');
+    expect(formatEffectSummary({ ...base, wallSpeedMult: 1.5 })).toBe('wall+');
+    expect(formatEffectSummary({ ...base, wallSpeedMult: 0.7 })).toBe('wall-');
+  });
+
+  it('joins multiple levers in a fixed order', () => {
+    expect(formatEffectSummary({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0, wallSpeedMult: 1.3 }))
+      .toBe('+30% spd · wall+');
+  });
+
+  it('returns empty string when there is no stat effect (e.g. the shield)', () => {
+    expect(formatEffectSummary(base)).toBe('');
   });
 });
 

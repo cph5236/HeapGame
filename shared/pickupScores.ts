@@ -17,6 +17,17 @@ export const PICKUP_BONUS: Record<string, number> = {
   'concrete-boots': 1300,
   'fuel-canister':  2000,
   'bubble-wrap':    0,    // free instant shield — never carried, never scored
+  // Mixed-tradeoff negatives (each has an upside + a downside)
+  'skateboard':           1100,
+  'box-spring':           1300,
+  'greasy-pizza-box':     1100,
+  'leaky-helium-tank':    1500,
+  'outboard-motor':       1700,
+  'folding-lawn-chair':   1400,
+  'anchor-chain':         1900,
+  'rusted-roller-skates': 1600,
+  'diving-board':         1200,
+  'sandbag-vest':         1800,
 };
 
 /** Minimum vertical spacing between spawned pickups (must match PickupManager). */
