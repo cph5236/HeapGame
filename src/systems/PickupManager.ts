@@ -21,7 +21,8 @@ import { InputManager } from './InputManager';
 import { AudioManager } from './AudioManager';
 import { getLogger } from '../logging';
 
-const PICKUP_SIZE     = 28;                    // px square
+const PICKUP_SIZE     = 28;                    // px visual footprint (overlay offset)
+const PICKUP_CORE_RADIUS = 7;                  // px radius of the solid item circle
 const PICKUP_RANGE    = 72;                    // px proximity radius for overlay + grab
 const SPAWN_MIN_GAP   = SALVAGE_MIN_SPACING_PX; // px min vertical spacing (shared w/ server cap)
 const CULL_MARGIN      = 2400; // px below camera before a pickup is dropped
@@ -36,10 +37,28 @@ export interface PickupSpawnRates {
 
 interface SpawnedPickup {
   def:       PickupDef;
-  obj:       Phaser.GameObjects.Rectangle;
+  obj:       Phaser.GameObjects.Container; // [glow, core]
+  glow:      Phaser.GameObjects.Image;     // pulsing halo (own tween)
   x:         number;
   y:         number;
   collected: boolean;
+}
+
+const GLOW_TEX_KEY = 'pickup-glow';
+
+/** Bake a soft white radial-gradient disc once; tinted per item for the halo. */
+function ensureGlowTexture(scene: Phaser.Scene): void {
+  if (scene.textures.exists(GLOW_TEX_KEY)) return;
+  const R = 32;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  const steps = 18;
+  for (let i = 0; i < steps; i++) {
+    const t = i / (steps - 1);          // 0 = outer, 1 = centre
+    g.fillStyle(0xffffff, t * 0.10);    // accumulate alpha toward the centre
+    g.fillCircle(R, R, R * (1 - t));
+  }
+  g.generateTexture(GLOW_TEX_KEY, R * 2, R * 2);
+  g.destroy();
 }
 
 export class PickupManager {
@@ -145,16 +164,32 @@ export class PickupManager {
   // ── Spawning ──────────────────────────────────────────────────────────────
 
   private spawnPickup(def: PickupDef, x: number, surfaceY: number): void {
-    const y = surfaceY - PICKUP_SIZE / 2;
-    const obj = this.scene.add
-      .rectangle(x, y, PICKUP_SIZE, PICKUP_SIZE, def.color, 1)
-      .setStrokeStyle(2, 0xffffff, 0.9)
-      .setDepth(8);
+    const y = surfaceY - PICKUP_CORE_RADIUS - 2; // rest the circle just above the surface
+    ensureGlowTexture(this.scene);
+
+    // Pulsing radial-gradient halo in the item's colour.
+    const glow = this.scene.add.image(0, 0, GLOW_TEX_KEY)
+      .setTint(def.color)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScale(0.7)
+      .setAlpha(0.5);
+    // Solid item circle.
+    const core = this.scene.add.circle(0, 0, PICKUP_CORE_RADIUS, def.color, 1)
+      .setStrokeStyle(1.5, 0xffffff, 0.85);
+
+    const obj = this.scene.add.container(x, y, [glow, core]).setDepth(8);
+
+    // Halo pulse (own tween on the glow child).
+    this.scene.tweens.add({
+      targets: glow, scale: 1.05, alpha: 0.2,
+      duration: 750, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+    });
     // Gentle idle bob so pickups read as collectible.
     this.scene.tweens.add({
       targets: obj, y: y - 4, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.InOut',
     });
-    this.pickups.push({ def, obj, x, y, collected: false });
+
+    this.pickups.push({ def, obj, glow, x, y, collected: false });
   }
 
   // ── Grab ──────────────────────────────────────────────────────────────────
@@ -182,6 +217,7 @@ export class PickupManager {
 
     // Collect animation, then destroy.
     this.scene.tweens.killTweensOf(pickup.obj);
+    this.scene.tweens.killTweensOf(pickup.glow);
     this.scene.tweens.add({
       targets: pickup.obj,
       y: pickup.y - 48,
@@ -215,6 +251,7 @@ export class PickupManager {
     for (const p of this.pickups) {
       if (p.y > cutoffY) {
         this.scene.tweens.killTweensOf(p.obj);
+        this.scene.tweens.killTweensOf(p.glow);
         p.obj.destroy();
       } else {
         kept.push(p);
