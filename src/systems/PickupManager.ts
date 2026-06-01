@@ -54,7 +54,7 @@ function ensureGlowTexture(scene: Phaser.Scene): void {
   const steps = 18;
   for (let i = 0; i < steps; i++) {
     const t = i / (steps - 1);          // 0 = outer, 1 = centre
-    g.fillStyle(0xffffff, t * 0.10);    // accumulate alpha toward the centre
+    g.fillStyle(0xffffff, t * 0.18);    // accumulate alpha toward the centre
     g.fillCircle(R, R, R * (1 - t));
   }
   g.generateTexture(GLOW_TEX_KEY, R * 2, R * 2);
@@ -168,11 +168,12 @@ export class PickupManager {
     ensureGlowTexture(this.scene);
 
     // Pulsing radial-gradient halo in the item's colour.
+    // Normal blend (not ADD): ADD saturates toward white over bright backgrounds,
+    // hiding the item colour. Normal blend keeps the tint true.
     const glow = this.scene.add.image(0, 0, GLOW_TEX_KEY)
       .setTint(def.color)
-      .setBlendMode(Phaser.BlendModes.ADD)
-      .setScale(0.7)
-      .setAlpha(0.5);
+      .setScale(0.85)
+      .setAlpha(0.9);
     // Solid item circle.
     const core = this.scene.add.circle(0, 0, PICKUP_CORE_RADIUS, def.color, 1)
       .setStrokeStyle(1.5, 0xffffff, 0.85);
@@ -181,7 +182,7 @@ export class PickupManager {
 
     // Halo pulse (own tween on the glow child).
     this.scene.tweens.add({
-      targets: glow, scale: 1.05, alpha: 0.2,
+      targets: glow, scale: 1.25, alpha: 0.65,
       duration: 750, yoyo: true, repeat: -1, ease: 'Sine.InOut',
     });
     // Gentle idle bob so pickups read as collectible.
