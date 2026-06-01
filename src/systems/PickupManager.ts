@@ -265,24 +265,24 @@ export class PickupManager {
 
   private createOverlay(): void {
     const s = this.scene;
-    this.overlayBg = s.add.rectangle(0, 0, 200, 88, 0x0a0818, 0.92)
-      .setOrigin(0.5, 1).setDepth(31).setStrokeStyle(1, 0x4455aa);
+    this.overlayBg = s.add.rectangle(0, 0, 252, 132, 0x0a0818, 1)
+      .setOrigin(0.5, 1).setDepth(31).setStrokeStyle(2, 0x5566cc);
     this.overlayName = s.add.text(0, 0, '', {
-      fontSize: '14px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
+      fontSize: '18px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(32);
     this.overlayFlavor = s.add.text(0, 0, '', {
-      fontSize: '10px', color: '#9aa0b8', fontStyle: 'italic', stroke: '#000000', strokeThickness: 1,
-      align: 'center', wordWrap: { width: 190 },
+      fontSize: '13px', color: '#cdd3ec', fontStyle: 'italic', stroke: '#000000', strokeThickness: 2,
+      align: 'center', wordWrap: { width: 236 },
     }).setOrigin(0.5).setDepth(32);
     this.overlayEffect = s.add.text(0, 0, '', {
-      fontSize: '11px', color: '#cfd6ff', stroke: '#000000', strokeThickness: 1, align: 'center',
-      wordWrap: { width: 190 },
+      fontSize: '14px', color: '#e2e7ff', stroke: '#000000', strokeThickness: 2, align: 'center',
+      wordWrap: { width: 236 },
     }).setOrigin(0.5).setDepth(32);
     this.overlayBonus = s.add.text(0, 0, '', {
-      fontSize: '12px', color: '#ffdd44', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
+      fontSize: '16px', color: '#ffdd44', fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(32);
     this.overlayPrompt = s.add.text(0, 0, '', {
-      fontSize: '11px', color: '#88ff99', stroke: '#000000', strokeThickness: 1,
+      fontSize: '13px', color: '#9dffac', stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(32);
 
     this.overlayParts = [
@@ -302,21 +302,21 @@ export class PickupManager {
     const topY = p.y - PICKUP_SIZE / 2 - 8; // panel bottom sits just above the item
 
     this.overlayBg.setPosition(cx, topY).setVisible(true);
-    this.overlayName.setPosition(cx, topY - 74).setText(p.def.name).setVisible(true);
-    this.overlayFlavor.setPosition(cx, topY - 56).setText(p.def.description).setVisible(true);
+    this.overlayName.setPosition(cx, topY - 112).setText(p.def.name).setVisible(true);
+    this.overlayFlavor.setPosition(cx, topY - 84).setText(p.def.description).setVisible(true);
     // Auto-summarised mechanical effect (so flavour text doesn't hide what it does).
     const effLabel = p.def.grantsShield ? 'Absorb 1 hit' : formatEffectSummary(p.def.effect);
-    this.overlayEffect.setPosition(cx, topY - 38).setText(effLabel).setVisible(true);
+    this.overlayEffect.setPosition(cx, topY - 54).setText(effLabel).setVisible(true);
     // Carry items show their point value; instant/free items (e.g. shield) show FREE.
     const bonusLabel = p.def.scoreBonus > 0 ? `+${p.def.scoreBonus} pts` : 'FREE';
-    this.overlayBonus.setPosition(cx, topY - 22).setText(bonusLabel).setVisible(true);
+    this.overlayBonus.setPosition(cx, topY - 32).setText(bonusLabel).setVisible(true);
 
     const isMobile = InputManager.getInstance().isMobile;
     if (isMobile) {
       this.overlayPrompt.setVisible(false);
       this.setGrabButtonVisible(true);
     } else {
-      this.overlayPrompt.setPosition(cx, topY - 6).setText('Press E to grab').setVisible(true);
+      this.overlayPrompt.setPosition(cx, topY - 10).setText('Press E to grab').setVisible(true);
       this.setGrabButtonVisible(false);
     }
   }

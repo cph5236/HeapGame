@@ -334,6 +334,16 @@ export class GameScene extends Phaser.Scene {
     // Info button (ⓘ) — top-right corner
     this.createInfoButton(im.isMobile);
 
+    // When the run ends we launch ScoreScene and pause this scene. Phaser's pause
+    // halts update() but leaves looping sounds playing, so the trash-wall rumble and
+    // enemy ambients would bleed into the score screen (the success/peak path never
+    // calls onPlayerDeath()). Hush the gameplay loops once, on pause. Player one-shots
+    // (e.g. player-die) and ScoreScene's own music are different categories and untouched.
+    this.events.once(Phaser.Scenes.Events.PAUSE, () => {
+      AudioManager.stopAll('enemySfx');
+      AudioManager.stopAll('envSfx');
+    });
+
     // Dev preview: ?dev=GameScene&params={"_devOutro":"death"} or {"_devOutro":"success"}
     // or {"_devPickup":"spring-coil"} to force-spawn a salvage pickup beside the player.
     const initData = this.scene.settings.data as

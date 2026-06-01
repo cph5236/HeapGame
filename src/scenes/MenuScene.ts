@@ -602,6 +602,18 @@ export class MenuScene extends Phaser.Scene {
       updateThumb(newValue);
     });
 
+    // Tapping anywhere on the track jumps the volume to that position. The track
+    // sits above the (now-interactive) panel, so it receives the click directly.
+    // Use a taller hit area than the 6px visual track for a comfortable tap target.
+    track.setInteractive({
+      hitArea: new Phaser.Geom.Rectangle(0, -(28 - TRACK_H) / 2, TRACK_W, 28),
+      hitAreaCallback: Phaser.Geom.Rectangle.Contains,
+      useHandCursor: true,
+    });
+    track.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
+      updateThumb((ptr.x - (x - TRACK_W / 2)) / TRACK_W);
+    });
+
     [label, track, fill, thumb].forEach(o => o.setVisible(false));
     return [label, track, fill, thumb];
   }
@@ -626,8 +638,12 @@ export class MenuScene extends Phaser.Scene {
       .setDepth(30).setVisible(false).setInteractive();
     const PANEL_W = 360;
     const PANEL_H = 420;
+    // Panel is interactive so clicks that land on it (e.g. on a slider track or
+    // empty panel space) are absorbed here rather than falling through to the
+    // full-screen overlayBg, whose pointerup closes the menu. Only clicks on the
+    // true backdrop (outside the panel) should close it.
     const panel = this.add.rectangle(cx, cy, PANEL_W, PANEL_H, 0x0d0d20)
-      .setDepth(31).setVisible(false).setStrokeStyle(2, 0x4455aa);
+      .setDepth(31).setVisible(false).setStrokeStyle(2, 0x4455aa).setInteractive();
 
     const title = this.add.text(cx, cy - PANEL_H / 2 + 22, 'SETTINGS', {
       fontSize: '22px', color: '#ffffff', stroke: '#000000', strokeThickness: 3,

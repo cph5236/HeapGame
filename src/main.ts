@@ -12,6 +12,30 @@ import { LeaderboardScene } from './scenes/LeaderboardScene';
 import { WORLD_GRAVITY_Y } from './constants';
 import { installAudioFocusGuard } from './systems/AudioFocusGuard';
 
+// HiDPI text crispening. In RESIZE scale mode Phaser sizes the canvas backing
+// store to CSS pixels (no devicePixelRatio multiply), so on high-DPR phones text
+// is rendered at sub-native resolution and looks blurry. Phaser 3.90 defaults a
+// Text object's resolution to 1, so we override the global `text` factory to
+// default it to the device pixel ratio (capped to bound memory/CPU). This only
+// changes the internal render resolution — display size and layout are unaffected
+// — and any per-call `resolution` in the style still takes precedence.
+const UI_TEXT_RESOLUTION = Math.min(
+  typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+  3,
+);
+Phaser.GameObjects.GameObjectFactory.register('text', function (
+  this: Phaser.GameObjects.GameObjectFactory,
+  x: number,
+  y: number,
+  text: string | string[],
+  style?: Phaser.Types.GameObjects.Text.TextStyle,
+) {
+  const merged = { resolution: UI_TEXT_RESOLUTION, ...(style ?? {}) };
+  return this.displayList.add(
+    new Phaser.GameObjects.Text(this.scene, x, y, text, merged),
+  );
+});
+
 // Force Canvas renderer when using the dev scene shortcut — headless Chromium
 // has no GPU context so WebGL produces a black canvas.
 const isDevPreview = typeof window !== 'undefined'
