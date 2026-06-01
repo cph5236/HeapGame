@@ -17,6 +17,7 @@ import {
 } from '../systems/SaveData';
 import { buildCoinBreakdown, BreakdownRow } from '../systems/coinBreakdown';
 import { buildRunScore, RunScoreRow } from '../systems/buildRunScore';
+import { computeSalvageBonus } from '../../shared/pickupScores';
 import type { EnemyKind } from '../entities/Enemy';
 import { ENEMY_DEFS } from '../data/enemyDefs';
 import { InputManager } from '../systems/InputManager';
@@ -39,8 +40,10 @@ export class ScoreScene extends Phaser.Scene {
 
   private _baseHeightPx: number                             = 0;
   private _kills:        Partial<Record<EnemyKind, number>> = {};
-  private _elapsedMs:    number                             = 0;
-  private _scoreRows:    RunScoreRow[]                      = [];
+  private _elapsedMs:     number                            = 0;
+  private _salvageItemIds: string[]                         = [];
+  private _salvageBonus:  number                            = 0;
+  private _scoreRows:     RunScoreRow[]                     = [];
   private _heapParams:   HeapParams                         = DEFAULT_HEAP_PARAMS;
   private _bonusCoins:   number                             = 0;
 
@@ -77,6 +80,8 @@ export class ScoreScene extends Phaser.Scene {
     baseHeightPx?:        number;
     kills?:               Partial<Record<EnemyKind, number>>;
     elapsedMs?:           number;
+    salvageItemIds?:      string[];
+    salvageBonus?:        number;
     heapParams?:          HeapParams;
     bonusCoins?:          number;
     mockLeaderboard?:     LeaderboardContext;
@@ -91,6 +96,12 @@ export class ScoreScene extends Phaser.Scene {
     this._baseHeightPx       = data.baseHeightPx        ?? 0;
     this._kills              = data.kills               ?? {};
     this._elapsedMs          = data.elapsedMs           ?? 0;
+    this._salvageItemIds     = data.salvageItemIds      ?? [];
+    // Derive the bonus from ids (matching the server). Fall back to a raw
+    // salvageBonus only for dev-preview convenience.
+    this._salvageBonus       = this._salvageItemIds.length > 0
+      ? computeSalvageBonus(this._salvageItemIds)
+      : (data.salvageBonus ?? 0);
     this._scoreRows          = [];
     this._heapParams         = data.heapParams          ?? DEFAULT_HEAP_PARAMS;
     this._bonusCoins         = data.bonusCoins          ?? 0;
@@ -144,7 +155,7 @@ export class ScoreScene extends Phaser.Scene {
 
     if (this._baseHeightPx > 0) {
       const runResult = buildRunScore(
-        { baseHeightPx: this._baseHeightPx, kills: this._kills, elapsedMs: this._elapsedMs },
+        { baseHeightPx: this._baseHeightPx, kills: this._kills, elapsedMs: this._elapsedMs, salvageBonus: this._salvageBonus },
         ENEMY_DEFS,
         this.isFailure,
       );
@@ -419,6 +430,18 @@ export class ScoreScene extends Phaser.Scene {
         }).setOrigin(0, 0.5).setDepth(61);
         const val = this.add.text(right, mid, `+${row.value}`, {
           fontSize: '11px', fontFamily: 'monospace', color: '#44ddff', fontStyle: 'bold',
+        }).setOrigin(1, 0.5).setDepth(61);
+        this._breakdownObjects.push(lbl, det, val);
+
+      } else if (row.type === 'salvage') {
+        const lbl = this.add.text(left, mid, row.label, {
+          fontSize: '11px', fontFamily: 'monospace', color: '#ffdd44',
+        }).setOrigin(0, 0.5).setDepth(61);
+        const det = this.add.text(left + 80, mid, row.detail, {
+          fontSize: '10px', fontFamily: 'monospace', color: '#bbaa55',
+        }).setOrigin(0, 0.5).setDepth(61);
+        const val = this.add.text(right, mid, `+${row.value}`, {
+          fontSize: '11px', fontFamily: 'monospace', color: '#ffdd44', fontStyle: 'bold',
         }).setOrigin(1, 0.5).setDepth(61);
         this._breakdownObjects.push(lbl, det, val);
       }
@@ -875,6 +898,7 @@ export class ScoreScene extends Phaser.Scene {
             },
             elapsedMs: Math.floor(this._elapsedMs),
             isFailure: this.isFailure,
+            salvageItemIds: this._salvageItemIds,
           },
           limit: LEADERBOARD_TOP_N,
         })

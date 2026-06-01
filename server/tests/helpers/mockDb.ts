@@ -39,6 +39,9 @@ export class MockHeapDB implements HeapDB {
       world_height:    row.world_height,
       top_y:           row.top_y,
       ghost_point_count: row.ghost_point_count,
+      base_item_spawn_rate:     row.base_item_spawn_rate,
+      positive_item_spawn_rate: row.positive_item_spawn_rate,
+      negative_item_spawn_rate: row.negative_item_spawn_rate,
     }));
   }
 
@@ -78,6 +81,9 @@ export class MockHeapDB implements HeapDB {
       world_height:    params.worldHeight,
       top_y: initialTopY,
       ghost_point_count: ghostPointCount,
+      base_item_spawn_rate:     params.baseItemSpawnRate     ?? DEFAULT_HEAP_PARAMS.baseItemSpawnRate,
+      positive_item_spawn_rate: params.positiveItemSpawnRate ?? DEFAULT_HEAP_PARAMS.positiveItemSpawnRate,
+      negative_item_spawn_rate: params.negativeItemSpawnRate ?? DEFAULT_HEAP_PARAMS.negativeItemSpawnRate,
     });
   }
 
@@ -100,6 +106,9 @@ export class MockHeapDB implements HeapDB {
       score_mult:      params.scoreMult,
       world_height:    params.worldHeight,
       ghost_point_count: ghostPointCount,
+      base_item_spawn_rate:     params.baseItemSpawnRate     ?? existing.base_item_spawn_rate,
+      positive_item_spawn_rate: params.positiveItemSpawnRate ?? existing.positive_item_spawn_rate,
+      negative_item_spawn_rate: params.negativeItemSpawnRate ?? existing.negative_item_spawn_rate,
     });
   }
 
@@ -141,6 +150,9 @@ export class MockHeapDB implements HeapDB {
       world_height:    params.worldHeight,
       top_y: 0,
       ghost_point_count: ghostPointCount,
+      base_item_spawn_rate:     params.baseItemSpawnRate     ?? DEFAULT_HEAP_PARAMS.baseItemSpawnRate,
+      positive_item_spawn_rate: params.positiveItemSpawnRate ?? DEFAULT_HEAP_PARAMS.positiveItemSpawnRate,
+      negative_item_spawn_rate: params.negativeItemSpawnRate ?? DEFAULT_HEAP_PARAMS.negativeItemSpawnRate,
     });
   }
 

@@ -475,3 +475,45 @@ describe('POST /scores — remote logging', () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ── POST /scores — salvage pickups ──────────────────────────────────────────────
+
+describe('POST /scores — salvage pickups', () => {
+  it('adds validated salvage bonuses to the recomputed score', async () => {
+    // baseHeightPx 1000 (failure → no pace) + spring-coil 250 + worn-boot 250 = 1500
+    const res  = await submitScore(makeApp(), validBody({
+      inputs: { baseHeightPx: 1000, salvageItemIds: ['spring-coil', 'worn-boot'] },
+    }));
+    const body = await res.json() as SubmitScoreResponse;
+    expect(body.context.player?.score).toBe(1500);
+  });
+
+  it('ignores unknown salvage ids (counts them as 0)', async () => {
+    const res  = await submitScore(makeApp(), validBody({
+      inputs: { baseHeightPx: 1000, salvageItemIds: ['spring-coil', 'not-a-real-item'] },
+    }));
+    const body = await res.json() as SubmitScoreResponse;
+    expect(body.context.player?.score).toBe(1250); // 1000 + 250 only
+  });
+
+  it('scores normally when salvageItemIds is omitted', async () => {
+    const res  = await submitScore(makeApp(), validBody({ inputs: { baseHeightPx: 1000 } }));
+    const body = await res.json() as SubmitScoreResponse;
+    expect(body.context.player?.score).toBe(1000);
+  });
+
+  it('rejects a salvage list that exceeds the height-derived cap', async () => {
+    // baseHeightPx 1000 → maxSalvageItems = floor(1000/700)+2 = 3; 4 items is too many
+    const res = await submitScore(makeApp(), validBody({
+      inputs: { baseHeightPx: 1000, salvageItemIds: ['spring-coil', 'spring-coil', 'spring-coil', 'spring-coil'] },
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects salvageItemIds that is not an array of strings', async () => {
+    const res = await submitScore(makeApp(), validBody({
+      inputs: { baseHeightPx: 1000, salvageItemIds: [1, 2, 3] as unknown as string[] },
+    }));
+    expect(res.status).toBe(400);
+  });
+});

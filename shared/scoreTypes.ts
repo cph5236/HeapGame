@@ -17,6 +17,8 @@ export interface SubmitScoreInputs {
   kills:        { percher: number; ghost: number };
   elapsedMs:    number;
   isFailure:    boolean;
+  /** Ids of salvage pickups carried to the top. Server validates + scores them. */
+  salvageItemIds?: string[];
 }
 
 export interface SubmitScoreRequest {

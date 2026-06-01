@@ -15,6 +15,7 @@ import type {
 } from '../../../shared/scoreTypes';
 import { buildRunScore } from '../../../shared/buildRunScore';
 import { ENEMY_DEFS } from '../../../shared/enemyDefs';
+import { computeSalvageBonus, maxSalvageItems } from '../../../shared/pickupScores';
 
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT     = 50;
@@ -113,7 +114,7 @@ export function scoreRoutes(
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
-    const { baseHeightPx, kills, elapsedMs, isFailure } = inputs;
+    const { baseHeightPx, kills, elapsedMs, isFailure, salvageItemIds } = inputs;
 
     if (!Number.isInteger(baseHeightPx) || baseHeightPx < 0) {
       console.warn(`[scores] reject: bad baseHeightPx (${baseHeightPx})`);
@@ -207,9 +208,33 @@ export function scoreRoutes(
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
+    // Salvage pickups — validate ids, cap the count by plausible climb, then
+    // score from the server's own bonus table (client-supplied values ignored).
+    let salvageBonus = 0;
+    if (salvageItemIds !== undefined) {
+      if (!Array.isArray(salvageItemIds) || salvageItemIds.some(id => typeof id !== 'string')) {
+        console.warn(`[scores] reject: bad salvageItemIds (heapId=${heapId})`);
+        const sink = getSink();
+        if (sink) {
+          await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad salvageItemIds', heapId });
+        }
+        return c.json({ error: 'invalid score submission' }, 400);
+      }
+      const cap = maxSalvageItems(baseHeightPx);
+      if (salvageItemIds.length > cap) {
+        console.warn(`[scores] reject: salvage count ${salvageItemIds.length} exceeds cap ${cap} (heapId=${heapId})`);
+        const sink = getSink();
+        if (sink) {
+          await captureServer(sink, 'warn', 'score:rejected', { reason: 'salvage count exceeds cap', heapId, count: salvageItemIds.length, cap });
+        }
+        return c.json({ error: 'invalid score submission' }, 400);
+      }
+      salvageBonus = computeSalvageBonus(salvageItemIds);
+    }
+
     // Recompute score server-side — single source of truth
     const { finalScore } = buildRunScore(
-      { baseHeightPx, kills: { percher, ghost }, elapsedMs },
+      { baseHeightPx, kills: { percher, ghost }, elapsedMs, salvageBonus },
       ENEMY_DEFS,
       isFailure,
       heap.score_mult,

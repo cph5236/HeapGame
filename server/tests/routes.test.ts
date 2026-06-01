@@ -231,7 +231,7 @@ describe('GET /heaps/:id', () => {
     const body = await res.json() as GetHeapResponse;
     expect(body.changed).toBe(true);
     if (body.changed) {
-      expect(body.params).toEqual({ name: 'X', difficulty: 2, spawnRateMult: 1.1, coinMult: 1.2, scoreMult: 1.3, worldHeight: 50_000, ghostPointCount: 1 });
+      expect(body.params).toEqual({ name: 'X', difficulty: 2, spawnRateMult: 1.1, coinMult: 1.2, scoreMult: 1.3, worldHeight: 50_000, ghostPointCount: 1, baseItemSpawnRate: 0.33, positiveItemSpawnRate: 0.15, negativeItemSpawnRate: 0.85 });
     }
   });
 });
@@ -535,6 +535,9 @@ describe('POST /heaps with params', () => {
       scoreMult: 2.0,
       worldHeight: 50_000,
       ghostPointCount: 1,
+      baseItemSpawnRate: 0.33,
+      positiveItemSpawnRate: 0.15,
+      negativeItemSpawnRate: 0.85,
     });
   });
 
@@ -554,7 +557,42 @@ describe('POST /heaps with params', () => {
       scoreMult: 1.0,
       worldHeight: 50_000,
       ghostPointCount: 1,
+      baseItemSpawnRate: 0.33,
+      positiveItemSpawnRate: 0.15,
+      negativeItemSpawnRate: 0.85,
     });
+  });
+
+  it('round-trips custom salvage spawn rates through create + GET', async () => {
+    const app = makeApp();
+    await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertices: VERTICES,
+        params: { baseItemSpawnRate: 0.8, positiveItemSpawnRate: 3, negativeItemSpawnRate: 1 },
+      }),
+    });
+    const list = await (await app.request('/heaps')).json() as ListHeapsResponse;
+    expect(list.heaps[0].params.baseItemSpawnRate).toBe(0.8);
+    expect(list.heaps[0].params.positiveItemSpawnRate).toBe(3);
+    expect(list.heaps[0].params.negativeItemSpawnRate).toBe(1);
+  });
+
+  it('clamps baseItemSpawnRate to [0,1] and rejects negative weights to 0', async () => {
+    const app = makeApp();
+    await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertices: VERTICES,
+        params: { baseItemSpawnRate: 5, positiveItemSpawnRate: -2, negativeItemSpawnRate: 0.25 },
+      }),
+    });
+    const list = await (await app.request('/heaps')).json() as ListHeapsResponse;
+    expect(list.heaps[0].params.baseItemSpawnRate).toBe(1);      // clamped from 5
+    expect(list.heaps[0].params.positiveItemSpawnRate).toBe(0);  // clamped from -2
+    expect(list.heaps[0].params.negativeItemSpawnRate).toBe(0.25);
   });
 
   it('rejects difficulty out of range', async () => {
@@ -656,7 +694,7 @@ describe('worldHeight in heap params', () => {
 
   it('seedHeap with worldHeight is reflected in GET /heaps', async () => {
     const db = new MockHeapDB();
-    db.seedHeap('h1', 1, [], 'base-1', 0, { name: 'Old Heap', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 50_000 });
+    db.seedHeap('h1', 1, [], 'base-1', 0, { ...DEFAULT_HEAP_PARAMS, name: 'Old Heap', worldHeight: 50_000 });
     const res = await createApp(db, new MockScoreDB()).request('/heaps');
     const body = await res.json() as ListHeapsResponse;
     expect(body.heaps[0].params.worldHeight).toBe(50_000);

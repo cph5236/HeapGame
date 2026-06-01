@@ -84,6 +84,11 @@ function resolveParams(input: Partial<HeapParams> | undefined): HeapParams | { e
 
   merged.ghostPointCount = Math.max(0, Math.floor(merged.ghostPointCount ?? 1));
 
+  // Salvage spawn rates: base is a probability [0,1]; pos/neg are non-negative weights.
+  merged.baseItemSpawnRate     = Math.min(1, Math.max(0, merged.baseItemSpawnRate     ?? DEFAULT_HEAP_PARAMS.baseItemSpawnRate));
+  merged.positiveItemSpawnRate = Math.max(0, merged.positiveItemSpawnRate ?? DEFAULT_HEAP_PARAMS.positiveItemSpawnRate);
+  merged.negativeItemSpawnRate = Math.max(0, merged.negativeItemSpawnRate ?? DEFAULT_HEAP_PARAMS.negativeItemSpawnRate);
+
   return merged;
 }
 
@@ -160,6 +165,9 @@ export function heapRoutes(
           scoreMult:       r.score_mult,
           worldHeight:     r.world_height,
           ghostPointCount: r.ghost_point_count,
+          baseItemSpawnRate:     r.base_item_spawn_rate,
+          positiveItemSpawnRate: r.positive_item_spawn_rate,
+          negativeItemSpawnRate: r.negative_item_spawn_rate,
         },
       })),
     } satisfies ListHeapsResponse);
@@ -237,6 +245,9 @@ export function heapRoutes(
         scoreMult:       row.score_mult,
         worldHeight:     row.world_height,
         ghostPointCount: row.ghost_point_count,
+        baseItemSpawnRate:     row.base_item_spawn_rate,
+        positiveItemSpawnRate: row.positive_item_spawn_rate,
+        negativeItemSpawnRate: row.negative_item_spawn_rate,
       },
       enemyParams,
     } satisfies GetHeapResponse);
@@ -263,6 +274,9 @@ export function heapRoutes(
         scoreMult:       bodyParams.scoreMult       ?? row.score_mult,
         worldHeight:     bodyParams.worldHeight     ?? row.world_height,
         ghostPointCount: bodyParams.ghostPointCount ?? row.ghost_point_count,
+        baseItemSpawnRate:     bodyParams.baseItemSpawnRate     ?? row.base_item_spawn_rate,
+        positiveItemSpawnRate: bodyParams.positiveItemSpawnRate ?? row.positive_item_spawn_rate,
+        negativeItemSpawnRate: bodyParams.negativeItemSpawnRate ?? row.negative_item_spawn_rate,
       };
       await db.updateHeapParams(id, merged);
     }
@@ -300,6 +314,9 @@ export function heapRoutes(
       scoreMult:       body.scoreMult       ?? existing.score_mult,
       worldHeight:     existing.world_height,
       ghostPointCount: body.ghostPointCount ?? existing.ghost_point_count,
+      baseItemSpawnRate:     body.baseItemSpawnRate     ?? existing.base_item_spawn_rate,
+      positiveItemSpawnRate: body.positiveItemSpawnRate ?? existing.positive_item_spawn_rate,
+      negativeItemSpawnRate: body.negativeItemSpawnRate ?? existing.negative_item_spawn_rate,
     });
     if ('error' in merged) return c.json({ error: merged.error }, 400);
 

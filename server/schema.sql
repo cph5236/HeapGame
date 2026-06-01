@@ -25,7 +25,10 @@ CREATE TABLE IF NOT EXISTS heap (
   score_mult      REAL NOT NULL DEFAULT 1.0,
   world_height    INTEGER NOT NULL DEFAULT 50000,
   top_y           REAL NOT NULL DEFAULT 0,
-  ghost_point_count INTEGER NOT NULL DEFAULT 1
+  ghost_point_count INTEGER NOT NULL DEFAULT 1,
+  base_item_spawn_rate     REAL NOT NULL DEFAULT 0.33,
+  positive_item_spawn_rate REAL NOT NULL DEFAULT 0.15,
+  negative_item_spawn_rate REAL NOT NULL DEFAULT 0.85
 );
 
 -- High scores — one row per (heap, player), enforced by PRIMARY KEY

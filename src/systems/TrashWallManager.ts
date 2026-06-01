@@ -107,14 +107,14 @@ export class TrashWallManager {
    * Call every frame from GameScene.update() with the player's current world Y and the frame delta (ms).
    * Moves the wall upward, enforces the max-lag clamp, checks kill zone, redraws.
    */
-  update(playerY: number, delta: number): void {
+  update(playerY: number, delta: number, speedMult: number = 1): void {
     if (!this.spawned || this.killed) return;
 
     const speed = computeWallSpeed(
       this.wallY, this.def.speedMin, this.def.speedMax,
       this.def.yForMaxSpeed, this.worldHeight,
     );
-    this.wallY -= speed * (delta / 1000); // move up (Y decreases)
+    this.wallY -= speed * speedMult * (delta / 1000); // move up (Y decreases); speedMult from carried items
     this.wallY  = clampWallY(this.wallY, playerY, this.def.maxLaggingDistance);
 
     this.isWarning = playerY > this.wallY - this.def.warningDistance;

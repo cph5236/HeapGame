@@ -83,6 +83,14 @@
       <div><label>ghostPointCount</label><input type="number" step="1" min="0" id="ep-ghostPointCount" /></div>
     </div>
     <div class="row">
+      <div><label>baseItemSpawnRate (0–1)</label><input type="number" step="0.05" min="0" max="1" id="ep-baseItemSpawnRate" /></div>
+      <div><label>positiveItemSpawnRate (weight)</label><input type="number" step="0.05" min="0" id="ep-positiveItemSpawnRate" /></div>
+    </div>
+    <div class="row">
+      <div><label>negativeItemSpawnRate (weight)</label><input type="number" step="0.05" min="0" id="ep-negativeItemSpawnRate" /></div>
+      <div></div>
+    </div>
+    <div class="row">
       <div></div>
       <div><label>worldHeight <span class="muted">(locked)</span></label><input type="number" id="ep-worldHeight" disabled /></div>
     </div>
@@ -136,6 +144,14 @@
     <div class="row">
       <div><label>scoreMult</label><input type="number" step="0.05" id="cp-scoreMult" value="1.0" /></div>
       <div><label>ghostPointCount</label><input type="number" step="1" min="0" id="cp-ghostPointCount" value="1" /></div>
+    </div>
+    <div class="row">
+      <div><label>baseItemSpawnRate (0–1)</label><input type="number" step="0.05" min="0" max="1" id="cp-baseItemSpawnRate" value="0.33" /></div>
+      <div><label>positiveItemSpawnRate (weight)</label><input type="number" step="0.05" min="0" id="cp-positiveItemSpawnRate" value="0.15" /></div>
+    </div>
+    <div class="row">
+      <div><label>negativeItemSpawnRate (weight)</label><input type="number" step="0.05" min="0" id="cp-negativeItemSpawnRate" value="0.85" /></div>
+      <div></div>
     </div>
     <div class="row">
       <div><label>worldHeight</label><input type="number" id="cp-worldHeight" value="50000" /></div>
@@ -281,6 +297,9 @@
       $('ep-coinMult').value      = heap.params.coinMult;
       $('ep-scoreMult').value     = heap.params.scoreMult;
       $('ep-ghostPointCount').value = heap.params.ghostPointCount ?? 1;
+      $('ep-baseItemSpawnRate').value     = heap.params.baseItemSpawnRate ?? 0.33;
+      $('ep-positiveItemSpawnRate').value = heap.params.positiveItemSpawnRate ?? 0.5;
+      $('ep-negativeItemSpawnRate').value = heap.params.negativeItemSpawnRate ?? 0.5;
       $('ep-worldHeight').value   = heap.params.worldHeight;
       loadEnemyParams(heap.id);
     }
@@ -343,6 +362,9 @@
         coinMult:      Number($('ep-coinMult').value),
         scoreMult:     Number($('ep-scoreMult').value),
         ghostPointCount: (v => isNaN(v) ? 1 : v)(parseInt($('ep-ghostPointCount').value, 10)),
+        baseItemSpawnRate:     Number($('ep-baseItemSpawnRate').value),
+        positiveItemSpawnRate: Number($('ep-positiveItemSpawnRate').value),
+        negativeItemSpawnRate: Number($('ep-negativeItemSpawnRate').value),
       };
       try {
         const res = await adminFetch(`/heaps/${editingHeapId}/params`, {
@@ -378,6 +400,9 @@
         coinMult:      Number($('cp-coinMult').value),
         scoreMult:     Number($('cp-scoreMult').value),
         ghostPointCount: (v => isNaN(v) ? 1 : v)(parseInt($('cp-ghostPointCount').value, 10)),
+        baseItemSpawnRate:     Number($('cp-baseItemSpawnRate').value),
+        positiveItemSpawnRate: Number($('cp-positiveItemSpawnRate').value),
+        negativeItemSpawnRate: Number($('cp-negativeItemSpawnRate').value),
         worldHeight:   Number($('cp-worldHeight').value),
       };
       const seedRaw = $('cp-seed').value;

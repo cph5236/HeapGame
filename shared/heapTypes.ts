@@ -14,6 +14,9 @@ export interface HeapParams {
   worldHeight: number;     // px from Y=0 (summit) to Y=worldHeight (floor)
   isInfinite?: boolean;
   ghostPointCount: number;  // random extra points added per accepted placement
+  baseItemSpawnRate: number;      // 0..1 chance a salvage pickup spawns per surface candidate
+  positiveItemSpawnRate: number;  // weight for choosing a beneficial item when one spawns
+  negativeItemSpawnRate: number;  // weight for choosing a hindering item when one spawns
 }
 
 export const DEFAULT_HEAP_PARAMS: HeapParams = {
@@ -24,6 +27,9 @@ export const DEFAULT_HEAP_PARAMS: HeapParams = {
   scoreMult: 1.0,
   worldHeight: 50_000,
   ghostPointCount: 1,
+  baseItemSpawnRate: 0.33,
+  positiveItemSpawnRate: 0.15,  // 15% positive / 85% negative spawn mix by default
+  negativeItemSpawnRate: 0.85,
 };
 
 // ── Enemy spawn params (served per-heap, replaces EnemyDef fraction fields) ──

@@ -28,6 +28,7 @@ import {
   WORLD_GRAVITY_Y,
   DASH_DURATION_MS,
   DASH_COOLDOWN_MS,
+  WALL_JUMP_COOLDOWN_MS,
   PLAYER_AIR_MAX_SPEED,
 } from '../../constants';
 
@@ -1780,3 +1781,134 @@ describe('Player — wall-jump cooldown (#8)', () => {
   });
 });
 
+// ── 24. Carry modifiers (salvage pickups) ─────────────────────────────────────
+
+describe('Player — carry modifiers', () => {
+  it('default (no modifiers) leaves ground walk speed unchanged', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    imState.tiltFactor = 1;
+
+    player.update(16);
+
+    expect(spy.setVelocityX[spy.setVelocityX.length - 1]).toBeCloseTo(PLAYER_SPEED, 5);
+  });
+
+  it('speedMult scales ground walk speed', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    player.setCarryModifiers({ speedMult: 1.5, jumpBonus: 0, extraAirJumps: 0 });
+    imState.tiltFactor = 1;
+
+    player.update(16);
+
+    expect(spy.setVelocityX[spy.setVelocityX.length - 1]).toBeCloseTo(PLAYER_SPEED * 1.5, 5);
+  });
+
+  it('jumpBonus increases jump velocity (more negative)', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: true,
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 120, extraAirJumps: 0 });
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY - 120);
+  });
+
+  it('extraAirJumps refreshes available air jumps immediately on pickup', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).airJumpsRemaining = 0; // already spent the base air jump
+
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 1 });
+
+    // effective max = 1 + 1 = 2; granting the new jump should bump remaining
+    expect((player as any).airJumpsRemaining).toBe(2);
+  });
+
+  it('extraAirJumps raises the effective max restored on landing', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 2 });
+    (player as any).airJumpsRemaining = 0;
+
+    // Land
+    sprite.body.blocked.down = true;
+    sprite.body.velocity.y = 0;
+    player.update(16);
+
+    expect((player as any).airJumpsRemaining).toBe(3); // 1 base + 2 extra
+  });
+});
+
+
+// ── 25. Carry modifiers: gravity + cooldown levers ────────────────────────────
+
+describe('Player — carry gravity & cooldown levers', () => {
+  it('gravityMult scales fall gravity', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 300 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 2, cooldownMult: 1 });
+
+    player.update(16);
+
+    // body gravity is additive: total = world*factor*mult; body = world*(factor*mult - 1)
+    expect(sprite.body._gravityY).toBeCloseTo(WORLD_GRAVITY_Y * (FALL_GRAVITY_FACTOR * 2 - 1), 5);
+  });
+
+  it('gravityMult below 1 makes the player floatier (less fall gravity)', async () => {
+    const { player, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 300 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 0.5, cooldownMult: 1 });
+
+    player.update(16);
+
+    expect(sprite.body._gravityY).toBeCloseTo(WORLD_GRAVITY_Y * (FALL_GRAVITY_FACTOR * 0.5 - 1), 5);
+  });
+
+  it('cooldownMult scales the dash cooldown when a dash fires', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1, cooldownMult: 0.5 });
+    imState.dashJustFired = true;
+    imState.dashDir = 1;
+
+    player.update(16);
+
+    expect((player as any).dashCooldown).toBe(DASH_COOLDOWN_MS * 0.5);
+  });
+
+  it('cooldownMult scales the wall-jump cooldown when a wall jump fires', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1, cooldownMult: 0.5 });
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+
+    expect((player as any)._justWallJumped).toBe(true);
+    expect((player as any).wallJumpCooldown).toBe(WALL_JUMP_COOLDOWN_MS * 0.5);
+  });
+});
