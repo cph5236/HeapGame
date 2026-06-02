@@ -159,9 +159,12 @@ export class HeapEdgeCollider {
     const leftIsOverhang  = rowBelow !== null && row.leftX  < rowBelow.leftX;
     const rightIsOverhang = rowBelow !== null && row.rightX > rowBelow.rightX;
 
+    // A row-side is a wall if it's steep OR an overhang. An overhang (the edge juts
+    // out over the row below) isn't a surface you should stand on even when its slope
+    // is shallow — otherwise the player clips onto the protruding lip and refreshes.
     return {
-      left:  leftIsWall  ? { kind: 'wall', side: 'left',  isOverhang: leftIsOverhang  } : { kind: 'walkable' },
-      right: rightIsWall ? { kind: 'wall', side: 'right', isOverhang: rightIsOverhang } : { kind: 'walkable' },
+      left:  (leftIsWall  || leftIsOverhang)  ? { kind: 'wall', side: 'left',  isOverhang: leftIsOverhang  } : { kind: 'walkable' },
+      right: (rightIsWall || rightIsOverhang) ? { kind: 'wall', side: 'right', isOverhang: rightIsOverhang } : { kind: 'walkable' },
     };
   }
 
@@ -212,9 +215,19 @@ export class HeapEdgeCollider {
     const img = group.create(geom.x, y) as Phaser.Types.Physics.Arcade.ImageWithStaticBody;
     img.setVisible(false);
     img.setDisplaySize(geom.w, FLOOR_BODY_HEIGHT);
-    img.setDebugBodyColor(slab.kind === 'wall' ? 0xff0000 : 0x00ff00);
+    // Debug (F2) colours: walkable = green, wall = purple (slide down, sides block),
+    // overhang wall = red (also blocks from below so you can't jump up through it).
+    img.setDebugBodyColor(
+      slab.kind !== 'wall' ? 0x00ff00 : slab.isOverhang ? 0xff0000 : 0xcc33ff,
+    );
     img.refreshBody();
     if (slab.kind === 'wall') {
+      // No wall is standable: disable the top so you slide down the face rather than
+      // landing/catching on slab tops. The side faces (10px wide, 16px vertical overlap
+      // between rows) keep you out of the heap — they can't be tunnelled at run speed.
+      img.body.checkCollision.up = false;
+      // Non-overhang walls also disable the underside so you can jump up past them.
+      // Overhang walls keep it: their underside must block you jumping up through them.
       if (!slab.isOverhang) img.body.checkCollision.down = false;
       img.setData('wallSide', slab.side);
     }

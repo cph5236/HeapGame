@@ -1,11 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { handleWallCollision, snapPlayerToSurface, getWallSide } from '../HeapCollisionHelpers';
+import { snapPlayerToSurface } from '../HeapCollisionHelpers';
 
 // Helpers
-function makePlayer(opts: { y?: number; x?: number; blockedDown?: boolean; inSlopeZone?: boolean } = {}) {
+function makePlayer(opts: { y?: number; x?: number; blockedDown?: boolean } = {}) {
   return {
-    inSlopeZone:    opts.inSlopeZone ?? false,
-    slopeEjectDir:  0,
     sprite: {
       x: opts.x ?? 0,
       y: opts.y ?? 100,
@@ -14,52 +12,9 @@ function makePlayer(opts: { y?: number; x?: number; blockedDown?: boolean; inSlo
   };
 }
 
-function makePlayerObj(blockedDown: boolean) {
-  return { body: { blocked: { down: blockedDown } } } as any;
-}
-
-function makeWallObj(side: 'left' | 'right' | null) {
-  return {
-    getData: vi.fn((k: string) => k === 'wallSide' ? side : undefined),
-  } as any;
-}
-
 function makeCollider(slabTopAtX: number | null) {
   return { getSurfaceYAtX: vi.fn(() => slabTopAtX) } as any;
 }
-
-describe('getWallSide', () => {
-  it("returns 'left' when getData('wallSide') is 'left'", () => {
-    expect(getWallSide(makeWallObj('left'))).toBe('left');
-  });
-  it("returns 'right' when getData('wallSide') is 'right'", () => {
-    expect(getWallSide(makeWallObj('right'))).toBe('right');
-  });
-  it('returns null when wallSide data is missing', () => {
-    expect(getWallSide(makeWallObj(null))).toBeNull();
-  });
-});
-
-describe('handleWallCollision', () => {
-  it("sets inSlopeZone=true and slopeEjectDir=-1 when player is blocked.down on a 'left' wall", () => {
-    const player = makePlayer();
-    handleWallCollision(player, makePlayerObj(true), makeWallObj('left'));
-    expect(player.inSlopeZone).toBe(true);
-    expect(player.slopeEjectDir).toBe(-1);
-  });
-  it("sets inSlopeZone=true and slopeEjectDir=+1 on a 'right' wall", () => {
-    const player = makePlayer();
-    handleWallCollision(player, makePlayerObj(true), makeWallObj('right'));
-    expect(player.inSlopeZone).toBe(true);
-    expect(player.slopeEjectDir).toBe(1);
-  });
-  it('does nothing when body.blocked.down is false', () => {
-    const player = makePlayer();
-    handleWallCollision(player, makePlayerObj(false), makeWallObj('left'));
-    expect(player.inSlopeZone).toBe(false);
-    expect(player.slopeEjectDir).toBe(0);
-  });
-});
 
 describe('snapPlayerToSurface', () => {
   // PLAYER_HEIGHT is 46 (from src/constants.ts). feetY = sprite.y + 23.
@@ -82,12 +37,6 @@ describe('snapPlayerToSurface', () => {
 
   it('does NOT snap when body.blocked.down is false', () => {
     const player = makePlayer({ y: 100, blockedDown: false });
-    snapPlayerToSurface(player, [makeCollider(120)], 8);
-    expect(player.sprite.y).toBe(100);
-  });
-
-  it('does NOT snap when inSlopeZone is true', () => {
-    const player = makePlayer({ y: 100, inSlopeZone: true });
     snapPlayerToSurface(player, [makeCollider(120)], 8);
     expect(player.sprite.y).toBe(100);
   });

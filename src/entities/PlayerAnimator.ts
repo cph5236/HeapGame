@@ -11,6 +11,7 @@ const LANDING_DURATION   = 400;   // ms
 const IDLE_PERIOD        = 2200;  // ms — breathing sine period
 const FALL_FLAP_PERIOD   = 550;   // ms — string flutter period
 const APEX_WIGGLE_PERIOD = 450;   // ms — apex rotation sine period
+const WALL_SLIDE_GRACE_MS = 120;  // ms — keep WALL_SLIDE through brief onWall flicker
 const STRING_STROKE_W    = 2.5;   // px
 const COLLAR_OFFSET_Y    = -1.2; // fraction of PLAYER_HEIGHT (red collar position)
 
@@ -65,6 +66,7 @@ export class PlayerAnimator {
   private idleTime:     number = 0;
   private fallFlapTime: number = 0;
   private apexTime:     number = 0;
+  private wallSlideGrace: number = 0; // ms remaining of WALL_SLIDE hysteresis
 
   // Interpolated string control/end points (offsets from attach point in local gfx space)
   private cpLx  = -9;  private cpLy  =  16;
@@ -153,7 +155,22 @@ export class PlayerAnimator {
       return;
     }
 
-    if (state.onWall && !state.onGround && state.vy > 0) {
+    // WALL_SLIDE has hysteresis: the physics `onWall` flag flickers frame-to-frame
+    // while sliding (the body repeatedly separates from then re-contacts the wall),
+    // which would otherwise flap WALL_SLIDE↔FALLING and look bad. While descending
+    // and airborne, a fresh wall contact refreshes a short grace window; a momentary
+    // loss of contact keeps WALL_SLIDE until the window expires. Landing or moving
+    // upward (e.g. a wall-jump) clears it immediately.
+    const fallingAirborne = !state.onGround && state.vy > 0;
+    if (state.onWall && fallingAirborne) {
+      this.wallSlideGrace = WALL_SLIDE_GRACE_MS;
+    } else if (this.wallSlideGrace > 0 && fallingAirborne) {
+      this.wallSlideGrace = Math.max(0, this.wallSlideGrace - delta);
+    } else {
+      this.wallSlideGrace = 0;
+    }
+
+    if (fallingAirborne && (state.onWall || this.wallSlideGrace > 0)) {
       this.setState(AnimState.WALL_SLIDE);
     } else if (!state.onGround && Math.abs(state.vy) < APEX_VY_THRESHOLD) {
       this.setState(AnimState.APEX);
@@ -183,7 +200,6 @@ export class PlayerAnimator {
 
   private setState(newState: AnimState): void {
     if (newState !== this.state) {
-      console.log(`[PlayerAnimator] ${AnimState[this.state]} → ${AnimState[newState]}`);
       this.state = newState;
     }
   }

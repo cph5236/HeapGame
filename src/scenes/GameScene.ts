@@ -35,7 +35,7 @@ import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
-import { handleWallCollision, snapPlayerToSurface } from '../systems/HeapCollisionHelpers';
+import { snapPlayerToSurface } from '../systems/HeapCollisionHelpers';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { HeapClient } from '../systems/HeapClient';
 import { PlaceableManager } from '../systems/PlaceableManager';
@@ -251,13 +251,10 @@ export class GameScene extends Phaser.Scene {
     this.highestGeneratedY = this.spawnY;
     this.generateUpTo(this.spawnY - GEN_LOOKAHEAD, true);
 
-    // Heap colliders — walkable surfaces resolve normally; wall surfaces use callback to prevent resting
-    type ArcadeProcess = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
+    // Heap colliders. Walls block only on their sides (tops/undersides are disabled in
+    // HeapEdgeCollider) so the player slides down them; no eject callback needed.
     this.physics.add.collider(this.player.sprite, this.heapWalkableGroup);
-    this.physics.add.collider(
-      this.player.sprite, this.heapWallGroup,
-      ((p: Phaser.GameObjects.GameObject, w: Phaser.GameObjects.GameObject) => handleWallCollision(this.player, p, w)) as ArcadeProcess, undefined, this,
-    );
+    this.physics.add.collider(this.player.sprite, this.heapWallGroup);
     // Enemies all have allowGravity(false) and are positioned explicitly — no heap colliders needed.
 
     type ArcadeCB = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;

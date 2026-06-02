@@ -45,7 +45,7 @@ import {
   MAX_WALL_AUDIBLE_DISTANCE,
   SURFACE_SNAP_TOLERANCE_PX,
 } from '../constants';
-import { handleWallCollision, snapPlayerToSurface } from '../systems/HeapCollisionHelpers';
+import { snapPlayerToSurface } from '../systems/HeapCollisionHelpers';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import type { EnemyKind } from '../entities/Enemy';
 
@@ -164,14 +164,12 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.playerOutro = new PlayerOutro(this, this.player.sprite);
 
     // ── Colliders ───────────────────────────────────────────────────────────────
-    this.heapColliders = [];
     type AP = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
+    this.heapColliders = [];
     for (let i = 0; i < 3; i++) {
       this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.walkableGroups[i]));
-      this.heapColliders.push(this.physics.add.collider(
-        this.player.sprite, this.wallGroups[i],
-        ((p: Phaser.GameObjects.GameObject, w: Phaser.GameObjects.GameObject) => handleWallCollision(this.player, p, w)) as AP, undefined, this,
-      ));
+      // Walls block only on their sides (tops/undersides disabled) — slide, no eject.
+      this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.wallGroups[i]));
     }
 
     // ── Bridge spawner ──────────────────────────────────────────────────────────
