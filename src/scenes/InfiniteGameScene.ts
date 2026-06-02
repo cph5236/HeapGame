@@ -45,7 +45,7 @@ import {
   MAX_WALL_AUDIBLE_DISTANCE,
   SURFACE_SNAP_TOLERANCE_PX,
 } from '../constants';
-import { snapPlayerToSurface } from '../systems/HeapCollisionHelpers';
+import { snapPlayerToSurface, depenetratePlayerFromWall } from '../systems/HeapCollisionHelpers';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import type { EnemyKind } from '../entities/Enemy';
 
@@ -170,6 +170,13 @@ export class InfiniteGameScene extends Phaser.Scene {
       this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.walkableGroups[i]));
       // Walls block only on their sides (tops/undersides disabled) — slide, no eject.
       this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.wallGroups[i]));
+      // Safety net: push the player out horizontally if they sink into a slope's
+      // (disabled) top face. See depenetratePlayerFromWall.
+      this.heapColliders.push(this.physics.add.overlap(
+        this.player.sprite, this.wallGroups[i],
+        ((p: Phaser.GameObjects.GameObject, w: Phaser.GameObjects.GameObject) => depenetratePlayerFromWall(p, w)) as AP,
+        undefined, this,
+      ));
     }
 
     // ── Bridge spawner ──────────────────────────────────────────────────────────

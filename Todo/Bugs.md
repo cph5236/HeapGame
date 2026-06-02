@@ -22,6 +22,7 @@
   - Overhang rows now classify as walls (non-standable) even below the steepness threshold, so a jutting lip can't be stood on/refresh air jumps.
   - The obsolete slope-zone eject system (`handleWallCollision`/`inSlopeZone`) was removed; wall colliders are now plain.
   - 120ms WALL_SLIDE animation hysteresis in [PlayerAnimator.ts](../src/entities/PlayerAnimator.ts) smooths the on/off-wall contact on jagged faces.
+  - Follow-up: disabling wall-slab tops let the player sink through a slope's exposed top face. Added `depenetratePlayerFromWall` (overlap handler) to push them back out horizontally; `WALL_DEPENETRATION_FACTOR` (constants.ts, 0.5) tunes the push softness.
 
 # Batch smoke test (do before merge)
 - [ ] #1 — reach a peak (success) and die; confirm no enemy/wall sound on the score screen.

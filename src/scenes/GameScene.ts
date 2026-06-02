@@ -35,7 +35,7 @@ import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
-import { snapPlayerToSurface } from '../systems/HeapCollisionHelpers';
+import { snapPlayerToSurface, depenetratePlayerFromWall } from '../systems/HeapCollisionHelpers';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { HeapClient } from '../systems/HeapClient';
 import { PlaceableManager } from '../systems/PlaceableManager';
@@ -255,6 +255,13 @@ export class GameScene extends Phaser.Scene {
     // HeapEdgeCollider) so the player slides down them; no eject callback needed.
     this.physics.add.collider(this.player.sprite, this.heapWalkableGroup);
     this.physics.add.collider(this.player.sprite, this.heapWallGroup);
+    // Safety net: on a diagonal slope the exposed face is the slabs' (disabled) tops,
+    // so falling into it can sink the player through. Push them back out horizontally.
+    this.physics.add.overlap(
+      this.player.sprite, this.heapWallGroup,
+      ((p: Phaser.GameObjects.GameObject, w: Phaser.GameObjects.GameObject) => depenetratePlayerFromWall(p, w)) as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
+      undefined, this,
+    );
     // Enemies all have allowGravity(false) and are positioned explicitly — no heap colliders needed.
 
     type ArcadeCB = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
