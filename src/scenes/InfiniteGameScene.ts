@@ -45,7 +45,7 @@ import {
   MAX_WALL_AUDIBLE_DISTANCE,
   SURFACE_SNAP_TOLERANCE_PX,
 } from '../constants';
-import { handleWallCollision, snapPlayerToSurface } from '../systems/HeapCollisionHelpers';
+import { snapPlayerToSurface, depenetratePlayerFromWall } from '../systems/HeapCollisionHelpers';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import type { EnemyKind } from '../entities/Enemy';
 
@@ -164,13 +164,18 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.playerOutro = new PlayerOutro(this, this.player.sprite);
 
     // ── Colliders ───────────────────────────────────────────────────────────────
-    this.heapColliders = [];
     type AP = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
+    this.heapColliders = [];
     for (let i = 0; i < 3; i++) {
       this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.walkableGroups[i]));
-      this.heapColliders.push(this.physics.add.collider(
+      // Walls block only on their sides (tops/undersides disabled) — slide, no eject.
+      this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.wallGroups[i]));
+      // Safety net: push the player out horizontally if they sink into a slope's
+      // (disabled) top face. See depenetratePlayerFromWall.
+      this.heapColliders.push(this.physics.add.overlap(
         this.player.sprite, this.wallGroups[i],
-        ((p: Phaser.GameObjects.GameObject, w: Phaser.GameObjects.GameObject) => handleWallCollision(this.player, p, w)) as AP, undefined, this,
+        ((p: Phaser.GameObjects.GameObject, w: Phaser.GameObjects.GameObject) => depenetratePlayerFromWall(p, w)) as AP,
+        undefined, this,
       ));
     }
 

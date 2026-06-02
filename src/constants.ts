@@ -46,6 +46,10 @@ export const PLAYER_MAX_FALL_SPEED = 800; // px/s; reached after ~1.5 s at gravi
 export const PLAYER_DIVE_SPEED    = 1200; // px/s; instant downward velocity while diving
 export const WALL_SLIDE_SPEED     = 80;   // px/s downward cap while touching a wall
 export const WALL_COYOTE_MS       = 100;  // ms grace window to wall-jump after leaving the wall
+// Fraction of the wall-overlap corrected per frame when the player sinks into a slope
+// (see depenetratePlayerFromWall). 1.0 = snap fully out in one frame (fast pop); lower
+// eases the push-out over several frames (gentler). Tune to taste in [0.2 .. 1.0].
+export const WALL_DEPENETRATION_FACTOR = 0.5;
 export const WALL_JUMP_PUSH       = 375;  // px/s outward velocity applied on wall jump (was PLAYER_SPEED * 1.5)
 export const WALL_JUMP_COOLDOWN_MS = 2000; // ms cooldown after wall-jump fires (same-wall cooldown: different wall bypass)
 export const PLAYER_INVINCIBLE_MS = 400;  // post-stomp / post-spawn invincibility

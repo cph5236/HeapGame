@@ -6,6 +6,7 @@ import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockSink } from './helpers/mockSink';
 import type { SubmitScoreResponse, PaginatedLeaderboardResponse, PlayerScoresResponse } from '../../shared/scoreTypes';
+import { PICKUP_BONUS } from '../../shared/pickupScores';
 
 const HEAP_ID   = 'heap-test-001';
 const PLAYER_A  = 'player-aaa';
@@ -480,12 +481,12 @@ describe('POST /scores — remote logging', () => {
 
 describe('POST /scores — salvage pickups', () => {
   it('adds validated salvage bonuses to the recomputed score', async () => {
-    // baseHeightPx 1000 (failure → no pace) + spring-coil 250 + worn-boot 250 = 1500
+    // baseHeightPx 1000 (failure → no pace) + spring-coil + worn-boot bonuses
     const res  = await submitScore(makeApp(), validBody({
       inputs: { baseHeightPx: 1000, salvageItemIds: ['spring-coil', 'worn-boot'] },
     }));
     const body = await res.json() as SubmitScoreResponse;
-    expect(body.context.player?.score).toBe(1500);
+    expect(body.context.player?.score).toBe(1000 + PICKUP_BONUS['spring-coil'] + PICKUP_BONUS['worn-boot']);
   });
 
   it('ignores unknown salvage ids (counts them as 0)', async () => {
@@ -493,7 +494,7 @@ describe('POST /scores — salvage pickups', () => {
       inputs: { baseHeightPx: 1000, salvageItemIds: ['spring-coil', 'not-a-real-item'] },
     }));
     const body = await res.json() as SubmitScoreResponse;
-    expect(body.context.player?.score).toBe(1250); // 1000 + 250 only
+    expect(body.context.player?.score).toBe(1000 + PICKUP_BONUS['spring-coil']); // unknown id adds 0
   });
 
   it('scores normally when salvageItemIds is omitted', async () => {

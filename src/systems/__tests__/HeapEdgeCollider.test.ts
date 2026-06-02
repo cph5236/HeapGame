@@ -283,11 +283,12 @@ describe('HeapEdgeCollider – wallSide setData', () => {
     const walkableGroup = makeMockGroup();
     const wallGroup = makeMockGroup();
 
-    // Very gentle left edge (walkable), vertical right edge (wall)
+    // Very gentle left edge that widens going down (walkable, not an overhang),
+    // vertical right edge (wall).
     const rows: ScanlineRow[] = [
-      { y: 0, leftX: 100, rightX: 200 },
+      { y: 0, leftX: 130, rightX: 200 },
       { y: 4, leftX: 115, rightX: 200 }, // deltaX = 15 → very gentle (~15°)
-      { y: 8, leftX: 130, rightX: 200 },
+      { y: 8, leftX: 100, rightX: 200 },
     ];
 
     const collider = new HeapEdgeCollider(35);
@@ -306,11 +307,12 @@ describe('HeapEdgeCollider – wallSide setData', () => {
     const walkableGroup = makeMockGroup();
     const wallGroup = makeMockGroup();
 
-    // Very gentle slopes on both sides (both < 35°)
+    // Very gentle slopes on both sides (both < 35°) that widen going down, so neither
+    // is an overhang → both walkable.
     const rows: ScanlineRow[] = [
-      { y: 0, leftX: 100, rightX: 200 },
-      { y: 4, leftX: 115, rightX: 185 }, // deltaX = 15 left, -15 right → ~15° both
-      { y: 8, leftX: 130, rightX: 170 },
+      { y: 0, leftX: 130, rightX: 170 },
+      { y: 4, leftX: 115, rightX: 185 }, // deltaX = 15 each → ~15° both
+      { y: 8, leftX: 100, rightX: 200 },
     ];
 
     const collider = new HeapEdgeCollider(35);
@@ -325,6 +327,28 @@ describe('HeapEdgeCollider – wallSide setData', () => {
         expect.anything(),
       );
     }
+  });
+
+  it('classifies a gentle OVERHANG (edge juts out over the row below) as a wall, not walkable', () => {
+    const walkableGroup = makeMockGroup();
+    const wallGroup = makeMockGroup();
+
+    // Gentle (~15°) left edge that narrows going down → the upper rows jut out over
+    // the lower ones (overhang). Not standable even though it's below the steepness
+    // threshold, so it must be a wall.
+    const rows: ScanlineRow[] = [
+      { y: 0, leftX: 100, rightX: 200 },
+      { y: 4, leftX: 115, rightX: 200 },
+      { y: 8, leftX: 130, rightX: 200 },
+    ];
+
+    const collider = new HeapEdgeCollider(35);
+    collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
+
+    // Left overhang slabs are walls tagged with wallSide 'left'.
+    expect(wallGroup.created.some(img =>
+      (img.setData as any).mock.calls.some((c: unknown[]) => c[0] === 'wallSide' && c[1] === 'left'),
+    )).toBe(true);
   });
 });
 

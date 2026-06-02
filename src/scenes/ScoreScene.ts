@@ -724,7 +724,10 @@ export class ScoreScene extends Phaser.Scene {
       });
     });
 
-    this._coinsPanelBottom = PANEL_TOP + panelHeight(collapsed) + 40;
+    // Gap below the coins panel. The leaderboard's "HIGH SCORES" label sits just
+    // above the leaderboard panel (which starts here), so this gap must clear the
+    // label's height to keep it from crowding the coins panel.
+    this._coinsPanelBottom = PANEL_TOP + panelHeight(collapsed) + 68;
     return this._coinsPanelBottom;
   }
 
@@ -824,9 +827,32 @@ export class ScoreScene extends Phaser.Scene {
       if (this._rewardedUsed) return;
       this._rewardedUsed = true;
       btn.disableInteractive();
-      label.setText('Loading ad…');
+
+      // Ads can take a while to load on device — show an active loading animation
+      // (cycling dots + gentle pulse) so the tap clearly registers and the user
+      // knows something is happening, rather than a frozen static label.
+      let dots = 0;
+      label.setText('Loading');
+      const loadingTimer = this.time.addEvent({
+        delay: 350,
+        loop: true,
+        callback: () => {
+          dots = (dots + 1) % 4;
+          label.setText('Loading' + '.'.repeat(dots));
+        },
+      });
+      const pulse = this.tweens.add({
+        targets: btn, alpha: { from: 1, to: 0.45 }, duration: 500,
+        yoyo: true, repeat: -1, ease: 'Sine.InOut',
+      });
+      const stopLoading = () => {
+        loadingTimer.remove();
+        pulse.stop();
+        btn.setAlpha(1);
+      };
 
       const watched = await AdClient.showRewarded();
+      stopLoading();
       if (watched) {
         this._rewardedWatched = true;
         this._multiplier = 2;
@@ -941,8 +967,8 @@ export class ScoreScene extends Phaser.Scene {
     const lb     = this._leaderboardObjects;
 
     // "HIGH SCORES" label above the panel — styled like SCORE label but smaller, left-aligned
-    const highScoresLabel = this.add.text(left, panelTop +4, 'HIGH SCORES', {
-      fontSize: '14px', fontFamily: 'monospace', color: '#ffdd44', letterSpacing: 2,
+    const highScoresLabel = this.add.text(left, panelTop - 6, 'HIGH SCORES', {
+      fontSize: '18px', fontFamily: 'monospace', color: '#ffdd44', letterSpacing: 2,
     }).setOrigin(0, 1);
     lb.push(highScoresLabel);
 

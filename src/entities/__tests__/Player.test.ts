@@ -612,23 +612,6 @@ describe('Player — ladder drag', () => {
   });
 });
 
-// ── 6. Slope eject ────────────────────────────────────────────────────────
-
-describe('Player — slope eject', () => {
-  it('slope eject is suppressed when tilting (tiltFactor non-zero)', async () => {
-    const { player, spy } = await makePlayer({ onGround: true });
-    // Inject inSlopeZone state
-    (player as any).inSlopeZone = true;
-    imState.tiltFactor = 0.5;
-
-    player.update(16);
-
-    // When tilting, vx should reflect the tilt (0.5 * PLAYER_SPEED), not the slope eject velocity
-    const lastVx = spy.setVelocityX[spy.setVelocityX.length - 1];
-    expect(lastVx).toBeCloseTo(PLAYER_SPEED * 0.5, 5);
-  });
-});
-
 // ── 7. Terrain stick ──────────────────────────────────────────────────────
 
 describe('Player — terrain stick', () => {
@@ -1266,36 +1249,17 @@ describe('Player — coyote consumed on every jump path', () => {
 // ── 15. onGround derivation extraction ─────────────────────────────────────────
 
 describe('Player — onGround derivation', () => {
-  it('blocked.down=true, inSlopeZone=false, onWall=false → grounded', async () => {
+  it('blocked.down=true, onWall=false → grounded', async () => {
     const { player } = await makePlayer({
       bodyOverrides: {
         blocked: { left: false, right: false, down: true },
         velocity: { x: 0, y: 0 },
       },
     });
-    // Ensure inSlopeZone=false (should be default)
-    (player as any).inSlopeZone = false;
 
     player.update(16);
 
     expect((player as any)._onGround).toBe(true);
-  });
-
-  it('blocked.down=true, inSlopeZone=true → NOT grounded (slope zone blocks ground)', async () => {
-    const { player, sprite } = await makePlayer({
-      bodyOverrides: {
-        blocked: { left: false, right: false, down: true },
-        velocity: { x: 0, y: 0 },
-      },
-    });
-    // Set inSlopeZone to simulate being in a slope rejection zone
-    (player as any).inSlopeZone = true;
-    // Ensure sprite.y is below floorY so groundedByFloor is also false
-    sprite.y = 0;
-
-    player.update(16);
-
-    expect((player as any)._onGround).toBe(false);
   });
 
   it('blocked.down=true, onWall=true, vy=50 → NOT grounded (wall false-ground filter)', async () => {
@@ -1305,7 +1269,6 @@ describe('Player — onGround derivation', () => {
         velocity: { x: 0, y: 50 },
       },
     });
-    (player as any).inSlopeZone = false;
     sprite.y = 0; // Ensure groundedByFloor is false
 
     player.update(16);
@@ -1320,7 +1283,6 @@ describe('Player — onGround derivation', () => {
         velocity: { x: 0, y: 0 },
       },
     });
-    (player as any).inSlopeZone = false;
     sprite.y = 0; // Ensure groundedByFloor is false
 
     player.update(16);
@@ -1335,7 +1297,6 @@ describe('Player — onGround derivation', () => {
         velocity: { x: 0, y: 0 },
       },
     });
-    (player as any).inSlopeZone = false;
     // Simulate player touching the floor via sprite.y
     // floorY = worldHeight - PLAYER_HEIGHT/2
     const floorY = (player as any).worldHeight - PLAYER_HEIGHT / 2;
@@ -1912,3 +1873,4 @@ describe('Player — carry gravity & cooldown levers', () => {
     expect((player as any).wallJumpCooldown).toBe(WALL_JUMP_COOLDOWN_MS * 0.5);
   });
 });
+

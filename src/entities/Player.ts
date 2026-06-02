@@ -95,11 +95,6 @@ export class Player {
   // update() call by consumeJumpBufferOnFire(). Only meaningful during update().
   private _frameJumpKeyHeld: boolean = false;
 
-  /** Set by GameScene's wall-group collision callback each frame. When true the
-   *  player is resting on a steep wall surface and should be ejected outward. */
-  public inSlopeZone = false;
-  /** Direction to eject when inSlopeZone: -1 = left (off left wall), 1 = right (off right wall). */
-  public slopeEjectDir: number = 0;
   /** Set to -1 (wrapped left→right) or 1 (wrapped right→left) for one frame after a wrap. */
   public wrapDir: number = 0;
 
@@ -210,7 +205,6 @@ export class Player {
     this.applyWallSlide(ctx);
     this.updateDive(ctx, delta);
     this.applyWorldBoundsX();
-    this.resetPerFrameSlopeFlags();
     this.applyYClamp(ctx);
   }
 
@@ -242,20 +236,9 @@ export class Player {
     }
 
     const jumpKeyHeld = this.jumpKeys.some(k => k.isDown);
-    // [DEBUG-JUMP-CUT] temporary instrumentation — remove once feel is verified
-    if (jumpKeyJustDown || (this.jumpKeyWasHeld !== jumpKeyHeld)) {
-      console.log('[JUMP]', {
-        justDown: jumpKeyJustDown,
-        wasHeld: this.jumpKeyWasHeld,
-        nowHeld: jumpKeyHeld,
-        vy: Math.round(this.sprite.body.velocity.y),
-        bufferMs: Math.round(this.jumpBufferTimer),
-      });
-    }
     if (this.jumpKeyWasHeld && !jumpKeyHeld && this.sprite.body.velocity.y < 0) {
       const before = this.sprite.body.velocity.y;
       this.sprite.setVelocityY(before * JUMP_CUT_FACTOR);
-      console.log('[JUMP-CUT-TRANSITION]', { before: Math.round(before), after: Math.round(before * JUMP_CUT_FACTOR) });
     }
     this.jumpKeyWasHeld     = jumpKeyHeld;
     this._frameJumpKeyHeld  = jumpKeyHeld;
@@ -293,8 +276,8 @@ export class Player {
     const onWall   = body.blocked.left || body.blocked.right;
 
     // Derive onGround from three predicates:
-    // 1. Physics contact detection (but not in slope rejection zones)
-    const groundedByPhysics = body.blocked.down && !this.inSlopeZone;
+    // 1. Physics contact detection
+    const groundedByPhysics = body.blocked.down;
     // 2. Floor fallback (sprite touching the world floor)
     const groundedByFloor   = this.sprite.y >= floorY;
     // 3. Filter spurious ground from wall bodies: while sliding (velocity.y > 10)
@@ -391,12 +374,8 @@ export class Player {
 
     const moveSpeed = this.placementMode ? PLACEMENT_MOVE_SPEED : PLAYER_SPEED * this.carrySpeedMult;
 
-    if (this.inSlopeZone && !keyboardLeft && !keyboardRight && im.tiltFactor === 0) {
-      // Eject outward along the wall surface until the player slides off the edge
-      this.sprite.setVelocityX(this.slopeEjectDir * moveSpeed);
-      this.momentumX = 0;
-    } else if (ctx.onGround || this.inSlopeZone) {
-      // Ground (or slope zone with active input): direct velocity control
+    if (ctx.onGround) {
+      // Ground: direct velocity control
       this.momentumX = 0;
       if (keyboardLeft) {
         this.sprite.setVelocityX(-moveSpeed);
@@ -437,7 +416,7 @@ export class Player {
    *  Skip when already moving upward — a fresh jump's velocity must not be cancelled. */
   private applyTerrainStick(ctx: FrameCtx): void {
     const body = ctx.body;
-    if (body.blocked.down && !this.inSlopeZone && body.velocity.y >= 0 && body.velocity.y < TERRAIN_STICK_SPEED) {
+    if (body.blocked.down && body.velocity.y >= 0 && body.velocity.y < TERRAIN_STICK_SPEED) {
       this.sprite.setVelocityY(TERRAIN_STICK_SPEED);
     }
   }
@@ -534,15 +513,17 @@ export class Player {
     this.bufferedJumpVx  = 0;
     this.coyoteTimer     = 0; // any jump path consumes the coyote window (#9 defensive)
     if (this.bufferedJumpFromKeyboard && !this._frameJumpKeyHeld) {
+      // Keyboard tap that fired sub-frame / buffered: apply the tap-cut so a quick
+      // tap is a short hop rather than a full jump.
       this.sprite.setVelocityY((this.jumpVelocity) * JUMP_CUT_FACTOR);
-      console.log('[JUMP-CUT-ONFIRE]', { jumpVy: this.jumpVelocity, cutTo: (this.jumpVelocity) * JUMP_CUT_FACTOR });
-    } else {
-      console.log('[JUMP-FIRE-FULL]', { fromKeyboard: this.bufferedJumpFromKeyboard, held: this._frameJumpKeyHeld });
     }
     this.bufferedJumpFromKeyboard = false;
   }
 
   private applyWallSlide(ctx: FrameCtx): void {
+    // Cap descent while pressed against a wall so the player slides down its face at a
+    // steady speed. Wall slabs have non-solid tops (see HeapEdgeCollider), so there's
+    // nothing to catch on — the player slides cleanly to the bottom and falls off.
     if (!ctx.onGround && ctx.onWall && ctx.body.velocity.y > WALL_SLIDE_SPEED) {
       this.sprite.setVelocityY(WALL_SLIDE_SPEED);
       this.momentumX = 0; // No horizontal momentum while actively sliding; granted on wall-leave
@@ -585,13 +566,6 @@ export class Player {
       this.sprite.x = SKY_INSET * this.worldWidth;
       this.wrapDir = 1;
     }
-  }
-
-  /** Slope flags are set by the wall-group collision callback (which runs before
-   *  update). Clear them at end of frame so a stale value doesn't leak into next frame. */
-  private resetPerFrameSlopeFlags(): void {
-    this.inSlopeZone    = false;
-    this.slopeEjectDir  = 0;
   }
 
   /** Floor clamp — prevent falling through the world floor; treat floor as ground. */

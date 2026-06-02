@@ -35,7 +35,7 @@ import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
-import { handleWallCollision, snapPlayerToSurface } from '../systems/HeapCollisionHelpers';
+import { snapPlayerToSurface, depenetratePlayerFromWall } from '../systems/HeapCollisionHelpers';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { HeapClient } from '../systems/HeapClient';
 import { PlaceableManager } from '../systems/PlaceableManager';
@@ -251,12 +251,16 @@ export class GameScene extends Phaser.Scene {
     this.highestGeneratedY = this.spawnY;
     this.generateUpTo(this.spawnY - GEN_LOOKAHEAD, true);
 
-    // Heap colliders — walkable surfaces resolve normally; wall surfaces use callback to prevent resting
-    type ArcadeProcess = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
+    // Heap colliders. Walls block only on their sides (tops/undersides are disabled in
+    // HeapEdgeCollider) so the player slides down them; no eject callback needed.
     this.physics.add.collider(this.player.sprite, this.heapWalkableGroup);
-    this.physics.add.collider(
+    this.physics.add.collider(this.player.sprite, this.heapWallGroup);
+    // Safety net: on a diagonal slope the exposed face is the slabs' (disabled) tops,
+    // so falling into it can sink the player through. Push them back out horizontally.
+    this.physics.add.overlap(
       this.player.sprite, this.heapWallGroup,
-      ((p: Phaser.GameObjects.GameObject, w: Phaser.GameObjects.GameObject) => handleWallCollision(this.player, p, w)) as ArcadeProcess, undefined, this,
+      ((p: Phaser.GameObjects.GameObject, w: Phaser.GameObjects.GameObject) => depenetratePlayerFromWall(p, w)) as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
+      undefined, this,
     );
     // Enemies all have allowGravity(false) and are positioned explicitly — no heap colliders needed.
 
@@ -333,6 +337,16 @@ export class GameScene extends Phaser.Scene {
 
     // Info button (ⓘ) — top-right corner
     this.createInfoButton(im.isMobile);
+
+    // When the run ends we launch ScoreScene and pause this scene. Phaser's pause
+    // halts update() but leaves looping sounds playing, so the trash-wall rumble and
+    // enemy ambients would bleed into the score screen (the success/peak path never
+    // calls onPlayerDeath()). Hush the gameplay loops once, on pause. Player one-shots
+    // (e.g. player-die) and ScoreScene's own music are different categories and untouched.
+    this.events.once(Phaser.Scenes.Events.PAUSE, () => {
+      AudioManager.stopAll('enemySfx');
+      AudioManager.stopAll('envSfx');
+    });
 
     // Dev preview: ?dev=GameScene&params={"_devOutro":"death"} or {"_devOutro":"success"}
     // or {"_devPickup":"spring-coil"} to force-spawn a salvage pickup beside the player.
