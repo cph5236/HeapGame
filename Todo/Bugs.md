@@ -1,7 +1,7 @@
 ## BUGS
 
-> Branch: `fix/playtest-bugs`. All fixes below are code-complete (build clean, 711 tests pass).
-> Items marked _(smoke)_ still need an in-game / on-device check — see the batch smoke list at the bottom.
+> Branch: `fix/playtest-bugs` (PR #36). All fixes below are code-complete and smoke-tested
+> on device (build clean, 708 tests pass). Only #7b remains, intentionally deferred.
 
 # Mobile
 - [x] 7. Mobile blur — **partial.** Text now renders at devicePixelRatio (global `text` factory override in [main.ts](../src/main.ts)) so HUD/labels are crisp. _(device smoke)_
@@ -24,8 +24,9 @@
   - 120ms WALL_SLIDE animation hysteresis in [PlayerAnimator.ts](../src/entities/PlayerAnimator.ts) smooths the on/off-wall contact on jagged faces.
   - Follow-up: disabling wall-slab tops let the player sink through a slope's exposed top face. Added `depenetratePlayerFromWall` (overlap handler) to push them back out horizontally; `WALL_DEPENETRATION_FACTOR` (constants.ts, 0.5) tunes the push softness.
 
-# Batch smoke test (do before merge)
-- [ ] #1 — reach a peak (success) and die; confirm no enemy/wall sound on the score screen.
-- [ ] #2 — tap the 2× button; confirm the loading animation plays while the ad loads.
-- [ ] #4 — open Settings, drag/tap the volume sliders; confirm the menu does NOT close, and tapping the track sets volume. Confirm tapping the backdrop still closes.
-- [ ] #7 — on a real device, confirm text (HUD, score, labels) is noticeably crisper.
+# Batch smoke test — ✅ all passed on device
+- [x] #1 — peak/die → score screen silent of enemy + wall loops.
+- [x] #2 — 2× button loading animation plays while the ad loads.
+- [x] #4 — Settings sliders don't close the menu; track sets volume; backdrop closes.
+- [x] #7 — text (HUD, score, labels) noticeably crisper on device.
+- [x] #8 — wall/slope sliding smooth; no stuck/eject; no sinking into slopes.
