@@ -724,7 +724,10 @@ export class ScoreScene extends Phaser.Scene {
       });
     });
 
-    this._coinsPanelBottom = PANEL_TOP + panelHeight(collapsed) + 40;
+    // Gap below the coins panel. The leaderboard's "HIGH SCORES" label sits just
+    // above the leaderboard panel (which starts here), so this gap must clear the
+    // label's height to keep it from crowding the coins panel.
+    this._coinsPanelBottom = PANEL_TOP + panelHeight(collapsed) + 68;
     return this._coinsPanelBottom;
   }
 
