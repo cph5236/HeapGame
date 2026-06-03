@@ -600,6 +600,7 @@ export class MenuScene extends Phaser.Scene {
       { key: 'U',     label: 'Upgrades'  },
       { key: 'S',     label: 'Store'     },
       { key: 'H',     label: 'Heap'      },
+      { key: 'L',     label: 'Leaderboard' },
     ];
     const parts = keys.map(k => `${k.key}: ${k.label}`).join('   ');
     this.add.text(this.scale.width / 2, this.scale.height - 52, parts, {
@@ -1048,6 +1049,7 @@ export class MenuScene extends Phaser.Scene {
 
       this.input.keyboard!.once('keydown-S', () => this.scene.start('StoreScene'));
       this.input.keyboard!.once('keydown-H', () => this.scene.start('HeapSelectScene'));
+      this.input.keyboard!.once('keydown-L', () => this.openLeaderboard());
     });
   }
 }
