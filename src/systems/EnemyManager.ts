@@ -5,7 +5,7 @@ import { Enemy, applyBodyBox } from '../entities/Enemy';
 import { ENEMY_DEFS, EnemyDef } from '../data/enemyDefs';
 import { SOUND_DEFS } from '../data/soundDefs';
 import type { HeapEnemyParams } from '../../shared/heapTypes';
-import { CHUNK_BAND_HEIGHT, ENEMY_CULL_DISTANCE, MOCK_HEAP_HEIGHT_PX, WORLD_WIDTH } from '../constants';
+import { CHUNK_BAND_HEIGHT, ENEMY_CULL_DISTANCE, MOCK_HEAP_HEIGHT_PX, RAT_PATROL_END_MARGIN_PX, WORLD_WIDTH } from '../constants';
 import type { Vertex } from './HeapPolygon';
 import type { HeapEntry } from '../data/heapTypes';
 import { OBJECT_DEFS } from '../data/heapObjectDefs';
@@ -15,9 +15,10 @@ import {
   spawnChance,
   scaleSpawnChance,
   computeGhostFlip,
+  insetPatrolBounds,
 } from './EnemySpawnMath';
 
-export { isPointInsidePolygon, computeSurfaceAngle, spawnChance, scaleSpawnChance, computeGhostFlip };
+export { isPointInsidePolygon, computeSurfaceAngle, spawnChance, scaleSpawnChance, computeGhostFlip, insetPatrolBounds };
 
 const SURFACE_ANGLE_THRESHOLD = 30; // degrees — below this is a surface, above is a wall
 const RAT_IDLE_MS = 1000;
@@ -130,13 +131,11 @@ export class EnemyManager {
       const spawnX = (v1.x + v2.x) / 2;
       if (Math.abs(spawnX - lastSpawnX) < MIN_ENEMY_SPACING_PX) continue;
       const spawnY = Math.min(v1.y, v2.y);
-      // Use the edge extents as patrol bounds for rats
+      // Patrol bounds: inset from the edge ends so the rat turns shy of the
+      // corners (stays on the visible surface, never walks into the heap).
       const leftV  = v1.x <= v2.x ? v1 : v2;
       const rightV = v1.x <= v2.x ? v2 : v1;
-      const minX = leftV.x;
-      const maxX = rightV.x;
-      const minY = leftV.y;
-      const maxY = rightV.y;
+      const { minX, maxX, minY, maxY } = insetPatrolBounds(leftV, rightV, RAT_PATROL_END_MARGIN_PX);
       for (const def of Object.values(ENEMY_DEFS)) {
         if (spawned >= maxEnemies) break;
         if (this.trySpawn(def, spawnX, spawnY, angle, minX, maxX, minY, maxY)) {
