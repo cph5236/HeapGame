@@ -9,12 +9,16 @@ export interface LeaderboardSceneData {
   heapId:   string;
   heapName: string;
   playerId: string;
+  /** Scene to resume when the modal closes. Defaults to 'HeapSelectScene'
+   *  so existing call sites are unaffected. */
+  returnScene?: string;
 }
 
 export class LeaderboardScene extends Phaser.Scene {
   private heapId!:   string;
   private heapName!: string;
   private playerId!: string;
+  private returnScene!: string;
 
   private page:        number = 0;
   private total:       number = 0;
@@ -40,6 +44,7 @@ export class LeaderboardScene extends Phaser.Scene {
     this.heapId   = data.heapId;
     this.heapName = data.heapName;
     this.playerId = data.playerId;
+    this.returnScene = data.returnScene ?? 'HeapSelectScene';
     this.page     = 0;
     this.total    = 0;
     this.playerRank = null;
@@ -284,7 +289,7 @@ export class LeaderboardScene extends Phaser.Scene {
   }
 
   private closeModal(): void {
-    this.scene.resume('HeapSelectScene');
+    this.scene.resume(this.returnScene);
     this.scene.stop();
   }
 }
