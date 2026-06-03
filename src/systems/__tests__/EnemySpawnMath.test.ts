@@ -5,6 +5,7 @@ import {
   spawnChance,
   scaleSpawnChance,
   computeGhostFlip,
+  insetPatrolBounds,
 } from '../EnemySpawnMath';
 import type { EnemySpawnParams } from '../../../shared/heapTypes';
 
@@ -159,5 +160,46 @@ describe('computeGhostFlip', () => {
   it('uses custom xMin/xMax bounds', () => {
     expect(computeGhostFlip(100, -50, 50, 100, 500)).toBe(50);
     expect(computeGhostFlip(500, 50, 50, 100, 500)).toBe(-50);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// insetPatrolBounds
+// ---------------------------------------------------------------------------
+
+describe('insetPatrolBounds', () => {
+  it('insets both ends of a long flat edge by the margin', () => {
+    const b = insetPatrolBounds({ x: 0, y: 100 }, { x: 500, y: 100 }, 24);
+    expect(b.minX).toBe(24);
+    expect(b.maxX).toBe(476);
+    expect(b.minY).toBe(100);
+    expect(b.maxY).toBe(100);
+  });
+
+  it('interpolates Y at the inset X on a sloped edge', () => {
+    // Edge (0,100) → (200,300): slope 1 (Δy 200 over Δx 200).
+    const b = insetPatrolBounds({ x: 0, y: 100 }, { x: 200, y: 300 }, 20);
+    expect(b.minX).toBe(20);
+    expect(b.maxX).toBe(180);
+    expect(b.minY).toBe(120); // 100 + 20*1
+    expect(b.maxY).toBe(280); // 100 + 180*1
+  });
+
+  it('collapses to the midpoint when the edge is too short to inset both ends', () => {
+    // width 40 <= 2*24 → collapse
+    const b = insetPatrolBounds({ x: 100, y: 50 }, { x: 140, y: 50 }, 24);
+    expect(b.minX).toBe(120);
+    expect(b.maxX).toBe(120);
+    expect(b.minX).toBe(b.maxX);
+    expect(b.minY).toBe(50);
+    expect(b.maxY).toBe(50);
+  });
+
+  it('collapses a degenerate zero-width edge without dividing by zero', () => {
+    const b = insetPatrolBounds({ x: 80, y: 200 }, { x: 80, y: 260 }, 24);
+    expect(b.minX).toBe(80);
+    expect(b.maxX).toBe(80);
+    expect(b.minY).toBe(230); // midpoint Y, not NaN
+    expect(b.maxY).toBe(230);
   });
 });
