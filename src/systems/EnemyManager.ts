@@ -97,8 +97,15 @@ export class EnemyManager {
     if (entry) {
       const def = OBJECT_DEFS[entry.keyid];
       if (def) {
-        minX = entry.x - def.width / 2;
-        maxX = entry.x + def.width / 2;
+        // Inset from the object's ends too, so rats stop shy of the edges.
+        // Flat top → minY/maxY stay platformTopY (passed below).
+        const b = insetPatrolBounds(
+          { x: entry.x - def.width / 2, y: platformTopY },
+          { x: entry.x + def.width / 2, y: platformTopY },
+          RAT_PATROL_END_MARGIN_PX,
+        );
+        minX = b.minX;
+        maxX = b.maxX;
       }
     }
     let spawned = 0;
