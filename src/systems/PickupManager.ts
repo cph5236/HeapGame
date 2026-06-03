@@ -100,6 +100,12 @@ export class PickupManager {
     this.createOverlay();
     this.createCarriedHud();
     if (InputManager.getInstance().isMobile) this.createGrabButton();
+
+    // The InputManager singleton outlives this scene; drop our suppression zone
+    // on shutdown so a stale GRAB rect can't linger into the next scene.
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
+      InputManager.getInstance().setSuppressionRect('grab', null),
+    );
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -345,6 +351,13 @@ export class PickupManager {
   private setGrabButtonVisible(visible: boolean): void {
     this.grabBtn?.setVisible(visible);
     this.grabLabel?.setVisible(visible);
+    // Register/clear the button's screen zone so a tap on it never also jumps.
+    // Rect mirrors the button geom: centred at (w/2, h-200), size 200×52.
+    const w = this.scene.scale.width;
+    const h = this.scene.scale.height;
+    InputManager.getInstance().setSuppressionRect(
+      'grab', visible ? { x: w / 2 - 100, y: h - 200 - 26, w: 200, h: 52 } : null,
+    );
   }
 
   // ── Carried HUD indicator ────────────────────────────────────────────────────

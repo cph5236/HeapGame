@@ -8,8 +8,8 @@ android {
         applicationId "com.hanlinsoftware.heapgame.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 14
-        versionName "0.2.4"
+        versionCode 15
+        versionName "0.2.5"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -18,6 +18,14 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // Install the dev build alongside the Play Store release instead of
+            // overwriting it. Produces com.hanlinsoftware.heapgame.app.debug.
+            // NOTE: GPGS sign-in / AdMob are tied to the production package +
+            // signing SHA, so they won't work in this debug variant.
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

@@ -9,6 +9,16 @@ import {
   TILT_CURVE_EXP,
 } from '../constants';
 
+/** A screen-space rectangle in Phaser game coordinates. */
+export interface ScreenRect { x: number; y: number; w: number; h: number; }
+
+/** Minimal structural view of Phaser's ScaleManager — just the page→game-coord
+ *  transforms. Kept structural so InputManager stays Phaser-free and unit-testable. */
+export interface ScreenTransform {
+  transformX(pageX: number): number;
+  transformY(pageY: number): number;
+}
+
 export class InputManager {
   private static instance: InputManager;
 
@@ -47,6 +57,16 @@ export class InputManager {
   private touchStartY    = 0;
   private touchStartTime = 0;
   private currentTouchY  = 0;
+
+  // True when the in-flight touch began inside a registered UI button zone, so
+  // the global jump/dash/dive/drag handlers ignore the whole gesture. Decided
+  // synchronously at touchstart by geometry — must NOT depend on Phaser's
+  // (deferred) pointer events, which fire a frame too late to beat touchend.
+  private uiGestureSuppressed = false;
+  private screenTransform?: ScreenTransform;
+  // Screen-space (Phaser game-coord) rects that swallow taps, keyed by owner id.
+  // Buttons add/remove their rect as they show/hide.
+  private suppressRects = new Map<string, ScreenRect>();
 
   // Pending impulse flags — set by touch handlers, consumed each frame
   private pendingJump     = false;
@@ -107,6 +127,32 @@ export class InputManager {
     }
   }
 
+  /** Wire the Phaser ScaleManager so touch coords (page space) can be mapped to
+   *  game space for UI hit-testing. Call once at startup. */
+  attachScreenTransform(t: ScreenTransform): void {
+    this.screenTransform = t;
+  }
+
+  /** Register (rect) or clear (null) a screen-space zone, in Phaser game coords,
+   *  that swallows taps so they never become a jump/dash/dive/drag. On-screen
+   *  buttons call this as they show/hide. Keyed by `id` so each button owns one. */
+  setSuppressionRect(id: string, rect: ScreenRect | null): void {
+    if (rect) this.suppressRects.set(id, rect);
+    else      this.suppressRects.delete(id);
+  }
+
+  /** True if a page-space point falls inside any registered suppression zone.
+   *  Decided synchronously at touchstart, independent of Phaser's pointer timing. */
+  private isInSuppressionZone(pageX: number, pageY: number): boolean {
+    if (!this.screenTransform || this.suppressRects.size === 0) return false;
+    const gx = this.screenTransform.transformX(pageX);
+    const gy = this.screenTransform.transformY(pageY);
+    for (const r of this.suppressRects.values()) {
+      if (gx >= r.x && gx <= r.x + r.w && gy >= r.y && gy <= r.y + r.h) return true;
+    }
+    return false;
+  }
+
   /** Called by the on-screen placement button on pointerdown. */
   startPlace(): void {
     this.placeHeld = true;
@@ -163,10 +209,14 @@ export class InputManager {
     this.touchStartTime = performance.now();
     this.currentTouchY  = t.clientY;
     this.touchState     = 'tracking';
+    // Decide suppression here, synchronously: if the finger landed inside a
+    // visible button zone, the whole gesture is UI and never fires a jump/dash.
+    this.uiGestureSuppressed = this.isInSuppressionZone(t.clientX, t.clientY);
   };
 
   private onTouchMove = (e: TouchEvent): void => {
     if (this.touchState !== 'tracking' && this.touchState !== 'drag') return;
+    if (this.uiGestureSuppressed) return;
 
     const t = Array.from(e.touches).find(touch => touch.identifier === this.activeTouchId);
     if (!t) return;
@@ -193,10 +243,11 @@ export class InputManager {
   };
 
   private onTouchCancel = (): void => {
-    this.touchState    = 'idle';
-    this.activeTouchId = undefined;
-    this.dragUp        = false;
-    this.dragDown      = false;
+    this.touchState         = 'idle';
+    this.activeTouchId      = undefined;
+    this.dragUp             = false;
+    this.dragDown           = false;
+    this.uiGestureSuppressed = false;
   };
 
   private onTouchEnd = (e: TouchEvent): void => {
@@ -210,6 +261,12 @@ export class InputManager {
     this.dragDown      = false;
     this.touchState    = 'idle';
     this.activeTouchId = undefined;
+
+    // Gesture was claimed by a UI button — consume it without firing any impulse.
+    if (this.uiGestureSuppressed) {
+      this.uiGestureSuppressed = false;
+      return;
+    }
 
     const dx  = t.clientX - this.touchStartX;
     const dy  = t.clientY - this.touchStartY;
