@@ -33,6 +33,8 @@ export class MenuScene extends Phaser.Scene {
   private heapPickerBg!:    Phaser.GameObjects.Graphics;
   private heapPickerText!:  Phaser.GameObjects.Text;
   private heapPickerStars!: Phaser.GameObjects.Text;
+  private leaderboardBg!:   Phaser.GameObjects.Graphics;
+  private leaderboardIcon!: Phaser.GameObjects.Text;
 
   private _forceSettingsOpen = false;
   private _forceInfoOpen     = false;
@@ -498,26 +500,48 @@ export class MenuScene extends Phaser.Scene {
 
   private createHeapPicker(): void {
     const shift = this.layoutShift;
+    const rowY  = 504 - shift;
+    const left  = this.scale.width / 2 - 160;
 
+    // Heap-picker bar \u2014 left ~85% of the 320px row (264px), 8px gap, 48px trophy.
     this.heapPickerBg = this.add.graphics().setDepth(8).setAlpha(0);
     this.heapPickerBg.fillStyle(0x000000, 0.5);
-    this.heapPickerBg.fillRoundedRect(this.scale.width / 2 - 160, 480 - shift, 320, 48, 10);
+    this.heapPickerBg.fillRoundedRect(left, 480 - shift, 264, 48, 10);
     this.heapPickerBg.lineStyle(1, 0x8899bb, 0.6);
-    this.heapPickerBg.strokeRoundedRect(this.scale.width / 2 - 160, 480 - shift, 320, 48, 10);
+    this.heapPickerBg.strokeRoundedRect(left, 480 - shift, 264, 48, 10);
 
-    this.heapPickerText = this.add.text(0, 504 - shift, '', {
+    this.heapPickerText = this.add.text(0, rowY, '', {
       fontSize: '16px', color: '#ffffff',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0, 0.5).setAlpha(0).setDepth(9);
 
-    this.heapPickerStars = this.add.text(0, 504 - shift, '', {
+    this.heapPickerStars = this.add.text(0, rowY, '', {
       fontSize: '16px', color: '#ff9922',
       stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0, 0.5).setAlpha(0).setDepth(9);
 
-    // Refresh from current registry \u2014 runs once now (with placeholder if catalog
-    // is still loading) and again when `heapCatalogReady` fires from BootScene.
-    const refreshHeapPicker = (): void => {
+    // Leaderboard trophy button \u2014 right 48px square of the row.
+    const trophyLeft = left + 264 + 8;   // = width/2 + 112
+    const trophyCx   = trophyLeft + 24;  // = width/2 + 136
+    this.leaderboardBg = this.add.graphics().setDepth(8).setAlpha(0);
+    const drawTrophyBg = (enabled: boolean): void => {
+      this.leaderboardBg.clear();
+      this.leaderboardBg.fillStyle(0x000000, 0.5);
+      this.leaderboardBg.fillRoundedRect(trophyLeft, 480 - shift, 48, 48, 10);
+      this.leaderboardBg.lineStyle(1, 0x8899bb, enabled ? 0.6 : 0.25);
+      this.leaderboardBg.strokeRoundedRect(trophyLeft, 480 - shift, 48, 48, 10);
+    };
+    drawTrophyBg(false);
+    this.leaderboardIcon = this.add.text(trophyCx, rowY, '\uD83C\uDFC6', {
+      fontSize: '22px',
+    }).setOrigin(0.5).setAlpha(0).setDepth(9);
+
+    // Centre of the picker bar (text centres within the 264px bar, not the row).
+    const barCx = left + 132;            // = width/2 - 28
+
+    // Refresh from current registry \u2014 runs once now (placeholder if catalog is
+    // still loading) and again when `heapCatalogReady` fires from BootScene.
+    const refresh = (): void => {
       const ready  = this.game.registry.get('heapCatalogReady') === true;
       const params = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
 
@@ -530,22 +554,42 @@ export class MenuScene extends Phaser.Scene {
 
       // Re-center both texts together each refresh \u2014 widths change with text.
       const totalW = this.heapPickerText.width + this.heapPickerStars.width;
-      const startX = this.scale.width / 2 - totalW / 2;
+      const startX = barCx - totalW / 2;
       this.heapPickerText.setX(startX);
       this.heapPickerStars.setX(startX + this.heapPickerText.width);
+
+      drawTrophyBg(ready);
     };
 
-    refreshHeapPicker();
-    this.game.events.once('heapCatalogReady', refreshHeapPicker);
+    refresh();
+    this.game.events.once('heapCatalogReady', refresh);
 
-    this.heapPickerText.setInteractive(
-      new Phaser.Geom.Rectangle(-160, -24, 320, 48),
-      Phaser.Geom.Rectangle.Contains,
-    );
-    this.heapPickerText.on('pointerup', () => {
-      if (this.game.registry.get('heapCatalogReady') !== true) return;
-      this.scene.start('HeapSelectScene');
+    // Picker tap zone \u2014 left 264px of the row \u2192 heap selector.
+    this.add.zone(barCx, rowY, 264, 48)
+      .setDepth(9).setInteractive({ useHandCursor: true })
+      .on('pointerup', () => {
+        if (this.game.registry.get('heapCatalogReady') !== true) return;
+        this.scene.start('HeapSelectScene');
+      });
+
+    // Trophy tap zone \u2192 leaderboard for the active heap.
+    this.add.zone(trophyCx, rowY, 48, 48)
+      .setDepth(9).setInteractive({ useHandCursor: true })
+      .on('pointerup', () => this.openLeaderboard());
+  }
+
+  /** Launch the leaderboard modal for the active heap, over a paused menu. */
+  private openLeaderboard(): void {
+    if (this.game.registry.get('heapCatalogReady') !== true) return;
+    const heapId = (this.game.registry.get('activeHeapId') as string) ?? '';
+    const params = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
+    this.scene.launch('LeaderboardScene', {
+      heapId,
+      heapName: params.name,
+      playerId: getPlayerGuid(),
+      returnScene: 'MenuScene',
     });
+    this.scene.pause();
   }
 
   // ── Settings button ──────────────────────────────────────────────────────────
@@ -556,6 +600,7 @@ export class MenuScene extends Phaser.Scene {
       { key: 'U',     label: 'Upgrades'  },
       { key: 'S',     label: 'Store'     },
       { key: 'H',     label: 'Heap'      },
+      { key: 'L',     label: 'Leaderboard' },
     ];
     const parts = keys.map(k => `${k.key}: ${k.label}`).join('   ');
     this.add.text(this.scale.width / 2, this.scale.height - 52, parts, {
@@ -898,7 +943,7 @@ export class MenuScene extends Phaser.Scene {
     this.tweens.add({ targets: this.titleText,      alpha: 1,    duration: 500, delay: 1000 });
     this.tweens.add({ targets: this.taglineText,    alpha: 1,    duration: 400, delay: 1300 });
     this.tweens.add({ targets: [this.balanceText, this.playerNameText], alpha: 1, duration: 300, delay: 1500 });
-    this.tweens.add({ targets: [this.heapPickerBg, this.heapPickerText, this.heapPickerStars], alpha: 1, duration: 300, delay: 1600 });
+    this.tweens.add({ targets: [this.heapPickerBg, this.heapPickerText, this.heapPickerStars, this.leaderboardBg, this.leaderboardIcon], alpha: 1, duration: 300, delay: 1600 });
     this.tweens.add({ targets: this.startBg,   alpha: 1, duration: 400, delay: 1700 });
     this.tweens.add({
       targets: this.startText,
@@ -1004,6 +1049,7 @@ export class MenuScene extends Phaser.Scene {
 
       this.input.keyboard!.once('keydown-S', () => this.scene.start('StoreScene'));
       this.input.keyboard!.once('keydown-H', () => this.scene.start('HeapSelectScene'));
+      this.input.keyboard!.once('keydown-L', () => this.openLeaderboard());
     });
   }
 }
