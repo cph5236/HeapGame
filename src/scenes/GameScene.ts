@@ -469,6 +469,11 @@ export class GameScene extends Phaser.Scene {
     if (im.isMobile) {
       this.placeBtnBg?.setVisible(showPlaceUI);
       this.placeBtnLabel?.setVisible(showPlaceUI);
+      // Register/clear the PLACE button's screen zone so tapping it never jumps.
+      // Rect mirrors the button geom: centred at (w/2, 82), size 280×56.
+      im.setSuppressionRect(
+        'place', showPlaceUI ? { x: this.scale.width / 2 - 140, y: 82 - 28, w: 280, h: 56 } : null,
+      );
     } else {
       this.topZoneText.setVisible(showPlaceUI);
     }
@@ -810,5 +815,8 @@ export class GameScene extends Phaser.Scene {
     this.playerAnimator.destroy();
     this.playerOutro.destroy();
     AudioManager.stopAll();
+    // InputManager is a singleton — drop our PLACE suppression zone so it can't
+    // linger into the next scene.
+    InputManager.getInstance().setSuppressionRect('place', null);
   }
 }

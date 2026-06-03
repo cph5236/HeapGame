@@ -11,6 +11,7 @@ import { InfiniteGameScene } from './scenes/InfiniteGameScene';
 import { LeaderboardScene } from './scenes/LeaderboardScene';
 import { WORLD_GRAVITY_Y } from './constants';
 import { installAudioFocusGuard } from './systems/AudioFocusGuard';
+import { InputManager } from './systems/InputManager';
 
 // HiDPI text crispening. In RESIZE scale mode Phaser sizes the canvas backing
 // store to CSS pixels (no devicePixelRatio multiply), so on high-DPR phones text
@@ -70,6 +71,10 @@ const config: Phaser.Types.Core.GameConfig = {
 
 const game = new Phaser.Game(config);
 installAudioFocusGuard();
+
+// Let InputManager map touch coords (page space) into game space so it can
+// hit-test on-screen button zones and swallow those taps (no accidental jump).
+InputManager.getInstance().attachScreenTransform(game.scale);
 
 // Dev-only: expose the game instance for scene-preview / debugging tooling.
 if (import.meta.env.DEV && typeof window !== 'undefined') {

@@ -71,12 +71,36 @@ npm run cap:sync    # copy assets into Android project + sync plugins
 npx cap run android # select your device and deploy
 ```
 
-### Live reload (faster iteration)
+### Fast local iteration (live reload)
 
-Serves from the Vite dev server so changes reflect instantly without rebuilding:
+Deploy to the phone **once**, then serve from the Vite dev server so JS/TS
+changes hot-reload without rebuilding, syncing, or redeploying:
+
 ```bash
-npx cap run android --livereload --external
+npm run dev           # terminal 1: start Vite on :3000 (leave running)
+npm run dev:android   # terminal 2: deploy with live reload
 ```
+
+`dev:android` runs `cap run android --live-reload --host localhost --port 3000
+--forwardPorts 3000:3000`. The `--forwardPorts` flag runs `adb reverse` so the
+phone loads `localhost:3000` tunneled through the ADB connection — no LAN IP to
+configure and works on any network. Re-run it only when native plugins or
+Capacitor config change.
+
+**Wireless ADB** (Android 11+) avoids flaky USB cables. On the phone, enable
+Developer Options → Wireless debugging, then:
+
+```bash
+adb pair <ip>:<pair-port>      # use the pairing code shown on the phone
+adb connect <ip>:<connect-port>
+```
+
+The device then shows up for `cap run` with no cable attached.
+
+**Side-by-side install:** the debug build uses `applicationIdSuffix ".debug"`
+(see `android/app/build.gradle`), so it installs as a separate app and never
+overwrites the Play Store release. Note: GPGS sign-in / AdMob don't work in the
+debug variant since they're tied to the production package + signing key.
 
 ### Open in Android Studio
 

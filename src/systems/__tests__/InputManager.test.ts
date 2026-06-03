@@ -576,3 +576,103 @@ describe('InputManager — diveJustFired lifecycle', () => {
     expect(im.diveJustFired).toBe(false);
   });
 });
+
+// ── UI button suppression zones ────────────────────────────────────────────────
+// On-screen buttons (GRAB, PLACE) live on top of the global tap-to-jump surface.
+// A button registers its screen rect via setSuppressionRect; a touch that BEGINS
+// inside that rect is UI and must not also produce a jump / dash / dive / drag.
+// The decision is made synchronously at touchstart by geometry — it must NOT rely
+// on Phaser's (deferred) pointer events, which fire a frame too late to beat the
+// synchronous window touchend that triggers the jump.
+
+// Identity transform: page coords == game coords (matches RESIZE scale mode with
+// the canvas at the viewport origin, which is the real fullscreen / Capacitor case).
+const IDENTITY_TRANSFORM = { transformX: (x: number) => x, transformY: (y: number) => y };
+// A button zone spanning clientX 100..220, clientY 250..310.
+const ZONE = { x: 100, y: 250, w: 120, h: 60 };
+
+describe('InputManager — UI button suppression zones', () => {
+  it('a tap that begins inside a button zone does not fire jump', async () => {
+    const { im, fire } = await makeMobileIM();
+    im.attachScreenTransform(IDENTITY_TRANSFORM);
+    im.setSuppressionRect('grab', ZONE);
+
+    fire('touchstart', { touches: [{ clientX: 150, clientY: 280 }] }); // inside ZONE
+    vi.spyOn(performance, 'now').mockReturnValue(100);
+    fire('touchend', { changedTouches: [{ clientX: 153, clientY: 282 }] });
+    vi.restoreAllMocks();
+
+    im.update(16, false);
+    expect(im.jumpJustPressed).toBe(false);
+  });
+
+  it('a swipe that begins inside a button zone does not fire dash', async () => {
+    const { im, fire } = await makeMobileIM();
+    im.attachScreenTransform(IDENTITY_TRANSFORM);
+    im.setSuppressionRect('grab', ZONE);
+
+    vi.spyOn(performance, 'now').mockReturnValueOnce(0);
+    fire('touchstart', { touches: [{ clientX: 110, clientY: 280 }] }); // inside ZONE
+    vi.spyOn(performance, 'now').mockReturnValue(100);
+    fire('touchend', { changedTouches: [{ clientX: 210, clientY: 285 }] }); // fast horizontal → would dash
+    vi.restoreAllMocks();
+
+    im.update(16, false);
+    expect(im.dashJustFired).toBe(false);
+  });
+
+  it('a tap that begins OUTSIDE the zone still fires jump', async () => {
+    const { im, fire } = await makeMobileIM();
+    im.attachScreenTransform(IDENTITY_TRANSFORM);
+    im.setSuppressionRect('grab', ZONE);
+
+    fire('touchstart', { touches: [{ clientX: 150, clientY: 500 }] }); // below ZONE
+    vi.spyOn(performance, 'now').mockReturnValue(100);
+    fire('touchend', { changedTouches: [{ clientX: 153, clientY: 502 }] });
+    vi.restoreAllMocks();
+
+    im.update(16, false);
+    expect(im.jumpJustPressed).toBe(true);
+  });
+
+  it('a drag that begins inside a button zone does not set dragUp', async () => {
+    const { im, fire } = await makeMobileIM();
+    im.attachScreenTransform(IDENTITY_TRANSFORM);
+    im.setSuppressionRect('grab', ZONE);
+
+    fire('touchstart', { touches: [{ clientX: 150, clientY: 290 }] }); // inside ZONE
+    // Drag upward past DRAG_THRESHOLD_PX — would normally enter drag + set dragUp
+    fire('touchmove', { touches: [{ clientX: 151, clientY: 260 }] });
+
+    expect((im as any).touchState).not.toBe('drag');
+    expect(im.dragUp).toBe(false);
+  });
+
+  it('clearing the zone (null) re-enables jump on a tap there', async () => {
+    const { im, fire } = await makeMobileIM();
+    im.attachScreenTransform(IDENTITY_TRANSFORM);
+    im.setSuppressionRect('grab', ZONE);
+    im.setSuppressionRect('grab', null); // button hidden
+
+    fire('touchstart', { touches: [{ clientX: 150, clientY: 280 }] }); // was inside ZONE
+    vi.spyOn(performance, 'now').mockReturnValue(100);
+    fire('touchend', { changedTouches: [{ clientX: 153, clientY: 282 }] });
+    vi.restoreAllMocks();
+
+    im.update(16, false);
+    expect(im.jumpJustPressed).toBe(true);
+  });
+
+  it('with no transform attached, taps are never suppressed (safe default)', async () => {
+    const { im, fire } = await makeMobileIM();
+    im.setSuppressionRect('grab', ZONE); // registered, but no transform wired
+
+    fire('touchstart', { touches: [{ clientX: 150, clientY: 280 }] });
+    vi.spyOn(performance, 'now').mockReturnValue(100);
+    fire('touchend', { changedTouches: [{ clientX: 153, clientY: 282 }] });
+    vi.restoreAllMocks();
+
+    im.update(16, false);
+    expect(im.jumpJustPressed).toBe(true);
+  });
+});

@@ -1,6 +1,6 @@
 {
   "name": "heap-game",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,7 @@
     "test": "vitest run",
     "cap:sync": "cap sync",
     "cap:android": "cap open android",
+    "dev:android": "cap run android --live-reload --host localhost --port 3000 --forwardPorts 3000:3000",
     "gen-assets": "node scripts/gen-heap-defs.mjs && node scripts/gen-heap-texture.mjs",
     "seed": "npx tsx --env-file=.env scripts/seed-heap.ts",
     "scene-preview": "tsx scripts/preview-scene.ts",
