@@ -229,7 +229,7 @@ export function scoreRoutes(
         }
         return c.json({ error: 'invalid score submission' }, 400);
       }
-      salvageBonus = computeSalvageBonus(salvageItemIds);
+      salvageBonus = computeSalvageBonus(salvageItemIds.map((id: string) => ({ id, rarity: 'rare' as const })));
     }
 
     // Recompute score server-side — single source of truth

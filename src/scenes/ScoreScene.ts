@@ -100,7 +100,7 @@ export class ScoreScene extends Phaser.Scene {
     // Derive the bonus from ids (matching the server). Fall back to a raw
     // salvageBonus only for dev-preview convenience.
     this._salvageBonus       = this._salvageItemIds.length > 0
-      ? computeSalvageBonus(this._salvageItemIds)
+      ? computeSalvageBonus(this._salvageItemIds.map(id => ({ id, rarity: 'rare' as const })))
       : (data.salvageBonus ?? 0);
     this._scoreRows          = [];
     this._heapParams         = data.heapParams          ?? DEFAULT_HEAP_PARAMS;

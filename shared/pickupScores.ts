@@ -30,16 +30,47 @@ export const PICKUP_BONUS: Record<string, number> = {
   'sandbag-vest':         360,
 };
 
+/** Salvage rarity tiers. Anchored at 'rare' = 1x (the existing tuned values). */
+export type Rarity = 'common' | 'uncommon' | 'rare' | 'legendary' | 'mythic';
+
+/** Multiplier applied to both effect magnitude and score bonus, per tier.
+ *  Single source of truth shared by client effect-scaling and server scoring. */
+export const RARITY_SCORE_MULT: Record<Rarity, number> = {
+  common:    0.75,
+  uncommon:  0.90,
+  rare:      1.00,
+  legendary: 1.40,
+  mythic:    2.00,
+};
+
+/** One carried salvage item: which item, and the rarity it was found at. */
+export interface SalvageItem {
+  id:     string;
+  rarity: Rarity;
+}
+
+/** True when `r` is a known rarity tier (used for server-side validation). */
+export function isRarity(r: unknown): r is Rarity {
+  return typeof r === 'string' && r in RARITY_SCORE_MULT;
+}
+
 /** Minimum vertical spacing between spawned pickups (must match PickupManager). */
 export const SALVAGE_MIN_SPACING_PX = 700;
 
 /** Extra items allowed beyond the height-derived bound (rounding / edge grace). */
 const SALVAGE_ITEM_GRACE = 2;
 
-/** Sum the bonuses for a list of carried item ids. Unknown ids contribute 0. */
-export function computeSalvageBonus(itemIds: readonly string[]): number {
+/** Sum the rarity-scaled bonuses for a list of carried items. Unknown ids or
+ *  unknown rarities contribute 0. Each item is rounded independently so client
+ *  and server agree exactly. */
+export function computeSalvageBonus(items: readonly SalvageItem[]): number {
   let total = 0;
-  for (const id of itemIds) total += PICKUP_BONUS[id] ?? 0;
+  for (const it of items) {
+    const base = PICKUP_BONUS[it.id];
+    const mult = RARITY_SCORE_MULT[it.rarity as Rarity];
+    if (base === undefined || mult === undefined) continue;
+    total += Math.round(base * mult);
+  }
   return total;
 }
 
