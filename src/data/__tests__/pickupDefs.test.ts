@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyRarity, RARITY_DEFS, PickupEffect } from '../pickupDefs';
+import { applyRarity, RARITY_DEFS, PickupEffect, aggregateModifiers, PICKUP_DEFS } from '../pickupDefs';
 
 const skateboard: PickupEffect = { speedMult: 1.15, jumpBonus: -50, extraAirJumps: 0 };
 
@@ -64,5 +64,30 @@ describe('RARITY_DEFS', () => {
       expect(typeof RARITY_DEFS[r].color).toBe('number');
       expect(RARITY_DEFS[r].label.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('aggregateModifiers (rarity-aware)', () => {
+  const springCoil = PICKUP_DEFS.find(d => d.id === 'spring-coil')!; // jump +50, bonus 50
+
+  it('applies rarity scaling to a single carried item at Mythic', () => {
+    const agg = aggregateModifiers([{ def: springCoil, rarity: 'mythic' }]);
+    expect(agg.jumpBonus).toBeCloseTo(100, 5); // +50 good lever x2
+    expect(agg.totalBonus).toBe(100);          // 50 x 2
+  });
+
+  it('matches the old behavior at Rare (identity)', () => {
+    const agg = aggregateModifiers([{ def: springCoil, rarity: 'rare' }]);
+    expect(agg.jumpBonus).toBe(50);
+    expect(agg.totalBonus).toBe(50);
+  });
+
+  it('composes a mixed-rarity stack', () => {
+    const agg = aggregateModifiers([
+      { def: springCoil, rarity: 'rare' },    // +50 jump, 50 pts
+      { def: springCoil, rarity: 'common' },  // +37.5 jump, round(37.5)=38 pts
+    ]);
+    expect(agg.jumpBonus).toBeCloseTo(50 + 50 * 0.75, 5);
+    expect(agg.totalBonus).toBe(50 + 38);
   });
 });

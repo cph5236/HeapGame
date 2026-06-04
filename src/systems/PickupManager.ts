@@ -12,7 +12,7 @@
 
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
-import { PICKUP_DEFS, PickupDef, aggregateModifiers, formatEffectSummary, CarryModifiers } from '../data/pickupDefs';
+import { PICKUP_DEFS, PickupDef, CarriedPickup, aggregateModifiers, formatEffectSummary, CarryModifiers } from '../data/pickupDefs';
 import { shouldSpawnPickup, findNearestInRange, walkableSurfaceCandidates, pickPolarity } from './PickupHelpers';
 import type { Vertex } from './HeapPolygon';
 import { SALVAGE_MIN_SPACING_PX } from '../../shared/pickupScores';
@@ -67,7 +67,7 @@ export class PickupManager {
   private readonly rates:  PickupSpawnRates;
 
   private pickups:    SpawnedPickup[] = [];
-  private carried:    PickupDef[]     = [];
+  private carried:    CarriedPickup[] = [];
   private aggregate:  CarryModifiers  = aggregateModifiers([]);
   private lastSpawnY: number | null   = null;
   private heapPolygon: Vertex[]       = [];  // full heap polygon for interior/underside rejection
@@ -163,7 +163,7 @@ export class PickupManager {
   /** Number of salvage items currently carried. */
   getCarriedCount(): number { return this.carried.length; }
   /** Ids of carried items — sent to the server for authoritative score validation. */
-  getCarriedIds(): string[] { return this.carried.map(d => d.id); }
+  getCarriedIds(): string[] { return this.carried.map(c => c.def.id); }
   /** Aggregate trash-wall speed multiplier from carried items (1 = unaffected). */
   getWallSpeedMult(): number { return this.aggregate.wallSpeedMult; }
 
@@ -212,7 +212,7 @@ export class PickupManager {
       this.player.activateShield();
       this.spawnFloatingText(pickup.x, pickup.y, 'SHIELD');
     } else {
-      this.carried.push(pickup.def);
+      this.carried.push({ def: pickup.def, rarity: 'rare' });
       this.aggregate = aggregateModifiers(this.carried);
       this.player.setCarryModifiers(this.aggregate);
       this.spawnFloatingText(pickup.x, pickup.y, `+${pickup.def.scoreBonus}`);

@@ -105,20 +105,30 @@ export interface CarryModifiers {
   totalBonus:    number;
 }
 
+/** A carried pickup paired with the rarity it was found at. */
+export interface CarriedPickup {
+  def:    PickupDef;
+  rarity: Rarity;
+}
+
 /** Aggregate a carried stack into a single set of modifiers + total bonus.
  *  Multiplier levers compose multiplicatively (omitted = identity 1); jump,
- *  air-jumps, and bonus sum. */
-export function aggregateModifiers(carried: readonly PickupDef[]): CarryModifiers {
+ *  air-jumps, and bonus sum. Rarity scaling is applied to each item's effect
+ *  and the score bonus. */
+export function aggregateModifiers(carried: readonly CarriedPickup[]): CarryModifiers {
   return carried.reduce<CarryModifiers>(
-    (acc, d) => ({
-      speedMult:     acc.speedMult * d.effect.speedMult,
-      jumpBonus:     acc.jumpBonus + d.effect.jumpBonus,
-      extraAirJumps: acc.extraAirJumps + d.effect.extraAirJumps,
-      gravityMult:   acc.gravityMult * (d.effect.gravityMult ?? 1),
-      cooldownMult:  acc.cooldownMult * (d.effect.cooldownMult ?? 1),
-      wallSpeedMult: acc.wallSpeedMult * (d.effect.wallSpeedMult ?? 1),
-      totalBonus:    acc.totalBonus + d.scoreBonus,
-    }),
+    (acc, { def, rarity }) => {
+      const e = applyRarity(def.effect, rarity);
+      return {
+        speedMult:     acc.speedMult * e.speedMult,
+        jumpBonus:     acc.jumpBonus + e.jumpBonus,
+        extraAirJumps: acc.extraAirJumps + e.extraAirJumps,
+        gravityMult:   acc.gravityMult * (e.gravityMult ?? 1),
+        cooldownMult:  acc.cooldownMult * (e.cooldownMult ?? 1),
+        wallSpeedMult: acc.wallSpeedMult * (e.wallSpeedMult ?? 1),
+        totalBonus:    acc.totalBonus + Math.round(def.scoreBonus * RARITY_SCORE_MULT[rarity]),
+      };
+    },
     { speedMult: 1, jumpBonus: 0, extraAirJumps: 0,
       gravityMult: 1, cooldownMult: 1, wallSpeedMult: 1, totalBonus: 0 },
   );
