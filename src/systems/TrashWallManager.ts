@@ -128,6 +128,18 @@ export class TrashWallManager {
     this._redraw(delta);
   }
 
+  /**
+   * Un-latch a wall that has already reached the kill zone (Revive consumed).
+   * Drops the wall back below the (repositioned) player so the run can resume.
+   */
+  revive(playerY: number): void {
+    if (!this.spawned) return;
+    this.killed = false;
+    this.wallY  = playerY + this.def.spawnBelowPlayerDistance;
+    this.isWarning = false;
+    this._redraw(0);
+  }
+
   destroy(): void {
     this.body.destroy();
     this.gradientOverlay.destroy();

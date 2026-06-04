@@ -141,6 +141,7 @@ export class Player {
   get hasWallJump():          boolean { return this.wallJumpEnabled; }
   get hasDash():              boolean { return this.dashEnabled; }
   get hasActiveShield():      boolean { return this.shieldActive; }
+  get isReviveArmed():        boolean { return this.reviveArmed; }
 
   /** Jump launch velocity including base jumpBoost and any carried jump bonus. */
   private get jumpVelocity(): number {

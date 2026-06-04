@@ -203,6 +203,12 @@ export class GameScene extends Phaser.Scene {
 
     AudioManager.play('music-game');
     this.trashWallManager = new TrashWallManager(this, TRASH_WALL_DEF, () => {
+      // Revive: lift the player above the wall surface, drop the wall back below
+      // them, and continue the run instead of dying.
+      if (this.player.consumeRevive()) {
+        this.reviveFromWall();
+        return;
+      }
       this._playerDead = true;
       AudioManager.onPlayerDeath();
       this.player.freeze();
@@ -693,10 +699,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Revive: negate this fatal hit once, with a longer invuln window so the
-    // same enemy doesn't immediately re-kill. (Covers fatal hits, not wall death.)
+    // same enemy doesn't immediately re-kill.
     if (this.player.consumeRevive()) {
-      this.invincible = true;
-      this.time.delayedCall(PLAYER_INVINCIBLE_MS * 4, () => { this.invincible = false; });
+      this.grantReviveInvuln();
+      this.triggerReviveCue();
       return;
     }
 
@@ -746,6 +752,40 @@ export class GameScene extends Phaser.Scene {
       });
     });
   };
+
+  /** Lift the player clear of the trash wall and resume the run (Revive consumed). */
+  private reviveFromWall(): void {
+    const REVIVE_WALL_LIFT = 220; // px above the wall surface to drop the player
+    const safeY = this.trashWallManager.currentWallY - REVIVE_WALL_LIFT;
+    this.player.sprite.setPosition(this.player.sprite.x, safeY);
+    this.player.sprite.setVelocity(0, 0);
+    this.trashWallManager.revive(safeY);
+    this.grantReviveInvuln();
+    this.triggerReviveCue();
+  }
+
+  /** Brief invulnerability window after a Revive so the player isn't instantly re-killed. */
+  private grantReviveInvuln(): void {
+    this.invincible = true;
+    this.time.delayedCall(PLAYER_INVINCIBLE_MS * 4, () => { this.invincible = false; });
+  }
+
+  /** One-shot visual cue when a Revive triggers. */
+  private triggerReviveCue(): void {
+    this.cameras.main.flash(300, 120, 40, 70);
+    const txt = this.add.text(this.scale.width / 2, this.scale.height / 2 - 40, 'REVIVED!', {
+      fontSize: '40px', color: '#ff6688', fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 6,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(50);
+    this.tweens.add({
+      targets: txt,
+      alpha:  { from: 1, to: 0 },
+      y:      txt.y - 50,
+      scale:  { from: 0.6, to: 1.2 },
+      duration: 900, ease: 'Cubic.Out',
+      onComplete: () => txt.destroy(),
+    });
+  }
 
   private createInfoButton(isMobile: boolean): void {
     const bx = this.scale.width - 22;

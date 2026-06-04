@@ -193,13 +193,21 @@ export class StoreScene extends Phaser.Scene {
 
   private setFilter(filter: ItemCategory | 'all'): void {
     this.activeFilter = filter;
-    this.selectedIndex = 0;
+    let slot = 0;
+    let firstVisible = -1;
     this.rows.forEach((row, i) => {
       const def = ITEM_DEFS[i];
       const visible = filter === 'all' || def.category === filter;
       row.setVisible(visible);
+      if (visible) {
+        row.setRowY(ROW_START_Y + slot * ROW_SPACING);
+        slot++;
+        if (firstVisible === -1) firstVisible = i;
+      }
     });
+    this.selectedIndex = firstVisible === -1 ? 0 : firstVisible;
     this.recalcScroll();
+    this.cameras.main.scrollY = Phaser.Math.Clamp(this.cameras.main.scrollY, 0, this.maxScroll);
     this.refreshTabVisuals();
     this.refreshAll();
   }
@@ -423,6 +431,18 @@ class StoreRow {
   setVisible(visible: boolean): void {
     this._visible = visible;
     this.getAllObjects().forEach(o => (o as Phaser.GameObjects.GameObject & { setVisible: (v: boolean) => void }).setVisible(visible));
+  }
+
+  /** Reposition the whole row to a new top-Y (used when filtering repacks rows). */
+  setRowY(y: number): void {
+    this.bg.setY(y + ROW_HEIGHT / 2);
+    this.accentBar.setY(y + ROW_HEIGHT / 2);
+    this.nameText.setY(y + 6);
+    this.ownText.setY(y + 6);
+    this.costText.setY(y + 28);
+    this.descText.setY(y + 46);
+    this.buyBtnBg.setY(y + 56);
+    this.buyBtnTxt.setY(y + 56);
   }
 
   enableInteractive(onHover: () => void, onBuy: () => void): void {
