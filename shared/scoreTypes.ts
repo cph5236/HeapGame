@@ -1,5 +1,7 @@
 // shared/scoreTypes.ts
 
+import type { SalvageItem } from './pickupScores';
+
 export interface LeaderboardEntry {
   rank:     number;
   playerId: string;
@@ -17,8 +19,8 @@ export interface SubmitScoreInputs {
   kills:        { percher: number; ghost: number };
   elapsedMs:    number;
   isFailure:    boolean;
-  /** Ids of salvage pickups carried to the top. Server validates + scores them. */
-  salvageItemIds?: string[];
+  /** Salvage pickups carried to the top (id + rarity). Server validates + scores them. */
+  salvageItems?: SalvageItem[];
 }
 
 export interface SubmitScoreRequest {

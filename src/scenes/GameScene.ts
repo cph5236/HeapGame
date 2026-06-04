@@ -363,7 +363,7 @@ export class GameScene extends Phaser.Scene {
       { _devOutro?: 'death' | 'success'; _devPickup?: string } | undefined;
     if (initData?._devPickup) {
       const def = PICKUP_DEFS.find(d => d.id === initData._devPickup) ?? PICKUP_DEFS[0];
-      this.pickupManager.devForceSpawn(def, this.player.sprite.x + 40, this.spawnY + PLAYER_HEIGHT / 2);
+      this.pickupManager.devForceSpawn(def, 'rare', this.player.sprite.x + 40, this.spawnY + PLAYER_HEIGHT / 2);
     }
     if (initData?._devOutro) {
       const kind = initData._devOutro;
@@ -616,7 +616,7 @@ export class GameScene extends Phaser.Scene {
             baseHeightPx,
             kills:          this._runKills,
             elapsedMs,
-            salvageItemIds: this.pickupManager.getCarriedIds(),
+            salvageItems: this.pickupManager.getCarriedItems(),
             heapParams:     this._heapParams,
             bonusCoins:     bonusCoinsFromServer,
           });

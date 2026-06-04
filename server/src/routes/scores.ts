@@ -15,7 +15,7 @@ import type {
 } from '../../../shared/scoreTypes';
 import { buildRunScore } from '../../../shared/buildRunScore';
 import { ENEMY_DEFS } from '../../../shared/enemyDefs';
-import { computeSalvageBonus, maxSalvageItems } from '../../../shared/pickupScores';
+import { computeSalvageBonus, maxSalvageItems, isRarity, SalvageItem } from '../../../shared/pickupScores';
 
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT     = 50;
@@ -114,7 +114,7 @@ export function scoreRoutes(
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
-    const { baseHeightPx, kills, elapsedMs, isFailure, salvageItemIds } = inputs;
+    const { baseHeightPx, kills, elapsedMs, isFailure, salvageItems } = inputs;
 
     if (!Number.isInteger(baseHeightPx) || baseHeightPx < 0) {
       console.warn(`[scores] reject: bad baseHeightPx (${baseHeightPx})`);
@@ -208,28 +208,34 @@ export function scoreRoutes(
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
-    // Salvage pickups — validate ids, cap the count by plausible climb, then
-    // score from the server's own bonus table (client-supplied values ignored).
+    // Salvage pickups — validate shape (id + known rarity), cap the count by
+    // plausible climb, then score from the server's own bonus table.
     let salvageBonus = 0;
-    if (salvageItemIds !== undefined) {
-      if (!Array.isArray(salvageItemIds) || salvageItemIds.some(id => typeof id !== 'string')) {
-        console.warn(`[scores] reject: bad salvageItemIds (heapId=${heapId})`);
+    if (salvageItems !== undefined) {
+      const validShape = Array.isArray(salvageItems) && salvageItems.every(
+        (it: unknown) =>
+          it !== null && typeof it === 'object' &&
+          typeof (it as SalvageItem).id === 'string' &&
+          isRarity((it as SalvageItem).rarity),
+      );
+      if (!validShape) {
+        console.warn(`[scores] reject: bad salvageItems (heapId=${heapId})`);
         const sink = getSink();
         if (sink) {
-          await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad salvageItemIds', heapId });
+          await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad salvageItems', heapId });
         }
         return c.json({ error: 'invalid score submission' }, 400);
       }
       const cap = maxSalvageItems(baseHeightPx);
-      if (salvageItemIds.length > cap) {
-        console.warn(`[scores] reject: salvage count ${salvageItemIds.length} exceeds cap ${cap} (heapId=${heapId})`);
+      if (salvageItems.length > cap) {
+        console.warn(`[scores] reject: salvage count ${salvageItems.length} exceeds cap ${cap} (heapId=${heapId})`);
         const sink = getSink();
         if (sink) {
-          await captureServer(sink, 'warn', 'score:rejected', { reason: 'salvage count exceeds cap', heapId, count: salvageItemIds.length, cap });
+          await captureServer(sink, 'warn', 'score:rejected', { reason: 'salvage count exceeds cap', heapId, count: salvageItems.length, cap });
         }
         return c.json({ error: 'invalid score submission' }, 400);
       }
-      salvageBonus = computeSalvageBonus(salvageItemIds.map((id: string) => ({ id, rarity: 'rare' as const })));
+      salvageBonus = computeSalvageBonus(salvageItems as SalvageItem[]);
     }
 
     // Recompute score server-side — single source of truth

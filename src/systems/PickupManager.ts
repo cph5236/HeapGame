@@ -12,10 +12,10 @@
 
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
-import { PICKUP_DEFS, PickupDef, CarriedPickup, aggregateModifiers, formatEffectSummary, CarryModifiers } from '../data/pickupDefs';
-import { shouldSpawnPickup, findNearestInRange, walkableSurfaceCandidates, pickPolarity } from './PickupHelpers';
+import { PICKUP_DEFS, PickupDef, CarriedPickup, RARITY_DEFS, aggregateModifiers, formatEffectSummary, CarryModifiers } from '../data/pickupDefs';
+import { shouldSpawnPickup, findNearestInRange, walkableSurfaceCandidates, pickPolarity, pickRarity } from './PickupHelpers';
 import type { Vertex } from './HeapPolygon';
-import { SALVAGE_MIN_SPACING_PX } from '../../shared/pickupScores';
+import { SALVAGE_MIN_SPACING_PX, Rarity, SalvageItem } from '../../shared/pickupScores';
 import { CHUNK_BAND_HEIGHT } from '../constants';
 import { InputManager } from './InputManager';
 import { AudioManager } from './AudioManager';
@@ -37,6 +37,7 @@ export interface PickupSpawnRates {
 
 interface SpawnedPickup {
   def:       PickupDef;
+  rarity:    Rarity;
   obj:       Phaser.GameObjects.Container; // [glow, core]
   glow:      Phaser.GameObjects.Image;     // pulsing halo (own tween)
   x:         number;
@@ -45,6 +46,10 @@ interface SpawnedPickup {
 }
 
 const GLOW_TEX_KEY = 'pickup-glow';
+
+/** Ordered [tier, weight] pairs for pickRarity, derived once from RARITY_DEFS. */
+const RARITY_WEIGHTS = (Object.keys(RARITY_DEFS) as Rarity[])
+  .map(r => [r, RARITY_DEFS[r].spawnWeight] as [Rarity, number]);
 
 /** Bake a soft white radial-gradient disc once; tinted per item for the halo. */
 function ensureGlowTexture(scene: Phaser.Scene): void {
@@ -137,7 +142,8 @@ export class PickupManager {
     const pool = PICKUP_DEFS.filter(d => d.polarity === polarity);
     const defs = pool.length > 0 ? pool : PICKUP_DEFS; // fall back if a pool is empty
     const def = defs[Math.floor(Math.random() * defs.length)];
-    this.spawnPickup(def, x, surfaceY);
+    const rarity = pickRarity(Math.random(), RARITY_WEIGHTS);
+    this.spawnPickup(def, rarity, x, surfaceY);
     this.lastSpawnY = surfaceY;
   }
 
@@ -154,22 +160,22 @@ export class PickupManager {
   }
 
   /** Dev-only: force-spawn a pickup at a world location (used by scene-preview). */
-  devForceSpawn(def: PickupDef, x: number, surfaceY: number): void {
-    this.spawnPickup(def, x, surfaceY);
+  devForceSpawn(def: PickupDef, rarity: Rarity, x: number, surfaceY: number): void {
+    this.spawnPickup(def, rarity, x, surfaceY);
   }
 
   /** Total salvage bonus to cash in at the top. */
   getCarriedBonus(): number { return this.aggregate.totalBonus; }
   /** Number of salvage items currently carried. */
   getCarriedCount(): number { return this.carried.length; }
-  /** Ids of carried items — sent to the server for authoritative score validation. */
-  getCarriedIds(): string[] { return this.carried.map(c => c.def.id); }
+  /** Carried items + rarities — sent to the server for authoritative scoring. */
+  getCarriedItems(): SalvageItem[] { return this.carried.map(c => ({ id: c.def.id, rarity: c.rarity })); }
   /** Aggregate trash-wall speed multiplier from carried items (1 = unaffected). */
   getWallSpeedMult(): number { return this.aggregate.wallSpeedMult; }
 
   // ── Spawning ──────────────────────────────────────────────────────────────
 
-  private spawnPickup(def: PickupDef, x: number, surfaceY: number): void {
+  private spawnPickup(def: PickupDef, rarity: Rarity, x: number, surfaceY: number): void {
     const y = surfaceY - PICKUP_CORE_RADIUS - 2; // rest the circle just above the surface
     ensureGlowTexture(this.scene);
 
@@ -196,7 +202,7 @@ export class PickupManager {
       targets: obj, y: y - 4, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.InOut',
     });
 
-    this.pickups.push({ def, obj, glow, x, y, collected: false });
+    this.pickups.push({ def, rarity, obj, glow, x, y, collected: false });
   }
 
   // ── Grab ──────────────────────────────────────────────────────────────────
@@ -212,7 +218,7 @@ export class PickupManager {
       this.player.activateShield();
       this.spawnFloatingText(pickup.x, pickup.y, 'SHIELD');
     } else {
-      this.carried.push({ def: pickup.def, rarity: 'rare' });
+      this.carried.push({ def: pickup.def, rarity: pickup.rarity });
       this.aggregate = aggregateModifiers(this.carried);
       this.player.setCarryModifiers(this.aggregate);
       this.spawnFloatingText(pickup.x, pickup.y, `+${pickup.def.scoreBonus}`);
