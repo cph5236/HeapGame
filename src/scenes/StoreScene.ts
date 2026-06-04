@@ -13,9 +13,9 @@ const HEADER_BOTTOM = 145;
 void HEADER_BOTTOM;
 
 const TAB_LABELS: Array<{ label: string; value: ItemCategory | 'all' }> = [
-  { label: 'All',       value: 'all' },
-  { label: 'Placeable', value: 'placeable' },
-  { label: 'Buff',      value: 'buff' },
+  { label: 'All',         value: 'all' },
+  { label: 'Placeable',   value: 'placeable' },
+  { label: 'Consumable',  value: 'consumable' },
 ];
 
 const ACCENT_COLORS: Record<string, number> = {
@@ -23,6 +23,10 @@ const ACCENT_COLORS: Record<string, number> = {
   ibeam:      0x4488ff,
   checkpoint: 0xffaa22,
   shield:     0xcc44ff,
+  revive:     0xff5577,
+  adrenaline: 0xff7733,
+  pogo:       0x33ddff,
+  stall:      0xaa88ff,
 };
 
 export class StoreScene extends Phaser.Scene {
