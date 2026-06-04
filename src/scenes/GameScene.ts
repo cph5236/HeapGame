@@ -38,6 +38,7 @@ import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
 import { snapPlayerToSurface, depenetratePlayerFromWall } from '../systems/HeapCollisionHelpers';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { HeapClient } from '../systems/HeapClient';
+import { BuffManager } from '../systems/BuffManager';
 import { PlaceableManager } from '../systems/PlaceableManager';
 import { PickupManager } from '../systems/PickupManager';
 import { PICKUP_DEFS } from '../data/pickupDefs';
@@ -76,6 +77,7 @@ export class GameScene extends Phaser.Scene {
   private parallaxBg!: ParallaxBackground;
   private playerConfig!: PlayerConfig;
   private im!: InputManager;
+  private buffManager!: BuffManager;
   private placeableManager!: PlaceableManager;
   private pickupManager!: PickupManager;
   private trashWallManager!: TrashWallManager;
@@ -201,6 +203,12 @@ export class GameScene extends Phaser.Scene {
 
     AudioManager.play('music-game');
     this.trashWallManager = new TrashWallManager(this, TRASH_WALL_DEF, () => {
+      // Revive: lift the player above the wall surface, drop the wall back below
+      // them, and continue the run instead of dying.
+      if (this.player.consumeRevive()) {
+        this.reviveFromWall();
+        return;
+      }
       this._playerDead = true;
       AudioManager.onPlayerDeath();
       this.player.freeze();
@@ -330,7 +338,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     // PlaceableManager — items (shields, checkpoints, etc.)
-    this.placeableManager = new PlaceableManager(this, this.player, this.heapWalkableGroup, this.heapWallGroup, this._heapId);
+    this.buffManager = new BuffManager(this, this.player);
+    this.placeableManager = new PlaceableManager(this, this.player, this.heapWalkableGroup, this.heapWallGroup, this._heapId, this.buffManager);
 
     // HUD: ability indicators (dash bar, air jumps, wall jump)
     this.hud = new HUD(this, this.player, this.placeableManager);
@@ -405,12 +414,13 @@ export class GameScene extends Phaser.Scene {
     this.hud.update();
     this.placeableManager.update();
     this.pickupManager.update(this.player.sprite.x, this.player.sprite.y);
+    this.buffManager.update(delta);
 
     const cam       = this.cameras.main;
     const camTop    = cam.scrollY;
     const camBottom = cam.scrollY + cam.height;
 
-    this.trashWallManager.update(this.player.sprite.y, delta, this.pickupManager.getWallSpeedMult());
+    this.trashWallManager.update(this.player.sprite.y, delta, this.pickupManager.getWallSpeedMult() * this.buffManager.getWallSpeedMult());
     if (!this._playerDead) {
       const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
       const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
@@ -688,6 +698,14 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    // Revive: negate this fatal hit once, with a longer invuln window so the
+    // same enemy doesn't immediately re-kill.
+    if (this.player.consumeRevive()) {
+      this.grantReviveInvuln();
+      this.triggerReviveCue();
+      return;
+    }
+
     if (this._playerDead) return;
     this._playerDead = true;
     AudioManager.onPlayerDeath();
@@ -734,6 +752,40 @@ export class GameScene extends Phaser.Scene {
       });
     });
   };
+
+  /** Lift the player clear of the trash wall and resume the run (Revive consumed). */
+  private reviveFromWall(): void {
+    const REVIVE_WALL_LIFT = 220; // px above the wall surface to drop the player
+    const safeY = this.trashWallManager.currentWallY - REVIVE_WALL_LIFT;
+    this.player.sprite.setPosition(this.player.sprite.x, safeY);
+    this.player.sprite.setVelocity(0, 0);
+    this.trashWallManager.revive(safeY);
+    this.grantReviveInvuln();
+    this.triggerReviveCue();
+  }
+
+  /** Brief invulnerability window after a Revive so the player isn't instantly re-killed. */
+  private grantReviveInvuln(): void {
+    this.invincible = true;
+    this.time.delayedCall(PLAYER_INVINCIBLE_MS * 4, () => { this.invincible = false; });
+  }
+
+  /** One-shot visual cue when a Revive triggers. */
+  private triggerReviveCue(): void {
+    this.cameras.main.flash(300, 120, 40, 70);
+    const txt = this.add.text(this.scale.width / 2, this.scale.height / 2 - 40, 'REVIVED!', {
+      fontSize: '40px', color: '#ff6688', fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 6,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(50);
+    this.tweens.add({
+      targets: txt,
+      alpha:  { from: 1, to: 0 },
+      y:      txt.y - 50,
+      scale:  { from: 0.6, to: 1.2 },
+      duration: 900, ease: 'Cubic.Out',
+      onComplete: () => txt.destroy(),
+    });
+  }
 
   private createInfoButton(isMobile: boolean): void {
     const bx = this.scale.width - 22;

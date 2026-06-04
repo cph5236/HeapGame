@@ -110,7 +110,14 @@ export class Player {
   private carryExtraAirJumps: number = 0;
   private carryGravityMult:   number = 1;
   private carryCooldownMult:  number = 1;
+  // Consumable buff layer — composes with the carry layer (mults multiply, additive add).
+  private buffSpeedMult:     number = 1;
+  private buffJumpBonus:     number = 0;
+  private buffExtraAirJumps: number = 0;
+  private buffGravityMult:   number = 1;
+  private buffCooldownMult:  number = 1;
   private shieldActive: boolean = false;
+  private reviveArmed:  boolean = false;
   private shieldAura?: Phaser.GameObjects.Arc;
   private readonly syncAura = (): void => {
     this.shieldAura?.setPosition(this.sprite.x, this.sprite.y);
@@ -134,15 +141,16 @@ export class Player {
   get hasWallJump():          boolean { return this.wallJumpEnabled; }
   get hasDash():              boolean { return this.dashEnabled; }
   get hasActiveShield():      boolean { return this.shieldActive; }
+  get isReviveArmed():        boolean { return this.reviveArmed; }
 
   /** Jump launch velocity including base jumpBoost and any carried jump bonus. */
   private get jumpVelocity(): number {
-    return PLAYER_JUMP_VELOCITY - (this.jumpBoost + this.carryJumpBonus);
+    return PLAYER_JUMP_VELOCITY - (this.jumpBoost + this.carryJumpBonus + this.buffJumpBonus);
   }
 
   /** Max air jumps including extras granted by carried salvage. */
   private get effectiveMaxAirJumps(): number {
-    return this.maxAirJumps + this.carryExtraAirJumps;
+    return this.maxAirJumps + this.carryExtraAirJumps + this.buffExtraAirJumps;
   }
 
   get animState(): PlayerAnimState {
@@ -312,7 +320,7 @@ export class Player {
     if (vy > 0)                            factor = FALL_GRAVITY_FACTOR;
     else if (Math.abs(vy) < APEX_VY_THRESHOLD) factor = APEX_GRAVITY_FACTOR;
     else                                   factor = 1;
-    ctx.body.setGravityY(WORLD_GRAVITY_Y * (factor * this.carryGravityMult - 1));
+    ctx.body.setGravityY(WORLD_GRAVITY_Y * (factor * this.carryGravityMult * this.buffGravityMult - 1));
   }
 
   /** Manage wall-leave coyote time window and wall-jump cooldown decay.
@@ -372,7 +380,7 @@ export class Player {
 
     if (this.dashActive !== 0) return; // active dash protects horizontal velocity
 
-    const moveSpeed = this.placementMode ? PLACEMENT_MOVE_SPEED : PLAYER_SPEED * this.carrySpeedMult;
+    const moveSpeed = this.placementMode ? PLACEMENT_MOVE_SPEED : PLAYER_SPEED * this.carrySpeedMult * this.buffSpeedMult;
 
     if (ctx.onGround) {
       // Ground: direct velocity control
@@ -442,7 +450,7 @@ export class Player {
       const dir = im.dashJustFired ? im.dashDir : (keyboardLeft ? -1 : keyboardRight ? 1 : (this.sprite.flipX ? -1 : 1));
       this.momentumX = 0;
       this.sprite.setVelocityX(dir * PLAYER_DASH_VELOCITY);
-      this.dashCooldown = DASH_COOLDOWN_MS * this.carryCooldownMult;
+      this.dashCooldown = DASH_COOLDOWN_MS * this.carryCooldownMult * this.buffCooldownMult;
       this.dashActive   = DASH_DURATION_MS;
       AudioManager.play('player-dash');
     }
@@ -497,7 +505,7 @@ export class Player {
     this.momentumX = dir * WALL_JUMP_PUSH;
     this.sprite.setVelocityX(this.momentumX);
     this.sprite.setVelocityY(this.jumpVelocity);
-    this.wallJumpCooldown = WALL_JUMP_COOLDOWN_MS * this.carryCooldownMult;
+    this.wallJumpCooldown = WALL_JUMP_COOLDOWN_MS * this.carryCooldownMult * this.buffCooldownMult;
     this.lastWallJumpSide = currentWallSide;
     this.wallCoyoteTimer = 0; // Consume coyote window on wall-jump fire
     AudioManager.play('player-jump');
@@ -632,6 +640,29 @@ export class Player {
     if (gainedAirJump) {
       this.airJumpsRemaining = this.effectiveMaxAirJumps;
     }
+  }
+
+  setBuffModifiers(
+    mods: { speedMult: number; jumpBonus: number; extraAirJumps: number;
+            gravityMult?: number; cooldownMult?: number },
+  ): void {
+    const gainedAirJump = mods.extraAirJumps > this.buffExtraAirJumps;
+    this.buffSpeedMult     = mods.speedMult;
+    this.buffJumpBonus     = mods.jumpBonus;
+    this.buffExtraAirJumps = mods.extraAirJumps;
+    this.buffGravityMult   = mods.gravityMult  ?? 1;
+    this.buffCooldownMult  = mods.cooldownMult ?? 1;
+    if (gainedAirJump) this.airJumpsRemaining = this.effectiveMaxAirJumps;
+  }
+
+  /** Arm a one-use revive (consumed on the next fatal hit). */
+  armRevive(): void { this.reviveArmed = true; }
+
+  /** Consume the armed revive. Returns true (and disarms) if one was armed. */
+  consumeRevive(): boolean {
+    if (!this.reviveArmed) return false;
+    this.reviveArmed = false;
+    return true;
   }
 
   setControlsEnabled(enabled: boolean): void {

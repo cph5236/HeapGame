@@ -10,6 +10,8 @@ import {
   spendItem, getItemQuantity, PlacedItemSave,
 } from './SaveData';
 import { ITEM_DEFS } from '../data/itemDefs';
+import { CONSUMABLE_DEFS } from '../data/consumableDefs';
+import type { BuffManager } from './BuffManager';
 import { Player } from '../entities/Player';
 import { getLogger } from '../logging';
 import { InputManager } from './InputManager';
@@ -34,6 +36,7 @@ interface SpawnedBody {
 export class PlaceableManager {
   private readonly scene:             Phaser.Scene;
   private readonly player:            Player;
+  private readonly buffManager:       BuffManager;
   private readonly walkableGroups:    Phaser.Physics.Arcade.StaticGroup[];
   private readonly wallGroups:        Phaser.Physics.Arcade.StaticGroup[];
   private readonly _heapId:           string;
@@ -76,11 +79,13 @@ export class PlaceableManager {
     walkableGroup:      Phaser.Physics.Arcade.StaticGroup | Phaser.Physics.Arcade.StaticGroup[],
     wallGroup:          Phaser.Physics.Arcade.StaticGroup | Phaser.Physics.Arcade.StaticGroup[],
     heapId:             string,
+    buffManager:        BuffManager,
     resnapOnLoad?:      boolean,
     excludeCheckpoint?: boolean,
   ) {
     this.scene               = scene;
     this.player              = player;
+    this.buffManager         = buffManager;
     this.walkableGroups      = Array.isArray(walkableGroup) ? walkableGroup : [walkableGroup];
     this.wallGroups          = Array.isArray(wallGroup) ? wallGroup : [wallGroup];
     this._heapId             = heapId;
@@ -324,8 +329,13 @@ export class PlaceableManager {
   // ── Item selection & placement mode ─────────────────────────────────────────
 
   private selectItem(itemId: string): void {
-    if (itemId === 'shield') {
-      this.activateShield();
+    const behavior = CONSUMABLE_DEFS[itemId];
+    if (behavior) {
+      if (spendItem(itemId)) {
+        if (behavior.kind === 'shield')        this.player.activateShield();
+        else if (behavior.kind === 'revive')   this.player.armRevive();
+        else                                   this.buffManager.activate(itemId, behavior);
+      }
       this.closeAll();
       return;
     }
@@ -373,11 +383,6 @@ export class PlaceableManager {
     // Re-listen for next click to allow toggling
     this.scene.input.once('pointerdown', this.onPlacementClick, this);
   };
-
-  private activateShield(): void {
-    if (!spendItem('shield')) return;
-    this.player.activateShield();
-  }
 
   // ── Ghost / surface snapping ─────────────────────────────────────────────────
 

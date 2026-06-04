@@ -919,9 +919,10 @@ export class MenuScene extends Phaser.Scene {
   private createVersionLabel(): void {
     const version = import.meta.env.VITE_APP_VERSION ?? '0.0.0';
     // Release builds show just the version; dev builds append a git hash + build
-    // time so it's obvious at a glance which build is on the device.
+    // time (injected per page-load by the dev-build-id Vite plugin into
+    // window.__BUILD_ID__) so it's obvious at a glance which build is on the device.
     const label = import.meta.env.DEV
-      ? `V${version} · ${import.meta.env.VITE_BUILD_ID ?? 'dev'}`
+      ? `V${version} · ${window.__BUILD_ID__ ?? 'dev'}`
       : `V${version}`;
     this.add.text(8, this.scale.height - 6, label, {
       fontSize:   '11px',

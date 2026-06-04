@@ -1874,3 +1874,40 @@ describe('Player — carry gravity & cooldown levers', () => {
   });
 });
 
+// ── Buff-modifier layer + Revive ──────────────────────────────────────────────
+
+describe('Player — buff-modifier layer', () => {
+  it('buff speedMult stacks multiplicatively with carry speedMult', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    player.setCarryModifiers({ speedMult: 1.2, jumpBonus: 0, extraAirJumps: 0 });
+    player.setBuffModifiers({ speedMult: 1.5, jumpBonus: 0, extraAirJumps: 0 });
+    imState.tiltFactor = 1;
+
+    player.update(16);
+
+    const lastVx = spy.setVelocityX[spy.setVelocityX.length - 1];
+    expect(lastVx).toBeCloseTo(PLAYER_SPEED * 1.2 * 1.5);
+  });
+
+  it('buff jumpBonus adds to carry jumpBonus and jumpBoost', async () => {
+    const { player, spy } = await makePlayer({ onGround: true, config: { jumpBoost: 10 } });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 20, extraAirJumps: 0 });
+    player.setBuffModifiers({ speedMult: 1, jumpBonus: 75, extraAirJumps: 0 });
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY - (10 + 20 + 75));
+  });
+});
+
+describe('Player — revive', () => {
+  it('consumeRevive returns true once after armRevive, then false', async () => {
+    const { player } = await makePlayer();
+    expect(player.consumeRevive()).toBe(false);
+    player.armRevive();
+    expect(player.consumeRevive()).toBe(true);
+    expect(player.consumeRevive()).toBe(false);
+  });
+});
+

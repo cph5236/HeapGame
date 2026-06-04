@@ -39,6 +39,7 @@ export class HUD {
   private readonly dashLabel: Phaser.GameObjects.Text;
   private readonly cloudIcons:    Phaser.GameObjects.Image[] = [];
   private readonly wallJumpIcons: Phaser.GameObjects.Image[] = [];
+  private readonly reviveBadge:   Phaser.GameObjects.Text;
   private readonly hudY:          number;
 
   constructor(scene: Phaser.Scene, player: Player, placeableManager?: PlaceableManager) {
@@ -116,6 +117,12 @@ export class HUD {
 
       bagHit.on('pointerup', () => placeableManager.openHotbar());
     }
+
+    // ── Revive armed badge (top-left, persistent while a revive is held) ────────
+    this.reviveBadge = scene.add.text(8, 64, '♥ REVIVE', {
+      fontSize: '13px', color: '#ff6688', stroke: '#000000', strokeThickness: 3,
+      fontStyle: 'bold',
+    }).setScrollFactor(0).setDepth(21).setVisible(false);
   }
 
   update(): void {
@@ -145,5 +152,8 @@ export class HUD {
     if (this.wallJumpIcons.length > 0) {
       this.wallJumpIcons[0].setAlpha(this.player.canWallJump ? 1.0 : 0.25);
     }
+
+    // Revive armed badge
+    this.reviveBadge.setVisible(this.player.isReviveArmed);
   }
 }
