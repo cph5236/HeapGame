@@ -8,7 +8,8 @@
 // Point values come from shared/pickupScores so the client and the
 // score-authoritative server agree on every bonus.
 
-import { PICKUP_BONUS } from '../../shared/pickupScores';
+import { PICKUP_BONUS, Rarity, RARITY_SCORE_MULT } from '../../shared/pickupScores';
+export type { Rarity } from '../../shared/pickupScores';
 
 export interface PickupEffect {
   /** Multiplies PLAYER_SPEED. 1 = no change, >1 faster, <1 heavier/slower. */
@@ -23,6 +24,54 @@ export interface PickupEffect {
   cooldownMult?: number;
   /** Multiplies the rising trash-wall speed. >1 = wall climbs faster. (default 1) */
   wallSpeedMult?: number;
+}
+
+/** Per-tier presentation + spawn tuning. The score/effect multiplier itself
+ *  lives in shared RARITY_SCORE_MULT (single source of truth). */
+export interface RarityDef {
+  /** Relative spawn weight (normalised over the sum at roll time). */
+  spawnWeight: number;
+  /** Tier color for the glow halo + overlay label. */
+  color:       number;
+  /** Short uppercase label shown in the proximity overlay. */
+  label:       string;
+  /** Glow halo base scale + alpha, so rarer items read as more special. */
+  glowScale:   number;
+  glowAlpha:   number;
+}
+
+export const RARITY_DEFS: Record<Rarity, RarityDef> = {
+  common:    { spawnWeight: 50, color: 0x9aa0ad, label: 'COMMON',    glowScale: 0.70, glowAlpha: 0.55 },
+  uncommon:  { spawnWeight: 28, color: 0x5fd66b, label: 'UNCOMMON',  glowScale: 0.85, glowAlpha: 0.70 },
+  rare:      { spawnWeight: 15, color: 0x4aa3ff, label: 'RARE',      glowScale: 1.00, glowAlpha: 0.85 },
+  legendary: { spawnWeight: 6,  color: 0xb45cff, label: 'LEGENDARY', glowScale: 1.15, glowAlpha: 0.95 },
+  mythic:    { spawnWeight: 1,  color: 0xffc23d, label: 'MYTHIC',    glowScale: 1.30, glowAlpha: 1.00 },
+};
+
+/** Scale one effect lever for rarity. Good deltas (matching `benefDir`) grow by
+ *  `m`; bad deltas shrink toward neutral by `1/m`. `floor` clamps multiplicative
+ *  levers off zero. */
+function scaleLever(
+  value: number, neutral: number, benefDir: 1 | -1, m: number, floor = -Infinity,
+): number {
+  const d = value - neutral;
+  if (d === 0) return value;
+  const factor = Math.sign(d) === benefDir ? m : 1 / m;
+  return Math.max(floor, neutral + d * factor);
+}
+
+/** Apply rarity scaling to an effect: good levers grow, bad levers shrink toward
+ *  neutral. `extraAirJumps` is discrete and never scaled. */
+export function applyRarity(effect: PickupEffect, rarity: Rarity): PickupEffect {
+  const m = RARITY_SCORE_MULT[rarity];
+  return {
+    speedMult:     scaleLever(effect.speedMult, 1, +1, m, 0.05),
+    jumpBonus:     scaleLever(effect.jumpBonus, 0, +1, m),
+    extraAirJumps: effect.extraAirJumps,
+    gravityMult:   effect.gravityMult  === undefined ? undefined : scaleLever(effect.gravityMult,  1, -1, m, 0.05),
+    cooldownMult:  effect.cooldownMult === undefined ? undefined : scaleLever(effect.cooldownMult, 1, -1, m, 0.05),
+    wallSpeedMult: effect.wallSpeedMult === undefined ? undefined : scaleLever(effect.wallSpeedMult, 1, -1, m, 0.05),
+  };
 }
 
 export type PickupPolarity = 'positive' | 'negative';
