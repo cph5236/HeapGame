@@ -38,6 +38,7 @@ import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
 import { snapPlayerToSurface, depenetratePlayerFromWall } from '../systems/HeapCollisionHelpers';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { HeapClient } from '../systems/HeapClient';
+import { BuffManager } from '../systems/BuffManager';
 import { PlaceableManager } from '../systems/PlaceableManager';
 import { PickupManager } from '../systems/PickupManager';
 import { PICKUP_DEFS } from '../data/pickupDefs';
@@ -76,6 +77,7 @@ export class GameScene extends Phaser.Scene {
   private parallaxBg!: ParallaxBackground;
   private playerConfig!: PlayerConfig;
   private im!: InputManager;
+  private buffManager!: BuffManager;
   private placeableManager!: PlaceableManager;
   private pickupManager!: PickupManager;
   private trashWallManager!: TrashWallManager;
@@ -330,7 +332,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     // PlaceableManager — items (shields, checkpoints, etc.)
-    this.placeableManager = new PlaceableManager(this, this.player, this.heapWalkableGroup, this.heapWallGroup, this._heapId);
+    this.buffManager = new BuffManager(this, this.player);
+    this.placeableManager = new PlaceableManager(this, this.player, this.heapWalkableGroup, this.heapWallGroup, this._heapId, this.buffManager);
 
     // HUD: ability indicators (dash bar, air jumps, wall jump)
     this.hud = new HUD(this, this.player, this.placeableManager);
@@ -405,12 +408,13 @@ export class GameScene extends Phaser.Scene {
     this.hud.update();
     this.placeableManager.update();
     this.pickupManager.update(this.player.sprite.x, this.player.sprite.y);
+    this.buffManager.update(delta);
 
     const cam       = this.cameras.main;
     const camTop    = cam.scrollY;
     const camBottom = cam.scrollY + cam.height;
 
-    this.trashWallManager.update(this.player.sprite.y, delta, this.pickupManager.getWallSpeedMult());
+    this.trashWallManager.update(this.player.sprite.y, delta, this.pickupManager.getWallSpeedMult() * this.buffManager.getWallSpeedMult());
     if (!this._playerDead) {
       const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
       const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
@@ -683,6 +687,14 @@ export class GameScene extends Phaser.Scene {
     // Shield absorbs the hit
     if (this.player.hasActiveShield) {
       this.player.absorbHit();
+      this.invincible = true;
+      this.time.delayedCall(PLAYER_INVINCIBLE_MS * 4, () => { this.invincible = false; });
+      return;
+    }
+
+    // Revive: negate this fatal hit once, with a longer invuln window so the
+    // same enemy doesn't immediately re-kill. (Covers fatal hits, not wall death.)
+    if (this.player.consumeRevive()) {
       this.invincible = true;
       this.time.delayedCall(PLAYER_INVINCIBLE_MS * 4, () => { this.invincible = false; });
       return;

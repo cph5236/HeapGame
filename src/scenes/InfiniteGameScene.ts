@@ -8,6 +8,7 @@ import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
 import { EnemyManager } from '../systems/EnemyManager';
 import { TrashWallManager } from '../systems/TrashWallManager';
+import { BuffManager } from '../systems/BuffManager';
 import { PlaceableManager } from '../systems/PlaceableManager';
 import { BridgeSpawner } from '../systems/BridgeSpawner';
 import { PortalManager, findPortalSurfaceFromPolygon } from '../systems/PortalManager';
@@ -76,6 +77,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   private enemyManagers:  EnemyManager[]   = [];
   private colBandPolygons: Map<number, Vertex[]>[] = [];
   private trashWallManager!: TrashWallManager;
+  private buffManager!:      BuffManager;
   private placeableManager!: PlaceableManager;
   private bridgeSpawner!:    BridgeSpawner;
   private portalManager!:    PortalManager;
@@ -237,9 +239,11 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.trashWallManager.spawn(this.player.sprite.y);
 
     // ── Placeable manager ────────────────────────────────────────────────────────
+    this.buffManager = new BuffManager(this, this.player);
     this.placeableManager = new PlaceableManager(
       this, this.player, this.walkableGroups, this.wallGroups,
       INFINITE_HEAP_ID,
+      this.buffManager,
       true, // resnapOnLoad — heap polygons differ per run; snap saved items to nearest surface within SNAP_RADIUS
       true, // excludeCheckpoint
     );
@@ -324,6 +328,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.playerAnimator.update(delta, this.player.animState);
     snapPlayerToSurface(this.player, this.edgeColliders, SURFACE_SNAP_TOLERANCE_PX);
     this.placeableManager.update();
+    this.buffManager.update(delta);
     this.hud.update();
 
     // ── Heap generation ───────────────────────────────────────────────────────────
@@ -356,7 +361,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       }
     }
 
-    this.trashWallManager.update(this.player.sprite.y, delta);
+    this.trashWallManager.update(this.player.sprite.y, delta, this.buffManager.getWallSpeedMult());
     if (!this._playerDead) {
       const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
       const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
@@ -512,6 +517,15 @@ export class InfiniteGameScene extends Phaser.Scene {
       this.time.delayedCall(PLAYER_INVINCIBLE_MS * 4, () => { this.invincible = false; });
       return;
     }
+
+    // Revive: negate this fatal hit once, with a longer invuln window so the
+    // same enemy doesn't immediately re-kill. (Covers fatal hits, not wall death.)
+    if (this.player.consumeRevive()) {
+      this.invincible = true;
+      this.time.delayedCall(PLAYER_INVINCIBLE_MS * 4, () => { this.invincible = false; });
+      return;
+    }
+
     this.handleDeath();
   };
 
