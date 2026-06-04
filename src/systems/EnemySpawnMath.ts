@@ -49,3 +49,42 @@ export function computeGhostFlip(
   if (x >= xMax && velocityX > 0) return -speed;
   return velocityX;
 }
+
+export interface PatrolBounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+/**
+ * Patrol bounds for a rat on the surface edge leftV→rightV, inset from each end
+ * by `margin` so the rat turns around before its body overhangs the corner.
+ * minY/maxY are the edge's Y at the inset X's (linear along the edge), keeping the
+ * rat on the surface. If the edge is too short to inset both ends
+ * (width <= 2*margin), the bounds collapse to the edge midpoint so the rat idles
+ * in place rather than getting inverted bounds.
+ *
+ * Precondition: leftV.x <= rightV.x (caller orders the vertices).
+ */
+export function insetPatrolBounds(
+  leftV: { x: number; y: number },
+  rightV: { x: number; y: number },
+  margin: number,
+): PatrolBounds {
+  const width = rightV.x - leftV.x;
+
+  if (width <= 2 * margin) {
+    // Too short (or degenerate): collapse to the midpoint. Midpoint Y equals the
+    // edge's Y there for a straight edge, and avoids a divide-by-zero when width=0.
+    const midX = (leftV.x + rightV.x) / 2;
+    const midY = (leftV.y + rightV.y) / 2;
+    return { minX: midX, maxX: midX, minY: midY, maxY: midY };
+  }
+
+  const minX = leftV.x + margin;
+  const maxX = rightV.x - margin;
+  const edgeY = (x: number): number =>
+    leftV.y + ((x - leftV.x) / width) * (rightV.y - leftV.y);
+  return { minX, maxX, minY: edgeY(minX), maxY: edgeY(maxX) };
+}

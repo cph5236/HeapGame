@@ -127,6 +127,7 @@ export const GROUND_LAYER_HEIGHT   = 180;       // total depth of dirt cross-sec
 
 // ── Enemies ────────────────────────────────────────────────────────────────────
 export const ENEMY_CULL_DISTANCE = 2000; // px below camera before destroy
+export const RAT_PATROL_END_MARGIN_PX = 24; // ≈ rat half-width; rat turns before its body overhangs a surface end
 export const MAX_WALL_AUDIBLE_DISTANCE = 1200; // px gap at which wall rumble starts
 
 // ── Score / Economy ────────────────────────────────────────────────────────────
