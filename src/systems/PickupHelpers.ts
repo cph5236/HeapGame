@@ -4,6 +4,7 @@
 
 import type { Vertex } from './HeapPolygon';
 import { computeSurfaceAngle, isPointInsidePolygon } from './EnemySpawnMath';
+import type { Rarity } from '../../shared/pickupScores';
 
 /** Decide whether to spawn a salvage pickup on a freshly-spawned platform.
  *
@@ -110,4 +111,22 @@ export function findNearestInRange(
     }
   }
   return best;
+}
+
+/** Choose a rarity tier by weighted selection.
+ *
+ * @param rand    A random value in [0, 1) (injected for determinism).
+ * @param weights Ordered [tier, weight] pairs; weights need not sum to 1.
+ */
+export function pickRarity(
+  rand: number,
+  weights: readonly (readonly [Rarity, number])[],
+): Rarity {
+  const total = weights.reduce((s, [, w]) => s + w, 0);
+  let threshold = rand * total;
+  for (const [tier, w] of weights) {
+    threshold -= w;
+    if (threshold < 0) return tier;
+  }
+  return weights[weights.length - 1][0]; // fp safety net
 }
