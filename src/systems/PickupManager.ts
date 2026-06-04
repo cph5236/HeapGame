@@ -83,6 +83,7 @@ export class PickupManager {
   // Proximity overlay (world-space, anchored above the in-range pickup)
   private overlayBg!:     Phaser.GameObjects.Rectangle;
   private overlayName!:   Phaser.GameObjects.Text;
+  private overlayRarity!: Phaser.GameObjects.Text;
   private overlayFlavor!: Phaser.GameObjects.Text;
   private overlayEffect!: Phaser.GameObjects.Text;
   private overlayBonus!:  Phaser.GameObjects.Text;
@@ -179,22 +180,21 @@ export class PickupManager {
     const y = surfaceY - PICKUP_CORE_RADIUS - 2; // rest the circle just above the surface
     ensureGlowTexture(this.scene);
 
-    // Pulsing radial-gradient halo in the item's colour.
-    // Normal blend (not ADD): ADD saturates toward white over bright backgrounds,
-    // hiding the item colour. Normal blend keeps the tint true.
+    const rdef = RARITY_DEFS[rarity];
+    // Pulsing radial-gradient halo in the rarity colour (rarer = bigger/brighter).
     const glow = this.scene.add.image(0, 0, GLOW_TEX_KEY)
-      .setTint(def.color)
-      .setScale(0.85)
-      .setAlpha(0.9);
-    // Solid item circle.
+      .setTint(rdef.color)
+      .setScale(rdef.glowScale)
+      .setAlpha(rdef.glowAlpha);
+    // Solid item circle keeps the item's own colour.
     const core = this.scene.add.circle(0, 0, PICKUP_CORE_RADIUS, def.color, 1)
       .setStrokeStyle(1.5, 0xffffff, 0.85);
 
     const obj = this.scene.add.container(x, y, [glow, core]).setDepth(8);
 
-    // Halo pulse (own tween on the glow child).
+    // Halo pulse (own tween on the glow child), amplitude scaled by rarity.
     this.scene.tweens.add({
-      targets: glow, scale: 1.25, alpha: 0.65,
+      targets: glow, scale: rdef.glowScale * 1.45, alpha: Math.max(0.4, rdef.glowAlpha - 0.25),
       duration: 750, yoyo: true, repeat: -1, ease: 'Sine.InOut',
     });
     // Gentle idle bob so pickups read as collectible.
@@ -282,6 +282,9 @@ export class PickupManager {
     this.overlayName = s.add.text(0, 0, '', {
       fontSize: '18px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(32);
+    this.overlayRarity = s.add.text(0, 0, '', {
+      fontSize: '12px', fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(32);
     this.overlayFlavor = s.add.text(0, 0, '', {
       fontSize: '13px', color: '#cdd3ec', fontStyle: 'italic', stroke: '#000000', strokeThickness: 2,
       align: 'center', wordWrap: { width: 236 },
@@ -298,7 +301,7 @@ export class PickupManager {
     }).setOrigin(0.5).setDepth(32);
 
     this.overlayParts = [
-      this.overlayBg, this.overlayName, this.overlayFlavor, this.overlayEffect, this.overlayBonus, this.overlayPrompt,
+      this.overlayBg, this.overlayName, this.overlayRarity, this.overlayFlavor, this.overlayEffect, this.overlayBonus, this.overlayPrompt,
     ];
     this.hideOverlay();
   }
@@ -315,6 +318,12 @@ export class PickupManager {
 
     this.overlayBg.setPosition(cx, topY).setVisible(true);
     this.overlayName.setPosition(cx, topY - 112).setText(p.def.name).setVisible(true);
+    const rdef = RARITY_DEFS[p.rarity];
+    this.overlayRarity
+      .setPosition(cx, topY - 128)
+      .setText(rdef.label)
+      .setColor('#' + rdef.color.toString(16).padStart(6, '0'))
+      .setVisible(true);
     this.overlayFlavor.setPosition(cx, topY - 84).setText(p.def.description).setVisible(true);
     // Auto-summarised mechanical effect (so flavour text doesn't hide what it does).
     const effLabel = p.def.grantsShield ? 'Absorb 1 hit' : formatEffectSummary(p.def.effect);
