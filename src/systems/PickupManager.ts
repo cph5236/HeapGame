@@ -34,8 +34,10 @@ const OVERLAY_H      = 146;
 const OVERLAY_RADIUS = 12;
 const OVERLAY_FILL_ALPHA = 0.78; // semi-transparent so the panel doesn't hide the player behind it
 
-/** Pick dark or light badge text for contrast against a fill colour (perceived
- *  luminance). Keeps the tier label legible on both pale and deep rarity hues. */
+/** Pick dark or light badge text for contrast against a fill colour. Uses the
+ *  ITU-R BT.601 perceived-luminance weights (0.299/0.587/0.114); the 0.6 cutoff
+ *  is a hand-tuned threshold that keeps the tier label legible on both pale
+ *  (e.g. silver/gold) and deep (e.g. royal-blue/purple) rarity hues. */
 function badgeTextColor(fill: number): string {
   const r = (fill >> 16) & 0xff, g = (fill >> 8) & 0xff, b = fill & 0xff;
   const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
