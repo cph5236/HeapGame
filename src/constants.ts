@@ -79,6 +79,17 @@ export const FALL_GRAVITY_FACTOR      = 1.4;   // gravity multiplier while falli
 export const TILT_DEAD_ZONE_DEG        = 4;   // gamma degrees to ignore near center
 export const TILT_MAX_DEG              = 25;  // gamma at which full speed is applied
 export const TILT_CURVE_EXP            = 0.3; // power curve exponent for tilt factor — 1.0=linear, lower=more speed at small tilt angles
+
+// ── Virtual joystick (controlMode === 'joystick') ───────────────────────────
+export const JOYSTICK_RADIUS         = 64;   // px radius of the stick base hit-area
+export const JOYSTICK_DEAD_ZONE      = 0.2;  // fraction of radius ignored near center
+export const JOYSTICK_CURVE_EXP      = 0.3;  // axis power curve (matches tilt feel)
+export const JOYSTICK_TAP_THRESHOLD  = 0.85; // |axis| that counts as a directional tap
+export const JOYSTICK_DOUBLETAP_MS   = 300;  // window for the second tap to fire a dash
+export const JOYSTICK_MARGIN         = 28;   // px from screen edge to stick/button center
+export const JOYSTICK_FORCE_MIN_FRAC = 0.4;  // rex forceMin as fraction of radius (up/down)
+export const DASH_BUTTON_RADIUS      = 34;   // px radius of the on-screen dash button
+
 export const SWIPE_MIN_DISTANCE_PX     = 30;  // min travel to register a swipe
 export const SWIPE_MAX_TIME_MS         = 750; // swipes faster than this are recognized
 export const DRAG_THRESHOLD_PX         = 15;  // min vertical displacement to commit to drag mode
