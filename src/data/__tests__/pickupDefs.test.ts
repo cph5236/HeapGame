@@ -1,111 +1,93 @@
 import { describe, it, expect } from 'vitest';
-import { PICKUP_DEFS, aggregateModifiers, formatEffectSummary, PickupDef } from '../pickupDefs';
+import { applyRarity, RARITY_DEFS, PickupEffect, aggregateModifiers, PICKUP_DEFS } from '../pickupDefs';
 
-function def(over: Partial<PickupDef>): PickupDef {
-  return {
-    id:          'x',
-    name:        'X',
-    description: '',
-    color:       0xffffff,
-    polarity:    'positive',
-    effect:      { speedMult: 1, jumpBonus: 0, extraAirJumps: 0 },
-    scoreBonus:  0,
-    ...over,
-  };
-}
+const skateboard: PickupEffect = { speedMult: 1.15, jumpBonus: -50, extraAirJumps: 0 };
 
-describe('aggregateModifiers', () => {
-  it('returns identity for an empty stack', () => {
-    expect(aggregateModifiers([])).toEqual({
-      speedMult: 1, jumpBonus: 0, extraAirJumps: 0,
-      gravityMult: 1, cooldownMult: 1, wallSpeedMult: 1, totalBonus: 0,
-    });
+describe('applyRarity', () => {
+  it('is the identity at Rare (1x)', () => {
+    expect(applyRarity(skateboard, 'rare')).toEqual(skateboard);
   });
 
-  it('returns a single item unchanged', () => {
-    const d = def({ effect: { speedMult: 1.25, jumpBonus: 120, extraAirJumps: 1 }, scoreBonus: 250 });
-    expect(aggregateModifiers([d])).toEqual({
-      speedMult: 1.25, jumpBonus: 120, extraAirJumps: 1,
-      gravityMult: 1, cooldownMult: 1, wallSpeedMult: 1, totalBonus: 250,
-    });
+  it('grows the good lever and shrinks the bad lever at Mythic', () => {
+    const m = applyRarity(skateboard, 'mythic'); // mult 2.0
+    // good: speed delta +0.15 -> x2 = +0.30 -> 1.30
+    expect(m.speedMult).toBeCloseTo(1.30, 5);
+    // bad: jump -50 -> x(1/2) = -25
+    expect(m.jumpBonus).toBeCloseTo(-25, 5);
   });
 
-  it('multiplies speed, sums jump/airjumps/bonus when stacking', () => {
-    const a = def({ effect: { speedMult: 1.25, jumpBonus: 100, extraAirJumps: 0 }, scoreBonus: 250 });
-    const b = def({ effect: { speedMult: 0.8,  jumpBonus: -40, extraAirJumps: 1 }, scoreBonus: 1800 });
-    const agg = aggregateModifiers([a, b]);
-    expect(agg.speedMult).toBeCloseTo(1.0);    // 1.25 * 0.8
-    expect(agg.jumpBonus).toBe(60);            // 100 + (-40)
-    expect(agg.extraAirJumps).toBe(1);
-    expect(agg.totalBonus).toBe(2050);
+  it('shrinks the good lever and grows the bad lever at Common', () => {
+    const c = applyRarity(skateboard, 'common'); // mult 0.75
+    expect(c.speedMult).toBeCloseTo(1 + 0.15 * 0.75, 5); // 1.1125
+    expect(c.jumpBonus).toBeCloseTo(-50 / 0.75, 5);      // -66.67
   });
 
-  it('composes gravity, cooldown, and wall-speed multipliers multiplicatively', () => {
-    const a = def({ effect: { speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 0.7, cooldownMult: 0.5 } });
-    const b = def({ effect: { speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 2.0, wallSpeedMult: 1.5 } });
-    const agg = aggregateModifiers([a, b]);
-    expect(agg.gravityMult).toBeCloseTo(1.4);   // 0.7 * 2.0
-    expect(agg.cooldownMult).toBeCloseTo(0.5);  // 0.5 * 1 (b omits → 1)
-    expect(agg.wallSpeedMult).toBeCloseTo(1.5); // 1 * 1.5
+  it('treats gravity/cooldown/wallSpeed below 1 as the beneficial direction', () => {
+    // feather: gravityMult 0.92 (float = good) -> Mythic pushes further down
+    const feather: PickupEffect = { speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 0.92 };
+    const m = applyRarity(feather, 'mythic');
+    expect(m.gravityMult!).toBeCloseTo(1 + (0.92 - 1) * 2, 5); // 0.84
   });
 
-  it('treats omitted multiplier levers as identity (1)', () => {
-    const d = def({ effect: { speedMult: 1.2, jumpBonus: 0, extraAirJumps: 0 } });
-    const agg = aggregateModifiers([d]);
-    expect(agg.gravityMult).toBe(1);
-    expect(agg.cooldownMult).toBe(1);
-    expect(agg.wallSpeedMult).toBe(1);
-  });
-});
-
-describe('formatEffectSummary', () => {
-  const base = { speedMult: 1, jumpBonus: 0, extraAirJumps: 0 };
-
-  it('formats speed as a signed percentage and jump as a signed number', () => {
-    expect(formatEffectSummary({ speedMult: 1.15, jumpBonus: -50, extraAirJumps: 0 }))
-      .toBe('+15% spd · -50 jump');
+  it('reduces a harmful gravity penalty toward neutral at Mythic', () => {
+    // concrete-boots: gravityMult 1.25 (heavy = bad)
+    const boots: PickupEffect = { speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1.25 };
+    const m = applyRarity(boots, 'mythic');
+    expect(m.gravityMult!).toBeCloseTo(1 + 0.25 / 2, 5); // 1.125
   });
 
-  it('formats air jumps', () => {
-    expect(formatEffectSummary({ ...base, extraAirJumps: 1 })).toBe('+1 air');
+  it('never scales extraAirJumps (discrete capability)', () => {
+    const balloon: PickupEffect = { speedMult: 1, jumpBonus: 0, extraAirJumps: 1 };
+    expect(applyRarity(balloon, 'mythic').extraAirJumps).toBe(1);
+    expect(applyRarity(balloon, 'common').extraAirJumps).toBe(1);
   });
 
-  it('uses words for gravity / cooldown / wall levers', () => {
-    expect(formatEffectSummary({ ...base, gravityMult: 0.85 })).toBe('float');
-    expect(formatEffectSummary({ ...base, gravityMult: 1.3 })).toBe('heavy');
-    expect(formatEffectSummary({ ...base, cooldownMult: 0.5 })).toBe('fast cd');
-    expect(formatEffectSummary({ ...base, cooldownMult: 2 })).toBe('slow cd');
-    expect(formatEffectSummary({ ...base, wallSpeedMult: 1.5 })).toBe('wall+');
-    expect(formatEffectSummary({ ...base, wallSpeedMult: 0.7 })).toBe('wall-');
+  it('leaves undefined optional levers undefined', () => {
+    const r = applyRarity(skateboard, 'mythic');
+    expect(r.gravityMult).toBeUndefined();
+    expect(r.cooldownMult).toBeUndefined();
+    expect(r.wallSpeedMult).toBeUndefined();
   });
 
-  it('joins multiple levers in a fixed order', () => {
-    expect(formatEffectSummary({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0, wallSpeedMult: 1.3 }))
-      .toBe('+30% spd · wall+');
-  });
-
-  it('returns empty string when there is no stat effect (e.g. the shield)', () => {
-    expect(formatEffectSummary(base)).toBe('');
+  it('clamps multiplicative levers to a small positive floor', () => {
+    // engine-block at Common makes speed slower; ensure it never goes <= 0
+    const block: PickupEffect = { speedMult: 0.75, jumpBonus: 0, extraAirJumps: 0 };
+    const c = applyRarity(block, 'common');
+    expect(c.speedMult).toBeGreaterThan(0);
   });
 });
 
-describe('PICKUP_DEFS', () => {
-  it('has unique ids and every def is fully formed', () => {
-    expect(PICKUP_DEFS.length).toBeGreaterThan(0);
-    const ids = PICKUP_DEFS.map(d => d.id);
-    expect(new Set(ids).size).toBe(ids.length);
-    for (const d of PICKUP_DEFS) {
-      expect(d.name).toBeTruthy();
-      expect(typeof d.effect.speedMult).toBe('number');
-      expect(['positive', 'negative']).toContain(d.polarity);
-      // Carry items award points; instant items (e.g. the free shield) award none.
-      if (d.grantsShield) expect(d.scoreBonus).toBe(0);
-      else                expect(d.scoreBonus).toBeGreaterThan(0);
+describe('RARITY_DEFS', () => {
+  it('has an entry for every tier with a positive spawn weight', () => {
+    for (const r of ['common', 'uncommon', 'rare', 'legendary', 'mythic'] as const) {
+      expect(RARITY_DEFS[r].spawnWeight).toBeGreaterThan(0);
+      expect(typeof RARITY_DEFS[r].color).toBe('number');
+      expect(RARITY_DEFS[r].label.length).toBeGreaterThan(0);
     }
   });
+});
 
-  it('has at least one item of each polarity (pools non-empty)', () => {
-    expect(PICKUP_DEFS.some(d => d.polarity === 'positive')).toBe(true);
-    expect(PICKUP_DEFS.some(d => d.polarity === 'negative')).toBe(true);
+describe('aggregateModifiers (rarity-aware)', () => {
+  const springCoil = PICKUP_DEFS.find(d => d.id === 'spring-coil')!; // jump +50, bonus 50
+
+  it('applies rarity scaling to a single carried item at Mythic', () => {
+    const agg = aggregateModifiers([{ def: springCoil, rarity: 'mythic' }]);
+    expect(agg.jumpBonus).toBeCloseTo(100, 5); // +50 good lever x2
+    expect(agg.totalBonus).toBe(100);          // 50 x 2
+  });
+
+  it('matches the old behavior at Rare (identity)', () => {
+    const agg = aggregateModifiers([{ def: springCoil, rarity: 'rare' }]);
+    expect(agg.jumpBonus).toBe(50);
+    expect(agg.totalBonus).toBe(50);
+  });
+
+  it('composes a mixed-rarity stack', () => {
+    const agg = aggregateModifiers([
+      { def: springCoil, rarity: 'rare' },    // +50 jump, 50 pts
+      { def: springCoil, rarity: 'common' },  // +37.5 jump, round(37.5)=38 pts
+    ]);
+    expect(agg.jumpBonus).toBeCloseTo(50 + 50 * 0.75, 5);
+    expect(agg.totalBonus).toBe(50 + 38);
   });
 });

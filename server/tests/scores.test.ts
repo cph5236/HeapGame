@@ -480,24 +480,41 @@ describe('POST /scores — remote logging', () => {
 // ── POST /scores — salvage pickups ──────────────────────────────────────────────
 
 describe('POST /scores — salvage pickups', () => {
-  it('adds validated salvage bonuses to the recomputed score', async () => {
-    // baseHeightPx 1000 (failure → no pace) + spring-coil + worn-boot bonuses
+  it('adds validated salvage bonuses to the recomputed score (Rare = 1x)', async () => {
     const res  = await submitScore(makeApp(), validBody({
-      inputs: { baseHeightPx: 1000, salvageItemIds: ['spring-coil', 'worn-boot'] },
+      inputs: { baseHeightPx: 1000, salvageItems: [
+        { id: 'spring-coil', rarity: 'rare' },
+        { id: 'worn-boot',   rarity: 'rare' },
+      ] },
     }));
     const body = await res.json() as SubmitScoreResponse;
     expect(body.context.player?.score).toBe(1000 + PICKUP_BONUS['spring-coil'] + PICKUP_BONUS['worn-boot']);
   });
 
-  it('ignores unknown salvage ids (counts them as 0)', async () => {
+  it('scales the salvage bonus by rarity multiplier', async () => {
+    // spring-coil base 50: rare 50 + mythic 100 = 150
     const res  = await submitScore(makeApp(), validBody({
-      inputs: { baseHeightPx: 1000, salvageItemIds: ['spring-coil', 'not-a-real-item'] },
+      inputs: { baseHeightPx: 1000, salvageItems: [
+        { id: 'spring-coil', rarity: 'rare' },
+        { id: 'spring-coil', rarity: 'mythic' },
+      ] },
     }));
     const body = await res.json() as SubmitScoreResponse;
-    expect(body.context.player?.score).toBe(1000 + PICKUP_BONUS['spring-coil']); // unknown id adds 0
+    expect(body.context.player?.score).toBe(1000 + 50 + 100);
   });
 
-  it('scores normally when salvageItemIds is omitted', async () => {
+  it('ignores unknown salvage ids (counts them as 0)', async () => {
+    const res  = await submitScore(makeApp(), validBody({
+      inputs: { baseHeightPx: 1000, salvageItems: [
+        { id: 'spring-coil',     rarity: 'rare' },
+        { id: 'not-a-real-item', rarity: 'rare' },
+      ] },
+    }));
+    const body = await res.json() as SubmitScoreResponse;
+    expect(body.context.player?.score).toBe(1000 + PICKUP_BONUS['spring-coil']);
+  });
+
+  it('scores normally when salvageItems is omitted', async () => {
     const res  = await submitScore(makeApp(), validBody({ inputs: { baseHeightPx: 1000 } }));
     const body = await res.json() as SubmitScoreResponse;
     expect(body.context.player?.score).toBe(1000);
@@ -506,14 +523,26 @@ describe('POST /scores — salvage pickups', () => {
   it('rejects a salvage list that exceeds the height-derived cap', async () => {
     // baseHeightPx 1000 → maxSalvageItems = floor(1000/700)+2 = 3; 4 items is too many
     const res = await submitScore(makeApp(), validBody({
-      inputs: { baseHeightPx: 1000, salvageItemIds: ['spring-coil', 'spring-coil', 'spring-coil', 'spring-coil'] },
+      inputs: { baseHeightPx: 1000, salvageItems: [
+        { id: 'spring-coil', rarity: 'rare' },
+        { id: 'spring-coil', rarity: 'rare' },
+        { id: 'spring-coil', rarity: 'rare' },
+        { id: 'spring-coil', rarity: 'rare' },
+      ] },
     }));
     expect(res.status).toBe(400);
   });
 
-  it('rejects salvageItemIds that is not an array of strings', async () => {
+  it('rejects salvageItems with an unknown rarity tier', async () => {
     const res = await submitScore(makeApp(), validBody({
-      inputs: { baseHeightPx: 1000, salvageItemIds: [1, 2, 3] as unknown as string[] },
+      inputs: { baseHeightPx: 1000, salvageItems: [{ id: 'spring-coil', rarity: 'ultra' }] as unknown as [] },
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects salvageItems that is not an array of valid {id,rarity} objects', async () => {
+    const res = await submitScore(makeApp(), validBody({
+      inputs: { baseHeightPx: 1000, salvageItems: [1, 2, 3] as unknown as [] },
     }));
     expect(res.status).toBe(400);
   });

@@ -17,7 +17,7 @@ import {
 } from '../systems/SaveData';
 import { buildCoinBreakdown, BreakdownRow } from '../systems/coinBreakdown';
 import { buildRunScore, RunScoreRow } from '../systems/buildRunScore';
-import { computeSalvageBonus } from '../../shared/pickupScores';
+import { computeSalvageBonus, SalvageItem } from '../../shared/pickupScores';
 import type { EnemyKind } from '../entities/Enemy';
 import { ENEMY_DEFS } from '../data/enemyDefs';
 import { InputManager } from '../systems/InputManager';
@@ -41,7 +41,7 @@ export class ScoreScene extends Phaser.Scene {
   private _baseHeightPx: number                             = 0;
   private _kills:        Partial<Record<EnemyKind, number>> = {};
   private _elapsedMs:     number                            = 0;
-  private _salvageItemIds: string[]                         = [];
+  private _salvageItems:  SalvageItem[]                     = [];
   private _salvageBonus:  number                            = 0;
   private _scoreRows:     RunScoreRow[]                     = [];
   private _heapParams:   HeapParams                         = DEFAULT_HEAP_PARAMS;
@@ -80,7 +80,7 @@ export class ScoreScene extends Phaser.Scene {
     baseHeightPx?:        number;
     kills?:               Partial<Record<EnemyKind, number>>;
     elapsedMs?:           number;
-    salvageItemIds?:      string[];
+    salvageItems?:        SalvageItem[];
     salvageBonus?:        number;
     heapParams?:          HeapParams;
     bonusCoins?:          number;
@@ -96,11 +96,11 @@ export class ScoreScene extends Phaser.Scene {
     this._baseHeightPx       = data.baseHeightPx        ?? 0;
     this._kills              = data.kills               ?? {};
     this._elapsedMs          = data.elapsedMs           ?? 0;
-    this._salvageItemIds     = data.salvageItemIds      ?? [];
-    // Derive the bonus from ids (matching the server). Fall back to a raw
+    this._salvageItems       = data.salvageItems        ?? [];
+    // Derive the bonus from items (matching the server). Fall back to a raw
     // salvageBonus only for dev-preview convenience.
-    this._salvageBonus       = this._salvageItemIds.length > 0
-      ? computeSalvageBonus(this._salvageItemIds)
+    this._salvageBonus       = this._salvageItems.length > 0
+      ? computeSalvageBonus(this._salvageItems)
       : (data.salvageBonus ?? 0);
     this._scoreRows          = [];
     this._heapParams         = data.heapParams          ?? DEFAULT_HEAP_PARAMS;
@@ -924,7 +924,7 @@ export class ScoreScene extends Phaser.Scene {
             },
             elapsedMs: Math.floor(this._elapsedMs),
             isFailure: this.isFailure,
-            salvageItemIds: this._salvageItemIds,
+            salvageItems: this._salvageItems,
           },
           limit: LEADERBOARD_TOP_N,
         })
