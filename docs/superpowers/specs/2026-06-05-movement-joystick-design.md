@@ -27,6 +27,7 @@ ladder-drag) that tilt and swipe gestures produce today.
 | Dash button position | **Opposite bottom corner from the stick**, mirrors `joystickSide`. Direction follows stick tilt, falls back to facing. |
 | Gestures in joystick mode | **Stick-only**: device-tilt and the window swipe/tap handlers are gated OFF. GRAB/PLACE/dash stay as Phaser buttons (native multi-touch). |
 | Scenes | Joystick mounted in **both** GameScene and InfiniteGameScene (they share the InputManager singleton; gating tilt globally would otherwise leave Infinite with no input). |
+| Persistence | `controlMode` + `joystickSide` are **device-local** — they ride in `RawSave` but the local value always wins in cloud merge and is never overridden by cloud. A control scheme is tied to the physical device, not the account. |
 
 ## The InputManager contract (what the joystick must satisfy)
 
@@ -87,7 +88,7 @@ Other methods: `setSide(side)`, `setVisible(v)`, `destroy()`.
 Phaser button like GRAB/PLACE. Opposite bottom corner from the stick, mirrors
 `joystickSide`. Visible only when joystick mode AND `player.dashEnabled`. On tap →
 `im.pulseDash(dir)` where `dir = sign(tiltFactor)` else current facing. Registers
-a suppression rect (reusing `setSuppressionRect`).
+a suppression rect under id `'dash'` (reusing `setSuppressionRect`).
 
 ### New: `mountJoystick(scene, im)` shared helper
 Used by both gameplay scenes. When `controlMode === 'joystick'`, constructs the
@@ -97,17 +98,40 @@ Used by both gameplay scenes. When `controlMode === 'joystick'`, constructs the
   controller must set them first — same timing the async touch handlers rely on);
 - calls `controller.destroy()` on shutdown.
 
+**Suppression-rect cleanup (finding #2):** the InputManager singleton outlives the
+scene, so any suppression rect left behind keeps swallowing taps in the next scene.
+`GameScene.shutdown` only clears `'place'` today (`GameScene.ts:872`) and
+`InfiniteGameScene` clears nothing (`InfiniteGameScene.ts:532`). Therefore:
+- `JoystickController.destroy()` removes **its own** rects (`'dash'`, and the stick
+  rect if any) via `setSuppressionRect(id, null)`.
+- The `mountJoystick` helper returns the controller and **owns teardown**; **both**
+  GameScene and InfiniteGameScene call it from `shutdown()` so the joystick path is
+  cleaned up symmetrically (InfiniteGameScene gains this cleanup it lacks today).
+
 ### Changed: settings (SaveData + MenuScene)
 - `RawSave` gains optional `controlMode?` and `joystickSide?` (default via `??`,
   **no schema bump / migration** — matches `soundSettings`/`adRunTarget`).
 - Getter/setter pairs: `getControlMode`/`setControlMode`,
   `getJoystickSide`/`setJoystickSide`.
+- **Device-local persistence (finding #1):** `mergeCloudSave()` returns an explicit
+  object (`SaveData.ts:443`) and `applyMergedSave()` does `persist(merged)`, which
+  **overwrites the whole save** — so a field absent from the merge result is wiped
+  from local storage on cloud sign-in. To keep these device-local, the merge result
+  must carry the **local** value: `controlMode: local.controlMode`,
+  `joystickSide: local.joystickSide` (local always wins, cloud never overrides).
+  Regression test asserts the merge preserves the local control prefs.
+  *(Aside: `soundSettings` has the same latent drop in `mergeCloudSave` today —
+  pre-existing, out of scope for this PR.)*
 - MenuScene settings panel: **2 tabs → 3** (`Sounds | Controls | Dev`), narrowing
   `TAB_W` to fit three across `PANEL_W` 360. New Controls tab content:
   - **Control Mode** toggle: `Tilt` / `Joystick`
   - **Joystick Side** toggle: `Left` / `Right` — greyed out unless joystick mode
   - one-line hint
 - The "Enable Tilt Controls" prompt (`MenuScene.ts:483`) hides in joystick mode.
+- **Help overlay (finding #3):** the info overlay's mobile lines are hard-coded to
+  tilt/swipe copy (`MenuScene.ts:864`). Branch them on `controlMode`: in joystick
+  mode show joystick copy — Move = joystick L/R, Jump = push up, Dive = push down,
+  Dash = dash button / double-tap, Ladder = push up/down, Place = PLACE button.
 
 ## Data flow (joystick mode, one frame)
 
@@ -147,7 +171,9 @@ Pure, Phaser-free where it matters:
 - `InputManager.test.ts`: control-mode gating — gamma ignored and window handlers
   no-op in joystick mode; tilt mode unchanged; injection methods set the right
   fields.
-- `SaveData.test.ts`: `controlMode`/`joystickSide` defaults + round-trip persist.
+- `SaveData.test.ts`: `controlMode`/`joystickSide` defaults + round-trip persist;
+  **`mergeCloudSave` preserves the local control prefs** (device-local regression,
+  finding #1) — local value survives a merge where cloud differs/omits them.
 
 rex itself is not unit-tested (vetted dependency); the controller's thin glue is
 covered via the pure helpers. `npm run build` must pass (TS).
