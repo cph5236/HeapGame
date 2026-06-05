@@ -4,6 +4,7 @@ import {
   SALVAGE_MIN_SPACING_PX,
   computeSalvageBonus,
   maxSalvageItems,
+  isRarity,
   RARITY_SCORE_MULT,
 } from '../pickupScores';
 
@@ -39,6 +40,38 @@ describe('computeSalvageBonus', () => {
   it('treats an unknown rarity as 0 contribution', () => {
     // @ts-expect-error intentionally bad rarity to prove it is ignored, not NaN
     expect(computeSalvageBonus([{ id: 'spring-coil', rarity: 'ultra' }])).toBe(0);
+  });
+
+  it('does not let inherited object keys poison the sum with NaN', () => {
+    // 'constructor'/'toString' exist on Object.prototype; a hostile client could
+    // send them. They must contribute 0, not a function-times-number NaN.
+    const result = computeSalvageBonus([
+      { id: 'spring-coil', rarity: 'rare' },
+      // @ts-expect-error hostile rarity key from the prototype chain
+      { id: 'spring-coil', rarity: 'constructor' },
+      // @ts-expect-error hostile id key from the prototype chain
+      { id: 'toString', rarity: 'rare' },
+    ]);
+    expect(result).toBe(PICKUP_BONUS['spring-coil']); // only the valid item counts
+    expect(Number.isNaN(result)).toBe(false);
+  });
+});
+
+describe('isRarity', () => {
+  it('accepts the five known tiers', () => {
+    for (const r of ['common', 'uncommon', 'rare', 'legendary', 'mythic']) {
+      expect(isRarity(r)).toBe(true);
+    }
+  });
+
+  it('rejects unknown strings, non-strings, and inherited proto keys', () => {
+    expect(isRarity('ultra')).toBe(false);
+    expect(isRarity('constructor')).toBe(false);
+    expect(isRarity('toString')).toBe(false);
+    expect(isRarity('hasOwnProperty')).toBe(false);
+    expect(isRarity(undefined)).toBe(false);
+    expect(isRarity(3)).toBe(false);
+    expect(isRarity(null)).toBe(false);
   });
 });
 

@@ -49,9 +49,11 @@ export interface SalvageItem {
   rarity: Rarity;
 }
 
-/** True when `r` is a known rarity tier (used for server-side validation). */
+/** True when `r` is a known rarity tier (used for server-side validation).
+ *  Uses an own-property check so inherited keys ('constructor', 'toString', …)
+ *  from a hostile client can't pass as a valid tier. */
 export function isRarity(r: unknown): r is Rarity {
-  return typeof r === 'string' && r in RARITY_SCORE_MULT;
+  return typeof r === 'string' && Object.prototype.hasOwnProperty.call(RARITY_SCORE_MULT, r);
 }
 
 /** Minimum vertical spacing between spawned pickups (must match PickupManager). */
@@ -68,7 +70,10 @@ export function computeSalvageBonus(items: readonly SalvageItem[]): number {
   for (const it of items) {
     const base = PICKUP_BONUS[it.id];
     const mult = RARITY_SCORE_MULT[it.rarity as Rarity];
-    if (base === undefined || mult === undefined) continue;
+    // typeof guards (not `=== undefined`) so inherited proto keys like
+    // 'constructor' — which resolve to a function, not undefined — can't slip
+    // through and poison the sum with NaN.
+    if (typeof base !== 'number' || typeof mult !== 'number') continue;
     total += Math.round(base * mult);
   }
   return total;

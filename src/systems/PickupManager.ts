@@ -12,10 +12,10 @@
 
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
-import { PICKUP_DEFS, PickupDef, CarriedPickup, RARITY_DEFS, aggregateModifiers, formatEffectSummary, CarryModifiers } from '../data/pickupDefs';
+import { PICKUP_DEFS, PickupDef, CarriedPickup, RARITY_DEFS, applyRarity, aggregateModifiers, formatEffectSummary, CarryModifiers } from '../data/pickupDefs';
 import { shouldSpawnPickup, findNearestInRange, walkableSurfaceCandidates, pickPolarity, pickRarity } from './PickupHelpers';
 import type { Vertex } from './HeapPolygon';
-import { SALVAGE_MIN_SPACING_PX, Rarity, SalvageItem } from '../../shared/pickupScores';
+import { SALVAGE_MIN_SPACING_PX, RARITY_SCORE_MULT, Rarity, SalvageItem } from '../../shared/pickupScores';
 import { CHUNK_BAND_HEIGHT } from '../constants';
 import { InputManager } from './InputManager';
 import { AudioManager } from './AudioManager';
@@ -221,7 +221,8 @@ export class PickupManager {
       this.carried.push({ def: pickup.def, rarity: pickup.rarity });
       this.aggregate = aggregateModifiers(this.carried);
       this.player.setCarryModifiers(this.aggregate);
-      this.spawnFloatingText(pickup.x, pickup.y, `+${pickup.def.scoreBonus}`);
+      const grabBonus = Math.round(pickup.def.scoreBonus * RARITY_SCORE_MULT[pickup.rarity]);
+      this.spawnFloatingText(pickup.x, pickup.y, `+${grabBonus}`);
       this.refreshCarriedHud();
     }
 
@@ -325,11 +326,14 @@ export class PickupManager {
       .setColor('#' + rdef.color.toString(16).padStart(6, '0'))
       .setVisible(true);
     this.overlayFlavor.setPosition(cx, topY - 84).setText(p.def.description).setVisible(true);
-    // Auto-summarised mechanical effect (so flavour text doesn't hide what it does).
-    const effLabel = p.def.grantsShield ? 'Absorb 1 hit' : formatEffectSummary(p.def.effect);
+    // Auto-summarised mechanical effect, scaled to the rolled rarity so the
+    // overlay shows what the player will actually get (so flavour text doesn't
+    // hide what it does).
+    const effLabel = p.def.grantsShield ? 'Absorb 1 hit' : formatEffectSummary(applyRarity(p.def.effect, p.rarity));
     this.overlayEffect.setPosition(cx, topY - 54).setText(effLabel).setVisible(true);
-    // Carry items show their point value; instant/free items (e.g. shield) show FREE.
-    const bonusLabel = p.def.scoreBonus > 0 ? `+${p.def.scoreBonus} pts` : 'FREE';
+    // Carry items show their rarity-scaled point value; instant/free items show FREE.
+    const scaledBonus = Math.round(p.def.scoreBonus * RARITY_SCORE_MULT[p.rarity]);
+    const bonusLabel = p.def.scoreBonus > 0 ? `+${scaledBonus} pts` : 'FREE';
     this.overlayBonus.setPosition(cx, topY - 32).setText(bonusLabel).setVisible(true);
 
     const isMobile = InputManager.getInstance().isMobile;
