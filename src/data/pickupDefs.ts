@@ -41,9 +41,9 @@ export interface RarityDef {
 }
 
 export const RARITY_DEFS: Record<Rarity, RarityDef> = {
-  common:    { spawnWeight: 50, color: 0x9aa0ad, label: 'COMMON',    glowScale: 0.70, glowAlpha: 0.55 },
-  uncommon:  { spawnWeight: 28, color: 0x5fd66b, label: 'UNCOMMON',  glowScale: 0.85, glowAlpha: 0.70 },
-  rare:      { spawnWeight: 15, color: 0x4aa3ff, label: 'RARE',      glowScale: 1.00, glowAlpha: 0.85 },
+  common:    { spawnWeight: 50, color: 0xc4ccd8, label: 'COMMON',    glowScale: 1.0, glowAlpha: 0.80 },
+  uncommon:  { spawnWeight: 28, color: 0x5fd66b, label: 'UNCOMMON',  glowScale: 1.0, glowAlpha: 0.80 },
+  rare:      { spawnWeight: 15, color: 0x2563eb, label: 'RARE',      glowScale: 1.00, glowAlpha: 0.85 },
   legendary: { spawnWeight: 6,  color: 0xb45cff, label: 'LEGENDARY', glowScale: 1.15, glowAlpha: 0.95 },
   mythic:    { spawnWeight: 1,  color: 0xffc23d, label: 'MYTHIC',    glowScale: 1.30, glowAlpha: 1.00 },
 };

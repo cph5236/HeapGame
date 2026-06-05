@@ -28,6 +28,20 @@ const SPAWN_MIN_GAP   = SALVAGE_MIN_SPACING_PX; // px min vertical spacing (shar
 const CULL_MARGIN      = 2400; // px below camera before a pickup is dropped
 const SURFACE_ANGLE_THRESHOLD = 30; // deg — below this an edge is a walkable surface, above is a wall
 
+// Proximity-overlay panel geometry (drawn as a rounded, rarity-tinted card).
+const OVERLAY_W      = 256;
+const OVERLAY_H      = 146;
+const OVERLAY_RADIUS = 12;
+const OVERLAY_FILL_ALPHA = 0.78; // semi-transparent so the panel doesn't hide the player behind it
+
+/** Pick dark or light badge text for contrast against a fill colour (perceived
+ *  luminance). Keeps the tier label legible on both pale and deep rarity hues. */
+function badgeTextColor(fill: number): string {
+  const r = (fill >> 16) & 0xff, g = (fill >> 8) & 0xff, b = fill & 0xff;
+  const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luma > 0.6 ? '#15131f' : '#ffffff';
+}
+
 /** Spawn tuning sourced from the heap's params. */
 export interface PickupSpawnRates {
   base:     number;  // 0..1 chance a pickup spawns per surface candidate
@@ -81,14 +95,16 @@ export class PickupManager {
   private readonly grabKey: Phaser.Input.Keyboard.Key;
 
   // Proximity overlay (world-space, anchored above the in-range pickup)
-  private overlayBg!:     Phaser.GameObjects.Rectangle;
-  private overlayName!:   Phaser.GameObjects.Text;
-  private overlayRarity!: Phaser.GameObjects.Text;
-  private overlayFlavor!: Phaser.GameObjects.Text;
-  private overlayEffect!: Phaser.GameObjects.Text;
-  private overlayBonus!:  Phaser.GameObjects.Text;
-  private overlayPrompt!: Phaser.GameObjects.Text;
-  private overlayParts:   (Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text)[] = [];
+  private overlayBg!:       Phaser.GameObjects.Graphics;   // rounded panel, rarity-tinted frame
+  private overlayName!:     Phaser.GameObjects.Text;
+  private overlayRarityBg!: Phaser.GameObjects.Rectangle;  // filled badge behind the tier label
+  private overlayRarity!:   Phaser.GameObjects.Text;
+  private overlayFlavor!:   Phaser.GameObjects.Text;
+  private overlayEffect!:   Phaser.GameObjects.Text;
+  private overlayBonus!:    Phaser.GameObjects.Text;
+  private overlayPrompt!:   Phaser.GameObjects.Text;
+  private overlayParts:     (Phaser.GameObjects.GameObject & { setVisible(v: boolean): unknown })[] = [];
+  private panelColor = -1;  // last rarity color the panel frame was drawn with (redraw cache)
 
   // Mobile grab button (screen-space)
   private grabBtn?:   Phaser.GameObjects.Rectangle;
@@ -278,33 +294,51 @@ export class PickupManager {
 
   private createOverlay(): void {
     const s = this.scene;
-    this.overlayBg = s.add.rectangle(0, 0, 252, 132, 0x0a0818, 1)
-      .setOrigin(0.5, 1).setDepth(31).setStrokeStyle(2, 0x5566cc);
+    // Rounded card drawn with Graphics so we get rounded corners + a rarity-tinted
+    // frame (redrawn only when the active rarity changes — see drawPanel).
+    this.overlayBg = s.add.graphics().setDepth(31);
     this.overlayName = s.add.text(0, 0, '', {
       fontSize: '18px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5).setDepth(32);
+    }).setOrigin(0.5).setDepth(33);
+    // Filled tier badge: dark text on the rarity colour (colour set per-pickup).
+    this.overlayRarityBg = s.add.rectangle(0, 0, 10, 19, 0xffffff, 1)
+      .setOrigin(0.5).setDepth(32).setStrokeStyle(1, 0x000000, 0.35);
     this.overlayRarity = s.add.text(0, 0, '', {
-      fontSize: '12px', fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5).setDepth(32);
+      fontSize: '12px', fontStyle: 'bold', color: '#15131f',
+    }).setOrigin(0.5).setDepth(33);
     this.overlayFlavor = s.add.text(0, 0, '', {
       fontSize: '13px', color: '#cdd3ec', fontStyle: 'italic', stroke: '#000000', strokeThickness: 2,
-      align: 'center', wordWrap: { width: 236 },
-    }).setOrigin(0.5).setDepth(32);
+      align: 'center', wordWrap: { width: 232 },
+    }).setOrigin(0.5).setDepth(33);
     this.overlayEffect = s.add.text(0, 0, '', {
       fontSize: '14px', color: '#e2e7ff', stroke: '#000000', strokeThickness: 2, align: 'center',
-      wordWrap: { width: 236 },
-    }).setOrigin(0.5).setDepth(32);
+      wordWrap: { width: 232 },
+    }).setOrigin(0.5).setDepth(33);
     this.overlayBonus = s.add.text(0, 0, '', {
       fontSize: '16px', color: '#ffdd44', fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5).setDepth(32);
+    }).setOrigin(0.5).setDepth(33);
     this.overlayPrompt = s.add.text(0, 0, '', {
       fontSize: '13px', color: '#9dffac', stroke: '#000000', strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(32);
+    }).setOrigin(0.5).setDepth(33);
 
     this.overlayParts = [
-      this.overlayBg, this.overlayName, this.overlayRarity, this.overlayFlavor, this.overlayEffect, this.overlayBonus, this.overlayPrompt,
+      this.overlayBg, this.overlayRarityBg, this.overlayName, this.overlayRarity,
+      this.overlayFlavor, this.overlayEffect, this.overlayBonus, this.overlayPrompt,
     ];
     this.hideOverlay();
+  }
+
+  /** Redraw the rounded card with a rarity-tinted frame. Cheap, but only called
+   *  when the active pickup's rarity colour changes (panelColor cache). */
+  private drawPanel(color: number): void {
+    const g = this.overlayBg;
+    g.clear();
+    // Body — drawn from (-W/2, -H) to (W/2, 0) so the card's bottom sits at the
+    // graphics origin (placed just above the item each frame).
+    g.fillStyle(0x0a0818, OVERLAY_FILL_ALPHA);
+    g.fillRoundedRect(-OVERLAY_W / 2, -OVERLAY_H, OVERLAY_W, OVERLAY_H, OVERLAY_RADIUS);
+    g.lineStyle(2, color, 1);
+    g.strokeRoundedRect(-OVERLAY_W / 2, -OVERLAY_H, OVERLAY_W, OVERLAY_H, OVERLAY_RADIUS);
   }
 
   private refreshOverlay(): void {
@@ -314,27 +348,39 @@ export class PickupManager {
       return;
     }
     const p = this.pickups[this.activeIndex];
-    const cx = p.x;
-    const topY = p.y - PICKUP_SIZE / 2 - 8; // panel bottom sits just above the item
-
-    this.overlayBg.setPosition(cx, topY).setVisible(true);
-    this.overlayName.setPosition(cx, topY - 112).setText(p.def.name).setVisible(true);
     const rdef = RARITY_DEFS[p.rarity];
+    const cx = p.x;
+    const topY = p.y - PICKUP_SIZE / 2 - 8; // card bottom sits just above the item
+
+    // Rounded card, frame tinted to the rarity colour (redrawn only on change).
+    if (rdef.color !== this.panelColor) {
+      this.drawPanel(rdef.color);
+      this.panelColor = rdef.color;
+    }
+    this.overlayBg.setPosition(cx, topY).setVisible(true);
+
+    // Tier badge — a filled pill in the rarity colour, sized to its label.
     this.overlayRarity
-      .setPosition(cx, topY - 128)
       .setText(rdef.label)
-      .setColor('#' + rdef.color.toString(16).padStart(6, '0'))
+      .setColor(badgeTextColor(rdef.color));
+    this.overlayRarityBg
+      .setPosition(cx, topY - 130)
+      .setSize(this.overlayRarity.width + 18, 20)
+      .setFillStyle(rdef.color, 1)
       .setVisible(true);
-    this.overlayFlavor.setPosition(cx, topY - 84).setText(p.def.description).setVisible(true);
+    this.overlayRarity.setPosition(cx, topY - 130).setVisible(true);
+
+    this.overlayName.setPosition(cx, topY - 104).setText(p.def.name).setVisible(true);
+    this.overlayFlavor.setPosition(cx, topY - 76).setText(p.def.description).setVisible(true);
     // Auto-summarised mechanical effect, scaled to the rolled rarity so the
     // overlay shows what the player will actually get (so flavour text doesn't
     // hide what it does).
     const effLabel = p.def.grantsShield ? 'Absorb 1 hit' : formatEffectSummary(applyRarity(p.def.effect, p.rarity));
-    this.overlayEffect.setPosition(cx, topY - 54).setText(effLabel).setVisible(true);
+    this.overlayEffect.setPosition(cx, topY - 46).setText(effLabel).setVisible(true);
     // Carry items show their rarity-scaled point value; instant/free items show FREE.
     const scaledBonus = Math.round(p.def.scoreBonus * RARITY_SCORE_MULT[p.rarity]);
     const bonusLabel = p.def.scoreBonus > 0 ? `+${scaledBonus} pts` : 'FREE';
-    this.overlayBonus.setPosition(cx, topY - 32).setText(bonusLabel).setVisible(true);
+    this.overlayBonus.setPosition(cx, topY - 26).setText(bonusLabel).setVisible(true);
 
     const isMobile = InputManager.getInstance().isMobile;
     if (isMobile) {

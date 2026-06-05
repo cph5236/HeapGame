@@ -42,6 +42,7 @@ import { BuffManager } from '../systems/BuffManager';
 import { PlaceableManager } from '../systems/PlaceableManager';
 import { PickupManager } from '../systems/PickupManager';
 import { PICKUP_DEFS } from '../data/pickupDefs';
+import type { Rarity } from '../../shared/pickupScores';
 import { TrashWallManager } from '../systems/TrashWallManager';
 import { TRASH_WALL_DEF } from '../data/trashWallDef';
 import type { EnemyKind } from '../entities/Enemy';
@@ -359,11 +360,16 @@ export class GameScene extends Phaser.Scene {
 
     // Dev preview: ?dev=GameScene&params={"_devOutro":"death"} or {"_devOutro":"success"}
     // or {"_devPickup":"spring-coil"} to force-spawn a salvage pickup beside the player.
+    // Optional {"_devRarity":"mythic"} sets the rolled rarity (default 'rare').
     const initData = this.scene.settings.data as
-      { _devOutro?: 'death' | 'success'; _devPickup?: string } | undefined;
+      { _devOutro?: 'death' | 'success'; _devPickup?: string; _devRarity?: Rarity;
+        _devDx?: number; _devDy?: number } | undefined;
     if (initData?._devPickup) {
       const def = PICKUP_DEFS.find(d => d.id === initData._devPickup) ?? PICKUP_DEFS[0];
-      this.pickupManager.devForceSpawn(def, 'rare', this.player.sprite.x + 40, this.spawnY + PLAYER_HEIGHT / 2);
+      const rarity = initData._devRarity ?? 'rare';
+      const dx = initData._devDx ?? 40;   // >72 places it out of overlay range (glow-only)
+      const dy = initData._devDy ?? 0;
+      this.pickupManager.devForceSpawn(def, rarity, this.player.sprite.x + dx, this.spawnY + PLAYER_HEIGHT / 2 + dy);
     }
     if (initData?._devOutro) {
       const kind = initData._devOutro;
