@@ -27,9 +27,10 @@
 | `src/entities/Player.ts` (modify) | `updateDive` honors `im.diveHeld` |
 | `src/systems/JoystickController.ts` (create) | rex wrapper → InputManager each frame |
 | `src/systems/mountJoystick.ts` (create) | builds controller + dash button; owns teardown |
-| `src/scenes/GameScene.ts` (modify) | mount / update-before-im / destroy |
+| `src/ui/controlHelp.ts` (create) | single source of mode-aware CONTROLS help copy (both overlays) |
+| `src/scenes/GameScene.ts` (modify) | mount / update-before-im / destroy; mode-aware in-run help |
 | `src/scenes/InfiniteGameScene.ts` (modify) | mount / update-before-im / destroy |
-| `src/scenes/MenuScene.ts` (modify) | Controls tab, hide tilt prompt, branch help overlay |
+| `src/scenes/MenuScene.ts` (modify) | Controls tab; tilt prompt as a field refreshed on toggle; help overlay regenerated on open; close() hides Controls widgets |
 
 ---
 
@@ -549,7 +550,7 @@ to:
 - [ ] **Step 2: Verify build + existing tests still pass**
 
 Run: `npm run build && npm test -- Player`
-Expected: build PASS; Player tests PASS (or "no tests" — acceptable; this is exercised by smoke test in Task 11).
+Expected: build PASS; Player tests PASS (or "no tests" — acceptable; this is exercised by smoke test in Task 12).
 
 - [ ] **Step 3: Commit**
 
@@ -783,21 +784,65 @@ git commit -m "feat(joystick): mountJoystick helper with dash button + cleanup"
 
 ---
 
-## Task 9: Wire into GameScene
+## Task 9: Shared help copy + wire into GameScene
 
 **Files:**
-- Modify: `src/scenes/GameScene.ts` (import; field; mount after `this.im` ~line 307; update before `im.update` ~line 396; destroy in `shutdown` ~line 872)
+- Create: `src/ui/controlHelp.ts`
+- Modify: `src/scenes/GameScene.ts` (import; field; mount after `this.im` ~line 307; update before `im.update` ~line 396; in-run help overlay ~line 829-854; destroy in `shutdown` ~line 872)
 
-- [ ] **Step 1: Import the helper**
+- [ ] **Step 1: Create the shared control-help module**
 
-Add near the other system imports at the top of `GameScene.ts`:
+Both the menu and in-run help overlays must show the same mode-aware copy. Create
+`src/ui/controlHelp.ts`:
+
+```ts
+/** Mode-aware CONTROLS help copy, shared by MenuScene + GameScene info overlays.
+ *  Single source of truth so both surfaces stay consistent across control modes. */
+export function controlHelpLines(isMobile: boolean, mode: 'tilt' | 'joystick'): string[] {
+  if (!isMobile) {
+    return [
+      'CONTROLS', '',
+      'Move     ← →  /  A  D',
+      'Jump     ↑  /  W',
+      'Dash     SHIFT',
+      'Dive     ↓  /  S  (airborne)',
+      'Place    SPACE',
+      '', 'TIP', '',
+      'Left & right edges wrap around!',
+    ];
+  }
+  const actions = mode === 'joystick' ? [
+    'Move     Joystick left / right',
+    'Jump     Push joystick up',
+    'Dash     Dash button / double-tap',
+    'Dive     Push joystick down',
+    'Place    PLACE BLOCK button',
+    'Ladder   Push up / down',
+  ] : [
+    'Move     Tilt phone left / right',
+    'Jump     Tap or swipe up',
+    'Dash     Swipe left / right',
+    'Dive     Swipe down',
+    'Place    PLACE BLOCK button',
+    'Ladder   Drag up / down',
+  ];
+  return ['CONTROLS', '', ...actions, '', 'TIP', '', 'Left & right edges wrap around!'];
+}
+```
+
+- [ ] **Step 2: Import into GameScene**
+
+Add near the other imports at the top of `GameScene.ts`:
 
 ```ts
 import { mountJoystick } from '../systems/mountJoystick';
 import type { JoystickHandle } from '../systems/mountJoystick';
+import { controlHelpLines } from '../ui/controlHelp';
+import { getControlMode } from '../systems/SaveData';
 ```
+(Merge `getControlMode` into the existing `from '../systems/SaveData'` import if one exists.)
 
-- [ ] **Step 2: Add the field**
+- [ ] **Step 3: Add the field**
 
 In the class fields (near other private members):
 
@@ -805,7 +850,7 @@ In the class fields (near other private members):
   private joystick: JoystickHandle | null = null;
 ```
 
-- [ ] **Step 3: Mount after the player + InputManager exist**
+- [ ] **Step 4: Mount after the player + InputManager exist**
 
 After `this.im = InputManager.getInstance();` (~line 307) — ensure this is placed AFTER `this.player` is created (move below player construction if needed):
 
@@ -813,7 +858,7 @@ After `this.im = InputManager.getInstance();` (~line 307) — ensure this is pla
     this.joystick = mountJoystick(this, this.im, this.player);
 ```
 
-- [ ] **Step 4: Update the controller before `im.update`**
+- [ ] **Step 5: Update the controller before `im.update`**
 
 Immediately before `im.update(delta, inLiveZone);` (~line 396):
 
@@ -821,7 +866,17 @@ Immediately before `im.update(delta, inLiveZone);` (~line 396):
     this.joystick?.update(delta);
 ```
 
-- [ ] **Step 5: Destroy on shutdown**
+- [ ] **Step 6: Branch the in-run help overlay on control mode**
+
+Control mode can't change during a run, so a single read at create time is correct.
+Replace the entire `const lines = isMobile ? [ ... ] : [ ... ];` block (~line 829-854)
+with:
+
+```ts
+    const lines = controlHelpLines(isMobile, getControlMode());
+```
+
+- [ ] **Step 7: Destroy on shutdown**
 
 In `shutdown()` (~line 872), alongside the existing `setSuppressionRect('place', null)`:
 
@@ -830,16 +885,16 @@ In `shutdown()` (~line 872), alongside the existing `setSuppressionRect('place',
     this.joystick = null;
 ```
 
-- [ ] **Step 6: Verify build**
+- [ ] **Step 8: Verify build**
 
 Run: `npm run build`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/scenes/GameScene.ts
-git commit -m "feat(joystick): mount joystick in GameScene"
+git add src/ui/controlHelp.ts src/scenes/GameScene.ts
+git commit -m "feat(joystick): shared help copy + mount joystick in GameScene"
 ```
 
 ---
@@ -904,29 +959,50 @@ git commit -m "feat(joystick): mount joystick in InfiniteGameScene"
 ## Task 11: MenuScene — Controls tab, tilt prompt, help overlay
 
 **Files:**
-- Modify: `src/scenes/MenuScene.ts` (tilt prompt ~line 483; settings tab bar ~line 702-782; help overlay ~line 864)
+- Modify: `src/scenes/MenuScene.ts` (tilt prompt ~line 483; settings tab bar ~line 702-782; close path ~line 804-812; info overlay ~line 864-895)
 
-- [ ] **Step 1: Import the control-pref accessors**
+- [ ] **Step 1: Import the control-pref accessors + help copy**
 
-Add to the SaveData import in `MenuScene.ts`:
+Add to the imports in `MenuScene.ts`:
 
 ```ts
 import {
   getControlMode, setControlMode, getJoystickSide, setJoystickSide,
 } from '../systems/SaveData';
+import { controlHelpLines } from '../ui/controlHelp';
 ```
-(Merge into the existing `from '../systems/SaveData'` import if one exists.)
+(Merge the SaveData names into the existing `from '../systems/SaveData'` import if one exists.)
 
-- [ ] **Step 2: Hide the tilt prompt in joystick mode**
+- [ ] **Step 2: Make the tilt prompt a refreshable field**
 
-At the tilt prompt guard (~line 483), change:
+The prompt lives on the menu *behind* the settings panel, so toggling control mode
+in the panel must update it live (not just at scene build). Add a class field:
+
+```ts
+  private tiltPrompt?: Phaser.GameObjects.Text;
+```
+
+At the tilt prompt block (~line 483), keep creating it whenever the device could use
+tilt, store the ref, and drive **visibility** by the current mode (the alpha tween
+still runs; `setVisible` gates show/hide):
 
 ```ts
     if (im.isMobile && !im.tiltPermissionGranted) {
-```
-to:
-```ts
-    if (im.isMobile && !im.tiltPermissionGranted && getControlMode() === 'tilt') {
+      const tiltBtn = this.add.text(this.scale.width / 2, this.scale.height - 94, 'Enable Tilt Controls', {
+        fontSize: '17px',
+        color: '#88aaff',
+        stroke: '#000000',
+        strokeThickness: 2,
+      }).setOrigin(0.5).setAlpha(0).setDepth(9).setInteractive({ useHandCursor: true });
+
+      tiltBtn.on('pointerup', () => {
+        im.requestTiltPermission().then(() => tiltBtn.setVisible(false));
+      });
+
+      this.tweens.add({ targets: tiltBtn, alpha: 1, duration: 300, delay: 2000 });
+      tiltBtn.setVisible(getControlMode() === 'tilt');
+      this.tiltPrompt = tiltBtn;
+    }
 ```
 
 - [ ] **Step 3: Add the third tab to the tab bar**
@@ -995,8 +1071,15 @@ After the Sounds-tab content block (~after line 761, before "Tab switching"), ad
     };
     paintMode(); paintSide();
 
-    tiltOpt.on('pointerup', () => { ctrlMode = 'tilt'; setControlMode('tilt'); paintMode(); });
-    joyOpt.on('pointerup',  () => { ctrlMode = 'joystick'; setControlMode('joystick'); paintMode(); });
+    // Toggling mode also refreshes the tilt prompt behind the panel (it only
+    // applies to tilt mode, and only when the device hasn't granted permission).
+    const refreshTiltPrompt = () => {
+      const im2 = InputManager.getInstance();
+      this.tiltPrompt?.setVisible(ctrlMode === 'tilt' && im2.isMobile && !im2.tiltPermissionGranted);
+    };
+
+    tiltOpt.on('pointerup', () => { ctrlMode = 'tilt'; setControlMode('tilt'); paintMode(); refreshTiltPrompt(); });
+    joyOpt.on('pointerup',  () => { ctrlMode = 'joystick'; setControlMode('joystick'); paintMode(); refreshTiltPrompt(); });
     leftOpt.on('pointerup',  () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'left'; setJoystickSide('left'); paintSide(); });
     rightOpt.on('pointerup', () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'right'; setJoystickSide('right'); paintSide(); });
 ```
@@ -1048,46 +1131,54 @@ In the `alwaysVisible` array (~line 798), add `controlsTabBg, controlsTabText`:
     const alwaysVisible = [overlayBg, panel, title, closeBtn, soundsTabBg, soundsTabText, controlsTabBg, controlsTabText, devTabBg, devTabText];
 ```
 
-- [ ] **Step 7: Branch the help overlay copy on controlMode**
+- [ ] **Step 7: Hide Controls widgets in `close()`**
 
-At the info-overlay `mobileLines` array (~line 864), replace the static array with a mode-aware one:
+`close()` (~line 804-812) currently hides only sounds/dev items, so closing while the
+Controls tab is active leaves its widgets floating over the menu. Add to `close()`,
+next to the existing `soundsItems`/`devItems` hides:
 
 ```ts
-    const mobileLines = getControlMode() === 'joystick' ? [
-      'CONTROLS',
-      '',
-      'Move     Joystick left / right',
-      'Jump     Push joystick up',
-      'Dash     Dash button / double-tap',
-      'Dive     Push joystick down',
-      'Place    PLACE BLOCK button',
-      'Ladder   Push up / down',
-      '',
-    ] : [
-      'CONTROLS',
-      '',
-      'Move     Tilt phone left / right',
-      'Jump     Tap or swipe up',
-      'Dash     Swipe left / right',
-      'Dive     Swipe down',
-      'Place    PLACE BLOCK button',
-      'Ladder   Drag up / down',
-      '',
-    ];
+      controlsItems.forEach(o => o.setVisible(false));
 ```
 
-> Keep any trailing lines (desktop/close hints) that followed the original array unchanged.
+- [ ] **Step 8: Regenerate the help overlay copy on open**
 
-- [ ] **Step 8: Verify build + full test suite**
+The info overlay is a separate surface from the settings panel, so it must refresh
+when reopened after a mode change. Replace the `mobileLines`/`desktopLines` arrays and
+the `overlayText` creation (~line 864-901) with a single helper-driven build:
+
+```ts
+    const overlayText = this.add.text(
+      this.scale.width / 2 - 160, this.scale.height / 2 - 130,
+      controlHelpLines(im.isMobile, getControlMode()).join('\n'),
+      {
+        fontSize: '17px', color: '#ccccdd',
+        stroke: '#000000', strokeThickness: 1,
+        lineSpacing: 5,
+      },
+    ).setScrollFactor(0).setDepth(16).setVisible(false);
+```
+
+Then in the overlay's `toggle` (~line 906), refresh the text whenever it opens:
+
+```ts
+    const toggle = () => {
+      open = !open;
+      if (open) overlayText.setText(controlHelpLines(im.isMobile, getControlMode()).join('\n'));
+      for (const p of parts) p.setVisible(open);
+    };
+```
+
+- [ ] **Step 9: Verify build + full test suite**
 
 Run: `npm run build && npm test`
 Expected: build PASS; all tests PASS.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add src/scenes/MenuScene.ts
-git commit -m "feat(joystick): Controls settings tab + mode-aware tilt prompt and help"
+git commit -m "feat(joystick): Controls settings tab + live-refreshed tilt prompt and help"
 ```
 
 ---
@@ -1114,7 +1205,14 @@ Verify:
 - Drag → player moves analog L/R; push **up** → jump (diagonal up gives an angled jump); push **down** → dive, and *holding* down sustains the dive.
 - **Dash button** dashes in the stick/facing direction; **double-tap** a direction also dashes.
 - On a ladder, up/down climbs (does not jump/dive).
-- The "Enable Tilt Controls" prompt is hidden in joystick mode; the help overlay shows joystick copy.
+- The "Enable Tilt Controls" prompt is hidden in joystick mode; the menu help overlay shows joystick copy.
+- **Lifecycle:** toggle Tilt↔Joystick *inside the open settings panel* — the tilt
+  prompt behind the panel updates immediately, and reopening the **?** info overlay
+  shows the matching copy (no scene rebuild needed).
+- **No leak:** open the **Controls** tab, then close the settings panel — no Controls
+  widgets remain floating over the menu.
+- **In-run help:** start a run in joystick mode and open the in-game **?** overlay — it
+  shows joystick copy, not tilt/swipe.
 - Switch back to **Tilt**: tilt + swipe gestures work exactly as before; no joystick shown.
 - Repeat a quick check in **Infinite** mode — stick works there too.
 
@@ -1130,4 +1228,5 @@ Expected: build PASS; all tests PASS.
 - Joystick drives move/jump/dive + dash (button & double-tap) with player code unchanged except the `diveHeld` line.
 - Tilt mode is byte-for-byte unchanged.
 - Stick works in both GameScene and InfiniteGameScene; suppression rect is cleaned up on shutdown in both.
+- Help copy is single-sourced (`controlHelp.ts`); menu prompt/help refresh live on in-session mode toggle; Controls tab doesn't leak on close; in-run help is mode-aware.
 - `npm run build` and `npm test` pass.

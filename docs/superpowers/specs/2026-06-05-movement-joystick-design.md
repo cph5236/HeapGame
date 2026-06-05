@@ -132,6 +132,24 @@ scene, so any suppression rect left behind keeps swallowing taps in the next sce
   tilt/swipe copy (`MenuScene.ts:864`). Branch them on `controlMode`: in joystick
   mode show joystick copy — Move = joystick L/R, Jump = push up, Dive = push down,
   Dash = dash button / double-tap, Ladder = push up/down, Place = PLACE button.
+  This copy is centralized in a shared `src/ui/controlHelp.ts` (`controlHelpLines`)
+  so the **MenuScene** help and the **GameScene in-run** help (`GameScene.ts:829`,
+  also hard-coded today) stay consistent.
+
+### UI lifecycle (review follow-ups)
+The menu settings UI is built once at scene create, so control-affecting surfaces
+must refresh on change rather than only at build:
+- **Tilt prompt** is stored as a field and its visibility is refreshed when the
+  control-mode toggle changes (it sits behind the settings panel; toggling to
+  joystick must hide it live, and back to tilt re-show it when permission is
+  ungranted).
+- **Menu help overlay** text is regenerated on each open (reads current mode), so a
+  mid-session toggle is reflected without rebuilding the scene.
+- **GameScene in-run help** reads the mode once at create — correct, since control
+  mode can't change during a run.
+- **Controls tab cleanup:** `close()` hides the Controls widgets too (it currently
+  hides only Sounds/Dev), so closing the panel on the Controls tab doesn't leak
+  widgets over the menu.
 
 ## Data flow (joystick mode, one frame)
 
