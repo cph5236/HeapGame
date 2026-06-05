@@ -316,6 +316,19 @@ In the `RawSave` interface (after `adRunTarget?: number;` ~line 52):
   joystickSide?: 'left' | 'right';
 ```
 
+- [ ] **Step 3b: Preserve them in `migrate()`**
+
+`migrate()` reconstructs `RawSave` as an explicit whitelist and runs on every
+`load()` from localStorage, so any field omitted there is dropped on load. In the
+`version === CURRENT_SCHEMA` branch (~line 116, after `adRunTarget`):
+
+```ts
+      controlMode:    parsed.controlMode,
+      joystickSide:   parsed.joystickSide,
+```
+
+(Without this the round-trip persistence test fails — the load path strips them.)
+
 - [ ] **Step 4: Preserve them in `mergeCloudSave`**
 
 In the `return { ... }` of `mergeCloudSave` (after `adRunTarget: local.adRunTarget,` ~line 456) add:
