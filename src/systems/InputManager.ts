@@ -27,6 +27,10 @@ export class InputManager {
   goLeft     = false;
   goRight    = false;
 
+  // Control mode
+  controlMode: 'tilt' | 'joystick' = 'tilt';
+  diveHeld = false;   // continuous "stick down held" — sustains dive like keyboard Down
+
   // Continuous placement state
   placeHeld = false;
 
@@ -109,7 +113,7 @@ export class InputManager {
     this.pendingDive   = false;
 
     // Compute analog tilt factor and derive binary booleans
-    if (this.tiltListenerAttached) {
+    if (this.tiltListenerAttached && this.controlMode === 'tilt') {
       const g   = this.gamma;
       const abs = Math.abs(g);
 
@@ -151,6 +155,42 @@ export class InputManager {
       if (gx >= r.x && gx <= r.x + r.w && gy >= r.y && gy <= r.y + r.h) return true;
     }
     return false;
+  }
+
+  /** Set the control scheme. Joystick mode gates device-tilt and window gestures
+   *  off; a JoystickController becomes the sole movement source. */
+  setControlMode(mode: 'tilt' | 'joystick'): void {
+    this.controlMode = mode;
+  }
+
+  /** Joystick: write the analog horizontal axis (−1..1) directly. */
+  setAxis(factor: number): void {
+    this.tiltFactor = factor;
+    this.goLeft  = factor < -0.01;
+    this.goRight = factor >  0.01;
+  }
+
+  /** Joystick: queue a jump pulse for the next frame (vx = horizontal launch). */
+  pulseJump(vx = 0): void {
+    this.pendingJump   = true;
+    this.pendingJumpVx = vx;
+  }
+
+  /** Joystick: queue a dash pulse for the next frame. */
+  pulseDash(dir: 1 | -1): void {
+    this.pendingDash    = true;
+    this.pendingDashDir = dir;
+  }
+
+  /** Joystick: queue a dive burst for the next frame. */
+  pulseDive(): void {
+    this.pendingDive = true;
+  }
+
+  /** Joystick: continuous ladder-climb signals (up/down held on the stick). */
+  setLadderDrag(up: boolean, down: boolean): void {
+    this.dragUp   = up;
+    this.dragDown = down;
   }
 
   /** Called by the on-screen placement button on pointerdown. */
@@ -200,6 +240,7 @@ export class InputManager {
   };
 
   private onTouchStart = (e: TouchEvent): void => {
+    if (this.controlMode === 'joystick') return;
     if (this.touchState !== 'idle') return;
     const t = e.touches[0];
     if (!t) return;
@@ -215,6 +256,7 @@ export class InputManager {
   };
 
   private onTouchMove = (e: TouchEvent): void => {
+    if (this.controlMode === 'joystick') return;
     if (this.touchState !== 'tracking' && this.touchState !== 'drag') return;
     if (this.uiGestureSuppressed) return;
 
@@ -251,6 +293,7 @@ export class InputManager {
   };
 
   private onTouchEnd = (e: TouchEvent): void => {
+    if (this.controlMode === 'joystick') return;
     if (this.touchState === 'idle') return;
 
     const t = Array.from(e.changedTouches).find(touch => touch.identifier === this.activeTouchId);
