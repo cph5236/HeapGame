@@ -50,6 +50,8 @@ interface RawSave {
   soundSettings?: SoundSettings;
   adRunsSinceLast?: number;
   adRunTarget?:     number;
+  controlMode?:     'tilt' | 'joystick';
+  joystickSide?:    'left' | 'right';
 }
 
 let _cache: RawSave | null = null;
@@ -112,6 +114,8 @@ function migrate(parsed: any): RawSave {
       soundSettings:  parsed.soundSettings  ?? { ...DEFAULT_SOUND_SETTINGS },
       adRunsSinceLast: parsed.adRunsSinceLast,
       adRunTarget:     parsed.adRunTarget,
+      controlMode:    parsed.controlMode,
+      joystickSide:   parsed.joystickSide,
     };
   }
 
@@ -454,6 +458,8 @@ export function mergeCloudSave(local: RawSave, cloud: RawSave): RawSave {
     verboseLogging: local.verboseLogging,
     adRunsSinceLast: local.adRunsSinceLast,
     adRunTarget:     local.adRunTarget,
+    controlMode:     local.controlMode,   // device-local — local always wins
+    joystickSide:    local.joystickSide,  // device-local — local always wins
   };
 }
 
@@ -463,6 +469,28 @@ export function getRawSaveForCloudSync(): RawSave { return { ...load() }; }
 
 export function applyMergedSave(merged: RawSave): void {
   persist(merged);
+}
+
+// ── Control settings (device-local) ─────────────────────────────────────────
+
+export function getControlMode(): 'tilt' | 'joystick' {
+  return load().controlMode ?? 'tilt';
+}
+
+export function setControlMode(mode: 'tilt' | 'joystick'): void {
+  const data = load();
+  data.controlMode = mode;
+  persist(data);
+}
+
+export function getJoystickSide(): 'left' | 'right' {
+  return load().joystickSide ?? 'left';
+}
+
+export function setJoystickSide(side: 'left' | 'right'): void {
+  const data = load();
+  data.joystickSide = side;
+  persist(data);
 }
 
 // ── Sound settings ────────────────────────────────────────────────────────────
