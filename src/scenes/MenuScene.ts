@@ -4,7 +4,7 @@ import Phaser from 'phaser';
 import { AudioManager } from '../systems/AudioManager';
 import type { SoundCategory } from '../data/soundDefs';
 import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode } from '../systems/SaveData';
-import { redeemCode } from '../systems/CodeClient';
+import { redeemCode, type RedeemResult } from '../systems/CodeClient';
 import { TILT_WATCHDOG_MS } from '../constants';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
@@ -429,7 +429,7 @@ export class MenuScene extends Phaser.Scene {
     requestAnimationFrame(() => input.focus());
   }
 
-  private openRedeemDialog(onResult: (result: import('../systems/CodeClient').RedeemResult) => void): void {
+  private openRedeemDialog(onResult: (result: RedeemResult) => void): void {
     const overlay = document.createElement('div');
     overlay.style.cssText = [
       'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.75)',
