@@ -3,11 +3,12 @@ import Phaser from 'phaser';
 
 import { AudioManager } from '../systems/AudioManager';
 import type { SoundCategory } from '../data/soundDefs';
-import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging } from '../systems/SaveData';
+import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging, getControlMode, setControlMode, getJoystickSide, setJoystickSide } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { formatDifficulty } from '../ui/DifficultyStars';
+import { controlHelpLines } from '../ui/controlHelp';
 import { loadGameAssets } from './loadGameAssets';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
@@ -38,6 +39,7 @@ export class MenuScene extends Phaser.Scene {
 
   private _forceSettingsOpen = false;
   private _forceInfoOpen     = false;
+  private tiltPrompt?: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -493,6 +495,8 @@ export class MenuScene extends Phaser.Scene {
       });
 
       this.tweens.add({ targets: tiltBtn, alpha: 1, duration: 300, delay: 2000 });
+      tiltBtn.setVisible(getControlMode() === 'tilt');
+      this.tiltPrompt = tiltBtn;
     }
   }
 
@@ -701,13 +705,17 @@ export class MenuScene extends Phaser.Scene {
 
     // ── Tab bar ───────────────────────────────────────────────────────────────
     const TAB_Y = cy - PANEL_H / 2 + 52;
-    const TAB_W = 140;
+    const TAB_W = 108;
     const TAB_H = 32;
+    const TAB_GAP = 6;
+    const tabXs = [cx - (TAB_W + TAB_GAP), cx, cx + (TAB_W + TAB_GAP)];
 
-    const soundsTabBg   = this.add.rectangle(cx - TAB_W / 2 - 4, TAB_Y, TAB_W, TAB_H, 0x2244aa).setDepth(32).setVisible(false);
-    const soundsTabText = this.add.text(cx - TAB_W / 2 - 4, TAB_Y, 'Sounds', { fontSize: '14px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(33).setVisible(false);
-    const devTabBg      = this.add.rectangle(cx + TAB_W / 2 + 4, TAB_Y, TAB_W, TAB_H, 0x1a1a2e).setDepth(32).setVisible(false);
-    const devTabText    = this.add.text(cx + TAB_W / 2 + 4, TAB_Y, 'Dev', { fontSize: '14px', color: '#888888' }).setOrigin(0.5).setDepth(33).setVisible(false);
+    const soundsTabBg   = this.add.rectangle(tabXs[0], TAB_Y, TAB_W, TAB_H, 0x2244aa).setDepth(32).setVisible(false);
+    const soundsTabText = this.add.text(tabXs[0], TAB_Y, 'Sounds', { fontSize: '13px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(33).setVisible(false);
+    const controlsTabBg   = this.add.rectangle(tabXs[1], TAB_Y, TAB_W, TAB_H, 0x1a1a2e).setDepth(32).setVisible(false);
+    const controlsTabText = this.add.text(tabXs[1], TAB_Y, 'Controls', { fontSize: '13px', color: '#888888' }).setOrigin(0.5).setDepth(33).setVisible(false);
+    const devTabBg      = this.add.rectangle(tabXs[2], TAB_Y, TAB_W, TAB_H, 0x1a1a2e).setDepth(32).setVisible(false);
+    const devTabText    = this.add.text(tabXs[2], TAB_Y, 'Dev', { fontSize: '13px', color: '#888888' }).setOrigin(0.5).setDepth(33).setVisible(false);
 
     // ── Tab containers ────────────────────────────────────────────────────────
     const CONTENT_TOP = TAB_Y + TAB_H / 2 + 12;
@@ -760,24 +768,94 @@ export class MenuScene extends Phaser.Scene {
       ...enemySliderParts, ...envSliderParts,
     ];
 
+    // ── Controls tab content ──────────────────────────────────────────────────────────────────────────
+    let ctrlMode = getControlMode();
+    let ctrlSide = getJoystickSide();
+
+    const modeLabel = this.add.text(cx - 130, CONTENT_TOP + 20, 'Control Mode', {
+      fontSize: '14px', color: '#aaaacc',
+    }).setOrigin(0, 0.5).setDepth(33).setVisible(false);
+    const tiltOpt = this.add.text(cx + 16, CONTENT_TOP + 20, 'Tilt', {
+      fontSize: '15px', color: '#ffffff', fontStyle: 'bold', backgroundColor: '#2244aa', padding: { x: 10, y: 4 },
+    }).setOrigin(0.5).setDepth(33).setVisible(false).setInteractive({ useHandCursor: true });
+    const joyOpt = this.add.text(cx + 96, CONTENT_TOP + 20, 'Joystick', {
+      fontSize: '15px', color: '#888888', backgroundColor: '#1a1a2e', padding: { x: 10, y: 4 },
+    }).setOrigin(0.5).setDepth(33).setVisible(false).setInteractive({ useHandCursor: true });
+
+    const sideLabel = this.add.text(cx - 130, CONTENT_TOP + 64, 'Joystick Side', {
+      fontSize: '14px', color: '#aaaacc',
+    }).setOrigin(0, 0.5).setDepth(33).setVisible(false);
+    const leftOpt = this.add.text(cx + 16, CONTENT_TOP + 64, 'Left', {
+      fontSize: '15px', color: '#ffffff', fontStyle: 'bold', backgroundColor: '#2244aa', padding: { x: 10, y: 4 },
+    }).setOrigin(0.5).setDepth(33).setVisible(false).setInteractive({ useHandCursor: true });
+    const rightOpt = this.add.text(cx + 96, CONTENT_TOP + 64, 'Right', {
+      fontSize: '15px', color: '#888888', backgroundColor: '#1a1a2e', padding: { x: 10, y: 4 },
+    }).setOrigin(0.5).setDepth(33).setVisible(false).setInteractive({ useHandCursor: true });
+
+    const ctrlHint = this.add.text(cx, CONTENT_TOP + 120,
+      'Joystick: drag to move, push up to jump,\ndown to dive. Dash button + double-tap.',
+      { fontSize: '12px', color: '#8888aa', align: 'center' },
+    ).setOrigin(0.5, 0).setDepth(33).setVisible(false);
+
+    const controlsItems = [modeLabel, tiltOpt, joyOpt, sideLabel, leftOpt, rightOpt, ctrlHint];
+
+    const paintMode = () => {
+      tiltOpt.setColor(ctrlMode === 'tilt' ? '#ffffff' : '#888888').setBackgroundColor(ctrlMode === 'tilt' ? '#2244aa' : '#1a1a2e').setFontStyle(ctrlMode === 'tilt' ? 'bold' : 'normal');
+      joyOpt.setColor(ctrlMode === 'joystick' ? '#ffffff' : '#888888').setBackgroundColor(ctrlMode === 'joystick' ? '#2244aa' : '#1a1a2e').setFontStyle(ctrlMode === 'joystick' ? 'bold' : 'normal');
+      const sideDim = ctrlMode !== 'joystick';
+      [sideLabel, leftOpt, rightOpt].forEach(o => o.setAlpha(sideDim ? 0.4 : 1));
+    };
+    const paintSide = () => {
+      leftOpt.setColor(ctrlSide === 'left' ? '#ffffff' : '#888888').setBackgroundColor(ctrlSide === 'left' ? '#2244aa' : '#1a1a2e').setFontStyle(ctrlSide === 'left' ? 'bold' : 'normal');
+      rightOpt.setColor(ctrlSide === 'right' ? '#ffffff' : '#888888').setBackgroundColor(ctrlSide === 'right' ? '#2244aa' : '#1a1a2e').setFontStyle(ctrlSide === 'right' ? 'bold' : 'normal');
+    };
+    paintMode(); paintSide();
+
+    // Toggling mode also refreshes the tilt prompt behind the panel (it only
+    // applies to tilt mode, and only when the device hasn't granted permission).
+    const refreshTiltPrompt = () => {
+      const im2 = InputManager.getInstance();
+      this.tiltPrompt?.setVisible(ctrlMode === 'tilt' && im2.isMobile && !im2.tiltPermissionGranted);
+    };
+
+    tiltOpt.on('pointerup', () => { ctrlMode = 'tilt'; setControlMode('tilt'); paintMode(); refreshTiltPrompt(); });
+    joyOpt.on('pointerup',  () => { ctrlMode = 'joystick'; setControlMode('joystick'); paintMode(); refreshTiltPrompt(); });
+    leftOpt.on('pointerup',  () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'left'; setJoystickSide('left'); paintSide(); });
+    rightOpt.on('pointerup', () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'right'; setJoystickSide('right'); paintSide(); });
+
     // ── Tab switching ─────────────────────────────────────────────────────────
     const devItems    = [coinBg, coinLabel, resetBg, resetLabel, resetWarning, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint];
 
     const showSoundsTab = () => {
-      soundsTabBg.setFillStyle(0x2244aa);   soundsTabText.setColor('#ffffff').setFontStyle('bold');
+      soundsTabBg.setFillStyle(0x2244aa);  soundsTabText.setColor('#ffffff').setFontStyle('bold');
+      controlsTabBg.setFillStyle(0x1a1a2e); controlsTabText.setColor('#888888').setFontStyle('normal');
       devTabBg.setFillStyle(0x1a1a2e);      devTabText.setColor('#888888').setFontStyle('normal');
+      controlsItems.forEach(o => o.setVisible(false));
       devItems.forEach(o => o.setVisible(false));
       soundsItems.forEach(o => (o as any).setVisible(true));
     };
-    const showDevTab = () => {
-      devTabBg.setFillStyle(0x2244aa);      devTabText.setColor('#ffffff').setFontStyle('bold');
-      soundsTabBg.setFillStyle(0x1a1a2e);  soundsTabText.setColor('#888888').setFontStyle('normal');
+    const showControlsTab = () => {
+      controlsTabBg.setFillStyle(0x2244aa); controlsTabText.setColor('#ffffff').setFontStyle('bold');
+      soundsTabBg.setFillStyle(0x1a1a2e);   soundsTabText.setColor('#888888').setFontStyle('normal');
+      devTabBg.setFillStyle(0x1a1a2e);       devTabText.setColor('#888888').setFontStyle('normal');
       soundsItems.forEach(o => (o as any).setVisible(false));
+      devItems.forEach(o => o.setVisible(false));
+      controlsItems.forEach(o => o.setVisible(true));
+      paintMode(); paintSide();
+    };
+    const showDevTab = () => {
+      devTabBg.setFillStyle(0x2244aa);       devTabText.setColor('#ffffff').setFontStyle('bold');
+      soundsTabBg.setFillStyle(0x1a1a2e);    soundsTabText.setColor('#888888').setFontStyle('normal');
+      controlsTabBg.setFillStyle(0x1a1a2e);  controlsTabText.setColor('#888888').setFontStyle('normal');
+      soundsItems.forEach(o => (o as any).setVisible(false));
+      controlsItems.forEach(o => o.setVisible(false));
       devItems.forEach(o => o.setVisible(true));
     };
 
     soundsTabBg.setInteractive({ useHandCursor: true }).on('pointerup', showSoundsTab);
     soundsTabText.setInteractive({ useHandCursor: true }).on('pointerup', showSoundsTab);
+    controlsTabBg.setInteractive({ useHandCursor: true }).on('pointerup', showControlsTab);
+    controlsTabText.setInteractive({ useHandCursor: true }).on('pointerup', showControlsTab);
     devTabBg.setInteractive({ useHandCursor: true }).on('pointerup', showDevTab);
     devTabText.setInteractive({ useHandCursor: true }).on('pointerup', showDevTab);
 
@@ -795,7 +873,7 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // ── Open / close ──────────────────────────────────────────────────────────
-    const alwaysVisible = [overlayBg, panel, title, closeBtn, soundsTabBg, soundsTabText, devTabBg, devTabText];
+    const alwaysVisible = [overlayBg, panel, title, closeBtn, soundsTabBg, soundsTabText, controlsTabBg, controlsTabText, devTabBg, devTabText];
 
     const open = () => {
       alwaysVisible.forEach(o => o.setVisible(true));
@@ -805,6 +883,7 @@ export class MenuScene extends Phaser.Scene {
       alwaysVisible.forEach(o => o.setVisible(false));
       devItems.forEach(o => o.setVisible(false));
       soundsItems.forEach(o => (o as any).setVisible(false));
+      controlsItems.forEach(o => o.setVisible(false));
       this.resetConfirmed = false;
       resetLabel.setText('Reset All Data');
       resetBg.setFillStyle(0x881111);
@@ -861,38 +940,9 @@ export class MenuScene extends Phaser.Scene {
     const panel = this.add.rectangle(this.scale.width / 2, this.scale.height / 2, 380, 320, 0x0d0d20)
       .setScrollFactor(0).setDepth(15).setVisible(false).setStrokeStyle(2, 0x4455aa);
 
-    // Controls text — show mobile or desktop lines based on platform
-    const mobileLines = [
-      'CONTROLS',
-      '',
-      'Move     Tilt phone left / right',
-      'Jump     Tap or swipe up',
-      'Dash     Swipe left / right',
-      'Dive     Swipe down',
-      'Place    PLACE BLOCK button',
-      'Ladder   Drag up / down',
-      '',
-      'TIP',
-      '',
-      'Left & right edges wrap around!',
-    ];
-    const desktopLines = [
-      'CONTROLS',
-      '',
-      'Move     ← →  /  A  D',
-      'Jump     ↑  /  W',
-      'Dash     SHIFT',
-      'Dive     ↓  /  S  (airborne)',
-      'Place    SPACE',
-      '',
-      'TIP',
-      '',
-      'Left & right edges wrap around!',
-    ];
-
     const overlayText = this.add.text(
       this.scale.width / 2 - 160, this.scale.height / 2 - 130,
-      (im.isMobile ? mobileLines : desktopLines).join('\n'),
+      controlHelpLines(im.isMobile, getControlMode()).join('\n'),
       {
         fontSize: '17px', color: '#ccccdd',
         stroke: '#000000', strokeThickness: 1,
@@ -905,6 +955,7 @@ export class MenuScene extends Phaser.Scene {
 
     const toggle = () => {
       open = !open;
+      if (open) overlayText.setText(controlHelpLines(im.isMobile, getControlMode()).join('\n'));
       for (const p of parts) p.setVisible(open);
     };
 
