@@ -240,9 +240,21 @@ export class InputManager {
   };
 
   private onTouchStart = (e: TouchEvent): void => {
-    if (this.controlMode === 'joystick') return;
     if (this.touchState !== 'idle') return;
-    const t = e.touches[0];
+    // Track the first NEWLY-pressed touch that isn't inside a UI zone (joystick
+    // base, on-screen buttons). We scan `changedTouches` (the fingers added by THIS
+    // event), tested at their press position — never `touches` (all fingers down),
+    // because a held joystick finger that has dragged out of the stick's rect would
+    // otherwise be mistaken for a fresh gesture and swallow the jump. This lets a
+    // tap/swipe jump register while another finger holds the joystick, and a tap on
+    // a button never becomes a jump. Joystick supplies movement; taps/swipes jump.
+    let t: Touch | undefined;
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (!this.isInSuppressionZone(e.changedTouches[i].clientX, e.changedTouches[i].clientY)) {
+        t = e.changedTouches[i];
+        break;
+      }
+    }
     if (!t) return;
     this.activeTouchId  = t.identifier;
     this.touchStartX    = t.clientX;
@@ -250,13 +262,10 @@ export class InputManager {
     this.touchStartTime = performance.now();
     this.currentTouchY  = t.clientY;
     this.touchState     = 'tracking';
-    // Decide suppression here, synchronously: if the finger landed inside a
-    // visible button zone, the whole gesture is UI and never fires a jump/dash.
-    this.uiGestureSuppressed = this.isInSuppressionZone(t.clientX, t.clientY);
+    this.uiGestureSuppressed = false; // only non-suppressed touches are ever tracked
   };
 
   private onTouchMove = (e: TouchEvent): void => {
-    if (this.controlMode === 'joystick') return;
     if (this.touchState !== 'tracking' && this.touchState !== 'drag') return;
     if (this.uiGestureSuppressed) return;
 
@@ -293,7 +302,6 @@ export class InputManager {
   };
 
   private onTouchEnd = (e: TouchEvent): void => {
-    if (this.controlMode === 'joystick') return;
     if (this.touchState === 'idle') return;
 
     const t = Array.from(e.changedTouches).find(touch => touch.identifier === this.activeTouchId);

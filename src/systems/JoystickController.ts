@@ -11,7 +11,6 @@ import type { DoubleTapState } from './joystickMath';
 import {
   JOYSTICK_RADIUS, JOYSTICK_DEAD_ZONE, JOYSTICK_CURVE_EXP,
   JOYSTICK_TAP_THRESHOLD, JOYSTICK_DOUBLETAP_MS, JOYSTICK_FORCE_MIN_FRAC,
-  SWIPE_JUMP_HORIZONTAL_MAX,
 } from '../constants';
 
 /** The subset of rex VirtualJoystick we use. */
@@ -31,7 +30,6 @@ export class JoystickController {
   private thumb: Phaser.GameObjects.Arc;
   private im = InputManager.getInstance();
 
-  private prevUp = false;
   private prevDown = false;
   private dt: DoubleTapState = initDoubleTap();
 
@@ -63,21 +61,19 @@ export class JoystickController {
     const up = this.joy.up;
     const down = this.joy.down;
 
-    // Jump: rising edge of up; jumpVx carries the horizontal lean for diagonals.
-    if (up && !this.prevUp) this.im.pulseJump(axis * SWIPE_JUMP_HORIZONTAL_MAX);
+    // Jump is intentionally NOT on the stick — it stays on tap/swipe gestures,
+    // which feel better for repeated jumping. Stick-up only drives ladder climb.
     // Dive: rising edge of down (burst); held down sustains via diveHeld.
     if (down && !this.prevDown) this.im.pulseDive();
     this.im.diveHeld = down;
 
-    // Ladder climb signals (continuous).
+    // Ladder climb signals (continuous): up climbs, down descends.
     this.im.setLadderDrag(up, down);
 
     // Dash: double-tap a horizontal direction.
     const zone = zoneFromAxis(axis, JOYSTICK_TAP_THRESHOLD);
     const r = stepDoubleTap(this.dt, zone, performance.now(), JOYSTICK_DOUBLETAP_MS);
     if (r.fired) this.im.pulseDash(r.dir);
-
-    this.prevUp = up;
     this.prevDown = down;
   }
 

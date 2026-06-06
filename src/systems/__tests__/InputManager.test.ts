@@ -58,8 +58,14 @@ async function makeMobileIM() {
   const { InputManager } = await import('../InputManager');
   const im = InputManager.getInstance();
 
-  const fire = (type: string, event: object) =>
+  const fire = (type: string, event: object) => {
+    // Mirror the real DOM: a touchstart's changedTouches are the newly-added
+    // touches (== touches in these single-touch fixtures). InputManager.onTouchStart
+    // scans changedTouches, so default it when a fixture only supplies `touches`.
+    const e = event as { touches?: unknown; changedTouches?: unknown };
+    if (e.touches && !e.changedTouches) e.changedTouches = e.touches;
     (listeners[type] ?? []).forEach((cb) => cb(event as Event));
+  };
 
   return { im, fire, listeners };
 }

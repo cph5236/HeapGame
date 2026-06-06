@@ -15,11 +15,11 @@ export function controlHelpLines(isMobile: boolean, mode: 'tilt' | 'joystick'): 
   }
   const actions = mode === 'joystick' ? [
     'Move     Joystick left / right',
-    'Jump     Push joystick up',
+    'Jump     Tap or swipe up',
     'Dash     Dash button / double-tap',
-    'Dive     Push joystick down',
+    'Dive     Joystick down',
     'Place    PLACE BLOCK button',
-    'Ladder   Push up / down',
+    'Ladder   Joystick up / down',
   ] : [
     'Move     Tilt phone left / right',
     'Jump     Tap or swipe up',

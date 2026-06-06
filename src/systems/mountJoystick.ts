@@ -11,6 +11,7 @@ export interface JoystickHandle {
 }
 
 const DASH_SUPPRESS_ID = 'dash';
+const JOYSTICK_SUPPRESS_ID = 'joystick';
 
 /** When controlMode === 'joystick', build the stick + dash button for `scene`.
  *  The stick sits in one bottom corner (per joystickSide); the dash button in the
@@ -19,6 +20,11 @@ const DASH_SUPPRESS_ID = 'dash';
 export function mountJoystick(
   scene: Phaser.Scene, im: InputManager, player: Player,
 ): JoystickHandle | null {
+  // Sync the singleton's control mode from the saved pref on every gameplay-scene
+  // mount. The InputManager persists across scenes, so this both ACTIVATES joystick
+  // gating (gamma tilt + window gestures off) and RESETS to tilt when the player
+  // switched back. Without this the saved mode never reaches the live input system.
+  im.setControlMode(getControlMode());
   if (getControlMode() !== 'joystick') return null;
 
   const side = getJoystickSide();
@@ -30,6 +36,13 @@ export function mountJoystick(
     : w - JOYSTICK_MARGIN - JOYSTICK_RADIUS;
   const stickY = h - JOYSTICK_MARGIN - JOYSTICK_RADIUS;
   const controller = new JoystickController(scene, stickX, stickY);
+
+  // Suppress the stick's zone so a drag/tap on it never becomes a jump/dash/dive
+  // gesture — taps/swipes elsewhere still do (that's how jump works in joystick mode).
+  im.setSuppressionRect(JOYSTICK_SUPPRESS_ID, {
+    x: stickX - JOYSTICK_RADIUS, y: stickY - JOYSTICK_RADIUS,
+    w: JOYSTICK_RADIUS * 2, h: JOYSTICK_RADIUS * 2,
+  });
 
   // Dash button: opposite bottom corner from the stick.
   const dashX = side === 'left'
@@ -66,6 +79,7 @@ export function mountJoystick(
       dashBtn.destroy();
       dashLabel.destroy();
       im.setSuppressionRect(DASH_SUPPRESS_ID, null);
+      im.setSuppressionRect(JOYSTICK_SUPPRESS_ID, null);
     },
   };
 }

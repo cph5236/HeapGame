@@ -793,7 +793,7 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(33).setVisible(false).setInteractive({ useHandCursor: true });
 
     const ctrlHint = this.add.text(cx, CONTENT_TOP + 120,
-      'Joystick: drag to move, push up to jump,\ndown to dive. Dash button + double-tap.',
+      'Joystick moves left / right. Tap or swipe up to\njump; push down to dive. Dash button or double-tap.\nJoystick up / down on ladders.',
       { fontSize: '12px', color: '#8888aa', align: 'center' },
     ).setOrigin(0.5, 0).setDepth(33).setVisible(false);
 
