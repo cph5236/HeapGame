@@ -54,7 +54,11 @@ CREATE TABLE IF NOT EXISTS reward_codes (
   max_redemptions INTEGER NOT NULL DEFAULT 0, -- 0 = unlimited; 1 = one-time; N = capped
   redeemed_count  INTEGER NOT NULL DEFAULT 0,
   expires_at      TEXT,                        -- nullable ISO8601; NULL = never
-  created_at      TEXT NOT NULL
+  created_at      TEXT NOT NULL,
+  -- Cap is enforced in the write path: an increment past the cap aborts the
+  -- transaction (see redeem() in §3). Guards against two different players
+  -- racing for the last redemption of a capped shared code.
+  CHECK (max_redemptions = 0 OR redeemed_count <= max_redemptions)
 );
 
 CREATE TABLE IF NOT EXISTS code_redemptions (
@@ -77,6 +81,13 @@ Single-sourced contract used by server, client, and tests:
 - `CodeListEntry` for the admin `GET /codes` listing (code, type, id, amount,
   max, redeemed_count, expires_at, created_at).
 
+Also **new** `shared/itemIds.ts` — the canonical list of rewardable/valid item
+ids as `export const ITEM_IDS = [...] as const` plus `type ItemId`. This is the
+single source the server can see for **mint-time** `reward_id` validation (the
+full `ITEM_DEFS` stays client-side). A unit test asserts `ITEM_DEFS.map(d => d.id)`
+exactly matches `ITEM_IDS`, so the two can't drift. (Optionally `itemDefs.ts` can
+import `ItemId` to type its `id` field.)
+
 ### 3. Server — D1 access `server/src/codeDb.ts`
 
 `RewardCodeDB` wrapping the D1 binding, mirroring the existing `ScoreDB`/`HeapDB`
@@ -85,11 +96,32 @@ style:
 - `createCode(req, now)` — insert; throws/returns a typed conflict on duplicate code.
 - `getCode(code)` — fetch one (or null).
 - `listCodes()` — all codes for the admin listing.
-- `redeem(code, guid, now)` — the critical path. Uses a D1 `batch()` so the
-  uniqueness check + redemption insert + `redeemed_count` increment are atomic.
-  Returns a discriminated result: `ok` (with `RewardPayload`), `notFound`,
-  `expired`, `exhausted`, `alreadyRedeemed`. The `(code, player_guid)` PK is the
-  backstop against races — an insert that violates it ⇒ `alreadyRedeemed`.
+- `redeem(code, guid, now)` — the critical path. Returns a discriminated result:
+  `ok` (with `RewardPayload`), `notFound`, `expired`, `exhausted`, `alreadyRedeemed`.
+
+  **Concurrency-safe flow:**
+  1. `SELECT` the code. `null` ⇒ `notFound`. `expires_at` in the past ⇒ `expired`.
+     (Neither is subject to a race — a code can't un-expire or un-exist
+     concurrently.) Also compute fast-path `alreadyRedeemed`/`exhausted` here for
+     friendly messaging in the common case.
+  2. Run an atomic D1 `batch()` (single transaction) of **two** statements:
+     - `INSERT INTO code_redemptions (code, player_guid, redeemed_at) VALUES (?,?,?)`
+     - `UPDATE reward_codes SET redeemed_count = redeemed_count + 1 WHERE code = ?`
+  3. Classify the outcome:
+     - Both succeed ⇒ `ok`.
+     - **PK violation** on the insert (same player already has a row) ⇒ the whole
+       batch rolls back ⇒ `alreadyRedeemed`.
+     - **CHECK violation** on the update (increment would exceed `max_redemptions`)
+       ⇒ the whole batch rolls back ⇒ `exhausted`.
+
+  Because both the redemption insert and the count increment live in the **same
+  transaction**, two different players racing for the last slot can't both win:
+  one increment trips the `CHECK` and that whole transaction (including its
+  redemption row) is discarded. The PK handles same-player replay; the `CHECK`
+  handles cross-player cap races. The fast-path SELECT is only for messaging —
+  the batch is the authoritative guard. Distinguish the two rollback causes by
+  inspecting the D1 error (`UNIQUE` vs `CHECK` in the message); unknown errors
+  rethrow.
 
 ### 4. Server — routes `server/src/routes/codes.ts`
 
@@ -101,14 +133,17 @@ A Hono sub-app, mounted at `/codes`:
   `409` exhausted **or** alreadyRedeemed (distinguished by an `error` string in
   the body so the client can show the right message). **Rate-limited.**
 - `POST /codes` — `adminGate`. Body `CreateCodeRequest`. Normalizes, validates
-  (`rewardType` enum; `reward_id` required when `'item'`; `rewardAmount > 0`;
-  `maxRedemptions >= 0`; valid `expiresAt` if present), rejects duplicates → `409`.
+  (`rewardType` enum; `rewardAmount > 0`; `maxRedemptions >= 0`; valid `expiresAt`
+  if present; for `'item'`, `reward_id` is **required and must be in `ITEM_IDS`**),
+  rejects duplicates → `409`, rejects invalid `reward_id` → `400`.
 - `GET /codes` — `adminGate`. Returns `CodeListEntry[]` for the admin UI.
 
-Item-id validity is **not** enforced server-side (server doesn't own `ITEM_DEFS`);
-the admin UI offers a dropdown of known item ids to prevent typos, and the client
-validates against `ITEM_DEFS` on redeem (unknown id ⇒ error result, not a silent
-dead reward).
+**Item-id validity is enforced at mint time** against `shared/itemIds.ts`, so a
+code with a bogus `reward_id` can never be created — closing the "redemption
+consumed with no reward" hole (a typo from curl, a stale client, or a future
+id mismatch). The admin UI additionally offers an item dropdown so typos are
+unlikely in the first place; the client still validates against `ITEM_DEFS` on
+redeem as defense-in-depth, but with mint-time validation it should never fire.
 
 ### 5. Server — wiring `server/src/app.ts`
 
@@ -119,7 +154,14 @@ dead reward).
 - `adminGate` on the admin routes: `app.post('/codes', adminGate)` and
   `app.get('/codes', adminGate)`.
 - `app.route('/codes', codeRoutes(codeDb, () => opts.logSink))`.
-- Provision the `codes` rate-limit binding in `wrangler.toml` alongside the
+
+**Worker entry `server/src/index.ts` (easy to miss — the limiter is dead code
+without it):**
+- Add `RL_CODES?: RateLimiter` to the `Env` interface (alongside `RL_SCORES`
+  etc., `index.ts:12-17`).
+- Construct the `D1` code DB and pass it as the new third arg to `createApp`.
+- Map it into limiters: `limiters: { ..., codes: env.RL_CODES }` (`index.ts:28-33`).
+- Provision the `RL_CODES` rate-limit binding in `wrangler.toml` alongside the
   existing buckets.
 
 ### 6. Client — redemption `src/systems/CodeClient.ts`
@@ -181,10 +223,15 @@ the file's existing single-file pattern (`adminFetch()` injects `X-Admin-Secret`
 ## Testing
 
 - **Server (`server/tests/`):** `codeDb` + route tests —
-  mint happy path; UPPERCASE normalization; duplicate-code rejection; redeem
+  mint happy path; UPPERCASE normalization; duplicate-code rejection;
+  **mint rejects unknown `reward_id`** (`400`) and accepts a valid one; redeem
   happy path for **coins** and **item**; expired; exhausted (`max_redemptions`
-  reached); already-redeemed (same GUID twice); unknown code; atomicity of the
-  `redeem` batch (concurrent/duplicate insert ⇒ exactly one redemption).
+  reached); already-redeemed (same GUID twice); unknown code; **cap-race: N+1
+  redemptions of a code with `max_redemptions=N` by N+1 distinct GUIDs yield
+  exactly N `ok` and one `exhausted`, and `redeemed_count` never exceeds the cap**
+  (exercises the `CHECK` guard).
+- **Shared (`shared/__tests__/`):** `ITEM_DEFS.map(d => d.id)` exactly equals
+  `ITEM_IDS` (drift guard).
 - **Client (`src/systems/__tests__/`):** `CodeClient` status-mapping (each HTTP
   outcome → correct `RedeemResult`) and reward application (coins → `addBalance`,
   item → `addItem`, unknown item id ⇒ `error` with no mutation), with `fetch` and
@@ -200,7 +247,10 @@ the file's existing single-file pattern (`adminFetch()` injects `X-Admin-Secret`
 ## File-touch summary
 
 **New:** `server/migrations/0008_reward_codes.sql`, `server/src/codeDb.ts`,
-`server/src/routes/codes.ts`, `shared/codeTypes.ts`, `src/systems/CodeClient.ts`,
-test files for each.
-**Modified:** `server/schema.sql`, `server/src/app.ts`, `wrangler.toml`,
-`src/scenes/MenuScene.ts`, `admin/index.html`.
+`server/src/routes/codes.ts`, `shared/codeTypes.ts`, `shared/itemIds.ts`,
+`src/systems/CodeClient.ts`, test files for each (incl. the `ITEM_DEFS`↔`ITEM_IDS`
+drift test and the cap-race test).
+**Modified:** `server/schema.sql`, `server/src/app.ts`, `server/src/index.ts`
+(`Env` + `createApp` args + `limiters.codes`), `wrangler.toml`,
+`src/scenes/MenuScene.ts`, `admin/index.html`, optionally `src/data/itemDefs.ts`
+(import `ItemId`).
