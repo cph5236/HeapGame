@@ -12,9 +12,12 @@ import {
   applyPolygonToGenerator,
   polygonTopY,
 } from '../systems/HeapPolygonLoader';
-import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades } from '../systems/SaveData';
+import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getControlMode } from '../systems/SaveData';
 import { HUD } from '../ui/HUD';
 import { InputManager } from '../systems/InputManager';
+import { mountJoystick } from '../systems/mountJoystick';
+import type { JoystickHandle } from '../systems/mountJoystick';
+import { controlHelpLines } from '../ui/controlHelp';
 import { getLogger } from '../logging';
 import {
   WORLD_WIDTH,
@@ -78,6 +81,7 @@ export class GameScene extends Phaser.Scene {
   private parallaxBg!: ParallaxBackground;
   private playerConfig!: PlayerConfig;
   private im!: InputManager;
+  private joystick: JoystickHandle | null = null;
   private buffManager!: BuffManager;
   private placeableManager!: PlaceableManager;
   private pickupManager!: PickupManager;
@@ -306,6 +310,7 @@ export class GameScene extends Phaser.Scene {
 
     this.im = InputManager.getInstance();
     const im = this.im;
+    this.joystick = mountJoystick(this, this.im, this.player);
 
     this._holdBar = this.add.graphics().setScrollFactor(0).setDepth(26);
 
@@ -393,6 +398,7 @@ export class GameScene extends Phaser.Scene {
     const inLiveZone = this._liveZoneBottomY !== null
       ? this.player.sprite.y <= this._liveZoneBottomY
       : this.player.sprite.y < this.heapGenerator.topY + HEAP_TOP_ZONE_PX;
+    this.joystick?.update(delta);
     im.update(delta, inLiveZone);
 
     this.player.update(delta);
@@ -826,32 +832,7 @@ export class GameScene extends Phaser.Scene {
       .setStrokeStyle(2, 0x4455aa);
 
     // Controls text
-    const lines = isMobile ? [
-      'CONTROLS',
-      '',
-      'Move     Tilt phone left / right',
-      'Jump     Tap or swipe up',
-      'Dash     Swipe left / right',
-      'Dive     Swipe down',
-      'Place    PLACE BLOCK button',
-      'Ladder   Drag up / down',
-      '',
-      'TIP',
-      '',
-      'Left & right edges wrap around!',
-    ] : [
-      'CONTROLS',
-      '',
-      'Move     \u2190 \u2192  /  A  D',
-      'Jump     \u2191  /  W',
-      'Dash     SHIFT',
-      'Dive     \u2193  /  S  (airborne)',
-      'Place    SPACE',
-      '',
-      'TIP',
-      '',
-      'Left & right edges wrap around!',
-    ];
+    const lines = controlHelpLines(isMobile, getControlMode());
 
     const overlayText = this.add.text(this.scale.width / 2 - 160, this.scale.height / 2 - 120, lines.join('\n'), {
       fontSize: '17px', color: '#ccccdd',
@@ -876,5 +857,7 @@ export class GameScene extends Phaser.Scene {
     // InputManager is a singleton — drop our PLACE suppression zone so it can't
     // linger into the next scene.
     InputManager.getInstance().setSuppressionRect('place', null);
+    this.joystick?.destroy();
+    this.joystick = null;
   }
 }
