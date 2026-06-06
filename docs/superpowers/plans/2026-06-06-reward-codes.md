@@ -722,7 +722,7 @@ export function codeRoutes(codeDb: RewardCodeDB, getSink: () => Sink | undefined
 
     if (outcome.kind === 'ok') {
       const sink = getSink();
-      if (sink) await captureServer(sink, 'info', 'code:redeemed', { code, type: outcome.reward.rewardType });
+      if (sink) await captureServer(sink, 'event', 'code:redeemed', { code, type: outcome.reward.rewardType });
       return c.json(outcome.reward, 200);
     }
     switch (outcome.kind) {
