@@ -58,8 +58,14 @@ async function makeMobileIM() {
   const { InputManager } = await import('../InputManager');
   const im = InputManager.getInstance();
 
-  const fire = (type: string, event: object) =>
+  const fire = (type: string, event: object) => {
+    // Mirror the real DOM: a touchstart's changedTouches are the newly-added
+    // touches (== touches in these single-touch fixtures). InputManager.onTouchStart
+    // scans changedTouches, so default it when a fixture only supplies `touches`.
+    const e = event as { touches?: unknown; changedTouches?: unknown };
+    if (e.touches && !e.changedTouches) e.changedTouches = e.touches;
     (listeners[type] ?? []).forEach((cb) => cb(event as Event));
+  };
 
   return { im, fire, listeners };
 }
@@ -674,5 +680,59 @@ describe('InputManager — UI button suppression zones', () => {
 
     im.update(16, false);
     expect(im.jumpJustPressed).toBe(true);
+  });
+});
+
+// ── InputManager — controlMode gating + injection ──────────────────────────────
+
+describe('InputManager — controlMode gating + injection', () => {
+  it('defaults to tilt mode', async () => {
+    const { InputManager } = await import('../InputManager');
+    expect(InputManager.getInstance().controlMode).toBe('tilt');
+  });
+
+  it('setAxis writes tiltFactor and derives goLeft/goRight', async () => {
+    const { InputManager } = await import('../InputManager');
+    const im = InputManager.getInstance();
+    im.setAxis(-0.5);
+    expect(im.tiltFactor).toBe(-0.5);
+    expect(im.goLeft).toBe(true);
+    expect(im.goRight).toBe(false);
+  });
+
+  it('pulseJump primes jumpJustPressed + jumpVx on next update()', async () => {
+    const { InputManager } = await import('../InputManager');
+    const im = InputManager.getInstance();
+    im.setControlMode('joystick');
+    im.pulseJump(120);
+    im.update(16, false);
+    expect(im.jumpJustPressed).toBe(true);
+    expect(im.jumpVx).toBe(120);
+  });
+
+  it('pulseDash primes dash + direction on next update()', async () => {
+    const { InputManager } = await import('../InputManager');
+    const im = InputManager.getInstance();
+    im.setControlMode('joystick');
+    im.pulseDash(-1);
+    im.update(16, false);
+    expect(im.dashJustFired).toBe(true);
+    expect(im.dashDir).toBe(-1);
+  });
+
+  it('joystick mode does not overwrite injected tiltFactor from gamma', async () => {
+    const { im } = await makeMobileIM();
+    im.setControlMode('joystick');
+    im.setAxis(0.7);
+    im.update(16, false);           // gamma path must be skipped
+    expect(im.tiltFactor).toBe(0.7);
+  });
+
+  it('setLadderDrag sets dragUp/dragDown', async () => {
+    const { InputManager } = await import('../InputManager');
+    const im = InputManager.getInstance();
+    im.setLadderDrag(true, false);
+    expect(im.dragUp).toBe(true);
+    expect(im.dragDown).toBe(false);
   });
 });

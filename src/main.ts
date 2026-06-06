@@ -57,6 +57,11 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.NO_CENTER,
   },
+  // Multiple simultaneous touch pointers so the joystick (one thumb) can coexist
+  // with the dash / GRAB / PLACE buttons and a jump tap from the other thumb.
+  input: {
+    activePointers: 3,
+  },
   render: {
     antialias: true,
     roundPixels: true,

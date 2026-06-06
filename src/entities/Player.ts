@@ -542,7 +542,7 @@ export class Player {
   private updateDive(ctx: FrameCtx, delta: number): void {
     if (!this.diveEnabled || ctx.onGround) return;
     const im = InputManager.getInstance();
-    const holdingDown = this.downKeys.some(k => k.isDown);
+    const holdingDown = this.downKeys.some(k => k.isDown) || im.diveHeld;
     this.diveActive = Math.max(0, this.diveActive - delta);
 
     if (im.diveJustFired && !holdingDown) {

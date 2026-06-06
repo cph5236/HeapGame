@@ -402,7 +402,16 @@ describe('verboseLogging', () => {
 
 // ── Cloud save merging ────────────────────────────────────────────────────────
 
-import { mergeCloudSave } from '../SaveData';
+import {
+  mergeCloudSave,
+  getControlMode,
+  setControlMode,
+  getJoystickSide,
+  setJoystickSide,
+  getRawSaveForCloudSync,
+  getEffectiveControlMode,
+  setSessionControlMode,
+} from '../SaveData';
 
 describe('mergeCloudSave', () => {
   const base = () => ({
@@ -567,5 +576,50 @@ describe('ad-run pacing state', () => {
     setAdRunState({ runsSinceLast: 1, target: 3 });
     resetCacheForTests();
     expect(getAdRunState()).toEqual({ runsSinceLast: 1, target: 3 });
+  });
+});
+
+// ── Control prefs (device-local) ──────────────────────────────────────────
+
+describe('control prefs (device-local)', () => {
+  beforeEach(() => { localStorage.clear(); resetCacheForTests(); });
+
+  it('defaults to tilt / left', () => {
+    expect(getControlMode()).toBe('tilt');
+    expect(getJoystickSide()).toBe('left');
+  });
+
+  it('round-trips controlMode and joystickSide', () => {
+    setControlMode('joystick');
+    setJoystickSide('right');
+    resetCacheForTests();
+    expect(getControlMode()).toBe('joystick');
+    expect(getJoystickSide()).toBe('right');
+  });
+
+  it('mergeCloudSave keeps LOCAL control prefs even when cloud differs and wins balance', () => {
+    setControlMode('joystick');
+    setJoystickSide('right');
+    const local = getRawSaveForCloudSync();
+    const cloud = { ...local, controlMode: 'tilt' as const, joystickSide: 'left' as const, balance: local.balance + 999 };
+    const merged = mergeCloudSave(local, cloud);
+    expect(merged.controlMode).toBe('joystick');
+    expect(merged.joystickSide).toBe('right');
+  });
+
+  it('session override drives getEffectiveControlMode without touching the saved pref', () => {
+    setControlMode('tilt');
+    expect(getEffectiveControlMode()).toBe('tilt');
+    setSessionControlMode('joystick');
+    expect(getEffectiveControlMode()).toBe('joystick'); // session wins
+    expect(getControlMode()).toBe('tilt');              // saved pref untouched
+    setSessionControlMode(null);
+    expect(getEffectiveControlMode()).toBe('tilt');      // cleared → back to saved
+  });
+
+  it('resetCacheForTests clears the session override', () => {
+    setSessionControlMode('joystick');
+    resetCacheForTests();
+    expect(getEffectiveControlMode()).toBe('tilt');
   });
 });
