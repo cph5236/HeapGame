@@ -48,11 +48,20 @@ export class InputManager {
   // Platform
   readonly isMobile: boolean;
   tiltPermissionGranted = false;
+  // True once a real deviceorientation event with non-null gamma has arrived. The
+  // only trustworthy signal that tilt actually works — iOS in a cross-origin iframe
+  // (e.g. itch.io) exposes DeviceOrientationEvent but never fires events. The tilt
+  // watchdog uses this to fall back to the joystick.
+  tiltDataReceived = false;
+
+  // True on platforms (iOS 13+) where device-tilt needs a user-gesture permission
+  // grant before any orientation events arrive. The tilt watchdog uses this to wait
+  // for the permission tap instead of falling back prematurely.
+  requiresPermissionGesture = false;
 
   // Internal tilt
   private gamma = 0;
   private tiltListenerAttached = false;
-  private requiresPermissionGesture = false;
 
   // Touch state machine
   private touchState: 'idle' | 'tracking' | 'drag' = 'idle';
@@ -203,16 +212,25 @@ export class InputManager {
     this.placeHeld = false;
   }
 
-  /** Requests DeviceOrientation permission (iOS 13+). No-op on Android. */
-  async requestTiltPermission(): Promise<void> {
-    if (!this.requiresPermissionGesture) return;
+  /** Requests DeviceOrientation permission (iOS 13+). Resolves to whether tilt was
+   *  granted. No-op (returns true) on platforms without the permission gate. Never
+   *  throws — a rejected/blocked request (e.g. cross-origin iframe) resolves false
+   *  so callers can fall back to the joystick. */
+  async requestTiltPermission(): Promise<boolean> {
+    if (!this.requiresPermissionGesture) return true;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await (DeviceOrientationEvent as any).requestPermission();
-    if (result === 'granted') {
-      this.attachTiltListener();
-      this.tiltPermissionGranted = true;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (DeviceOrientationEvent as any).requestPermission();
+      if (result === 'granted') {
+        this.attachTiltListener();
+        this.tiltPermissionGranted = true;
+        return true;
+      }
+    } catch {
+      // Permission API blocked (e.g. cross-origin iframe) — treat as unavailable.
     }
+    return false;
   }
 
   // ── Private ────────────────────────────────────────────────────────────────
@@ -236,7 +254,10 @@ export class InputManager {
   }
 
   private onDeviceOrientation = (e: DeviceOrientationEvent): void => {
-    if (e.gamma !== null) this.gamma = e.gamma;
+    if (e.gamma !== null) {
+      this.gamma = e.gamma;
+      this.tiltDataReceived = true;
+    }
   };
 
   private onTouchStart = (e: TouchEvent): void => {

@@ -493,6 +493,22 @@ export function setJoystickSide(side: 'left' | 'right'): void {
   persist(data);
 }
 
+// Session-only control-mode override (NOT persisted). The tilt-availability
+// watchdog sets this to 'joystick' on devices where tilt produces no data (e.g.
+// iOS inside itch.io's cross-origin iframe), without overwriting the saved pref —
+// so the fallback re-evaluates each launch and an explicit Tilt choice is kept.
+let _sessionControlMode: 'tilt' | 'joystick' | null = null;
+
+export function setSessionControlMode(mode: 'tilt' | 'joystick' | null): void {
+  _sessionControlMode = mode;
+}
+
+/** The control mode in effect right now: the session override if set, else the
+ *  saved pref. Everything that mounts/uses the live controls reads this. */
+export function getEffectiveControlMode(): 'tilt' | 'joystick' {
+  return _sessionControlMode ?? getControlMode();
+}
+
 // ── Sound settings ────────────────────────────────────────────────────────────
 
 export function getSoundSettings(): SoundSettings {
@@ -507,6 +523,6 @@ export function setSoundVolume(cat: keyof SoundSettings, v: number): void {
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
-export function resetCacheForTests(): void { _cache = null; }
+export function resetCacheForTests(): void { _cache = null; _sessionControlMode = null; }
 export function getLegacyPlacedForTests(): PlacedItemSave[] | undefined { return load()._legacyPlaced; }
 export function getSchemaVersionForTests(): number { return load().schemaVersion; }

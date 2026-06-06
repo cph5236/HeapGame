@@ -3,7 +3,8 @@ import Phaser from 'phaser';
 
 import { AudioManager } from '../systems/AudioManager';
 import type { SoundCategory } from '../data/soundDefs';
-import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging, getControlMode, setControlMode, getJoystickSide, setJoystickSide } from '../systems/SaveData';
+import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode } from '../systems/SaveData';
+import { TILT_WATCHDOG_MS } from '../constants';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
@@ -491,13 +492,50 @@ export class MenuScene extends Phaser.Scene {
       }).setOrigin(0.5).setAlpha(0).setDepth(9).setInteractive({ useHandCursor: true });
 
       tiltBtn.on('pointerup', () => {
-        im.requestTiltPermission().then(() => tiltBtn.setVisible(false));
+        im.requestTiltPermission().then((granted) => {
+          tiltBtn.setVisible(false);
+          // iOS: if permission was blocked (e.g. itch.io's cross-origin iframe), or
+          // granted but no orientation data arrives, fall back to the joystick.
+          if (!granted) { this.fallbackToJoystick(); return; }
+          this.time.delayedCall(TILT_WATCHDOG_MS, () => {
+            if (getEffectiveControlMode() === 'tilt' && !im.tiltDataReceived) this.fallbackToJoystick();
+          });
+        });
       });
 
       this.tweens.add({ targets: tiltBtn, alpha: 1, duration: 300, delay: 2000 });
-      tiltBtn.setVisible(getControlMode() === 'tilt');
+      tiltBtn.setVisible(getEffectiveControlMode() === 'tilt');
       this.tiltPrompt = tiltBtn;
     }
+
+    this.startTiltWatchdog(im);
+  }
+
+  /** On mobile in tilt mode, auto-fall back to the joystick if device-tilt never
+   *  delivers data (no gyro, or a sandbox like iOS inside itch.io's cross-origin
+   *  iframe). iOS waits for the permission tap (handled on the prompt button);
+   *  Android / already-granted devices are checked after a short grace period. */
+  private startTiltWatchdog(im: InputManager): void {
+    if (!im.isMobile || getEffectiveControlMode() !== 'tilt') return;
+    if (im.requiresPermissionGesture && !im.tiltPermissionGranted) return; // iOS: driven by the prompt
+    this.time.delayedCall(TILT_WATCHDOG_MS, () => {
+      if (getEffectiveControlMode() === 'tilt' && !im.tiltDataReceived) this.fallbackToJoystick();
+    });
+  }
+
+  /** Switch to the joystick for this session (does NOT overwrite the saved pref),
+   *  hide the tilt prompt, and briefly notify the player. */
+  private fallbackToJoystick(): void {
+    if (getEffectiveControlMode() === 'joystick') return;
+    setSessionControlMode('joystick');
+    this.tiltPrompt?.setVisible(false);
+    const notice = this.add.text(this.scale.width / 2, this.scale.height - 94,
+      'Tilt unavailable — joystick controls enabled', {
+        fontSize: '15px', color: '#ffd070', stroke: '#000000', strokeThickness: 2,
+        align: 'center', wordWrap: { width: this.scale.width - 40 },
+      }).setOrigin(0.5).setDepth(10).setAlpha(0);
+    this.tweens.add({ targets: notice, alpha: 1, duration: 250, hold: 2600, yoyo: true,
+      onComplete: () => notice.destroy() });
   }
 
   // ── Heap picker ──────────────────────────────────────────────────────────
@@ -769,7 +807,9 @@ export class MenuScene extends Phaser.Scene {
     ];
 
     // ── Controls tab content ──────────────────────────────────────────────────────────────────────────
-    let ctrlMode = getControlMode();
+    // Show the mode actually in effect (an auto-fallback session override, if any,
+    // else the saved pref) so the toggle reflects reality after the tilt watchdog.
+    let ctrlMode = getEffectiveControlMode();
     let ctrlSide = getJoystickSide();
 
     const modeLabel = this.add.text(cx - 130, CONTENT_TOP + 20, 'Control Mode', {
@@ -818,8 +858,9 @@ export class MenuScene extends Phaser.Scene {
       this.tiltPrompt?.setVisible(ctrlMode === 'tilt' && im2.isMobile && !im2.tiltPermissionGranted);
     };
 
-    tiltOpt.on('pointerup', () => { ctrlMode = 'tilt'; setControlMode('tilt'); paintMode(); refreshTiltPrompt(); });
-    joyOpt.on('pointerup',  () => { ctrlMode = 'joystick'; setControlMode('joystick'); paintMode(); refreshTiltPrompt(); });
+    // An explicit choice clears any auto-fallback session override (it wins).
+    tiltOpt.on('pointerup', () => { ctrlMode = 'tilt'; setControlMode('tilt'); setSessionControlMode(null); paintMode(); refreshTiltPrompt(); });
+    joyOpt.on('pointerup',  () => { ctrlMode = 'joystick'; setControlMode('joystick'); setSessionControlMode(null); paintMode(); refreshTiltPrompt(); });
     leftOpt.on('pointerup',  () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'left'; setJoystickSide('left'); paintSide(); });
     rightOpt.on('pointerup', () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'right'; setJoystickSide('right'); paintSide(); });
 
@@ -942,7 +983,7 @@ export class MenuScene extends Phaser.Scene {
 
     const overlayText = this.add.text(
       this.scale.width / 2 - 160, this.scale.height / 2 - 130,
-      controlHelpLines(im.isMobile, getControlMode()).join('\n'),
+      controlHelpLines(im.isMobile, getEffectiveControlMode()).join('\n'),
       {
         fontSize: '17px', color: '#ccccdd',
         stroke: '#000000', strokeThickness: 1,
@@ -955,7 +996,7 @@ export class MenuScene extends Phaser.Scene {
 
     const toggle = () => {
       open = !open;
-      if (open) overlayText.setText(controlHelpLines(im.isMobile, getControlMode()).join('\n'));
+      if (open) overlayText.setText(controlHelpLines(im.isMobile, getEffectiveControlMode()).join('\n'));
       for (const p of parts) p.setVisible(open);
     };
 

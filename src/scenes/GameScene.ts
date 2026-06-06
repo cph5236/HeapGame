@@ -12,7 +12,7 @@ import {
   applyPolygonToGenerator,
   polygonTopY,
 } from '../systems/HeapPolygonLoader';
-import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getControlMode } from '../systems/SaveData';
+import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode } from '../systems/SaveData';
 import { HUD } from '../ui/HUD';
 import { InputManager } from '../systems/InputManager';
 import { mountJoystick } from '../systems/mountJoystick';
@@ -832,7 +832,7 @@ export class GameScene extends Phaser.Scene {
       .setStrokeStyle(2, 0x4455aa);
 
     // Controls text
-    const lines = controlHelpLines(isMobile, getControlMode());
+    const lines = controlHelpLines(isMobile, getEffectiveControlMode());
 
     const overlayText = this.add.text(this.scale.width / 2 - 160, this.scale.height / 2 - 120, lines.join('\n'), {
       fontSize: '17px', color: '#ccccdd',

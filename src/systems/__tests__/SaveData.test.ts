@@ -409,6 +409,8 @@ import {
   getJoystickSide,
   setJoystickSide,
   getRawSaveForCloudSync,
+  getEffectiveControlMode,
+  setSessionControlMode,
 } from '../SaveData';
 
 describe('mergeCloudSave', () => {
@@ -603,5 +605,21 @@ describe('control prefs (device-local)', () => {
     const merged = mergeCloudSave(local, cloud);
     expect(merged.controlMode).toBe('joystick');
     expect(merged.joystickSide).toBe('right');
+  });
+
+  it('session override drives getEffectiveControlMode without touching the saved pref', () => {
+    setControlMode('tilt');
+    expect(getEffectiveControlMode()).toBe('tilt');
+    setSessionControlMode('joystick');
+    expect(getEffectiveControlMode()).toBe('joystick'); // session wins
+    expect(getControlMode()).toBe('tilt');              // saved pref untouched
+    setSessionControlMode(null);
+    expect(getEffectiveControlMode()).toBe('tilt');      // cleared → back to saved
+  });
+
+  it('resetCacheForTests clears the session override', () => {
+    setSessionControlMode('joystick');
+    resetCacheForTests();
+    expect(getEffectiveControlMode()).toBe('tilt');
   });
 });

@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { InputManager } from './InputManager';
 import { JoystickController } from './JoystickController';
 import { Player } from '../entities/Player';
-import { getControlMode, getJoystickSide } from './SaveData';
+import { getEffectiveControlMode, getJoystickSide } from './SaveData';
 import { JOYSTICK_RADIUS, JOYSTICK_MARGIN, DASH_BUTTON_RADIUS } from '../constants';
 
 export interface JoystickHandle {
@@ -20,12 +20,14 @@ const JOYSTICK_SUPPRESS_ID = 'joystick';
 export function mountJoystick(
   scene: Phaser.Scene, im: InputManager, player: Player,
 ): JoystickHandle | null {
-  // Sync the singleton's control mode from the saved pref on every gameplay-scene
-  // mount. The InputManager persists across scenes, so this both ACTIVATES joystick
-  // gating (gamma tilt + window gestures off) and RESETS to tilt when the player
-  // switched back. Without this the saved mode never reaches the live input system.
-  im.setControlMode(getControlMode());
-  if (getControlMode() !== 'joystick') return null;
+  // Sync the singleton's control mode from the effective mode (session override
+  // from the tilt watchdog, else the saved pref) on every gameplay-scene mount. The
+  // InputManager persists across scenes, so this both ACTIVATES joystick gating
+  // (gamma tilt + window gestures off) and RESETS to tilt when switched back.
+  // Without this the saved/effective mode never reaches the live input system.
+  const mode = getEffectiveControlMode();
+  im.setControlMode(mode);
+  if (mode !== 'joystick') return null;
 
   const side = getJoystickSide();
   const w = scene.scale.width;

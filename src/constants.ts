@@ -89,6 +89,7 @@ export const JOYSTICK_DOUBLETAP_MS   = 300;  // window for the second tap to fir
 export const JOYSTICK_MARGIN         = 28;   // px from screen edge to stick/button center
 export const JOYSTICK_FORCE_MIN_FRAC = 0.4;  // rex forceMin as fraction of radius (up/down)
 export const DASH_BUTTON_RADIUS      = 34;   // px radius of the on-screen dash button
+export const TILT_WATCHDOG_MS        = 1800; // grace for tilt data before auto-falling back to joystick
 
 export const SWIPE_MIN_DISTANCE_PX     = 30;  // min travel to register a swipe
 export const SWIPE_MAX_TIME_MS         = 750; // swipes faster than this are recognized
