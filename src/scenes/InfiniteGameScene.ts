@@ -14,6 +14,8 @@ import { BridgeSpawner } from '../systems/BridgeSpawner';
 import { PortalManager, findPortalSurfaceFromPolygon } from '../systems/PortalManager';
 import { CameraController } from '../systems/CameraController';
 import { InputManager } from '../systems/InputManager';
+import { mountJoystick } from '../systems/mountJoystick';
+import type { JoystickHandle } from '../systems/mountJoystick';
 import { HUD } from '../ui/HUD';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { LayerGenerator } from '../systems/LayerGenerator';
@@ -67,6 +69,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   private playerOutro!: PlayerOutro;
   private hud!: HUD;
   private im!: InputManager;
+  private joystick: JoystickHandle | null = null;
   private scoreText!: Phaser.GameObjects.Text;
 
   private walkableGroups: Phaser.Physics.Arcade.StaticGroup[] = [];
@@ -275,6 +278,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     }).setScrollFactor(0).setDepth(20);
 
     this.im = InputManager.getInstance();
+    this.joystick = mountJoystick(this, this.im, this.player);
     this.input.keyboard!.on('keydown-R', () => this.placeableManager.openHotbar());
     this.input.keyboard!.on('keydown-F2', () => this.toggleDebugMode());
 
@@ -323,6 +327,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     }
 
     // ── Player + input ────────────────────────────────────────────────────────────
+    this.joystick?.update(delta);
     this.im.update(delta, false);
     this.player.update(delta);
     this.playerAnimator.update(delta, this.player.animState);
@@ -530,6 +535,8 @@ export class InfiniteGameScene extends Phaser.Scene {
   };
 
   shutdown(): void {
+    this.joystick?.destroy();
+    this.joystick = null;
     this.playerAnimator.destroy();
     this.playerOutro.destroy();
     AudioManager.stopAll();
