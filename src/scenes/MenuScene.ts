@@ -3,7 +3,8 @@ import Phaser from 'phaser';
 
 import { AudioManager } from '../systems/AudioManager';
 import type { SoundCategory } from '../data/soundDefs';
-import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, addBalance, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode } from '../systems/SaveData';
+import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode } from '../systems/SaveData';
+import { redeemCode } from '../systems/CodeClient';
 import { TILT_WATCHDOG_MS } from '../constants';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
@@ -428,6 +429,98 @@ export class MenuScene extends Phaser.Scene {
     requestAnimationFrame(() => input.focus());
   }
 
+  private openRedeemDialog(onResult: (result: import('../systems/CodeClient').RedeemResult) => void): void {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = [
+      'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.75)',
+      'display:flex', 'align-items:center', 'justify-content:center',
+      'z-index:9999', 'font-family:monospace',
+    ].join(';');
+
+    const panel = document.createElement('div');
+    panel.style.cssText = [
+      'background:#0d0d20', 'border:2px solid #4488ff', 'border-radius:12px',
+      'padding:28px 22px 22px', 'text-align:center', 'width:300px',
+      'box-shadow:0 0 32px rgba(68,136,255,0.18)', 'box-sizing:border-box',
+    ].join(';');
+
+    const heap = document.createElement('div');
+    heap.style.cssText = 'color:#4488ff;font-size:13px;font-weight:bold;letter-spacing:3px;margin-bottom:6px';
+    heap.textContent = 'REDEEM CODE';
+
+    const subtitle = document.createElement('div');
+    subtitle.style.cssText = 'color:#6699cc;font-size:14px;font-style:italic;margin-bottom:22px';
+    subtitle.textContent = 'Enter a reward code';
+
+    const input = document.createElement('input');
+    input.maxLength = 32;
+    input.autocapitalize = 'characters';
+    input.style.cssText = [
+      'width:100%', 'box-sizing:border-box', 'background:transparent', 'border:none',
+      'border-bottom:2px solid #4488ff', 'color:#ffffff', 'font-size:20px',
+      'text-align:center', 'padding:6px 0 8px', 'font-family:monospace',
+      'outline:none', 'margin-bottom:18px', 'text-transform:uppercase',
+    ].join(';');
+
+    const msg = document.createElement('div');
+    msg.style.cssText = 'min-height:16px;font-size:12px;margin-bottom:14px;color:#88aacc';
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = 'REDEEM';
+    confirmBtn.style.cssText = [
+      'width:100%', 'padding:13px', 'background:#4488ff', 'border:none',
+      'border-radius:8px', 'color:#0a0818', 'font-size:15px', 'font-weight:bold',
+      'font-family:monospace', 'letter-spacing:1px', 'cursor:pointer', 'margin-bottom:10px',
+    ].join(';');
+
+    const cancelEl = document.createElement('div');
+    cancelEl.textContent = 'close';
+    cancelEl.style.cssText = 'color:#556677;font-size:12px;cursor:pointer;letter-spacing:1px';
+
+    panel.append(heap, subtitle, input, msg, confirmBtn, cancelEl);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    this.input.enabled = false;
+
+    const close = (): void => {
+      this.input.enabled = true;
+      if (overlay.parentNode) document.body.removeChild(overlay);
+    };
+
+    let busy = false;
+    const submit = async (): Promise<void> => {
+      if (busy) return;
+      busy = true;
+      confirmBtn.disabled = true;
+      msg.style.color = '#88aacc';
+      msg.textContent = 'Redeeming…';
+      const result = await redeemCode(input.value);
+      onResult(result);
+      if (result.status === 'success') {
+        msg.style.color = '#88ff88';
+        msg.textContent = result.message;
+        setTimeout(close, 900);
+      } else {
+        msg.style.color = '#ff9988';
+        msg.textContent = result.message;
+        busy = false;
+        confirmBtn.disabled = false;
+      }
+    };
+
+    input.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter')  void submit();
+      if (e.key === 'Escape') close();
+    });
+    confirmBtn.addEventListener('click', () => void submit());
+    cancelEl.addEventListener('click', close);
+    overlay.addEventListener('click', (e: MouseEvent) => {
+      if (e.target === overlay) close();
+    });
+
+    requestAnimationFrame(() => input.focus());
+  }
+
   // ── Start / Upgrade prompts ──────────────────────────────────────────────────
 
   private createPrompts(im: InputManager): void {
@@ -753,39 +846,46 @@ export class MenuScene extends Phaser.Scene {
     const controlsTabBg   = this.add.rectangle(tabXs[1], TAB_Y, TAB_W, TAB_H, 0x1a1a2e).setDepth(32).setVisible(false);
     const controlsTabText = this.add.text(tabXs[1], TAB_Y, 'Controls', { fontSize: '13px', color: '#888888' }).setOrigin(0.5).setDepth(33).setVisible(false);
     const devTabBg      = this.add.rectangle(tabXs[2], TAB_Y, TAB_W, TAB_H, 0x1a1a2e).setDepth(32).setVisible(false);
-    const devTabText    = this.add.text(tabXs[2], TAB_Y, 'Dev', { fontSize: '13px', color: '#888888' }).setOrigin(0.5).setDepth(33).setVisible(false);
+    const devTabText    = this.add.text(tabXs[2], TAB_Y, 'Player', { fontSize: '13px', color: '#888888' }).setOrigin(0.5).setDepth(33).setVisible(false);
 
     // ── Tab containers ────────────────────────────────────────────────────────
     const CONTENT_TOP = TAB_Y + TAB_H / 2 + 12;
 
-    // Dev tab content (existing items, repositioned relative to CONTENT_TOP)
-    const coinBg = this.add.rectangle(cx, CONTENT_TOP + 24, 260, 44, 0x1a5c1a)
-      .setDepth(32).setVisible(false).setStrokeStyle(2, 0x44ff44).setInteractive({ useHandCursor: true });
-    const coinLabel = this.add.text(cx, CONTENT_TOP + 24, '+ 500 Coins', {
-      fontSize: '18px', color: '#aaffaa', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
+    // Player tab content — order: Redeem Code, Analytics, Reset (top → bottom)
+
+    // 1. Redeem code (top) — button opens a DOM dialog; result shown below.
+    const codeBtnBg = this.add.rectangle(cx, CONTENT_TOP + 24, 260, 48, 0x1a3a5c)
+      .setDepth(32).setVisible(false).setStrokeStyle(2, 0x4488ff).setInteractive({ useHandCursor: true });
+    const codeBtnLabel = this.add.text(cx, CONTENT_TOP + 24, 'REDEEM CODE', {
+      fontSize: '18px', color: '#aaccff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(33).setVisible(false);
+    const codeResult = this.add.text(cx, CONTENT_TOP + 58, '', {
+      fontSize: '13px', color: '#88ccff', align: 'center',
     }).setOrigin(0.5).setDepth(33).setVisible(false);
 
-    const resetBg = this.add.rectangle(cx, CONTENT_TOP + 88, 260, 52, 0x881111)
-      .setDepth(32).setVisible(false).setStrokeStyle(2, 0xff4444).setInteractive({ useHandCursor: true });
-    const resetLabel = this.add.text(cx, CONTENT_TOP + 88, 'Reset All Data', {
-      fontSize: '20px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(33).setVisible(false);
-    const resetWarning = this.add.text(cx, CONTENT_TOP + 144, 'Clears all coins, upgrades\nand placed blocks.', {
-      fontSize: '14px', color: '#aa8888', align: 'center',
-    }).setOrigin(0.5).setDepth(32).setVisible(false);
-
+    // 2. Analytics checkbox (middle).
     let analyticsEnabled = getVerboseLogging();
-    const analyticsBg = this.add.rectangle(cx, CONTENT_TOP + 202, 260, 48, 0x1a3a1a)
+    const analyticsBg = this.add.rectangle(cx, CONTENT_TOP + 110, 260, 48, 0x1a3a1a)
       .setDepth(32).setVisible(false).setStrokeStyle(2, 0x44aa44).setInteractive({ useHandCursor: true });
-    const analyticsCheckbox = this.add.text(cx - 110, CONTENT_TOP + 202, analyticsEnabled ? '☑' : '☐', {
+    const analyticsCheckbox = this.add.text(cx - 110, CONTENT_TOP + 110, analyticsEnabled ? '☑' : '☐', {
       fontSize: '20px', color: '#44ff44', fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(33).setVisible(false);
-    const analyticsLabel = this.add.text(cx - 35, CONTENT_TOP + 194, 'Send anonymous\ngameplay analytics', {
+    const analyticsLabel = this.add.text(cx - 35, CONTENT_TOP + 102, 'Send anonymous\ngameplay analytics', {
       fontSize: '13px', color: '#aaffaa',
     }).setOrigin(0, 0.5).setDepth(33).setVisible(false);
-    const analyticsHint = this.add.text(cx - 35, CONTENT_TOP + 211, 'Errors are always reported.', {
+    const analyticsHint = this.add.text(cx - 35, CONTENT_TOP + 119, 'Errors are always reported.', {
       fontSize: '11px', color: '#88aa88',
     }).setOrigin(0, 0.5).setDepth(33).setVisible(false);
+
+    // 3. Reset all data (bottom).
+    const resetBg = this.add.rectangle(cx, CONTENT_TOP + 190, 260, 52, 0x881111)
+      .setDepth(32).setVisible(false).setStrokeStyle(2, 0xff4444).setInteractive({ useHandCursor: true });
+    const resetLabel = this.add.text(cx, CONTENT_TOP + 190, 'Reset All Data', {
+      fontSize: '20px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(33).setVisible(false);
+    const resetWarning = this.add.text(cx, CONTENT_TOP + 232, 'Clears all coins, upgrades\nand placed blocks.', {
+      fontSize: '14px', color: '#aa8888', align: 'center',
+    }).setOrigin(0.5).setDepth(32).setVisible(false);
 
     // Sounds tab content — 5 volume sliders
     const vols = AudioManager.getVolumes();
@@ -865,7 +965,7 @@ export class MenuScene extends Phaser.Scene {
     rightOpt.on('pointerup', () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'right'; setJoystickSide('right'); paintSide(); });
 
     // ── Tab switching ─────────────────────────────────────────────────────────
-    const devItems    = [coinBg, coinLabel, resetBg, resetLabel, resetWarning, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint];
+    const devItems    = [codeBtnBg, codeBtnLabel, codeResult, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint, resetBg, resetLabel, resetWarning];
 
     const showSoundsTab = () => {
       soundsTabBg.setFillStyle(0x2244aa);  soundsTabText.setColor('#ffffff').setFontStyle('bold');
@@ -900,10 +1000,16 @@ export class MenuScene extends Phaser.Scene {
     devTabBg.setInteractive({ useHandCursor: true }).on('pointerup', showDevTab);
     devTabText.setInteractive({ useHandCursor: true }).on('pointerup', showDevTab);
 
-    // ── Wire existing Dev tab buttons ─────────────────────────────────────────
-    coinBg.on('pointerup', () => {
-      addBalance(500);
-      this.balanceText.setText(`${getBalance()} coins`);
+    // ── Wire Player tab buttons ───────────────────────────────────────────────
+    codeBtnBg.on('pointerup', () => {
+      this.openRedeemDialog((result) => {
+        codeResult.setText(result.message)
+          .setColor(result.status === 'success' ? '#88ff88' : '#ff9988')
+          .setVisible(true);
+        if (result.status === 'success' && result.reward?.rewardType === 'coins') {
+          this.balanceText.setText(`${getBalance()} coins`);
+        }
+      });
     });
 
     analyticsBg.on('pointerup', () => {
