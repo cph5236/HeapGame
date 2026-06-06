@@ -5,9 +5,11 @@ import type { ScoreDB } from './scoreDb';
 import { heapRoutes } from './routes/heap';
 import { scoreRoutes } from './routes/scores';
 import { logRoutes } from './routes/log';
+import { codeRoutes } from './routes/codes';
 import { requireAdminSecret } from './middleware/adminAuth';
 import { rateLimit, type RateLimiter, setRateLimitSink } from './middleware/rateLimit';
 import type { Sink } from './logging/Sink';
+import type { RewardCodeDB } from './codeDb';
 
 export interface AppOptions {
   /** Comma-separated origin list, or '*' to allow all (dev only). */
@@ -20,7 +22,10 @@ export interface AppOptions {
     place?:  RateLimiter;
     global?: RateLimiter;
     log?:    RateLimiter;
+    codes?:  RateLimiter;
   };
+  /** Reward-code D1 access. If unset, /codes is not mounted. */
+  codeDb?: RewardCodeDB;
   /** Sink for incoming /log entries. If unset, /log is not mounted. */
   logSink?: Sink;
 }
@@ -74,6 +79,15 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
 
   app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink));
   app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink));
+
+  if (opts.codeDb) {
+    // Player redeem endpoint — rate-limited, no admin gate.
+    app.post('/codes/redeem', rateLimit(lim.codes, 'codes-redeem'));
+    // Admin mint + list — behind the admin gate.
+    app.post('/codes', adminGate);
+    app.get ('/codes', adminGate);
+    app.route('/codes', codeRoutes(opts.codeDb, () => opts.logSink));
+  }
 
   if (opts.logSink) {
     app.route('/', logRoutes(() => opts.logSink!));
