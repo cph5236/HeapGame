@@ -1,5 +1,13 @@
 ## BUGS
 
+# Open
+- [ ] **Infinite mode: world doesn't wrap properly.** In InfiniteGameScene the left/right
+  edges don't wrap the player around the way the standard heap does (`applyWorldBoundsX`
+  in [Player.ts](../src/entities/Player.ts) uses `worldWidth`; infinite mode sets
+  `worldWidth = INFINITE_WORLD_WIDTH`). Reproduce: run far to one side in infinite mode —
+  the wrap is missing/incorrect. Investigate the infinite world-width vs. wrap-inset math.
+
+
 > Branch: `fix/playtest-bugs` (PR #36). All fixes below are code-complete and smoke-tested
 > on device (build clean, 708 tests pass). Only #7b remains, intentionally deferred.
 
