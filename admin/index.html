@@ -200,6 +200,7 @@
     const DEFAULT_URL = 'http://localhost:8787';
     const KINDS = ['percher', 'ghost'];
     const FIELDS = ['spawnStartPxAboveFloor', 'spawnEndPxAboveFloor', 'spawnRampPxAboveFloor', 'spawnChanceMin', 'spawnChanceMax'];
+    // Keep in sync with shared/itemIds.ts (server validates reward_id against that list).
     const ITEM_IDS = ['ladder', 'ibeam', 'checkpoint', 'shield', 'revive', 'adrenaline', 'pogo', 'stall'];
 
     function $(id) { return document.getElementById(id); }
