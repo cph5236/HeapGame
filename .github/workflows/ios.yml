@@ -1,0 +1,59 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  ios:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # need HEAD~1 for the version guard
+
+      - name: Version guard
+        id: guard
+        run: bash scripts/ios-version-guard.sh
+
+      - uses: actions/setup-node@v4
+        if: steps.guard.outputs.should_build == 'true'
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.guard.outputs.should_build == 'true'
+        run: npm ci
+
+      - name: Build web bundle (ad-free)
+        if: steps.guard.outputs.should_build == 'true'
+        run: npm run build
+        env:
+          VITE_HEAP_SERVER_URL: ${{ secrets.VITE_HEAP_SERVER_URL }}
+
+      - name: Generate iOS project
+        if: steps.guard.outputs.should_build == 'true'
+        run: npx cap add ios
+
+      - name: Generate app icons
+        if: steps.guard.outputs.should_build == 'true'
+        run: npx @capacitor/assets generate --ios
+
+      - name: Sync web assets into iOS
+        if: steps.guard.outputs.should_build == 'true'
+        run: npx cap sync ios
+
+      - name: Patch Info.plist
+        if: steps.guard.outputs.should_build == 'true'
+        run: bash scripts/ios-patch-plist.sh
+
+      - name: Build & upload to TestFlight
+        if: steps.guard.outputs.should_build == 'true'
+        run: fastlane ios beta
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
