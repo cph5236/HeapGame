@@ -1,0 +1,3 @@
+app_identifier("com.hanlinsoftware.heapgame.app")
+# Apple Team + auth are provided at runtime via the App Store Connect API key
+# (see Fastfile) and the APPLE_TEAM_ID env var — no Apple ID login needed in CI.
