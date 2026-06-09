@@ -83,10 +83,11 @@ job (runs-on: macos-14):
   2. scripts/ios-version-guard.sh → if version unchanged, exit job early (green)
   3. setup-node 24, npm ci
   4. npm run build                        # web bundle, ad-free (no VITE_AD_PROVIDER)
+     env: VITE_HEAP_SERVER_URL=${{ secrets.VITE_HEAP_SERVER_URL }}  # else clients default to localhost
   5. npx cap add ios                      # generate ios/ + pod install
   6. npx @capacitor/assets generate --ios # icons + splash from assets/icon.png
   7. scripts/ios-patch-plist.sh           # portrait, display name, GADApplicationIdentifier,
-                                          #   ITSAppUsesNonExemptEncryption=false, build number
+                                          #   ITSAppUsesNonExemptEncryption=false, rerun-safe build number
   8. npx cap sync ios
   9. fastlane ios beta                    # ASC-API-key sign, archive, upload to TestFlight
 ```
@@ -105,9 +106,11 @@ job (runs-on: macos-14):
 against `git show HEAD~1:package.json`. If equal, it signals the job to stop early
 (green, no build). The user already bumps via `npm run bump` / `npm run version:patch`,
 so **bump + push = build; ordinary commits = skip**. The CI **build number** is
-derived from the GitHub run number (not the version), so it stays monotonic even
-across re-runs of the same version — required because TestFlight rejects duplicate
-`CFBundleVersion`.
+derived from `github.run_number * 100 + github.run_attempt` (not the version), so
+it stays monotonic *and changes on workflow re-runs* — `run_number` alone is reused
+on a rerun, which TestFlight rejects as a duplicate `CFBundleVersion`. Including
+`run_attempt` (which increments per rerun) makes every upload distinct. The `* 100`
+multiplier reserves headroom for up to 99 reruns of a given run before collision.
 
 ## 6. Info.plist patch (the crux of "no committed native code")
 
@@ -120,16 +123,21 @@ code in `ios-patch-plist.sh`, applied after `cap add ios` using `PlistBuddy`
 | `UISupportedInterfaceOrientations` | portrait only | Mirrors Android `screenOrientation="portrait"` |
 | `CFBundleDisplayName` | `Heap` | App name on the home screen |
 | `CFBundleShortVersionString` | `package.json` version (e.g. `0.2.5`) | Marketing version |
-| `CFBundleVersion` | GitHub run number | Monotonic build number (TestFlight requirement) |
+| `CFBundleVersion` | `run_number * 100 + run_attempt` | Monotonic **and rerun-safe** build number; `run_number` alone repeats on a rerun and TestFlight rejects duplicates |
 | `GADApplicationIdentifier` | AdMob official **test app ID** | The `@capacitor-community/admob` pod is still installed by `cap add ios`; the Google Mobile Ads SDK **hard-crashes at launch if this key is absent**, even when no ad is ever requested. The test ID keeps the app ad-free and crash-free. |
 | `ITSAppUsesNonExemptEncryption` | `false` | Auto-clears the export-compliance prompt on each TestFlight upload |
 
 ## 7. Signing & secrets (one-time, requires the Apple account)
 
-- fastlane uses the **App Store Connect API key** with `-allowProvisioningUpdates`
-  (Xcode automatic cloud-managed signing), avoiding the `match` certificate-repo
-  overhead for a solo TestFlight flow.
-- **GitHub Secrets:** `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_API_KEY_P8` (base64-encoded).
+- fastlane uses a **Team-scoped App Store Connect API key** with
+  `-allowProvisioningUpdates` (Xcode automatic cloud-managed signing), avoiding the
+  `match` certificate-repo overhead for a solo TestFlight flow. The key **must be a
+  Team key, not an Individual key** — Individual keys cannot call the provisioning
+  endpoints automatic signing depends on, so an Individual key fails at setup time.
+- `match` is the future fallback if pinned, reproducible certs across machines are
+  ever wanted (e.g. once a Game Center Swift plugin forces a committed `ios/`).
+- **GitHub Secrets:** `VITE_HEAP_SERVER_URL` (production backend URL, same secret the
+  Android job uses), `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_API_KEY_P8` (base64-encoded).
 - **Manual prerequisites** (documented in the setup doc — CI cannot do these):
   1. Enroll in the Apple Developer Program ($99/yr).
   2. Register App ID `com.hanlinsoftware.heapgame.app`.
@@ -163,7 +171,9 @@ code in `ios-patch-plist.sh`, applied after `cap add ios` using `PlistBuddy`
 |------|------------|
 | AdMob pod crash-on-launch (no `GADApplicationIdentifier`) | Patch script injects the AdMob test app ID |
 | WKWebView audio/perf differs from Android WebView | Physical-iPhone smoke test; reactive fix on branch |
-| Duplicate `CFBundleVersion` rejected by TestFlight | Build number derived from monotonic GitHub run number |
+| Duplicate `CFBundleVersion` rejected by TestFlight | Build number = `run_number * 100 + run_attempt` — monotonic *and* distinct on reruns |
+| iOS archive points at `localhost` backend (clients read `VITE_HEAP_SERVER_URL` at build time, `.env` defaults to localhost) | Inject `VITE_HEAP_SERVER_URL` secret in the build step, same as the Android job |
+| Individual ASC API key cannot do provisioning → signing fails at setup | Require a **Team** App Store Connect API key |
 | Wasted macOS runs on every commit | Version-diff guard exits early unless version changed |
 | Missing iOS icons/launch screen | `@capacitor/assets generate --ios` step before archive |
 | Export-compliance prompt blocking upload | `ITSAppUsesNonExemptEncryption=false` in Info.plist |
