@@ -12,7 +12,7 @@ describe('consumable defs ↔ item defs consistency', () => {
   });
 
   it('every behavior maps to a consumable store item', () => {
-    const ids = new Set(consumableIds);
+    const ids = new Set(consumableIds as string[]);
     for (const id of Object.keys(CONSUMABLE_DEFS)) {
       expect(ids.has(id), `behavior ${id} has no consumable item`).toBe(true);
     }

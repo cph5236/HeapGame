@@ -164,6 +164,34 @@
     <button id="createHeap">Create Heap</button>
   </div>
 
+  <div class="section section-codes">
+    <h2>Reward Codes</h2>
+    <div class="row">
+      <div><label>Code</label><input type="text" id="rc-code" placeholder="LAUNCH2026" /></div>
+      <div><label>Reward Type</label>
+        <select id="rc-type">
+          <option value="coins">coins</option>
+          <option value="item">item</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div id="rc-item-wrap" style="display:none"><label>Item</label>
+        <select id="rc-item"></select>
+      </div>
+      <div><label>Amount</label><input type="number" step="1" min="1" id="rc-amount" value="500" /></div>
+    </div>
+    <div class="row">
+      <div><label>Max Redemptions <span class="muted">(0 = unlimited)</span></label><input type="number" step="1" min="0" id="rc-max" value="0" /></div>
+      <div><label>Expires At <span class="muted">(blank = never)</span></label><input type="datetime-local" id="rc-expires" /></div>
+    </div>
+    <button id="rc-create">Mint Code</button>
+    <table style="margin-top:14px">
+      <thead><tr><th>Code</th><th>Reward</th><th>Redeemed</th><th>Expires</th><th>Created</th></tr></thead>
+      <tbody id="rc-tbody"><tr><td colspan="5" class="muted">not loaded</td></tr></tbody>
+    </table>
+  </div>
+
   <div id="status"></div>
 
   <script>
@@ -172,6 +200,8 @@
     const DEFAULT_URL = 'http://localhost:8787';
     const KINDS = ['percher', 'ghost'];
     const FIELDS = ['spawnStartPxAboveFloor', 'spawnEndPxAboveFloor', 'spawnRampPxAboveFloor', 'spawnChanceMin', 'spawnChanceMax'];
+    // Keep in sync with shared/itemIds.ts (server validates reward_id against that list).
+    const ITEM_IDS = ['ladder', 'ibeam', 'checkpoint', 'shield', 'revive', 'adrenaline', 'pogo', 'stall'];
 
     function $(id) { return document.getElementById(id); }
     function serverUrl() { return $('serverUrl').value.replace(/\/$/, ''); }
@@ -434,6 +464,72 @@
       $('createHeap').onclick = onCreateHeap;
     }
 
+    // ────── Reward Codes ─────────────────────────────────────────────────────
+
+    async function loadCodes() {
+      try {
+        const res = await adminFetch('/codes');
+        if (!res.ok) throw new Error('list failed: ' + res.status);
+        const data = await res.json();
+        renderCodesTable(data.codes || []);
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    function renderCodesTable(codes) {
+      const tbody = $('rc-tbody');
+      if (!codes.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="muted">no codes</td></tr>';
+        return;
+      }
+      tbody.innerHTML = codes.map(c => {
+        const reward = c.reward_type === 'coins'
+          ? (c.reward_amount + ' coins')
+          : (c.reward_amount + '× ' + escapeHtml(c.reward_id || '?'));
+        const cap = c.max_redemptions === 0 ? '∞' : c.max_redemptions;
+        return '<tr>'
+          + '<td>' + escapeHtml(c.code) + '</td>'
+          + '<td>' + reward + '</td>'
+          + '<td>' + c.redeemed_count + ' / ' + cap + '</td>'
+          + '<td>' + escapeHtml(c.expires_at || '—') + '</td>'
+          + '<td>' + escapeHtml(c.created_at) + '</td>'
+          + '</tr>';
+      }).join('');
+    }
+
+    async function onCreateCode() {
+      const code = $('rc-code').value.trim().toUpperCase();
+      const rewardType = $('rc-type').value;
+      const rewardAmount = parseInt($('rc-amount').value, 10);
+      const maxRedemptions = parseInt($('rc-max').value, 10) || 0;
+      const expiresRaw = $('rc-expires').value;
+      const expiresAt = expiresRaw ? new Date(expiresRaw).toISOString() : null;
+      if (!code) { setStatus('code required', 'err'); return; }
+      const body = { code, rewardType, rewardAmount, maxRedemptions, expiresAt };
+      if (rewardType === 'item') body.rewardId = $('rc-item').value;
+      try {
+        const res = await adminFetch('/codes', { method: 'POST', body: JSON.stringify(body) });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error('mint failed: ' + res.status + ' ' + (err.error || ''));
+        }
+        setStatus('minted ' + code, 'ok');
+        loadCodes();
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    function bootRewardCodes() {
+      $('rc-item').innerHTML = ITEM_IDS.map(id => '<option value="' + id + '">' + id + '</option>').join('');
+      $('rc-type').onchange = () => {
+        $('rc-item-wrap').style.display = $('rc-type').value === 'item' ? '' : 'none';
+      };
+      $('rc-create').onclick = onCreateCode;
+      loadCodes();
+    }
+
     // ────── Boot ───────────────────────────────────────────────────────────
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -441,6 +537,7 @@
       bootHeapsList();
       bootEditHeap();
       bootCreateHeap();
+      bootRewardCodes();
     });
   </script>
 </body>

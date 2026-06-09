@@ -1,10 +1,12 @@
 // src/data/itemDefs.ts
 
+import type { ItemId } from '../../shared/itemIds';
+
 // 'cosmetic' is reserved for a future store category (no items/handlers yet).
 export type ItemCategory = 'placeable' | 'consumable' | 'cosmetic';
 
 export interface Item {
-  id:             string;
+  id:             ItemId;
   name:           string;
   description:    string;
   cost:           number;
