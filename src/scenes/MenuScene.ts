@@ -339,6 +339,19 @@ export class MenuScene extends Phaser.Scene {
     this.playerNameText.on('pointerup',   onTap);
   }
 
+  /**
+   * Gate ALL Phaser input for this scene while a DOM modal (name editor, redeem
+   * dialog) is open. `this.input.enabled` only covers the pointer plugin; the
+   * menu's keyboard shortcuts live on `this.input.keyboard`, which has its own
+   * `enabled` flag — without muting it, typing a code (e.g. "LAUNCH") fires
+   * U→Upgrades, S→Store, H→HeapSelect, L→Leaderboard, etc. behind the modal.
+   * The DOM <input> has its own listeners and keeps working regardless.
+   */
+  private setMenuInputEnabled(enabled: boolean): void {
+    this.input.enabled = enabled;
+    if (this.input.keyboard) this.input.keyboard.enabled = enabled;
+  }
+
   private openNameDialog(): void {
     const current = getPlayerName();
 
@@ -396,10 +409,10 @@ export class MenuScene extends Phaser.Scene {
     panel.append(heap, subtitle, input, counterRow, confirmBtn, cancelEl);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
-    this.input.enabled = false;
+    this.setMenuInputEnabled(false);
 
     const close = (): void => {
-      this.input.enabled = true;
+      this.setMenuInputEnabled(true);
       document.body.removeChild(overlay);
     };
 
@@ -480,10 +493,10 @@ export class MenuScene extends Phaser.Scene {
     panel.append(heap, subtitle, input, msg, confirmBtn, cancelEl);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
-    this.input.enabled = false;
+    this.setMenuInputEnabled(false);
 
     const close = (): void => {
-      this.input.enabled = true;
+      this.setMenuInputEnabled(true);
       if (overlay.parentNode) document.body.removeChild(overlay);
     };
 
