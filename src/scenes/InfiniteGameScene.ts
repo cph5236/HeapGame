@@ -277,6 +277,8 @@ export class InfiniteGameScene extends Phaser.Scene {
       stroke: '#000000', strokeThickness: 2,
     }).setScrollFactor(0).setDepth(20);
 
+    this.createMenuButton();
+
     this.im = InputManager.getInstance();
     this.joystick = mountJoystick(this, this.im, this.player);
     this.input.keyboard!.on('keydown-R', () => this.placeableManager.openHotbar());
@@ -308,6 +310,38 @@ export class InfiniteGameScene extends Phaser.Scene {
         if (rows.length >= 2 && polygon.length >= 3) gen.applyBandWithRows(bandTop, rows, polygon);
       }
     }
+  }
+
+  private createMenuButton(): void {
+    const bx = this.scale.width - 22;
+    const by = 22;
+
+    const btnGfx = this.add.graphics().setScrollFactor(0).setDepth(26);
+    btnGfx.fillStyle(0x000000, 0.65);
+    btnGfx.fillCircle(bx, by, 14);
+    btnGfx.lineStyle(2, 0x8899bb, 1);
+    btnGfx.strokeCircle(bx, by, 14);
+
+    this.add.text(bx, by, '☰', {
+      fontSize: '16px', color: '#ffffff', fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(27);
+
+    const hitZone = this.add.zone(bx, by, 40, 40).setScrollFactor(0).setDepth(27)
+      .setInteractive({ useHandCursor: true });
+    hitZone.on('pointerup', () => this.openPauseMenu());
+
+    this.input.keyboard?.on('keydown-ESC', () => this.openPauseMenu());
+    this.input.keyboard?.on('keydown-P',   () => this.openPauseMenu());
+  }
+
+  private openPauseMenu(): void {
+    if (this.scene.isActive('PauseScene')) return;
+    this.scene.launch('PauseScene', {
+      gameSceneKey: this.scene.key,
+      isMobile: InputManager.getInstance().isMobile,
+    });
+    this.scene.pause();
   }
 
   update(_time: number, delta: number): void {

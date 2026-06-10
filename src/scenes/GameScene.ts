@@ -17,7 +17,6 @@ import { HUD } from '../ui/HUD';
 import { InputManager } from '../systems/InputManager';
 import { mountJoystick } from '../systems/mountJoystick';
 import type { JoystickHandle } from '../systems/mountJoystick';
-import { buildControlsOverlay, type ControlsOverlay } from '../ui/buildControlsOverlay';
 import { getLogger } from '../logging';
 import {
   WORLD_WIDTH,
@@ -67,8 +66,6 @@ export class GameScene extends Phaser.Scene {
   private scoreText!: Phaser.GameObjects.Text;
   private placeBtnBg?: Phaser.GameObjects.Rectangle;
   private placeBtnLabel?: Phaser.GameObjects.Text;
-  private infoOverlay?: ControlsOverlay;
-  private infoOpen = false;
   private blockPlaced: boolean = false;
   private highestGeneratedY: number = 0;
   private spawnY: number = 0;
@@ -120,7 +117,6 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.blockPlaced = false;
-    this.infoOpen = false;
     this._runKills     = {};
     this._runStartTime = null;
     this._playerDead   = false;
@@ -349,8 +345,8 @@ export class GameScene extends Phaser.Scene {
     // HUD: ability indicators (dash bar, air jumps, wall jump)
     this.hud = new HUD(this, this.player, this.placeableManager);
 
-    // Info button (ⓘ) — top-right corner
-    this.createInfoButton(im.isMobile);
+    // Pause menu button (☰) — top-right corner
+    this.createMenuButton();
 
     // When the run ends we launch ScoreScene and pause this scene. Phaser's pause
     // halts update() but leaves looping sounds playing, so the trash-wall rumble and
@@ -798,39 +794,37 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private createInfoButton(isMobile: boolean): void {
+  private createMenuButton(): void {
     const bx = this.scale.width - 22;
     const by = 22;
 
-    // Circle background
     const btnGfx = this.add.graphics().setScrollFactor(0).setDepth(26);
     btnGfx.fillStyle(0x000000, 0.65);
     btnGfx.fillCircle(bx, by, 14);
     btnGfx.lineStyle(2, 0x8899bb, 1);
     btnGfx.strokeCircle(bx, by, 14);
 
-    // "?" label
-    this.add.text(bx, by, '?', {
+    // ☰ hamburger glyph
+    this.add.text(bx, by, '☰', {
       fontSize: '16px', color: '#ffffff', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(27);
 
-    // Invisible interactive hit zone
-    const hitZone = this.add.zone(bx, by, 36, 36).setScrollFactor(0).setDepth(27);
-    hitZone.setInteractive({ useHandCursor: true });
-    hitZone.on('pointerup', () => this.toggleInfoOverlay());
+    const hitZone = this.add.zone(bx, by, 40, 40).setScrollFactor(0).setDepth(27)
+      .setInteractive({ useHandCursor: true });
+    hitZone.on('pointerup', () => this.openPauseMenu());
 
-    // Responsive, content-sized controls overlay (shared with MenuScene).
-    this.infoOverlay = buildControlsOverlay(this, {
-      isMobile,
-      depth: 28,
-      onBackgroundTap: () => this.toggleInfoOverlay(),
-    });
+    this.input.keyboard?.on('keydown-ESC', () => this.openPauseMenu());
+    this.input.keyboard?.on('keydown-P',   () => this.openPauseMenu());
   }
 
-  private toggleInfoOverlay(): void {
-    this.infoOpen = !this.infoOpen;
-    this.infoOverlay?.setOpen(this.infoOpen);
+  private openPauseMenu(): void {
+    if (this.scene.isActive('PauseScene')) return; // guard against double-open
+    this.scene.launch('PauseScene', {
+      gameSceneKey: this.scene.key,
+      isMobile: InputManager.getInstance().isMobile,
+    });
+    this.scene.pause();
   }
 
   shutdown(): void {

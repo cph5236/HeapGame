@@ -23,5 +23,12 @@
   by both MenuScene and GameScene. Verified via scene-preview at iphone14 (390px).
 
 # Gameplay
-
-
+- [x] **In-game pause menu + main-menu consolidation.** Replaced the in-game `?` button
+  with a top-right ☰ that pauses the game and opens a `PauseScene` overlay
+  (Resume / Controls / Volume / Exit to Main Menu, with an exit confirm); Esc/P also
+  toggle it. Added to both GameScene and InfiniteGameScene. On the main menu, removed the
+  standalone `?`, moved the settings button to the top-right as a ☰, and folded the
+  mode-aware controls help into the settings Controls tab. Extracted a shared
+  [buildVolumePanel](../src/ui/buildVolumePanel.ts) (volume sliders) reused by MenuScene +
+  PauseScene. Spec/plan in docs/superpowers. _(needs device smoke: pause-freeze, sub-views,
+  Controls-tab help fit on mobile)_
