@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 
 
 import { AudioManager } from '../systems/AudioManager';
-import type { SoundCategory } from '../data/soundDefs';
 import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode } from '../systems/SaveData';
 import { redeemCode, type RedeemResult } from '../systems/CodeClient';
 import { TILT_WATCHDOG_MS } from '../constants';
@@ -10,7 +9,8 @@ import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { formatDifficulty } from '../ui/DifficultyStars';
-import { buildControlsOverlay } from '../ui/buildControlsOverlay';
+import { createVolumeSlider } from '../ui/buildVolumePanel';
+import { controlHelpLines } from '../ui/controlHelp';
 import { loadGameAssets } from './loadGameAssets';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
@@ -40,16 +40,14 @@ export class MenuScene extends Phaser.Scene {
   private leaderboardIcon!: Phaser.GameObjects.Text;
 
   private _forceSettingsOpen = false;
-  private _forceInfoOpen     = false;
   private tiltPrompt?: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'MenuScene' });
   }
 
-  init(data: { forceSettingsOpen?: boolean; forceInfoOpen?: boolean } = {}): void {
+  init(data: { forceSettingsOpen?: boolean } = {}): void {
     this._forceSettingsOpen = data.forceSettingsOpen ?? false;
-    this._forceInfoOpen     = data.forceInfoOpen     ?? false;
   }
 
   // On short screens, shift the button group up so coins/name/settings fit below
@@ -95,7 +93,6 @@ export class MenuScene extends Phaser.Scene {
     this.createPrompts(im);
     this.createHeapPicker();
     this.createSettingsButton();
-    this.createInfoButton();
     this.createVersionLabel();
     if (!im.isMobile) this.createHotkeyLegend();
     this.runEntranceSequence();
@@ -759,72 +756,19 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5, 0.5).setDepth(9);
   }
 
-  private createVolumeSlider(
-    x: number, y: number, labelText: string,
-    cat: SoundCategory | 'master', initialValue: number, depth: number,
-  ): Phaser.GameObjects.GameObject[] {
-    const TRACK_W = 220;
-    const TRACK_H = 6;
-    const THUMB_R = 9;
-
-    const label = this.add.text(x - TRACK_W / 2, y - 14, labelText, {
-      fontSize: '13px', color: '#aaaacc',
-    }).setOrigin(0, 0.5).setDepth(depth);
-
-    const track = this.add.rectangle(x, y, TRACK_W, TRACK_H, 0x334466)
-      .setDepth(depth);
-
-    const fill = this.add.rectangle(
-      x - TRACK_W / 2 + (TRACK_W * initialValue) / 2, y, TRACK_W * initialValue, TRACK_H, 0x4466cc,
-    ).setDepth(depth);
-
-    const thumb = this.add.circle(x - TRACK_W / 2 + TRACK_W * initialValue, y, THUMB_R, 0x6688ff)
-      .setDepth(depth + 1).setInteractive({ draggable: true, useHandCursor: true });
-
-    const updateThumb = (newValue: number) => {
-      const clamped = Math.max(0, Math.min(1, newValue));
-      const thumbX  = x - TRACK_W / 2 + TRACK_W * clamped;
-      thumb.setPosition(thumbX, y);
-      fill.setPosition(x - TRACK_W / 2 + (TRACK_W * clamped) / 2, y);
-      fill.setSize(TRACK_W * clamped, TRACK_H);
-      AudioManager.setCategoryVolume(cat, clamped);
-    };
-
-    this.input.setDraggable(thumb);
-    thumb.on('drag', (_ptr: Phaser.Input.Pointer, dragX: number) => {
-      const newValue = (dragX - (x - TRACK_W / 2)) / TRACK_W;
-      updateThumb(newValue);
-    });
-
-    // Tapping anywhere on the track jumps the volume to that position. The track
-    // sits above the (now-interactive) panel, so it receives the click directly.
-    // Use a taller hit area than the 6px visual track for a comfortable tap target.
-    track.setInteractive({
-      hitArea: new Phaser.Geom.Rectangle(0, -(28 - TRACK_H) / 2, TRACK_W, 28),
-      hitAreaCallback: Phaser.Geom.Rectangle.Contains,
-      useHandCursor: true,
-    });
-    track.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
-      updateThumb((ptr.x - (x - TRACK_W / 2)) / TRACK_W);
-    });
-
-    [label, track, fill, thumb].forEach(o => o.setVisible(false));
-    return [label, track, fill, thumb];
-  }
-
   private createSettingsButton(): void {
     const bx = this.scale.width - 22;
-    const by = this.scale.height - 22;
+    const by = 22;
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2;
 
-    // ── Gear button ──────────────────────────────────────────────────────────
+    // ── Menu button ──────────────────────────────────────────────────────────
     const btnGfx = this.add.graphics().setDepth(20);
     btnGfx.fillStyle(0x000000, 0.65);
     btnGfx.fillCircle(bx, by, 14);
     btnGfx.lineStyle(2, 0x8899bb, 1);
     btnGfx.strokeCircle(bx, by, 14);
-    this.add.text(bx, by, '⚙', { fontSize: '16px', color: '#ddddff' }).setOrigin(0.5).setDepth(20);
+    this.add.text(bx, by, '☰', { fontSize: '16px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5).setDepth(20);
     const hitZone = this.add.zone(bx, by, 36, 36).setDepth(20).setInteractive({ useHandCursor: true });
 
     // ── Overlay + panel ───────────────────────────────────────────────────────
@@ -906,12 +850,12 @@ export class MenuScene extends Phaser.Scene {
     const SLIDER_X = cx;
     const DIVIDER_Y = CONTENT_TOP + 66;
 
-    const masterSliderParts = this.createVolumeSlider(SLIDER_X, CONTENT_TOP + 24, 'MASTER', 'master', vols.master, SLIDER_DEPTH);
+    const masterSliderParts = createVolumeSlider(this, SLIDER_X, CONTENT_TOP + 24, 'MASTER', 'master', vols.master, SLIDER_DEPTH);
     const divider = this.add.rectangle(cx, DIVIDER_Y, 280, 1, 0x334466).setDepth(SLIDER_DEPTH).setVisible(false);
-    const musicSliderParts   = this.createVolumeSlider(SLIDER_X, CONTENT_TOP + 96,  'Music',        'music',     vols.music,     SLIDER_DEPTH);
-    const playerSliderParts  = this.createVolumeSlider(SLIDER_X, CONTENT_TOP + 150, 'Player SFX',   'playerSfx', vols.playerSfx, SLIDER_DEPTH);
-    const enemySliderParts   = this.createVolumeSlider(SLIDER_X, CONTENT_TOP + 204, 'Enemy SFX',    'enemySfx',  vols.enemySfx,  SLIDER_DEPTH);
-    const envSliderParts     = this.createVolumeSlider(SLIDER_X, CONTENT_TOP + 258, 'Environment',  'envSfx',    vols.envSfx,    SLIDER_DEPTH);
+    const musicSliderParts   = createVolumeSlider(this, SLIDER_X, CONTENT_TOP + 96,  'Music',        'music',     vols.music,     SLIDER_DEPTH);
+    const playerSliderParts  = createVolumeSlider(this, SLIDER_X, CONTENT_TOP + 150, 'Player SFX',   'playerSfx', vols.playerSfx, SLIDER_DEPTH);
+    const enemySliderParts   = createVolumeSlider(this, SLIDER_X, CONTENT_TOP + 204, 'Enemy SFX',    'enemySfx',  vols.enemySfx,  SLIDER_DEPTH);
+    const envSliderParts     = createVolumeSlider(this, SLIDER_X, CONTENT_TOP + 258, 'Environment',  'envSfx',    vols.envSfx,    SLIDER_DEPTH);
 
     const soundsItems: Phaser.GameObjects.GameObject[] = [
       divider,
@@ -922,6 +866,7 @@ export class MenuScene extends Phaser.Scene {
     // ── Controls tab content ──────────────────────────────────────────────────────────────────────────
     // Show the mode actually in effect (an auto-fallback session override, if any,
     // else the saved pref) so the toggle reflects reality after the tilt watchdog.
+    const im = InputManager.getInstance();
     let ctrlMode = getEffectiveControlMode();
     let ctrlSide = getJoystickSide();
 
@@ -945,9 +890,9 @@ export class MenuScene extends Phaser.Scene {
       fontSize: '15px', color: '#888888', backgroundColor: '#1a1a2e', padding: { x: 10, y: 4 },
     }).setOrigin(0.5).setDepth(33).setVisible(false).setInteractive({ useHandCursor: true });
 
-    const ctrlHint = this.add.text(cx, CONTENT_TOP + 120,
-      'Joystick moves left / right. Tap or swipe up to\njump; push down to dive. Dash button or double-tap.\nJoystick up / down on ladders.',
-      { fontSize: '12px', color: '#8888aa', align: 'center' },
+    const ctrlHint = this.add.text(cx, CONTENT_TOP + 108,
+      controlHelpLines(im.isMobile, ctrlMode).join('\n'),
+      { fontSize: '11px', color: '#aaaacc', align: 'left', lineSpacing: 3 },
     ).setOrigin(0.5, 0).setDepth(33).setVisible(false);
 
     const controlsItems = [modeLabel, tiltOpt, joyOpt, sideLabel, leftOpt, rightOpt, ctrlHint];
@@ -957,6 +902,7 @@ export class MenuScene extends Phaser.Scene {
       joyOpt.setColor(ctrlMode === 'joystick' ? '#ffffff' : '#888888').setBackgroundColor(ctrlMode === 'joystick' ? '#2244aa' : '#1a1a2e').setFontStyle(ctrlMode === 'joystick' ? 'bold' : 'normal');
       const sideDim = ctrlMode !== 'joystick';
       [sideLabel, leftOpt, rightOpt].forEach(o => o.setAlpha(sideDim ? 0.4 : 1));
+      ctrlHint.setText(controlHelpLines(im.isMobile, ctrlMode).join('\n'));
     };
     const paintSide = () => {
       leftOpt.setColor(ctrlSide === 'left' ? '#ffffff' : '#888888').setBackgroundColor(ctrlSide === 'left' ? '#2244aa' : '#1a1a2e').setFontStyle(ctrlSide === 'left' ? 'bold' : 'normal');
@@ -1068,42 +1014,6 @@ export class MenuScene extends Phaser.Scene {
         this.scene.restart();
       }
     });
-  }
-
-  private createInfoButton(): void {
-    const im = InputManager.getInstance();
-    const bx = this.scale.width - 22;
-    const by = 22;
-
-    // Circle background
-    const btnGfx = this.add.graphics().setScrollFactor(0).setDepth(12);
-    btnGfx.fillStyle(0x000000, 0.65);
-    btnGfx.fillCircle(bx, by, 14);
-    btnGfx.lineStyle(2, 0x8899bb, 1);
-    btnGfx.strokeCircle(bx, by, 14);
-
-    // '?' label
-    this.add.text(bx, by, '?', {
-      fontSize: '16px', color: '#ffffff', fontStyle: 'bold',
-      stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(13);
-
-    // Invisible hit zone
-    const hitZone = this.add.zone(bx, by, 36, 36).setScrollFactor(0).setDepth(13);
-    hitZone.setInteractive({ useHandCursor: true });
-
-    // Responsive, content-sized controls overlay (shared with the game scenes).
-    let open = false;
-    const toggle = () => { open = !open; overlay.setOpen(open); };
-    const overlay = buildControlsOverlay(this, {
-      isMobile: im.isMobile,
-      depth: 14,
-      onBackgroundTap: toggle,
-    });
-
-    hitZone.on('pointerup', toggle);
-
-    if (this._forceInfoOpen) this.time.delayedCall(2200, toggle);
   }
 
   // ── Version label ────────────────────────────────────────────────────────────
