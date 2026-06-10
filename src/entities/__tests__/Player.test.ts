@@ -30,6 +30,10 @@ import {
   DASH_COOLDOWN_MS,
   WALL_JUMP_COOLDOWN_MS,
   PLAYER_AIR_MAX_SPEED,
+  WORLD_WIDTH,
+  SKY_PAD,
+  INFINITE_WORLD_WIDTH,
+  INFINITE_EDGE_PAD,
 } from '../../constants';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -1908,6 +1912,64 @@ describe('Player — revive', () => {
     player.armRevive();
     expect(player.consumeRevive()).toBe(true);
     expect(player.consumeRevive()).toBe(false);
+  });
+});
+
+// ── World wrap (X) ─────────────────────────────────────────────────────────────
+// The horizontal wrap pad must be a fixed pixel margin, NOT a fraction of the
+// world width. Infinite mode sets worldWidth = INFINITE_WORLD_WIDTH (~3780px);
+// deriving the pad as SKY_PAD * worldWidth (~945px) lets the player run far off
+// the edge into empty space before wrapping. The pad should track the edge pad.
+
+describe('Player — world wrap (X)', () => {
+  it('standard heap: wraps to the right edge when past the left sky pad', async () => {
+    const { player, sprite } = await makePlayer({ onGround: true });
+    sprite.x = -(SKY_PAD * WORLD_WIDTH) - 10; // just past the pad
+    player.update(16);
+    expect(sprite.x).toBeCloseTo(WORLD_WIDTH, 5);
+    expect(player.wrapDir).toBe(-1);
+  });
+
+  it('standard heap: does NOT wrap while still within the sky pad', async () => {
+    const { player, sprite } = await makePlayer({ onGround: true });
+    const x = -(SKY_PAD * WORLD_WIDTH) + 10; // still inside the pad
+    sprite.x = x;
+    player.update(16);
+    expect(sprite.x).toBeCloseTo(x, 5);
+    expect(player.wrapDir).toBe(0);
+  });
+
+  it('infinite mode: wraps off the right edge once past the fixed edge pad', async () => {
+    const { player, sprite } = await makePlayer({ onGround: true });
+    player.worldWidth = INFINITE_WORLD_WIDTH;
+    player.wrapPadX    = INFINITE_EDGE_PAD;
+    // 200px past the right world edge — beyond the 100px pad. Under the old
+    // fraction-based pad (~945px) this would NOT wrap; it must now.
+    sprite.x = INFINITE_WORLD_WIDTH + 200;
+    player.update(16);
+    expect(sprite.x).toBeCloseTo(0, 5);
+    expect(player.wrapDir).toBe(1);
+  });
+
+  it('infinite mode: wraps off the left edge once past the fixed edge pad', async () => {
+    const { player, sprite } = await makePlayer({ onGround: true });
+    player.worldWidth = INFINITE_WORLD_WIDTH;
+    player.wrapPadX    = INFINITE_EDGE_PAD;
+    sprite.x = -INFINITE_EDGE_PAD - 50;
+    player.update(16);
+    expect(sprite.x).toBeCloseTo(INFINITE_WORLD_WIDTH, 5);
+    expect(player.wrapDir).toBe(-1);
+  });
+
+  it('infinite mode: does NOT wrap while still inside the edge pad', async () => {
+    const { player, sprite } = await makePlayer({ onGround: true });
+    player.worldWidth = INFINITE_WORLD_WIDTH;
+    player.wrapPadX    = INFINITE_EDGE_PAD;
+    const x = INFINITE_WORLD_WIDTH + INFINITE_EDGE_PAD - 10; // inside the pad
+    sprite.x = x;
+    player.update(16);
+    expect(sprite.x).toBeCloseTo(x, 5);
+    expect(player.wrapDir).toBe(0);
   });
 });
 

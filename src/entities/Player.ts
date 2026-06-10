@@ -100,6 +100,11 @@ export class Player {
 
   /** Override in scenes that use a wider world (e.g. InfiniteGameScene). */
   public worldWidth: number = WORLD_WIDTH;
+  /** Px of open space beyond each world edge the player travels before wrapping
+   *  to the far side. A fixed pixel margin — NOT a fraction of worldWidth — so a
+   *  wide world (InfiniteGameScene's INFINITE_WORLD_WIDTH) doesn't blow the margin
+   *  up to hundreds of px. Defaults to the standard heap's sky pad. */
+  public wrapPadX: number = SKY_PAD * WORLD_WIDTH;
   /** Floor Y for the current heap — used as the ground fallback. */
   public worldHeight: number = MOCK_HEAP_HEIGHT_PX;
 
@@ -271,10 +276,7 @@ export class Player {
     this.wallJumpCooldown   = 0;
     this.coyoteTimer        = 120;
     // Still allow X-wrap so player doesn't get stuck at world edge on ladder
-    if (this.sprite.x < -SKY_PAD * this.worldWidth)
-      this.sprite.x = (1 - SKY_INSET) * this.worldWidth;
-    else if (this.sprite.x > (1 + SKY_PAD) * this.worldWidth)
-      this.sprite.x = SKY_INSET * this.worldWidth;
+    this.applyWorldBoundsX();
     return true;
   }
 
@@ -567,10 +569,10 @@ export class Player {
   /** Extended sky pad on each side; landing inset from the far edge. */
   private applyWorldBoundsX(): void {
     this.wrapDir = 0;
-    if (this.sprite.x < -SKY_PAD * this.worldWidth) {
+    if (this.sprite.x < -this.wrapPadX) {
       this.sprite.x = (1 - SKY_INSET) * this.worldWidth;
       this.wrapDir = -1;
-    } else if (this.sprite.x > (1 + SKY_PAD) * this.worldWidth) {
+    } else if (this.sprite.x > this.worldWidth + this.wrapPadX) {
       this.sprite.x = SKY_INSET * this.worldWidth;
       this.wrapDir = 1;
     }

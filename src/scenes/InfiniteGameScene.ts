@@ -165,6 +165,9 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
     this.player = new Player(this, gapX, this.spawnY, this.playerConfig);
     this.player.worldWidth = INFINITE_WORLD_WIDTH;
+    // Wrap when the player crosses the edge pad — a fixed margin, not a fraction
+    // of the wide infinite world (which would push the wrap point ~945px off-edge).
+    this.player.wrapPadX = INFINITE_EDGE_PAD;
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
     this.playerOutro = new PlayerOutro(this, this.player.sprite);
 
