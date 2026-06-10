@@ -12,12 +12,12 @@ import {
   applyPolygonToGenerator,
   polygonTopY,
 } from '../systems/HeapPolygonLoader';
-import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode } from '../systems/SaveData';
+import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades } from '../systems/SaveData';
 import { HUD } from '../ui/HUD';
 import { InputManager } from '../systems/InputManager';
 import { mountJoystick } from '../systems/mountJoystick';
 import type { JoystickHandle } from '../systems/mountJoystick';
-import { controlHelpLines } from '../ui/controlHelp';
+import { buildControlsOverlay, type ControlsOverlay } from '../ui/buildControlsOverlay';
 import { getLogger } from '../logging';
 import {
   WORLD_WIDTH,
@@ -67,7 +67,7 @@ export class GameScene extends Phaser.Scene {
   private scoreText!: Phaser.GameObjects.Text;
   private placeBtnBg?: Phaser.GameObjects.Rectangle;
   private placeBtnLabel?: Phaser.GameObjects.Text;
-  private infoOverlayParts: (Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text)[] = [];
+  private infoOverlay?: ControlsOverlay;
   private infoOpen = false;
   private blockPlaced: boolean = false;
   private highestGeneratedY: number = 0;
@@ -121,7 +121,6 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.blockPlaced = false;
     this.infoOpen = false;
-    this.infoOverlayParts = [];
     this._runKills     = {};
     this._runStartTime = null;
     this._playerDead   = false;
@@ -821,33 +820,17 @@ export class GameScene extends Phaser.Scene {
     hitZone.setInteractive({ useHandCursor: true });
     hitZone.on('pointerup', () => this.toggleInfoOverlay());
 
-    // Overlay background (full-screen dim)
-    const overlayBg = this.add.rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x000000, 0.72)
-      .setScrollFactor(0).setDepth(28).setVisible(false).setInteractive();
-    overlayBg.on('pointerup', () => this.toggleInfoOverlay());
-
-    // Panel
-    const panel = this.add.rectangle(this.scale.width / 2, this.scale.height / 2, 380, 320, 0x0d0d20)
-      .setScrollFactor(0).setDepth(29).setVisible(false)
-      .setStrokeStyle(2, 0x4455aa);
-
-    // Controls text
-    const lines = controlHelpLines(isMobile, getEffectiveControlMode());
-
-    const overlayText = this.add.text(this.scale.width / 2 - 160, this.scale.height / 2 - 120, lines.join('\n'), {
-      fontSize: '17px', color: '#ccccdd',
-      stroke: '#000000', strokeThickness: 1,
-      lineSpacing: 5,
-    }).setScrollFactor(0).setDepth(30).setVisible(false);
-
-    this.infoOverlayParts = [overlayBg, panel, overlayText as Phaser.GameObjects.Text];
+    // Responsive, content-sized controls overlay (shared with MenuScene).
+    this.infoOverlay = buildControlsOverlay(this, {
+      isMobile,
+      depth: 28,
+      onBackgroundTap: () => this.toggleInfoOverlay(),
+    });
   }
 
   private toggleInfoOverlay(): void {
     this.infoOpen = !this.infoOpen;
-    for (const part of this.infoOverlayParts) {
-      part.setVisible(this.infoOpen);
-    }
+    this.infoOverlay?.setOpen(this.infoOpen);
   }
 
   shutdown(): void {
