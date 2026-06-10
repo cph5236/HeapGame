@@ -13,8 +13,14 @@ the main menu.
 
 ## Goal
 
-Replace the in-game `?` button in **GameScene** and **InfiniteGameScene** with a
-**☰ Menu** button that pauses the game and opens a panel offering:
+Two related changes, unified around a single in-game/menu entry point:
+
+A shared visual: a **top-right hamburger (☰) icon** is the single menu entry point on
+both the main menu and in-game.
+
+**A. In-game pause menu.** Replace the in-game `?` button in **GameScene** and
+**InfiniteGameScene** with a top-right **☰ hamburger** button that pauses the game and
+opens a panel offering:
 
 - **Resume** — unpause and close.
 - **Controls** — show the responsive controls help.
@@ -22,6 +28,14 @@ Replace the in-game `?` button in **GameScene** and **InfiniteGameScene** with a
 - **Exit to Main Menu** — confirm, then return to the main menu (run abandoned).
 
 On desktop, **Esc** and **P** also open/close the pause menu.
+
+**B. Main-menu consolidation.** On the main menu (MenuScene):
+
+- **Remove** the standalone `?` controls-help button.
+- **Move** the ⚙ settings button to the **top-right** and change its glyph to a **☰
+  hamburger** icon (matching the in-game button), instead of the bottom-right gear.
+- **Fold** the controls help into the settings panel's **Controls tab** (the help text
+  the `?` overlay used to show), so the menu has a single settings entry point.
 
 ## UX
 
@@ -88,6 +102,23 @@ On desktop, **Esc** and **P** also open/close the pause menu.
 - InfiniteGameScene currently has no info/menu button; it gains the ☰ button + the
   same `openPauseMenu()` wiring.
 
+### 4. Main-menu consolidation (`MenuScene`)
+
+- **Remove** `createInfoButton` (the standalone `?` button + its `buildControlsOverlay`
+  usage) from MenuScene.
+- **Settings button** (`createSettingsButton`): move from bottom-right to **top-right**
+  (`scale.width - 22, 22`) and swap the ⚙ glyph for a **☰** hamburger (same look as the
+  in-game button). Behaviour (opens the existing settings panel) is unchanged.
+- **Controls tab:** replace the static `ctrlHint` line with the mode-aware controls help
+  from `controlHelpLines(isMobile, mode)` (the same copy the `?` overlay showed),
+  rendered below the control-mode / joystick-side toggles. The control-mode toggle stays.
+  Refresh the help text when the mode toggle changes so it matches the selected mode.
+  If the combined toggles + help exceed the fixed 360×420 panel on the smallest phones,
+  reduce the help font (≈11px) and/or tighten vertical spacing so it fits; the panel
+  stays its current size (out of scope to make the settings panel itself responsive).
+- The shared `buildControlsOverlay` (PR #45) is **no longer used by MenuScene** after
+  this change — only PauseScene uses it. (It stays in the codebase.)
+
 ## Pause semantics
 
 `scene.pause()` halts the paused scene's `update()`, Arcade physics step, scene
@@ -134,6 +165,7 @@ On Resume, `scene.resume()` restores everything.
 - **New:** `src/scenes/PauseScene.ts`, `src/ui/buildVolumePanel.ts`,
   tests under `src/scenes/__tests__/` and `src/ui/__tests__/`.
 - **Edit:** `src/main.ts` (register PauseScene), `src/scenes/GameScene.ts`
-  (menu button + openPauseMenu + remove in-scene info overlay),
-  `src/scenes/InfiniteGameScene.ts` (menu button + openPauseMenu),
-  `src/scenes/MenuScene.ts` (Sounds tab uses `buildVolumePanel`).
+  (☰ menu button + openPauseMenu + remove in-scene info overlay),
+  `src/scenes/InfiniteGameScene.ts` (☰ menu button + openPauseMenu),
+  `src/scenes/MenuScene.ts` (remove `?` button; move settings button to top-right with
+  ☰ glyph; Controls tab shows mode-aware help; Sounds tab uses `buildVolumePanel`).
