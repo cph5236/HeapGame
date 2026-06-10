@@ -1,4 +1,54 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Use vi.hoisted() to mock Phaser BEFORE imports happen
+const mockPhaser = vi.hoisted(() => {
+  return {
+    default: {
+      Scene: class {},
+      GameObjects: {
+        Text: class {
+          setOrigin() { return this; }
+          setDepth() { return this; }
+          setPosition() { return this; }
+          setVisible() { return this; }
+        },
+        Rectangle: class {
+          setDepth() { return this; }
+          setPosition() { return this; }
+          setSize() { return this; }
+          setStrokeStyle() { return this; }
+          setInteractive() { return this; }
+          setScrollFactor() { return this; }
+          setVisible() { return this; }
+          on() { return this; }
+        },
+        Arc: class {
+          setDepth() { return this; }
+          setPosition() { return this; }
+          setInteractive() { return this; }
+          setVisible() { return this; }
+          on() { return this; }
+        },
+        Components: {
+          Visible: class {
+            setVisible() { return this; }
+          },
+        },
+      },
+      Geom: {
+        Rectangle: class {
+          static Contains() { return true; }
+        },
+      },
+      Input: {
+        Pointer: class {},
+      },
+    },
+  };
+});
+
+vi.mock('phaser', () => mockPhaser);
+
 import { clampVolume, volumeFromTrackX } from '../buildVolumePanel';
 
 describe('clampVolume', () => {
