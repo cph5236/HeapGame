@@ -23,6 +23,7 @@ export class PauseScene extends Phaser.Scene {
   private controls?: ControlsOverlay;
   private volume?: VolumePanel;
   private backBtn?: Phaser.GameObjects.GameObject[];
+  private confirmParts: Phaser.GameObjects.GameObject[] = [];
 
   constructor() { super({ key: 'PauseScene' }); }
 
@@ -90,6 +91,30 @@ export class PauseScene extends Phaser.Scene {
     }).setOrigin(0.5).setScrollFactor(0).setDepth(48).setVisible(false);
     backBg.on('pointerup', () => this.showView('menu'));
     this.backBtn = [backBg, backLbl];
+
+    // ── Exit-confirm sub-view (hidden until 'confirm') ─────────────────────────
+    const ccx = this.scale.width / 2;
+    const ccy = this.scale.height / 2;
+    const cbg = this.add.rectangle(ccx, ccy, this.scale.width, this.scale.height, 0x000000, 0.8)
+      .setScrollFactor(0).setDepth(49).setVisible(false).setInteractive();
+    const cpanel = this.add.rectangle(ccx, ccy, Math.min(320, this.scale.width - 32), 200, 0x0d0d20)
+      .setScrollFactor(0).setDepth(50).setStrokeStyle(2, 0xff4444).setVisible(false);
+    const cmsg = this.add.text(ccx, ccy - 50, 'Quit run?\nThis run\'s progress is lost.', {
+      fontSize: '17px', color: '#ffdddd', align: 'center', stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(51).setVisible(false);
+    const cancelBtn = this.add.rectangle(ccx - 70, ccy + 40, 120, 44, 0x223344)
+      .setScrollFactor(0).setDepth(51).setStrokeStyle(2, 0x8899bb).setVisible(false).setInteractive({ useHandCursor: true });
+    const cancelLbl = this.add.text(ccx - 70, ccy + 40, 'Cancel', {
+      fontSize: '17px', color: '#ffffff',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(52).setVisible(false);
+    const quitBtn = this.add.rectangle(ccx + 70, ccy + 40, 120, 44, 0x881111)
+      .setScrollFactor(0).setDepth(51).setStrokeStyle(2, 0xff4444).setVisible(false).setInteractive({ useHandCursor: true });
+    const quitLbl = this.add.text(ccx + 70, ccy + 40, 'Quit', {
+      fontSize: '17px', color: '#ffffff', fontStyle: 'bold',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(52).setVisible(false);
+    cancelBtn.on('pointerup', () => this.showView('menu'));
+    quitBtn.on('pointerup',   () => this.exitToMenu());
+    this.confirmParts = [cbg, cpanel, cmsg, cancelBtn, cancelLbl, quitBtn, quitLbl];
   }
 
   private showView(view: View): void {
@@ -99,11 +124,17 @@ export class PauseScene extends Phaser.Scene {
     this.volume?.setOpen(view === 'volume');
     const showBack = view === 'controls' || view === 'volume';
     this.backBtn?.forEach(o => (o as any).setVisible(showBack));
-    // 'confirm' view is handled in Task 5.
+    this.confirmParts.forEach(o => (o as any).setVisible(view === 'confirm'));
   }
 
   private resumeGame(): void {
     this.scene.resume(this.gameSceneKey);
     this.scene.stop();
+  }
+
+  private exitToMenu(): void {
+    this.scene.stop(this.gameSceneKey);
+    this.scene.stop();
+    this.scene.start('MenuScene');
   }
 }
