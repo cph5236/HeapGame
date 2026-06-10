@@ -154,6 +154,20 @@ export class InputManager {
     else      this.suppressRects.delete(id);
   }
 
+  /** Drop any buffered tap/swipe actions. Called when resuming from the pause menu
+   *  so the tap that dismissed the overlay can't leak a jump/dash/dive into the
+   *  first frame the game reads input again. */
+  clearBufferedActions(): void {
+    this.pendingJump   = false;
+    this.pendingJumpVx = 0;
+    this.pendingDash   = false;
+    this.pendingDive   = false;
+    this.jumpJustPressed = false;
+    this.jumpVx          = 0;
+    this.dashJustFired   = false;
+    this.diveJustFired   = false;
+  }
+
   /** True if a page-space point falls inside any registered suppression zone.
    *  Decided synchronously at touchstart, independent of Phaser's pointer timing. */
   private isInSuppressionZone(pageX: number, pageY: number): boolean {

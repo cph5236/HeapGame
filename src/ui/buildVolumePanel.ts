@@ -94,18 +94,32 @@ export function buildVolumePanel(
   const { depth, onBackgroundTap } = opts;
   const vols = AudioManager.getVolumes();
 
-  const bg = scene.add.rectangle(0, 0, 10, 10, 0x000000, 0.72)
+  // Lay everything out at build time. The scene is created when the pause overlay
+  // is launched, so scale.width/height are stable here. Sliders MUST be created at
+  // their final position — createVolumeSlider captures its track coordinates for the
+  // drag/tap math, so moving a slider after creation would desync both the visuals
+  // and the interaction.
+  const vw = scene.scale.width;
+  const vh = scene.scale.height;
+  const cx = vw / 2;
+  const cy = vh / 2;
+  const panelW = Math.min(PANEL_W, vw - MARGIN * 2);
+  const panelH = Math.min(PANEL_H, vh - MARGIN * 2);
+
+  const bg = scene.add.rectangle(cx, cy, vw, vh, 0x000000, 0.72)
     .setScrollFactor(0).setDepth(depth).setVisible(false).setInteractive();
   bg.on('pointerup', onBackgroundTap);
 
-  const panel = scene.add.rectangle(0, 0, PANEL_W, PANEL_H, 0x0d0d20)
+  const panel = scene.add.rectangle(cx, cy, panelW, panelH, 0x0d0d20)
     .setScrollFactor(0).setDepth(depth + 1).setVisible(false).setStrokeStyle(2, 0x4455aa).setInteractive();
 
-  const title = scene.add.text(0, 0, 'VOLUME', {
+  const title = scene.add.text(cx, cy - panelH / 2 + 22, 'VOLUME', {
     fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 3,
   }).setOrigin(0.5).setScrollFactor(0).setDepth(depth + 2).setVisible(false);
 
   const sliderDepth = depth + 2;
+  const top  = cy - panelH / 2 + 64;
+  const step = 48;
   const sliderSpecs: Array<[string, SoundCategory | 'master', number]> = [
     ['MASTER',       'master',    vols.master],
     ['Music',        'music',     vols.music],
@@ -113,45 +127,19 @@ export function buildVolumePanel(
     ['Enemy SFX',    'enemySfx',  vols.enemySfx],
     ['Environment',  'envSfx',    vols.envSfx],
   ];
-  const sliderParts = sliderSpecs.map(([labelText, cat, val]) =>
-    createVolumeSlider(scene, 0, 0, labelText, cat, val, sliderDepth),
+  const sliderParts = sliderSpecs.map(([labelText, cat, val], i) =>
+    createVolumeSlider(scene, cx, top + i * step, labelText, cat, val, sliderDepth),
   );
 
-  const relayout = (): void => {
-    const vw = scene.scale.width;
-    const vh = scene.scale.height;
-    const cx = vw / 2;
-    const cy = vh / 2;
-    bg.setPosition(cx, cy).setSize(vw, vh);
-
-    const panelW = Math.min(PANEL_W, vw - MARGIN * 2);
-    const panelH = Math.min(PANEL_H, vh - MARGIN * 2);
-    panel.setPosition(cx, cy).setSize(panelW, panelH);
-    title.setPosition(cx, cy - panelH / 2 + 22);
-
-    const top = cy - panelH / 2 + 64;
-    const step = 48;
-    sliderParts.forEach((parts, i) => {
-      const sy = top + i * step;
-      const [label, track, fill, thumb] = parts as [
-        Phaser.GameObjects.Text, Phaser.GameObjects.Rectangle,
-        Phaser.GameObjects.Rectangle, Phaser.GameObjects.Arc,
-      ];
-      const trackLeft = cx - TRACK_W / 2;
-      label.setPosition(trackLeft, sy - 14);
-      track.setPosition(cx, sy);
-      const ratio = thumb.x === 0 ? 0 : (thumb.x - track.x + TRACK_W / 2) / TRACK_W;
-      fill.setPosition(trackLeft + (TRACK_W * ratio) / 2, sy);
-      thumb.setPosition(trackLeft + TRACK_W * ratio, sy);
-    });
+  const setOpen = (open: boolean): void => {
+    bg.setVisible(open); panel.setVisible(open); title.setVisible(open);
+    sliderParts.flat().forEach(o => (o as any).setVisible(open));
   };
 
-  const setOpen = (open: boolean): void => {
-    if (open) relayout();
-    bg.setVisible(open); panel.setVisible(open); title.setVisible(open);
-    sliderParts.flat().forEach(o => {
-      if ('setVisible' in o) (o as any).setVisible(open);
-    });
+  // Keep the dim background covering the viewport if it ever changes size.
+  const relayout = (): void => {
+    bg.setPosition(scene.scale.width / 2, scene.scale.height / 2)
+      .setSize(scene.scale.width, scene.scale.height);
   };
 
   return {

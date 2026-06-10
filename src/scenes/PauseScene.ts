@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { buildControlsOverlay, type ControlsOverlay } from '../ui/buildControlsOverlay';
 import { buildVolumePanel, type VolumePanel } from '../ui/buildVolumePanel';
+import { InputManager } from '../systems/InputManager';
 
 export interface PauseSceneData {
   /** Scene key of the paused game scene to resume/stop. */
@@ -115,6 +116,14 @@ export class PauseScene extends Phaser.Scene {
     cancelBtn.on('pointerup', () => this.showView('menu'));
     quitBtn.on('pointerup',   () => this.exitToMenu());
     this.confirmParts = [cbg, cpanel, cmsg, cancelBtn, cancelLbl, quitBtn, quitLbl];
+
+    // Swallow taps over the whole overlay so dismissing the pause menu (Resume,
+    // Exit, or a sub-view tap) never leaks a jump/dash into the resumed game.
+    // The suppression is decided at touchstart, so it must be registered while the
+    // overlay is up; resumeGame()/exitToMenu() clear it.
+    InputManager.getInstance().setSuppressionRect('pause', {
+      x: 0, y: 0, w: this.scale.width, h: this.scale.height,
+    });
   }
 
   private showView(view: View): void {
@@ -128,11 +137,15 @@ export class PauseScene extends Phaser.Scene {
   }
 
   private resumeGame(): void {
+    const im = InputManager.getInstance();
+    im.setSuppressionRect('pause', null);
+    im.clearBufferedActions(); // drop the dismiss tap so it can't fire a jump on resume
     this.scene.resume(this.gameSceneKey);
     this.scene.stop();
   }
 
   private exitToMenu(): void {
+    InputManager.getInstance().setSuppressionRect('pause', null);
     this.scene.stop(this.gameSceneKey);
     this.scene.stop();
     this.scene.start('MenuScene');
