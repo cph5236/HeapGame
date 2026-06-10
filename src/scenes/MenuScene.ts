@@ -10,7 +10,7 @@ import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { formatDifficulty } from '../ui/DifficultyStars';
-import { controlHelpLines } from '../ui/controlHelp';
+import { buildControlsOverlay } from '../ui/buildControlsOverlay';
 import { loadGameAssets } from './loadGameAssets';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
@@ -1092,35 +1092,16 @@ export class MenuScene extends Phaser.Scene {
     const hitZone = this.add.zone(bx, by, 36, 36).setScrollFactor(0).setDepth(13);
     hitZone.setInteractive({ useHandCursor: true });
 
-    // Overlay background
-    const overlayBg = this.add.rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x000000, 0.72)
-      .setScrollFactor(0).setDepth(14).setVisible(false).setInteractive();
-
-    // Panel
-    const panel = this.add.rectangle(this.scale.width / 2, this.scale.height / 2, 380, 320, 0x0d0d20)
-      .setScrollFactor(0).setDepth(15).setVisible(false).setStrokeStyle(2, 0x4455aa);
-
-    const overlayText = this.add.text(
-      this.scale.width / 2 - 160, this.scale.height / 2 - 130,
-      controlHelpLines(im.isMobile, getEffectiveControlMode()).join('\n'),
-      {
-        fontSize: '17px', color: '#ccccdd',
-        stroke: '#000000', strokeThickness: 1,
-        lineSpacing: 5,
-      },
-    ).setScrollFactor(0).setDepth(16).setVisible(false);
-
-    const parts = [overlayBg, panel, overlayText];
+    // Responsive, content-sized controls overlay (shared with the game scenes).
     let open = false;
-
-    const toggle = () => {
-      open = !open;
-      if (open) overlayText.setText(controlHelpLines(im.isMobile, getEffectiveControlMode()).join('\n'));
-      for (const p of parts) p.setVisible(open);
-    };
+    const toggle = () => { open = !open; overlay.setOpen(open); };
+    const overlay = buildControlsOverlay(this, {
+      isMobile: im.isMobile,
+      depth: 14,
+      onBackgroundTap: toggle,
+    });
 
     hitZone.on('pointerup', toggle);
-    overlayBg.on('pointerup', toggle);
 
     if (this._forceInfoOpen) this.time.delayedCall(2200, toggle);
   }
