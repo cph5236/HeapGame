@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { buildControlsOverlay, type ControlsOverlay } from '../ui/buildControlsOverlay';
+import { buildVolumePanel, type VolumePanel } from '../ui/buildVolumePanel';
 
 export interface PauseSceneData {
   /** Scene key of the paused game scene to resume/stop. */
@@ -16,12 +18,17 @@ const BTN_GAP = 14;
 
 export class PauseScene extends Phaser.Scene {
   private gameSceneKey!: string;
+  private isMobile = false;
   private menuParts: Phaser.GameObjects.GameObject[] = [];
+  private controls?: ControlsOverlay;
+  private volume?: VolumePanel;
+  private backBtn?: Phaser.GameObjects.GameObject[];
 
   constructor() { super({ key: 'PauseScene' }); }
 
   init(data: PauseSceneData): void {
     this.gameSceneKey = data.gameSceneKey;
+    this.isMobile     = data.isMobile;
     this.menuParts    = [];
   }
 
@@ -64,12 +71,35 @@ export class PauseScene extends Phaser.Scene {
     // Esc / P resume the game (toggle off).
     this.input.keyboard?.on('keydown-ESC', () => this.resumeGame());
     this.input.keyboard?.on('keydown-P',   () => this.resumeGame());
+
+    // Sub-views (hidden until selected). Tapping their dim bg returns to the menu.
+    this.controls = buildControlsOverlay(this, {
+      isMobile: this.isMobile, depth: 44, onBackgroundTap: () => this.showView('menu'),
+    });
+    this.volume = buildVolumePanel(this, {
+      depth: 44, onBackgroundTap: () => this.showView('menu'),
+    });
+
+    // Shared "← Back" button shown on any sub-view.
+    const backY = this.scale.height - 48;
+    const backBg = this.add.rectangle(this.scale.width / 2, backY, 160, 40, 0x222244)
+      .setScrollFactor(0).setDepth(47).setStrokeStyle(2, 0x8899bb).setInteractive({ useHandCursor: true })
+      .setVisible(false);
+    const backLbl = this.add.text(this.scale.width / 2, backY, '← Back', {
+      fontSize: '17px', color: '#ffffff', fontStyle: 'bold',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(48).setVisible(false);
+    backBg.on('pointerup', () => this.showView('menu'));
+    this.backBtn = [backBg, backLbl];
   }
 
   private showView(view: View): void {
     const onMenu = view === 'menu';
     this.menuParts.forEach(o => (o as any).setVisible(onMenu));
-    // Controls / Volume / confirm sub-views are added in Tasks 4 & 5.
+    this.controls?.setOpen(view === 'controls');
+    this.volume?.setOpen(view === 'volume');
+    const showBack = view === 'controls' || view === 'volume';
+    this.backBtn?.forEach(o => (o as any).setVisible(showBack));
+    // 'confirm' view is handled in Task 5.
   }
 
   private resumeGame(): void {
