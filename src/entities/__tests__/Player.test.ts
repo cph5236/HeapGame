@@ -1930,6 +1930,14 @@ describe('Player — world wrap (X)', () => {
     expect(player.wrapDir).toBe(-1);
   });
 
+  it('standard heap: wraps to the left edge when past the right sky pad', async () => {
+    const { player, sprite } = await makePlayer({ onGround: true });
+    sprite.x = WORLD_WIDTH + (SKY_PAD * WORLD_WIDTH) + 10; // just past the right pad
+    player.update(16);
+    expect(sprite.x).toBeCloseTo(0, 5);
+    expect(player.wrapDir).toBe(1);
+  });
+
   it('standard heap: does NOT wrap while still within the sky pad', async () => {
     const { player, sprite } = await makePlayer({ onGround: true });
     const x = -(SKY_PAD * WORLD_WIDTH) + 10; // still inside the pad

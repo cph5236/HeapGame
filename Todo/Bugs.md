@@ -9,13 +9,19 @@
   margin (default `SKY_PAD * WORLD_WIDTH`); InfiniteGameScene sets it to `INFINITE_EDGE_PAD`
   (100px). Also de-duplicated the ladder-path wrap to reuse `applyWorldBoundsX`. Covered by
   `Player — world wrap (X)` tests.
-- [ ] **Infinite mode: trash wall not rendered the full world width (follow-up).** The
-  rising trash wall cuts off before the right edge of the infinite world (visible gap on
-  the far right). Likely cause: `TrashWallManager` is constructed with
-  `worldWidth = INFINITE_WORLD_WIDTH` but its `worldX` defaults to `-SKY_PAD * WORLD_WIDTH`
-  (−240, the standard-heap offset), so the wall is shifted left and ends ~240px short of
-  the right edge — and doesn't account for the infinite edge pad. Pass an infinite-correct
-  `worldX`/width (and consider the wrap pad). Not blocking the wrap-fix PR.
+- [x] **Infinite mode: trash wall not rendered the full world width.** The rising trash
+  wall cut off before the right edge of the infinite world. Cause: `TrashWallManager` was
+  constructed with `worldWidth = INFINITE_WORLD_WIDTH` but `worldX` defaulted to
+  `-SKY_PAD * WORLD_WIDTH` (−240, the standard-heap offset), so the wall spanned −240…3540
+  and left a gap on the right. Fix: InfiniteGameScene now passes
+  `worldWidth = INFINITE_WORLD_WIDTH + 2*INFINITE_EDGE_PAD`, `worldHeight`, and
+  `worldX = -INFINITE_EDGE_PAD` — covering the full wrap-padded world (matching the camera
+  bounds), so the wall and its sprite distribution span edge to edge.
+- [x] **Infinite/wrap: standard-heap right-edge wrap now tested (from PR #44 review).**
+  Added `standard heap: wraps to the left edge when past the right sky pad` to
+  `Player — world wrap (X)`, covering the one previously-untested symmetric path (6 wrap
+  tests total). (The same review also flagged the `wrapPadX` / camera-bounds comments
+  running longer than CLAUDE.md's "one short line" — cosmetic, left as-is.)
 
 
 # Mobile

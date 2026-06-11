@@ -239,9 +239,12 @@ export class InfiniteGameScene extends Phaser.Scene {
 
     // ── Trash wall ───────────────────────────────────────────────────────────────
     AudioManager.play('music-game');
+    // Cover the full wrap-padded world (matching the camera bounds), starting at the
+    // left edge pad — otherwise worldX defaults to the standard-heap −SKY_PAD offset and
+    // the wall is shifted left, leaving a gap on the right edge of the infinite world.
     this.trashWallManager = new TrashWallManager(this, TRASH_WALL_DEF, () => {
       this.handleDeath();
-    }, INFINITE_WORLD_WIDTH);
+    }, INFINITE_WORLD_WIDTH + 2 * INFINITE_EDGE_PAD, MOCK_HEAP_HEIGHT_PX, -INFINITE_EDGE_PAD);
     this.trashWallManager.spawn(this.player.sprite.y);
 
     // ── Placeable manager ────────────────────────────────────────────────────────
