@@ -20,7 +20,15 @@
 
 # Mobile
 - [x] 7. Mobile blur — **partial.** Text now renders at devicePixelRatio (global `text` factory override in [main.ts](../src/main.ts)) so HUD/labels are crisp. _(device smoke)_
-  - [ ] 7b. **Deferred:** full-canvas DPR rendering for sprites/heap art. Phaser 3 ties the canvas backing store to the logical coord system, so this needs a global UI-scale refactor + on-device QA. Own task.
+  - [ ] 7b. **Physical-resolution canvas (DPR) — investigated 2026-06-11, worth doing; tackle in a focused session.**
+    **Real driver = text still blurry on mobile** (confirmed on a Samsung S25, ~DPR 2.6 at 1080×2340 — body text like "How high can you climb?" / "START RUN" / heap-select labels is soft; the orange HEAP logo + stars stay crisp because they're large/simple).
+    **Why #7 isn't enough:** every text object goes through the `add.text` factory (so all get `resolution = DPR`; no BitmapText/`new Text` bypass, no per-call `resolution: 1`). But in `Scale.RESIZE` the canvas backing store is sub-native (~411px wide), and the OS upscales it ~2.6× to 1080 — so the hi-res glyph texture is still composited onto a sub-native canvas and capped. A text-only fix can't beat the canvas resolution.
+    **Phaser constraint (Context7, v3.90):** the Scale Manager has no working `resolution` flag (dropped in 3.16+). Crispness requires rendering the canvas at physical pixels.
+    **Asset asymmetry:** sprites are authored 3–4× oversize (player 174×197 → 40×46 display) so they crisp up *for free* under a DPR canvas; the heap composite is exactly 1× (960px = `WORLD_WIDTH`) so it can't improve without re-authored higher-res PNGs (≈2 MB×4 → big download) — leave heap soft, that's acceptable.
+    **Recommended approach (needs an on-branch prototype to confirm the fork):**
+    (A) game size = `cssSize × DPR` + every camera `zoom = DPR` + a separate unzoomed UI camera (or `/DPR` on `scale.width`-based UI layout); cap DPR (~2) on low-end for the ~DPR² fill cost. _vs_
+    (B) keep logical game size and override the canvas backing store on each resize (fights the Scale Manager).
+    **Scope/risk:** touches every scene's cameras + all `scale.width` UI layout + the resize handler in [main.ts](../src/main.ts) + real-device QA. Plan it as brainstorm → prototype (A) → spec → implement.
 
 # Scenes
 - [x] **Controls menu oversized / runs off-screen on phone (21:9).** The CONTROLS
