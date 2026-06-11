@@ -38,7 +38,20 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # Always leave a visible comment so it's obvious the review ran, even on a
+          # clean diff. track_progress posts/updates a tracking comment; use_sticky_comment
+          # keeps it to a single comment across re-pushes.
+          track_progress: true
+          use_sticky_comment: true
+          prompt: |
+            Review this pull request by running:
+            /code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
+
+            Then ALWAYS post a single summary comment on the PR describing the outcome:
+            - If you found issues, summarize them concisely (file:line — the problem — a
+              suggested fix), in addition to any inline comments.
+            - If you found NO issues, post a brief note saying the review found no problems
+              (e.g. "✅ Reviewed the diff — no issues found.").
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
