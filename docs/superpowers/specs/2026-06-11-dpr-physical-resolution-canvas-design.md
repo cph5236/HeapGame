@@ -49,6 +49,16 @@ Switch the game from `Scale.RESIZE` to `Scale.NONE` and own the resize loop in
 - Force `canvas.style.width = cssW + 'px'` and `canvas.style.height = cssH + 'px'`
   → the canvas still **displays** at logical size, 1:1 with the device, no OS
   upscaling.
+- **Then call `scale.refresh()`** (re-caches `canvasBounds` + `displayScale`).
+  This is mandatory and easy to miss: `scale.resize()` internally calls
+  `refresh()` → `updateBounds()`, which caches `canvasBounds`
+  (`getBoundingClientRect`) and `displayScale` from the canvas style *as it was
+  before* our manual style override. `ScaleManager.transformX/Y` —
+  `(pageX - canvasBounds.left) * displayScale.x`, used by `InputManager` for touch
+  hit-testing — would otherwise keep using stale bounds, so the canvas looks
+  correct while touch zones silently drift by the DPR factor. Re-running
+  `refresh()` after the style change rebuilds both. (`node_modules/phaser/src/scale/ScaleManager.js`:
+  `resize`→`refresh`→`updateBounds`/`updateScale`; `transformX/Y`.)
 
 `DPRcap` resolves to `1` in dev-preview (headless Chromium, see §6), so tooling is
 unaffected.
@@ -112,6 +122,24 @@ the plan:
 > are camera viewport resizes that should keep using physical/`scale.width`, e.g.
 > `cameras.resize`). Migration is "find and adapt", not blind replace.
 
+#### 3b. Second migration class — camera-space world math
+
+Separate from `scale.width/height`: any code that reads **camera viewport
+dimensions** (`cam.width` / `cam.height` / `scrollY + cam.height`) to compute
+**world-space** values breaks once `cam.zoom = DPRcap`, because raw `cam.height`
+is then physical viewport px, not visible world height (`= cam.height / cam.zoom`).
+These must use the zoom-corrected **`cam.worldView`** rectangle (e.g.
+`cam.worldView.bottom`) or divide by `cam.zoom`. Known sites (plan resolves the
+full list):
+
+- `src/scenes/GameScene.ts` — `camBottom = cam.scrollY + cam.height` (enemy/chunk
+  culling). → `cam.worldView.bottom`.
+- `src/systems/PickupManager.ts` — `cullBelow(scrollY + cam.height + CULL_MARGIN)`.
+  → `cam.worldView.bottom + CULL_MARGIN`.
+
+This class is easy to miss because it does not match a `scale.width` grep and the
+symptom is functional (culling/spawn distance off by the DPR factor), not visual.
+
 ### 4. Text resolution override stays (complements #7, not replaced)
 
 Keep the bug-#7 global `add.text` factory override in `main.ts`. With
@@ -156,9 +184,13 @@ Unit-test what's pure: `displayMetrics` (cap math, dev-preview → 1, logical
 derivation from a mocked `scale`). The rendering/Scale-Manager behaviour is
 inherently integration-level and verified by:
 
-1. **Milestone-1 gate (blocking):** read back `canvas.width === cssW · DPRcap`
-   while `canvas.style.width === cssW + 'px'`; before/after screenshot of a known
-   soft label. *All later milestones depend on this passing.*
+1. **Milestone-1 gate (blocking):** (a) read back `canvas.width === cssW · DPRcap`
+   while `canvas.style.width === cssW + 'px'`; (b) **transform correctness** —
+   after the `scale.refresh()`, assert `scale.transformX(knownPageX)` maps to the
+   expected game-space coord (and tap an on-screen button to confirm suppression
+   fires); (c) before/after screenshot of a known soft label. *All later
+   milestones depend on this passing.* Note (b) specifically guards the stale-bounds
+   trap — a canvas that looks crisp but whose touch mapping has drifted.
 2. **Per-scene scene-preview screenshots** at phone sizes — confirm layouts are
    unchanged after the logical-dim migration.
 3. **Touch smoke:** tap each on-screen button → no leaked action.
@@ -171,8 +203,10 @@ inherently integration-level and verified by:
 - **`roundPixels: true` + fractional zoom (2.5)** — watch for sub-pixel sprite
   jitter; may need revisiting.
 - **Perf** — fill cost ~`DPRcap²`; the cap (2.5) is the lever. Validate on-device.
-- **Sweeping migration** — ~190 mechanical edits; risk is missing a site or
-  mis-converting a viewport read (mitigated by per-scene screenshots).
+- **Sweeping migration, two classes** — (a) ~190 `scale.width/height` layout reads
+  (mitigated by per-scene screenshots), and (b) camera-space world math (§3b),
+  whose symptom is *functional* (off-by-DPR culling/spawn distance) and invisible
+  to screenshots — verify in live play / on-device, not by preview.
 
 ## Items to double-check during spec review
 
@@ -186,7 +220,12 @@ inherently integration-level and verified by:
 2. Confirm which `scale.width`/`scale.height` sites are genuine logical-layout
    reads vs. camera-viewport reads that should stay physical.
 3. Confirm the `InputManager` suppression-rect coordinate space after the size
-   change (physical vs. logical) against `ScaleManager.transformX/Y` behaviour.
+   change (physical vs. logical) against `ScaleManager.transformX/Y` behaviour —
+   *and* that `scale.refresh()` runs after the manual `canvas.style` override so
+   `canvasBounds`/`displayScale` are not stale (§1).
+4. Enumerate the full set of **camera-space world-math** reads (§3b) —
+   `cam.width`/`cam.height`/`scrollY + cam.height` used for world coordinates — and
+   confirm each is converted to `cam.worldView` / `÷ cam.zoom`.
 
 ## Out-of-scope / YAGNI
 
