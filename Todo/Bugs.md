@@ -9,6 +9,13 @@
   margin (default `SKY_PAD * WORLD_WIDTH`); InfiniteGameScene sets it to `INFINITE_EDGE_PAD`
   (100px). Also de-duplicated the ladder-path wrap to reuse `applyWorldBoundsX`. Covered by
   `Player — world wrap (X)` tests.
+- [ ] **Infinite mode: trash wall not rendered the full world width (follow-up).** The
+  rising trash wall cuts off before the right edge of the infinite world (visible gap on
+  the far right). Likely cause: `TrashWallManager` is constructed with
+  `worldWidth = INFINITE_WORLD_WIDTH` but its `worldX` defaults to `-SKY_PAD * WORLD_WIDTH`
+  (−240, the standard-heap offset), so the wall is shifted left and ends ~240px short of
+  the right edge — and doesn't account for the infinite edge pad. Pass an infinite-correct
+  `worldX`/width (and consider the wrap pad). Not blocking the wrap-fix PR.
 
 
 # Mobile
