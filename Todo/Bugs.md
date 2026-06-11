@@ -1,11 +1,21 @@
 ## BUGS
 
 # Open
-- [ ] **Infinite mode: world doesn't wrap properly.** In InfiniteGameScene the left/right
-  edges don't wrap the player around the way the standard heap does (`applyWorldBoundsX`
-  in [Player.ts](../src/entities/Player.ts) uses `worldWidth`; infinite mode sets
-  `worldWidth = INFINITE_WORLD_WIDTH`). Reproduce: run far to one side in infinite mode —
-  the wrap is missing/incorrect. Investigate the infinite world-width vs. wrap-inset math.
+- [x] **Infinite mode: world doesn't wrap properly.** Root cause: `applyWorldBoundsX`
+  derived the off-edge wrap margin as `SKY_PAD * worldWidth` (a *fraction* of the world).
+  Fine for the 960px standard heap (240px), but infinite mode sets
+  `worldWidth = INFINITE_WORLD_WIDTH` (~3780px), blowing the margin up to ~945px so the
+  player ran far off-screen before wrapping. Fix: `Player.wrapPadX` is now a fixed-pixel
+  margin (default `SKY_PAD * WORLD_WIDTH`); InfiniteGameScene sets it to `INFINITE_EDGE_PAD`
+  (100px). Also de-duplicated the ladder-path wrap to reuse `applyWorldBoundsX`. Covered by
+  `Player — world wrap (X)` tests.
+- [ ] **Infinite mode: trash wall not rendered the full world width (follow-up).** The
+  rising trash wall cuts off before the right edge of the infinite world (visible gap on
+  the far right). Likely cause: `TrashWallManager` is constructed with
+  `worldWidth = INFINITE_WORLD_WIDTH` but its `worldX` defaults to `-SKY_PAD * WORLD_WIDTH`
+  (−240, the standard-heap offset), so the wall is shifted left and ends ~240px short of
+  the right edge — and doesn't account for the infinite edge pad. Pass an infinite-correct
+  `worldX`/width (and consider the wrap pad). Not blocking the wrap-fix PR.
 
 
 # Mobile

@@ -165,6 +165,9 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.spawnY = MOCK_HEAP_HEIGHT_PX - PLAYER_HEIGHT / 2 - 1;
     this.player = new Player(this, gapX, this.spawnY, this.playerConfig);
     this.player.worldWidth = INFINITE_WORLD_WIDTH;
+    // Wrap when the player crosses the edge pad — a fixed margin, not a fraction
+    // of the wide infinite world (which would push the wrap point ~945px off-edge).
+    this.player.wrapPadX = INFINITE_EDGE_PAD;
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
     this.playerOutro = new PlayerOutro(this, this.player.sprite);
 
@@ -268,7 +271,16 @@ export class InfiniteGameScene extends Phaser.Scene {
     }
 
     // ── Camera ───────────────────────────────────────────────────────────────────
-    CameraController.setup(this, this.player.sprite, INFINITE_WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX);
+    // Extend the camera bounds by the wrap pad on each side (matching the wrap
+    // thresholds in Player.applyWorldBoundsX, which use wrapPadX = INFINITE_EDGE_PAD).
+    // Otherwise the camera clamps at the world edge while the player keeps walking
+    // into the pad, so the player slides off-screen before the wrap fires. With this
+    // the player reaches the screen edge exactly at the wrap point.
+    CameraController.setup(
+      this, this.player.sprite,
+      INFINITE_WORLD_WIDTH + 2 * INFINITE_EDGE_PAD, MOCK_HEAP_HEIGHT_PX,
+      -INFINITE_EDGE_PAD,
+    );
 
     // ── HUD / score text ─────────────────────────────────────────────────────────
     this.hud = new HUD(this, this.player, this.placeableManager);
