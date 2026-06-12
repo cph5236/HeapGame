@@ -15,6 +15,7 @@ import type { BuffManager } from './BuffManager';
 import { Player } from '../entities/Player';
 import { getLogger } from '../logging';
 import { InputManager } from './InputManager';
+import { logicalWidth, logicalHeight } from './displayMetrics';
 
 export const enum PlacementState { Closed, Hotbar, Placing }
 
@@ -146,8 +147,8 @@ export class PlaceableManager {
 
   private createUI(): void {
     const { scene } = this;
-    const GAME_WIDTH  = scene.scale.width;
-    const GAME_HEIGHT = scene.scale.height;
+    const GAME_WIDTH  = logicalWidth(scene);
+    const GAME_HEIGHT = logicalHeight(scene);
 
     // Ghost rectangles — one pre-built shape per item type; only the active
     // one is shown. Property updates (position, fillColor, strokeColor) avoid

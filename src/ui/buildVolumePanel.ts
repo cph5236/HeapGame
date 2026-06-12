@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../systems/AudioManager';
 import type { SoundCategory } from '../data/soundDefs';
+import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
 
 /** Clamp a raw volume to the playable [0,1] range. */
 export function clampVolume(v: number): number {
@@ -99,8 +100,8 @@ export function buildVolumePanel(
   // their final position — createVolumeSlider captures its track coordinates for the
   // drag/tap math, so moving a slider after creation would desync both the visuals
   // and the interaction.
-  const vw = scene.scale.width;
-  const vh = scene.scale.height;
+  const vw = logicalWidth(scene);
+  const vh = logicalHeight(scene);
   const cx = vw / 2;
   const cy = vh / 2;
   const panelW = Math.min(PANEL_W, vw - MARGIN * 2);
@@ -138,8 +139,8 @@ export function buildVolumePanel(
 
   // Keep the dim background covering the viewport if it ever changes size.
   const relayout = (): void => {
-    bg.setPosition(scene.scale.width / 2, scene.scale.height / 2)
-      .setSize(scene.scale.width, scene.scale.height);
+    bg.setPosition(logicalWidth(scene) / 2, logicalHeight(scene) / 2)
+      .setSize(logicalWidth(scene), logicalHeight(scene));
   };
 
   return {

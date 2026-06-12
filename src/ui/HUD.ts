@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import type { PlaceableManager } from '../systems/PlaceableManager';
+import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
 const MARGIN_R = 20;   // gap from right screen edge
 const ICON_GAP = 14;   // gap between icon groups
 const DASH_W   = 80;
@@ -43,11 +44,11 @@ export class HUD {
   private readonly hudY:          number;
 
   constructor(scene: Phaser.Scene, player: Player, placeableManager?: PlaceableManager) {
-    this.hudY = scene.scale.height - 44;
+    this.hudY = logicalHeight(scene) - 44;
     this.player = player;
 
     // Build positions right-to-left so the layout adapts to which abilities are unlocked
-    let cursorX = scene.scale.width - MARGIN_R; // start from right edge
+    let cursorX = logicalWidth(scene) - MARGIN_R; // start from right edge
 
     // ── Dash bar (rightmost) ────────────────────────────────────────────────
     if (player.hasDash) {

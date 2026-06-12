@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { controlHelpLines } from './controlHelp';
 import { getEffectiveControlMode } from '../systems/SaveData';
+import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
 
 /** Handle for a controls overlay built by {@link buildControlsOverlay}. */
 export interface ControlsOverlay {
@@ -52,8 +53,8 @@ export function buildControlsOverlay(scene: Phaser.Scene, opts: BuildOpts): Cont
   }).setOrigin(0.5).setScrollFactor(0).setDepth(depth + 2).setVisible(false);
 
   const relayout = (): void => {
-    const vw = scene.scale.width;
-    const vh = scene.scale.height;
+    const vw = logicalWidth(scene);
+    const vh = logicalHeight(scene);
     const cx = vw / 2;
     const cy = vh / 2;
 
