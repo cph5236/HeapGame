@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { applyCameraZoom } from '../systems/displayMetrics';
 import { UPGRADE_DEFS } from '../data/upgradeDefs';
 import { getBalance, getUpgradeLevel, purchaseUpgrade, getUpgrades } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
@@ -35,6 +36,7 @@ export class UpgradeScene extends Phaser.Scene {
   }
 
   create(): void {
+    applyCameraZoom(this);
     this.twinkleStars = [];
     this.selectedIndex = 0;
 

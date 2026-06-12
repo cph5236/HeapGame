@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 
 
+import { applyCameraZoom } from '../systems/displayMetrics';
 import { AudioManager } from '../systems/AudioManager';
 import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode } from '../systems/SaveData';
 import { redeemCode, type RedeemResult } from '../systems/CodeClient';
@@ -56,6 +57,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    applyCameraZoom(this);
     this.twinkleStars = [];
     this.resetConfirmed = false;
 

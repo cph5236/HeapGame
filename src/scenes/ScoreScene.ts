@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { applyCameraZoom } from '../systems/displayMetrics';
 import { AudioManager } from '../systems/AudioManager';
 import { AdClient } from '../systems/ads/AdClient';
 import * as AdCadence from '../systems/ads/AdCadence';
@@ -140,6 +141,7 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   create(): void {
+    applyCameraZoom(this);
     AudioManager.play('music-score');
     const isPreview = this._mockLeaderboard !== null || this._forceBreakdownOpen
       || Object.keys(this._mockPlayerConfig).length > 0;

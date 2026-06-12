@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { applyCameraZoom } from '../systems/displayMetrics';
 import { LADDER_WIDTH, LADDER_HEIGHT, IBEAM_WIDTH, IBEAM_HEIGHT } from '../constants';
 
 interface TextureEntry {
@@ -32,6 +33,7 @@ export class TexturePreviewScene extends Phaser.Scene {
   }
 
   create(): void {
+    applyCameraZoom(this);
     const W = this.scale.width;
     const H = this.scale.height;
     const marginX = (W - COLS * CELL_W - (COLS - 1) * CELL_GAP) / 2;

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { applyCameraZoom } from '../systems/displayMetrics';
 import { ScoreClient } from '../systems/ScoreClient';
 import type { LeaderboardEntry } from '../../shared/scoreTypes';
 
@@ -52,6 +53,7 @@ export class LeaderboardScene extends Phaser.Scene {
   }
 
   create(): void {
+    applyCameraZoom(this);
     const W = this.scale.width;
     const H = this.scale.height;
 

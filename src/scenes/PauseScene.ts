@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { applyCameraZoom } from '../systems/displayMetrics';
 import { buildControlsOverlay, type ControlsOverlay } from '../ui/buildControlsOverlay';
 import { buildVolumePanel, type VolumePanel } from '../ui/buildVolumePanel';
 import { InputManager } from '../systems/InputManager';
@@ -35,6 +36,7 @@ export class PauseScene extends Phaser.Scene {
   }
 
   create(): void {
+    applyCameraZoom(this);
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2;
 
