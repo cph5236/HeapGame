@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 
 
-import { applyCameraZoom } from '../systems/displayMetrics';
+import { applyCameraZoom, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { AudioManager } from '../systems/AudioManager';
 import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode } from '../systems/SaveData';
 import { redeemCode, type RedeemResult } from '../systems/CodeClient';
@@ -53,7 +53,7 @@ export class MenuScene extends Phaser.Scene {
 
   // On short screens, shift the button group up so coins/name/settings fit below
   private get layoutShift(): number {
-    return Math.min(Math.max(0, 780 - this.scale.height), 60);
+    return Math.min(Math.max(0, 780 - logicalHeight(this)), 60);
   }
 
   create(): void {
@@ -133,10 +133,10 @@ export class MenuScene extends Phaser.Scene {
     const g = this.add.graphics().setDepth(0);
     for (const [y, h, color] of bands) {
       g.fillStyle(color, 1);
-      g.fillRect(0, y, this.scale.width, h);
+      g.fillRect(0, y, logicalWidth(this), h);
     }
     g.fillStyle(0x3e280e, 1);
-    g.fillRect(0, 854, this.scale.width, Math.max(0, this.scale.height - 854));
+    g.fillRect(0, 854, logicalWidth(this), Math.max(0, logicalHeight(this) - 854));
   }
 
   // ── Stars ────────────────────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ export class MenuScene extends Phaser.Scene {
     const staticG = this.add.graphics().setDepth(1);
 
     for (let i = 0; i < 68; i++) {
-      const x = Phaser.Math.Between(0, this.scale.width);
+      const x = Phaser.Math.Between(0, logicalWidth(this));
       const y = Phaser.Math.Between(0, 514);
       const roll = Phaser.Math.Between(0, 9);
       const r = roll < 6 ? 0.7 : roll < 9 ? 1.2 : 2.0;
@@ -156,7 +156,7 @@ export class MenuScene extends Phaser.Scene {
 
     for (let i = 0; i < 12; i++) {
       const g = this.add.graphics().setDepth(1);
-      const x = Phaser.Math.Between(0, this.scale.width);
+      const x = Phaser.Math.Between(0, logicalWidth(this));
       const y = Phaser.Math.Between(0, 514);
       g.fillStyle(0xffffff, 1);
       g.fillCircle(x, y, 1.2);
@@ -167,14 +167,14 @@ export class MenuScene extends Phaser.Scene {
   // ── Heap silhouettes ─────────────────────────────────────────────────────────
 
   private createFarSilhouette(): void {
-    const sx = this.scale.width / 480;
+    const sx = logicalWidth(this) / 480;
     const points = [
-      { x: -20 * sx, y: this.scale.height }, { x: -20 * sx, y: 700 }, { x: 10  * sx, y: 660 }, { x: 40  * sx, y: 680 },
+      { x: -20 * sx, y: logicalHeight(this) }, { x: -20 * sx, y: 700 }, { x: 10  * sx, y: 660 }, { x: 40  * sx, y: 680 },
       { x: 60  * sx, y: 620 }, { x: 90  * sx, y: 590 }, { x: 115 * sx, y: 610 }, { x: 140 * sx, y: 570 },
       { x: 170 * sx, y: 540 }, { x: 195 * sx, y: 560 }, { x: 220 * sx, y: 510 }, { x: 240 * sx, y: 440 },
       { x: 265 * sx, y: 480 }, { x: 290 * sx, y: 455 }, { x: 320 * sx, y: 490 }, { x: 345 * sx, y: 520 },
       { x: 370 * sx, y: 500 }, { x: 395 * sx, y: 540 }, { x: 420 * sx, y: 580 }, { x: 440 * sx, y: 555 },
-      { x: 460 * sx, y: 610 }, { x: 490 * sx, y: 640 }, { x: 500 * sx, y: 700 }, { x: 500 * sx, y: this.scale.height },
+      { x: 460 * sx, y: 610 }, { x: 490 * sx, y: 640 }, { x: 500 * sx, y: 700 }, { x: 500 * sx, y: logicalHeight(this) },
     ];
     this.farSilhouette = this.add.graphics().setDepth(2).setAlpha(0);
     this.farSilhouette.fillStyle(0x1a1225, 1);
@@ -182,9 +182,9 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private createNearSilhouette(): void {
-    const sx = this.scale.width / 480;
+    const sx = logicalWidth(this) / 480;
     const points = [
-      { x: 0,         y: this.scale.height }, { x: 0,         y: 720 }, { x: 18  * sx, y: 695 }, { x: 35  * sx, y: 710 },
+      { x: 0,         y: logicalHeight(this) }, { x: 0,         y: 720 }, { x: 18  * sx, y: 695 }, { x: 35  * sx, y: 710 },
       { x: 50  * sx,  y: 670 }, { x: 68  * sx, y: 640 }, { x: 82  * sx, y: 655 }, { x: 100 * sx, y: 615 },
       { x: 118 * sx,  y: 595 }, { x: 130 * sx, y: 610 }, { x: 148 * sx, y: 575 }, { x: 162 * sx, y: 548 },
       { x: 175 * sx,  y: 565 }, { x: 192 * sx, y: 530 }, { x: 208 * sx, y: 505 }, { x: 220 * sx, y: 520 },
@@ -194,7 +194,7 @@ export class MenuScene extends Phaser.Scene {
       { x: 328 * sx,  y: 440 }, { x: 340 * sx, y: 465 }, { x: 355 * sx, y: 490 }, { x: 368 * sx, y: 475 },
       { x: 382 * sx,  y: 505 }, { x: 395 * sx, y: 530 }, { x: 408 * sx, y: 515 }, { x: 422 * sx, y: 545 },
       { x: 438 * sx,  y: 570 }, { x: 450 * sx, y: 555 }, { x: 462 * sx, y: 590 }, { x: 472 * sx, y: 625 },
-      { x: 480 * sx,  y: 660 }, { x: 480 * sx, y: this.scale.height },
+      { x: 480 * sx,  y: 660 }, { x: 480 * sx, y: logicalHeight(this) },
     ];
     this.nearSilhouette = this.add.graphics().setDepth(4).setAlpha(0);
     this.nearSilhouette.fillStyle(0x0d0910, 1);
@@ -206,17 +206,17 @@ export class MenuScene extends Phaser.Scene {
   private createHorizonGlow(): void {
     this.horizonGlow = this.add.graphics().setDepth(3).setAlpha(0);
     this.horizonGlow.fillStyle(0xff8833, 0.12);
-    this.horizonGlow.fillEllipse(this.scale.width / 2, 450, 460, 60);
+    this.horizonGlow.fillEllipse(logicalWidth(this) / 2, 450, 460, 60);
     this.horizonGlow.fillStyle(0xff6611, 0.07);
-    this.horizonGlow.fillEllipse(this.scale.width / 2, 445, 360, 40);
+    this.horizonGlow.fillEllipse(logicalWidth(this) / 2, 445, 360, 40);
     this.horizonGlow.fillStyle(0xffaa44, 0.05);
-    this.horizonGlow.fillEllipse(this.scale.width / 2, 455, 300, 25);
+    this.horizonGlow.fillEllipse(logicalWidth(this) / 2, 455, 300, 25);
   }
 
   // ── Player figure ────────────────────────────────────────────────────────────
 
   private createPlayerFigure(): void {
-    this.playerFigure = this.add.image(this.scale.width / 2, 388, 'trashbag')
+    this.playerFigure = this.add.image(logicalWidth(this) / 2, 388, 'trashbag')
       .setOrigin(0.5, 1.0)
       .setScale(0.9)
       .setDepth(5)
@@ -226,7 +226,7 @@ export class MenuScene extends Phaser.Scene {
   // ── Title ────────────────────────────────────────────────────────────────────
 
   private createTitle(): void {
-    this.titleShadow = this.add.text(this.scale.width / 2 + 4, 306, 'HEAP', {
+    this.titleShadow = this.add.text(logicalWidth(this) / 2 + 4, 306, 'HEAP', {
       fontSize: '96px',
       fontStyle: 'bold',
       color: '#000000',
@@ -234,7 +234,7 @@ export class MenuScene extends Phaser.Scene {
       strokeThickness: 12,
     }).setOrigin(0.5).setAlpha(0).setDepth(6);
 
-    this.titleText = this.add.text(this.scale.width / 2, 300, 'HEAP', {
+    this.titleText = this.add.text(logicalWidth(this) / 2, 300, 'HEAP', {
       fontSize: '96px',
       fontStyle: 'bold',
       color: '#ff9922',
@@ -246,7 +246,7 @@ export class MenuScene extends Phaser.Scene {
   // ── Tagline ──────────────────────────────────────────────────────────────────
 
   private createTagline(): void {
-    this.taglineText = this.add.text(this.scale.width / 2, 368, 'How high can you climb?', {
+    this.taglineText = this.add.text(logicalWidth(this) / 2, 368, 'How high can you climb?', {
       fontSize: '18px',
       fontStyle: 'italic',
       color: '#cc9966',
@@ -259,7 +259,7 @@ export class MenuScene extends Phaser.Scene {
 
   private createFloatingClouds(): void {
     const data: [number, number, number, boolean, number][] = [
-      [this.scale.width, 80,  2.2, true,  18000],
+      [logicalWidth(this), 80,  2.2, true,  18000],
       [300,  155, 1.4, true,  22000],
       [100,  220, 3.0, true,  28000],
       [-32,  310, 1.8, false, 20000],
@@ -283,8 +283,8 @@ export class MenuScene extends Phaser.Scene {
 
     // Cloud shape spans ~120px wide — ensure it fully clears the screen edge
     const offscreen = 130 * scaleVal;
-    const targetX = goLeft ? -offscreen : this.scale.width + offscreen;
-    const startX  = goLeft ? this.scale.width + offscreen : -offscreen;
+    const targetX = goLeft ? -offscreen : logicalWidth(this) + offscreen;
+    const startX  = goLeft ? logicalWidth(this) + offscreen : -offscreen;
 
     this.tweens.add({
       targets: gfx,
@@ -300,8 +300,8 @@ export class MenuScene extends Phaser.Scene {
 
   private createBalanceText(): void {
     const shift = this.layoutShift;
-    const y = Math.max(688 - shift, Math.min(this.scale.height - 134, 756));
-    this.balanceText = this.add.text(this.scale.width / 2, y, `${getBalance()} coins`, {
+    const y = Math.max(688 - shift, Math.min(logicalHeight(this) - 134, 756));
+    this.balanceText = this.add.text(logicalWidth(this) / 2, y, `${getBalance()} coins`, {
       fontSize: '16px',
       color: '#ffdd77',
       stroke: '#000000',
@@ -312,7 +312,7 @@ export class MenuScene extends Phaser.Scene {
   private createPlayerName(): void {
     const name  = getPlayerName();
     const shift = this.layoutShift;
-    const nameY = Math.max(710 - shift, Math.min(this.scale.height - 106, 778));
+    const nameY = Math.max(710 - shift, Math.min(logicalHeight(this) - 106, 778));
 
     const isGpgs   = getGpgsPlayerId() !== null;
     const label    = isGpgs ? `${name}  ▶ Play Games` : `${name}  [edit]`;
@@ -321,7 +321,7 @@ export class MenuScene extends Phaser.Scene {
       : () => this.openNameDialog();
 
     this.playerNameText = this.add.text(
-      this.scale.width / 2, nameY,
+      logicalWidth(this) / 2, nameY,
       label,
       {
         fontSize:        '13px',
@@ -541,11 +541,11 @@ export class MenuScene extends Phaser.Scene {
     // Start button
     this.startBg = this.add.graphics().setDepth(8).setAlpha(0);
     this.startBg.fillStyle(0x000000, 0.5);
-    this.startBg.fillRoundedRect(this.scale.width / 2 - 160, 540 - shift, 320, 56, 12);
+    this.startBg.fillRoundedRect(logicalWidth(this) / 2 - 160, 540 - shift, 320, 56, 12);
     this.startBg.lineStyle(2, 0x8899bb, 0.8);
-    this.startBg.strokeRoundedRect(this.scale.width / 2 - 160, 540 - shift, 320, 56, 12);
+    this.startBg.strokeRoundedRect(logicalWidth(this) / 2 - 160, 540 - shift, 320, 56, 12);
 
-    this.startText = this.add.text(this.scale.width / 2, 570 - shift, 'START RUN', {
+    this.startText = this.add.text(logicalWidth(this) / 2, 570 - shift, 'START RUN', {
       fontSize: '24px',
       fontStyle: 'bold',
       color: '#ffffff',
@@ -558,7 +558,7 @@ export class MenuScene extends Phaser.Scene {
     const subBtnW  = 156;
     const subBtnH  = 56;
     const subBtnGap = 8;
-    const subLeft  = this.scale.width / 2 - 160;        // same left edge as Start Run
+    const subLeft  = logicalWidth(this) / 2 - 160;        // same left edge as Start Run
     const subY     = 612 - shift;
     const subCY    = subY + subBtnH / 2;
 
@@ -589,7 +589,7 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0).setDepth(9);
 
     if (im.isMobile && !im.tiltPermissionGranted) {
-      const tiltBtn = this.add.text(this.scale.width / 2, this.scale.height - 94, 'Enable Tilt Controls', {
+      const tiltBtn = this.add.text(logicalWidth(this) / 2, logicalHeight(this) - 94, 'Enable Tilt Controls', {
         fontSize: '17px',
         color: '#88aaff',
         stroke: '#000000',
@@ -634,10 +634,10 @@ export class MenuScene extends Phaser.Scene {
     if (getEffectiveControlMode() === 'joystick') return;
     setSessionControlMode('joystick');
     this.tiltPrompt?.setVisible(false);
-    const notice = this.add.text(this.scale.width / 2, this.scale.height - 94,
+    const notice = this.add.text(logicalWidth(this) / 2, logicalHeight(this) - 94,
       'Tilt unavailable — joystick controls enabled', {
         fontSize: '15px', color: '#ffd070', stroke: '#000000', strokeThickness: 2,
-        align: 'center', wordWrap: { width: this.scale.width - 40 },
+        align: 'center', wordWrap: { width: logicalWidth(this) - 40 },
       }).setOrigin(0.5).setDepth(10).setAlpha(0);
     this.tweens.add({ targets: notice, alpha: 1, duration: 250, hold: 2600, yoyo: true,
       onComplete: () => notice.destroy() });
@@ -648,7 +648,7 @@ export class MenuScene extends Phaser.Scene {
   private createHeapPicker(): void {
     const shift = this.layoutShift;
     const rowY  = 504 - shift;
-    const left  = this.scale.width / 2 - 160;
+    const left  = logicalWidth(this) / 2 - 160;
 
     // Heap-picker bar \u2014 left ~85% of the 320px row (264px), 8px gap, 48px trophy.
     this.heapPickerBg = this.add.graphics().setDepth(8).setAlpha(0);
@@ -750,7 +750,7 @@ export class MenuScene extends Phaser.Scene {
       { key: 'L',     label: 'Leaderboard' },
     ];
     const parts = keys.map(k => `${k.key}: ${k.label}`).join('   ');
-    this.add.text(this.scale.width / 2, this.scale.height - 52, parts, {
+    this.add.text(logicalWidth(this) / 2, logicalHeight(this) - 52, parts, {
       fontSize:      '11px',
       fontFamily:    'monospace',
       color:         '#667799',
@@ -759,10 +759,10 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private createSettingsButton(): void {
-    const bx = this.scale.width - 22;
+    const bx = logicalWidth(this) - 22;
     const by = 22;
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2;
+    const cx = logicalWidth(this) / 2;
+    const cy = logicalHeight(this) / 2;
 
     // ── Menu button ──────────────────────────────────────────────────────────
     const btnGfx = this.add.graphics().setDepth(20);
@@ -774,7 +774,7 @@ export class MenuScene extends Phaser.Scene {
     const hitZone = this.add.zone(bx, by, 36, 36).setDepth(20).setInteractive({ useHandCursor: true });
 
     // ── Overlay + panel ───────────────────────────────────────────────────────
-    const overlayBg = this.add.rectangle(cx, cy, this.scale.width, this.scale.height, 0x000000, 0.72)
+    const overlayBg = this.add.rectangle(cx, cy, logicalWidth(this), logicalHeight(this), 0x000000, 0.72)
       .setDepth(30).setVisible(false).setInteractive();
     const PANEL_W = 360;
     const PANEL_H = 420;
@@ -1028,7 +1028,7 @@ export class MenuScene extends Phaser.Scene {
     const label = import.meta.env.DEV
       ? `V${version} · ${window.__BUILD_ID__ ?? 'dev'}`
       : `V${version}`;
-    this.add.text(8, this.scale.height - 6, label, {
+    this.add.text(8, logicalHeight(this) - 6, label, {
       fontSize:   '11px',
       fontFamily: 'monospace',
       color:      '#556677',
