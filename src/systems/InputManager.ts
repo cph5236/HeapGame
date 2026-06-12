@@ -8,6 +8,7 @@ import {
   SWIPE_JUMP_CURVE_EXP,
   TILT_CURVE_EXP,
 } from '../constants';
+import { getDprCap } from './displayMetrics';
 
 /** A screen-space rectangle in Phaser game coordinates. */
 export interface ScreenRect { x: number; y: number; w: number; h: number; }
@@ -172,8 +173,11 @@ export class InputManager {
    *  Decided synchronously at touchstart, independent of Phaser's pointer timing. */
   private isInSuppressionZone(pageX: number, pageY: number): boolean {
     if (!this.screenTransform || this.suppressRects.size === 0) return false;
-    const gx = this.screenTransform.transformX(pageX);
-    const gy = this.screenTransform.transformY(pageY);
+    // transformX/Y now return physical game coords (displayScale = DPRcap); divide
+    // back to logical so they match the logically-authored suppression rects.
+    const dpr = getDprCap();
+    const gx = this.screenTransform.transformX(pageX) / dpr;
+    const gy = this.screenTransform.transformY(pageY) / dpr;
     for (const r of this.suppressRects.values()) {
       if (gx >= r.x && gx <= r.x + r.w && gy >= r.y && gy <= r.y + r.h) return true;
     }
