@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { HeapSummary } from '../../shared/heapTypes';
-import { applyCameraZoom, logicalWidth, logicalHeight } from '../systems/displayMetrics';
+import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { setSelectedHeapId, finalizeLegacyPlaced, getPlayerGuid } from '../systems/SaveData';
 import { HeapClient } from '../systems/HeapClient';
 import { drawDifficulty } from '../ui/DifficultyStars';
@@ -24,7 +24,7 @@ export class HeapSelectScene extends Phaser.Scene {
   constructor() { super({ key: 'HeapSelectScene' }); }
 
   create(): void {
-    applyCameraZoom(this);
+    setupUiCamera(this);
     const bg = this.add.graphics();
     const bands: [number, number, number][] = [
       [0,   47,  0x0a0818], [47,  47,  0x0e0d24], [94,  47,  0x121530],

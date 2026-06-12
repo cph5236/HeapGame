@@ -29,7 +29,21 @@ export function logicalHeight(scene: Phaser.Scene): number {
 }
 
 /** Set a scene's main camera zoom to DPRcap so logical-authored content fills the
- *  physical canvas. Idempotent — safe to call again after a scene restart. */
+ *  physical canvas. Zoom only — does NOT recentre, so it's safe to call on a
+ *  following gameplay camera (e.g. from the resize loop). Idempotent. */
 export function applyCameraZoom(scene: Phaser.Scene): void {
   scene.cameras.main.setZoom(getDprCap());
+}
+
+/** Configure a static UI scene's camera for the physical canvas: zoom = DPRcap
+ *  AND centre on the logical origin. The centring is essential — a zoomed camera
+ *  pivots on its (physical) viewport midpoint, so without recentring, logical-
+ *  authored UI (0..logicalW) is pushed off-frame. centreOn(logicalW/2, logicalH/2)
+ *  sets scroll to -(physical−logical)/2 so the logical viewport fills the canvas.
+ *  Gameplay scenes do their own centreOn/follow via CameraController instead.
+ *  Scrolling UI scenes (Upgrade/Store) take this as their scroll baseline. */
+export function setupUiCamera(scene: Phaser.Scene): void {
+  const cam = scene.cameras.main;
+  cam.setZoom(getDprCap());
+  cam.centerOn(logicalWidth(scene) / 2, logicalHeight(scene) / 2);
 }

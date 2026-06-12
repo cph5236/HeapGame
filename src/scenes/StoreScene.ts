@@ -1,6 +1,6 @@
 // src/scenes/StoreScene.ts
 import Phaser from 'phaser';
-import { applyCameraZoom } from '../systems/displayMetrics';
+import { setupUiCamera } from '../systems/displayMetrics';
 import { ITEM_DEFS, ItemCategory } from '../data/itemDefs';
 import { getBalance, getItemQuantity, purchaseItem } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
@@ -47,7 +47,7 @@ export class StoreScene extends Phaser.Scene {
   }
 
   create(): void {
-    applyCameraZoom(this);
+    setupUiCamera(this);
     this.twinkleStars = [];
     this.selectedIndex = 0;
     this.activeFilter = 'all';

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { getDprCap, DPR_CAP, logicalWidth, logicalHeight, applyCameraZoom } from '../displayMetrics';
+import { getDprCap, DPR_CAP, logicalWidth, logicalHeight, applyCameraZoom, setupUiCamera } from '../displayMetrics';
 
 function stubWindow(dpr: number, search = ''): void {
   vi.stubGlobal('window', {
@@ -53,5 +53,19 @@ describe('displayMetrics', () => {
     const scene = { cameras: { main: { setZoom } } } as unknown as Phaser.Scene;
     applyCameraZoom(scene);
     expect(setZoom).toHaveBeenCalledWith(2);
+  });
+
+  it('setupUiCamera zooms AND centres on the logical origin', () => {
+    stubWindow(2);
+    const setZoom = vi.fn();
+    const centerOn = vi.fn();
+    const scene = {
+      scale: { width: 822, height: 1600 },
+      cameras: { main: { setZoom, centerOn } },
+    } as unknown as Phaser.Scene;
+    setupUiCamera(scene);
+    expect(setZoom).toHaveBeenCalledWith(2);
+    // logical 822/2 = 411 wide, 1600/2 = 800 tall → centre (205.5, 400)
+    expect(centerOn).toHaveBeenCalledWith(205.5, 400);
   });
 });
