@@ -523,7 +523,34 @@ git commit -m "feat(dpr): normalize InputManager touch transform by DPRcap"
 
 ---
 
-## Task 10: Migrate gameplay scenes + their button/world-space reads
+## Task 10 — REVISED (separate UI camera required)
+
+> **Finding during execution (DPR-2.5 screenshot):** the gameplay world renders
+> correctly under `zoom + centerOn(player) + follow`, but the **HUD/buttons/joystick
+> (all `setScrollFactor(0)`) render off-screen**. A zoomed camera pivots zoom on its
+> physical viewport centre; a *following* gameplay camera can't also centre on the
+> logical UI origin (the trick that fixes static menu scenes). **User-approved fix:
+> a dedicated UI camera for the 2 gameplay scenes only.**
+>
+> **Design:** create a 2nd camera (`zoom = DPRcap`, `centerOn(logicalW/2, logicalH/2)`,
+> non-following) that renders ONLY the HUD layer; `mainCam.ignore(uiLayer)` and
+> `uiCam.ignore(everything else)`. Put all HUD/button/joystick objects into a
+> `Phaser.GameObjects.Layer`; main camera ignores that layer; the UI camera ignores
+> all current scene-root children + hooks `ADDED_TO_SCENE` to ignore future world
+> objects (enemies/pickups/chunks/placeables spawn dynamically).
+>
+> **Critical gotcha:** dynamically-created **UI** (grab button, place button, revive
+> HUD badge, joystick parts) must be added to the UI layer too — otherwise the
+> "ignore scene-root additions" hook makes them vanish from the UI camera. Each UI
+> creator (HUD.ts, mountJoystick, PickupManager grab button, GameScene place/score/
+> pause) must register its objects to the layer, including lazily-created ones.
+> Verify on-canvas at DPR 2.5: score + ☰ + grab/place + joystick all visible and
+> correctly placed; no world object double-rendered over the HUD.
+>
+> The original Task-10 steps below (logical layout + camera-space `worldView` math +
+> joystick) still apply, plus this UI-camera wiring.
+
+## Task 10 (original): Migrate gameplay scenes + their button/world-space reads
 
 `GameScene` and `InfiniteGameScene` mix three classes: logical layout, suppression rects (logical, positioned via `scale.width`), and camera-space world math.
 
