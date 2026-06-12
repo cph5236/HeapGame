@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { setupUiCamera } from '../systems/displayMetrics';
+import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { AudioManager } from '../systems/AudioManager';
 import { AdClient } from '../systems/ads/AdClient';
 import * as AdCadence from '../systems/ads/AdCadence';
@@ -225,10 +225,10 @@ export class ScoreScene extends Phaser.Scene {
     ];
     for (const [y, h, color] of bands) {
       g.fillStyle(color, 1);
-      g.fillRect(0, y, this.scale.width, h);
+      g.fillRect(0, y, logicalWidth(this), h);
     }
     g.fillStyle(0x2a1060, 1);
-    g.fillRect(0, 854, this.scale.width, Math.max(0, this.scale.height - 854));
+    g.fillRect(0, 854, logicalWidth(this), Math.max(0, logicalHeight(this) - 854));
   }
 
   private createStarField(): void {
@@ -242,7 +242,7 @@ export class ScoreScene extends Phaser.Scene {
     const g = this.add.graphics();
     for (const [xf, yf, r, a] of stars) {
       g.fillStyle(0xaaddff, a);
-      g.fillCircle(xf * this.scale.width, yf * this.scale.height, r);
+      g.fillCircle(xf * logicalWidth(this), yf * logicalHeight(this), r);
     }
   }
 
@@ -262,15 +262,15 @@ export class ScoreScene extends Phaser.Scene {
     ];
     for (const [y, h, color, alpha] of bands) {
       g.fillStyle(color, alpha);
-      g.fillRect(0, y, this.scale.width, h);
+      g.fillRect(0, y, logicalWidth(this), h);
     }
   }
 
   private createConfetti(): void {
     const colors = [0xffdd44, 0x44ff88, 0xff88cc, 0x44ddff, 0xcc44ff, 0xff8844];
     for (let i = 0; i < 20; i++) {
-      const x     = this.scale.width / 2 + Phaser.Math.Between(-60, 60);
-      const y     = this.scale.height * 0.22;
+      const x     = logicalWidth(this) / 2 + Phaser.Math.Between(-60, 60);
+      const y     = logicalHeight(this) * 0.22;
       const color = colors[i % colors.length];
       const size  = Phaser.Math.Between(3, 6);
       const g = this.add.graphics();
@@ -298,9 +298,9 @@ export class ScoreScene extends Phaser.Scene {
   private createTitle(): void {
     const text         = this.isFailure ? 'HEAP FAILURE' : 'HEAP SUCCESSFUL';
     const color        = this.isFailure ? '#ff5555' : '#44ffaa';
-    const fontSize     = this.scale.width < 420 ? '30px' : '36px';
-    const letterSpacing = this.scale.width < 420 ? 2 : 4;
-    this.add.text(this.scale.width / 2, this.scale.height * 0.13, text, {
+    const fontSize     = logicalWidth(this) < 420 ? '30px' : '36px';
+    const letterSpacing = logicalWidth(this) < 420 ? 2 : 4;
+    this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.13, text, {
       fontSize,
       fontFamily:      'monospace',
       color,
@@ -309,7 +309,7 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   private createScoreDisplay(): void {
-    const scoreText = this.add.text(this.scale.width / 2, this.scale.height * 0.22, '0', {
+    const scoreText = this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.22, '0', {
       fontSize:   '52px',
       fontFamily: 'monospace',
       color:      '#ffdd44',
@@ -322,10 +322,10 @@ export class ScoreScene extends Phaser.Scene {
     // Glow ellipse behind score
     const glow = this.add.graphics();
     glow.fillStyle(0xffdd44, 0.08);
-    glow.fillEllipse(this.scale.width / 2, this.scale.height * 0.22, 160, 60);
+    glow.fillEllipse(logicalWidth(this) / 2, logicalHeight(this) * 0.22, 160, 60);
     this.children.moveBelow(glow as Phaser.GameObjects.GameObject, scoreText as Phaser.GameObjects.GameObject);
 
-    this.add.text(this.scale.width / 2, this.scale.height * 0.22 + 34, 'SCORE', {
+    this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.22 + 34, 'SCORE', {
       fontSize:      '9px',
       fontFamily:    'monospace',
       color:         '#ffdd44',
@@ -353,7 +353,7 @@ export class ScoreScene extends Phaser.Scene {
 
   private createHighScoreBadge(): void {
     const color = '#ffdd44';
-    this.add.text(this.scale.width / 2, this.scale.height * 0.30, 'NEW HIGH SCORE!', {
+    this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.30, 'NEW HIGH SCORE!', {
       fontSize:      '18px',
       fontFamily:    'monospace',
       color,
@@ -376,9 +376,9 @@ export class ScoreScene extends Phaser.Scene {
     if (this._breakdownOpen) return;
     this._breakdownOpen = true;
 
-    const PANEL_W   = this.scale.width * 0.88;
-    const PANEL_X   = this.scale.width / 2;
-    const PANEL_TOP = this.scale.height * 0.32;
+    const PANEL_W   = logicalWidth(this) * 0.88;
+    const PANEL_X   = logicalWidth(this) / 2;
+    const PANEL_TOP = logicalHeight(this) * 0.32;
     const ROW_H     = 24;
     const PAD_X     = 14;
     const left      = PANEL_X - PANEL_W / 2 + PAD_X;
@@ -482,7 +482,7 @@ export class ScoreScene extends Phaser.Scene {
     this._breakdownObjects.push(totLbl, totVal);
 
     // Tap-outside-to-close transparent overlay (behind panel)
-    const blocker = this.add.rectangle(PANEL_X, this.scale.height / 2, this.scale.width, this.scale.height, 0x000000, 0)
+    const blocker = this.add.rectangle(PANEL_X, logicalHeight(this) / 2, logicalWidth(this), logicalHeight(this), 0x000000, 0)
       .setDepth(59)
       .setInteractive();
     blocker.once('pointerup', () => this.closeScoreBreakdown());
@@ -525,9 +525,9 @@ export class ScoreScene extends Phaser.Scene {
     this._coinsPanelObjects.forEach(o => o.destroy());
     this._coinsPanelObjects = [];
 
-    const PANEL_X    = this.scale.width / 2;
-    const PANEL_TOP  = this.scale.height * 0.37;
-    const PANEL_W    = this.scale.width * 0.88;
+    const PANEL_X    = logicalWidth(this) / 2;
+    const PANEL_TOP  = logicalHeight(this) * 0.37;
+    const PANEL_W    = logicalWidth(this) * 0.88;
     const ROW_H      = 26;
     const PAD_X      = 16;
 
@@ -754,17 +754,17 @@ export class ScoreScene extends Phaser.Scene {
   // ── Bottom Buttons ────────────────────────────────────────────────────────────
 
   private createBottomButtons(): void {
-    const btnY     = this.scale.height * 0.87;
+    const btnY     = logicalHeight(this) * 0.87;
     const showAd   = this._isAdRun && !this._rewardedUsed;
     const showCkpt = this.checkpointAvailable;
 
     if (showAd && showCkpt) {
-      this.createCheckpointButtonAt(this.scale.width * 0.25, btnY, true);
-      this.createRewardedAdButtonAt(this.scale.width * 0.75, btnY, true);
+      this.createCheckpointButtonAt(logicalWidth(this) * 0.25, btnY, true);
+      this.createRewardedAdButtonAt(logicalWidth(this) * 0.75, btnY, true);
     } else if (showCkpt) {
-      this.createCheckpointButtonAt(this.scale.width / 2, btnY, false);
+      this.createCheckpointButtonAt(logicalWidth(this) / 2, btnY, false);
     } else if (showAd) {
-      this.createRewardedAdButtonAt(this.scale.width / 2, btnY, false);
+      this.createRewardedAdButtonAt(logicalWidth(this) / 2, btnY, false);
     }
   }
 
@@ -888,8 +888,8 @@ export class ScoreScene extends Phaser.Scene {
     if (!this.heapId && !this._mockLeaderboard) return;
 
     const PANEL_TOP = topY;
-    const PANEL_W   = this.scale.width * 0.88;
-    const PANEL_X   = this.scale.width / 2;
+    const PANEL_W   = logicalWidth(this) * 0.88;
+    const PANEL_X   = logicalWidth(this) / 2;
     const ROW_H     = 20;
 
     // Mock data path — renders immediately, no API call.
@@ -964,8 +964,8 @@ export class ScoreScene extends Phaser.Scene {
     rowH:     number,
   ): void {
     const PAD_X  = 14;
-    const left   = this.scale.width / 2 - panelW / 2 + PAD_X;
-    const right  = this.scale.width / 2 + panelW / 2 - PAD_X;
+    const left   = logicalWidth(this) / 2 - panelW / 2 + PAD_X;
+    const right  = logicalWidth(this) / 2 + panelW / 2 - PAD_X;
     const lb     = this._leaderboardObjects;
 
     // "HIGH SCORES" label above the panel — styled like SCORE label but smaller, left-aligned
@@ -980,8 +980,8 @@ export class ScoreScene extends Phaser.Scene {
     const bg = this.add.graphics();
     bg.fillStyle(0x002244, 0.5);
     bg.lineStyle(1, 0x336699, 0.3);
-    bg.fillRoundedRect(this.scale.width / 2 - panelW / 2, panelTop, panelW, panelH, 6);
-    bg.strokeRoundedRect(this.scale.width / 2 - panelW / 2, panelTop, panelW, panelH, 6);
+    bg.fillRoundedRect(logicalWidth(this) / 2 - panelW / 2, panelTop, panelW, panelH, 6);
+    bg.strokeRoundedRect(logicalWidth(this) / 2 - panelW / 2, panelTop, panelW, panelH, 6);
     lb.push(bg);
 
     let y = panelTop + 4;
@@ -997,7 +997,7 @@ export class ScoreScene extends Phaser.Scene {
       // Alternating row stripe
       const stripe = this.add.graphics();
       stripe.fillStyle(i % 2 === 0 ? 0x0d3155 : 0x071d33, 0.5);
-      stripe.fillRect(this.scale.width / 2 - panelW / 2, y, panelW, rowH);
+      stripe.fillRect(logicalWidth(this) / 2 - panelW / 2, y, panelW, rowH);
       lb.push(stripe);
 
       const rankTxt = this.add.text(left, mid, `#${entry.rank}`, {
@@ -1020,7 +1020,7 @@ export class ScoreScene extends Phaser.Scene {
 
     // Gap + player row if player is not already in top N
     if (ctx.player && !this.playerInTop(ctx)) {
-      const gapDots = this.add.text(this.scale.width / 2, y + rowH / 2, '·  ·  ·', {
+      const gapDots = this.add.text(logicalWidth(this) / 2, y + rowH / 2, '·  ·  ·', {
         fontSize: '10px', fontFamily: 'monospace', color: '#335566',
       }).setOrigin(0.5, 0.5);
       lb.push(gapDots);
@@ -1057,9 +1057,9 @@ export class ScoreScene extends Phaser.Scene {
   private createMenuPrompt(): void {
     const im    = InputManager.getInstance();
     const label = im.isMobile ? 'TAP ANYWHERE FOR MENU' : 'PRESS ANY KEY FOR MENU';
-    const promptY = this.scale.height * 0.95;
+    const promptY = logicalHeight(this) * 0.95;
 
-    this.add.text(this.scale.width / 2, promptY, label, {
+    this.add.text(logicalWidth(this) / 2, promptY, label, {
       fontSize:      '16px',
       fontFamily:    'monospace',
       color:         '#ffffff',
@@ -1078,8 +1078,8 @@ export class ScoreScene extends Phaser.Scene {
       if (im.isMobile) {
         // Full-screen zone at depth -1 so existing buttons (depth 0) stay on top via topOnly.
         this.add.rectangle(
-          this.scale.width / 2, this.scale.height / 2,
-          this.scale.width, this.scale.height,
+          logicalWidth(this) / 2, logicalHeight(this) / 2,
+          logicalWidth(this), logicalHeight(this),
           0x000000, 0,
         ).setDepth(-1).setInteractive().once('pointerup', goMenu);
       }
