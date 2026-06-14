@@ -177,7 +177,7 @@ export class PickupManager {
       this.grab(this.activeIndex);
     }
 
-    this.cullBelow(this.scene.cameras.main.scrollY + this.scene.cameras.main.height + CULL_MARGIN);
+    this.cullBelow(this.scene.cameras.main.worldView.bottom + CULL_MARGIN);
   }
 
   /** Dev-only: force-spawn a pickup at a world location (used by scene-preview). */
