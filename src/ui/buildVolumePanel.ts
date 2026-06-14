@@ -96,7 +96,7 @@ export function buildVolumePanel(
   const vols = AudioManager.getVolumes();
 
   // Lay everything out at build time. The scene is created when the pause overlay
-  // is launched, so scale.width/height are stable here. Sliders MUST be created at
+  // is launched, so the logical viewport size is stable here. Sliders MUST be created at
   // their final position — createVolumeSlider captures its track coordinates for the
   // drag/tap math, so moving a slider after creation would desync both the visuals
   // and the interaction.

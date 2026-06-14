@@ -9,7 +9,7 @@ export interface ControlsOverlay {
   parts: Phaser.GameObjects.GameObject[];
   /** Show or hide the overlay. Re-reads the current control mode when shown. */
   setOpen: (open: boolean) => void;
-  /** Re-layout against the current scale.width/height (call on resize). */
+  /** Re-layout against the current logical viewport size (call on resize). */
   relayout: () => void;
 }
 
@@ -31,9 +31,9 @@ const LINE_GAP = 5;
  * Build a responsive, content-sized CONTROLS overlay shared by MenuScene and the
  * in-game scenes. The panel sizes itself to the (mode-aware) help text plus
  * padding, then clamps to the viewport with a margin — so it never runs off the
- * edge of narrow (21:9) phones the way the old fixed 380×320 panel did. In
- * Phaser's RESIZE scale mode scale.width/height track the real device size, so
- * everything is positioned relative to those.
+ * edge of narrow (21:9) phones the way the old fixed 380×320 panel did. Everything
+ * is positioned in logical px via logicalWidth/logicalHeight, which divide the
+ * physical canvas size (css × DPRcap) back to logical units.
  */
 export function buildControlsOverlay(scene: Phaser.Scene, opts: BuildOpts): ControlsOverlay {
   const { depth, onBackgroundTap } = opts;
