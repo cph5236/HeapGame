@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import type { PlaceableManager } from '../systems/PlaceableManager';
 import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
+import { addToGameplayUi } from '../systems/GameplayUiCamera';
 const MARGIN_R = 20;   // gap from right screen edge
 const ICON_GAP = 14;   // gap between icon groups
 const DASH_W   = 80;
@@ -29,9 +30,9 @@ function ensureRadialTexture(scene: Phaser.Scene): void {
   g.destroy();
 }
 
-function addRadialBg(scene: Phaser.Scene, cx: number, cy: number): void {
+function addRadialBg(scene: Phaser.Scene, cx: number, cy: number): Phaser.GameObjects.Image {
   ensureRadialTexture(scene);
-  scene.add.image(cx, cy, RADIAL_TEX_KEY).setScrollFactor(0).setDepth(19);
+  return scene.add.image(cx, cy, RADIAL_TEX_KEY).setScrollFactor(0).setDepth(19);
 }
 
 export class HUD {
@@ -47,6 +48,10 @@ export class HUD {
     this.hudY = logicalHeight(scene) - 44;
     this.player = player;
 
+    // Every screen-space object created here is registered to the gameplay UI
+    // layer at the end so it renders on the (non-following) UI camera.
+    const parts: Phaser.GameObjects.GameObject[] = [];
+
     // Build positions right-to-left so the layout adapts to which abilities are unlocked
     let cursorX = logicalWidth(scene) - MARGIN_R; // start from right edge
 
@@ -55,8 +60,8 @@ export class HUD {
       const dashLeft = cursorX - DASH_W;
       const dashCX   = dashLeft + DASH_W / 2;
 
-      scene.add.rectangle(dashCX, this.hudY, DASH_W, DASH_H, 0x000000, 0.55)
-        .setScrollFactor(0).setDepth(19);
+      parts.push(scene.add.rectangle(dashCX, this.hudY, DASH_W, DASH_H, 0x000000, 0.55)
+        .setScrollFactor(0).setDepth(19));
 
       // Left-anchored fill: scaleX maps directly to fillW (no geometry rebuild).
       this.dashFill = scene.add.rectangle(dashLeft, this.hudY, DASH_W, DASH_H, 0x44aaff, 1)
@@ -78,14 +83,16 @@ export class HUD {
       this.dashFill  = scene.add.rectangle(0, 0, 1, 1, 0).setVisible(false);
       this.dashLabel = scene.add.text(0, 0, '').setVisible(false);
     }
+    parts.push(this.dashFill, this.dashLabel);
 
     // ── Wall jump icon (1 charge, right of clouds) ──────────────────────────
     if (player.hasWallJump) {
       const iconCX = cursorX - ICON_BG_R;
-      addRadialBg(scene, iconCX, this.hudY);
+      parts.push(addRadialBg(scene, iconCX, this.hudY));
       const icon = scene.add.image(iconCX, this.hudY, 'wall-jump')
         .setScrollFactor(0).setDepth(20);
       this.wallJumpIcons.push(icon);
+      parts.push(icon);
       cursorX = iconCX - ICON_BG_R - ICON_GAP;
     }
 
@@ -94,10 +101,11 @@ export class HUD {
     const cloudSpacing = ICON_BG_R * 2 + 6;
     for (let i = player.maxAirJumpsCount - 1; i >= 0; i--) {
       const cx = cursorX - ICON_BG_R;
-      addRadialBg(scene, cx, this.hudY);
+      parts.push(addRadialBg(scene, cx, this.hudY));
       const icon = scene.add.image(cx, this.hudY, 'cloud')
         .setScrollFactor(0).setDepth(20).setScale(1.1);
       this.cloudIcons[i] = icon;
+      parts.push(icon);
       cursorX -= cloudSpacing;
     }
 
@@ -106,17 +114,18 @@ export class HUD {
       const bagX = 36;
       const bagY = this.hudY;
 
-      addRadialBg(scene, bagX, bagY);
+      parts.push(addRadialBg(scene, bagX, bagY));
 
-      scene.add.text(bagX, bagY, '\uD83C\uDF92', {
+      parts.push(scene.add.text(bagX, bagY, '\uD83C\uDF92', {
         fontSize: '26px',
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(21);
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(21));
 
       const bagHit = scene.add.zone(bagX, bagY, 52, 52)
         .setScrollFactor(0).setDepth(22)
         .setInteractive({ useHandCursor: true });
 
       bagHit.on('pointerup', () => placeableManager.openHotbar());
+      parts.push(bagHit);
     }
 
     // ── Revive armed badge (top-left, persistent while a revive is held) ────────
@@ -124,6 +133,9 @@ export class HUD {
       fontSize: '13px', color: '#ff6688', stroke: '#000000', strokeThickness: 3,
       fontStyle: 'bold',
     }).setScrollFactor(0).setDepth(21).setVisible(false);
+    parts.push(this.reviveBadge);
+
+    addToGameplayUi(scene, parts);
   }
 
   update(): void {

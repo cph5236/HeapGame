@@ -15,7 +15,8 @@ import type { BuffManager } from './BuffManager';
 import { Player } from '../entities/Player';
 import { getLogger } from '../logging';
 import { InputManager } from './InputManager';
-import { logicalWidth, logicalHeight } from './displayMetrics';
+import { logicalWidth, logicalHeight, getDprCap } from './displayMetrics';
+import { addToGameplayUi } from './GameplayUiCamera';
 
 export const enum PlacementState { Closed, Hotbar, Placing }
 
@@ -240,6 +241,13 @@ export class PlaceableManager {
       stroke: '#000000', strokeThickness: 2,
       align: 'center',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(26).setVisible(false);
+
+    // Register all screen-space hotbar/placement UI to the gameplay UI camera.
+    // (Ghost rects above are world-space — left on the main camera.)
+    addToGameplayUi(scene, [
+      this.hotbarBg, ...this.hotbarItems, ...this.hotbarLabels, ...this.hotbarQtys,
+      this.confirmBtn, this.confirmTxt, this.cancelBtn, this.cancelTxt, this.statusLabel,
+    ]);
   }
 
   // ── Spawn saved items on run start ───────────────────────────────────────────
@@ -360,11 +368,15 @@ export class PlaceableManager {
 
   private onPlacementClick = (ptr: Phaser.Input.Pointer): void => {
     if (this.state !== PlacementState.Placing) return;
-    // Ignore clicks on the confirm/cancel buttons (screen-space overlap check)
+    // Ignore clicks on the confirm/cancel buttons (screen-space overlap check).
+    // Buttons are authored in logical coords; ptr.x/y is physical under the
+    // DPRcap canvas, so compare in logical space.
+    const dpr = getDprCap();
+    const px = ptr.x / dpr, py = ptr.y / dpr;
     const bx = this.confirmBtn.x, by = this.confirmBtn.y, bw = 110 / 2, bh = 36 / 2;
     const cx = this.cancelBtn.x,  cy = this.cancelBtn.y;
-    if ((Math.abs(ptr.x - bx) < bw && Math.abs(ptr.y - by) < bh) ||
-        (Math.abs(ptr.x - cx) < bw && Math.abs(ptr.y - cy) < bh)) {
+    if ((Math.abs(px - bx) < bw && Math.abs(py - by) < bh) ||
+        (Math.abs(px - cx) < bw && Math.abs(py - cy) < bh)) {
       // Re-listen for next click (the button handled this one)
       this.scene.input.once('pointerdown', this.onPlacementClick, this);
       return;
@@ -404,9 +416,12 @@ export class PlaceableManager {
     this._lastPtrX = ptr.x;
     this._lastPtrY = ptr.y;
 
+    // getWorldPoint accounts for the camera's DPRcap zoom; ptr.x/y + scroll would
+    // be off by the zoom factor under the physical-resolution canvas.
     const cam    = this.scene.cameras.main;
-    const worldX = ptr.x + cam.scrollX;
-    const worldY = ptr.y + cam.scrollY;
+    const world  = cam.getWorldPoint(ptr.x, ptr.y);
+    const worldX = world.x;
+    const worldY = world.y;
 
     if (this.placingItemId === 'ibeam') {
       const wallSnap = this.findWallSnap(worldX, worldY);

@@ -17,6 +17,8 @@ import { HUD } from '../ui/HUD';
 import { InputManager } from '../systems/InputManager';
 import { mountJoystick } from '../systems/mountJoystick';
 import type { JoystickHandle } from '../systems/mountJoystick';
+import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
+import { setupGameplayUiCamera, addToGameplayUi } from '../systems/GameplayUiCamera';
 import { getLogger } from '../logging';
 import {
   WORLD_WIDTH,
@@ -116,6 +118,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Dedicated UI camera for the (zoomed, following) gameplay scene. Must run
+    // before any HUD/world objects are created so the ADDED_TO_SCENE hook can
+    // auto-ignore world objects on the UI camera. Screen-space objects are
+    // registered via addToGameplayUi below.
+    setupGameplayUiCamera(this);
+
     this.blockPlaced = false;
     this._runKills     = {};
     this._runStartTime = null;
@@ -297,6 +305,7 @@ export class GameScene extends Phaser.Scene {
     this.debugText = this.add.text(8, 8, '', {
       fontSize: '13px', color: '#00ff88', stroke: '#000000', strokeThickness: 2,
     }).setScrollFactor(0).setDepth(20).setVisible(false);
+    addToGameplayUi(this, this.debugText);
     this.input.keyboard!.on('keydown-F2', () => this.toggleDebugMode());
     this.input.keyboard!.on('keydown-R', () => this.placeableManager.openHotbar());
 
@@ -308,15 +317,17 @@ export class GameScene extends Phaser.Scene {
     this.joystick = mountJoystick(this, this.im, this.player);
 
     this._holdBar = this.add.graphics().setScrollFactor(0).setDepth(26);
+    addToGameplayUi(this, this._holdBar);
 
     // HUD: score (always visible)
-    this.scoreText = this.add.text(this.scale.width / 2, 30, 'Score: 0', {
+    this.scoreText = this.add.text(logicalWidth(this) / 2, 30, 'Score: 0', {
       fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
+    addToGameplayUi(this, this.scoreText);
 
     if (im.isMobile) {
       // Mobile placement button — replaces the text hint, appears in top zone
-      this.placeBtnBg = this.add.rectangle(this.scale.width / 2, 82, 280, 56, 0x1155aa, 0.88)
+      this.placeBtnBg = this.add.rectangle(logicalWidth(this) / 2, 82, 280, 56, 0x1155aa, 0.88)
         .setScrollFactor(0).setDepth(24).setVisible(false)
         .setStrokeStyle(2, 0x4488dd);
       this.placeBtnBg.setInteractive({ useHandCursor: true });
@@ -324,18 +335,20 @@ export class GameScene extends Phaser.Scene {
       this.placeBtnBg.on('pointerup', () => im.endPlace());
       this.placeBtnBg.on('pointerout', () => im.endPlace());
 
-      this.placeBtnLabel = this.add.text(this.scale.width / 2, 82, 'PLACE BLOCK', {
+      this.placeBtnLabel = this.add.text(logicalWidth(this) / 2, 82, 'PLACE BLOCK', {
         fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
         stroke: '#000000', strokeThickness: 3,
       }).setOrigin(0.5).setScrollFactor(0).setDepth(25).setVisible(false);
 
       // Dummy topZoneText (not shown on mobile)
       this.topZoneText = this.add.text(0, 0, '').setVisible(false);
+      addToGameplayUi(this, [this.placeBtnBg, this.placeBtnLabel, this.topZoneText]);
     } else {
       // Desktop placement hint
-      this.topZoneText = this.add.text(this.scale.width / 2, 82, 'SPACE \u2014 add to heap', {
+      this.topZoneText = this.add.text(logicalWidth(this) / 2, 82, 'SPACE \u2014 add to heap', {
         fontSize: '18px', color: '#ffdd44', stroke: '#000000', strokeThickness: 3,
       }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
+      addToGameplayUi(this, this.topZoneText);
     }
 
     // PlaceableManager — items (shields, checkpoints, etc.)
@@ -403,7 +416,7 @@ export class GameScene extends Phaser.Scene {
     // After a wrap, snap the camera so the player appears at the edge they came out of,
     // then tween the follow offset back to zero so the camera re-centers naturally.
     if (this.player.wrapDir !== 0) {
-      const halfW = this.cameras.main.width / 2;
+      const halfW = this.cameras.main.worldView.width / 2;
       // wrapDir -1 = came out right edge, offset pulls camera left so player is at right
       // wrapDir  1 = came out left edge,  offset pulls camera right so player is at left
       const startOffset = -this.player.wrapDir * halfW;
@@ -425,7 +438,7 @@ export class GameScene extends Phaser.Scene {
 
     const cam       = this.cameras.main;
     const camTop    = cam.scrollY;
-    const camBottom = cam.scrollY + cam.height;
+    const camBottom = cam.worldView.bottom;
 
     this.trashWallManager.update(this.player.sprite.y, delta, this.pickupManager.getWallSpeedMult() * this.buffManager.getWallSpeedMult());
     if (!this._playerDead) {
@@ -489,7 +502,7 @@ export class GameScene extends Phaser.Scene {
       // Register/clear the PLACE button's screen zone so tapping it never jumps.
       // Rect mirrors the button geom: centred at (w/2, 82), size 280×56.
       im.setSuppressionRect(
-        'place', showPlaceUI ? { x: this.scale.width / 2 - 140, y: 82 - 28, w: 280, h: 56 } : null,
+        'place', showPlaceUI ? { x: logicalWidth(this) / 2 - 140, y: 82 - 28, w: 280, h: 56 } : null,
       );
     } else {
       this.topZoneText.setVisible(showPlaceUI);
@@ -519,11 +532,11 @@ export class GameScene extends Phaser.Scene {
       const holdActive = canPlace && holdInputActive;
       if (im.isMobile) {
         this.placeBtnBg?.setStrokeStyle(2, holdActive ? 0x88ddff : 0x4488dd);
-        // Bar anchored to bottom of button: center=(this.scale.width/2, 82), size=(280, 56)
-        this._drawHoldBar(progress, this.scale.width / 2 - 134, 96, 268, 8);
+        // Bar anchored to bottom of button: center=(logicalWidth/2, 82), size=(280, 56)
+        this._drawHoldBar(progress, logicalWidth(this) / 2 - 134, 96, 268, 8);
       } else {
-        // Bar anchored below topZoneText at (this.scale.width/2, 82)
-        this._drawHoldBar(progress, this.scale.width / 2 - 100, 97, 200, 6);
+        // Bar anchored below topZoneText at (logicalWidth/2, 82)
+        this._drawHoldBar(progress, logicalWidth(this) / 2 - 100, 97, 200, 6);
       }
     } else {
       if (im.isMobile) this.placeBtnBg?.setStrokeStyle(2, 0x4488dd);
@@ -780,10 +793,11 @@ export class GameScene extends Phaser.Scene {
   /** One-shot visual cue when a Revive triggers. */
   private triggerReviveCue(): void {
     this.cameras.main.flash(300, 120, 40, 70);
-    const txt = this.add.text(this.scale.width / 2, this.scale.height / 2 - 40, 'REVIVED!', {
+    const txt = this.add.text(logicalWidth(this) / 2, logicalHeight(this) / 2 - 40, 'REVIVED!', {
       fontSize: '40px', color: '#ff6688', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 6,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(50);
+    addToGameplayUi(this, txt);
     this.tweens.add({
       targets: txt,
       alpha:  { from: 1, to: 0 },
@@ -795,7 +809,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createMenuButton(): void {
-    const bx = this.scale.width - 22;
+    const bx = logicalWidth(this) - 22;
     const by = 22;
 
     const btnGfx = this.add.graphics().setScrollFactor(0).setDepth(26);
@@ -805,7 +819,7 @@ export class GameScene extends Phaser.Scene {
     btnGfx.strokeCircle(bx, by, 14);
 
     // ☰ hamburger glyph
-    this.add.text(bx, by, '☰', {
+    const glyph = this.add.text(bx, by, '☰', {
       fontSize: '16px', color: '#ffffff', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(27);
@@ -813,6 +827,7 @@ export class GameScene extends Phaser.Scene {
     const hitZone = this.add.zone(bx, by, 40, 40).setScrollFactor(0).setDepth(27)
       .setInteractive({ useHandCursor: true });
     hitZone.on('pointerup', () => this.openPauseMenu());
+    addToGameplayUi(this, [btnGfx, glyph, hitZone]);
 
     this.input.keyboard?.on('keydown-ESC', () => this.openPauseMenu());
     this.input.keyboard?.on('keydown-P',   () => this.openPauseMenu());

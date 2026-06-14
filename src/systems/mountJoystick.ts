@@ -3,6 +3,8 @@ import { InputManager } from './InputManager';
 import { JoystickController } from './JoystickController';
 import { Player } from '../entities/Player';
 import { getEffectiveControlMode, getJoystickSide } from './SaveData';
+import { logicalWidth, logicalHeight } from './displayMetrics';
+import { addToGameplayUi } from './GameplayUiCamera';
 import { JOYSTICK_RADIUS, JOYSTICK_MARGIN, DASH_BUTTON_RADIUS } from '../constants';
 
 export interface JoystickHandle {
@@ -30,8 +32,8 @@ export function mountJoystick(
   if (mode !== 'joystick') return null;
 
   const side = getJoystickSide();
-  const w = scene.scale.width;
-  const h = scene.scale.height;
+  const w = logicalWidth(scene);
+  const h = logicalHeight(scene);
 
   const stickX = side === 'left'
     ? JOYSTICK_MARGIN + JOYSTICK_RADIUS
@@ -58,6 +60,7 @@ export function mountJoystick(
   const dashLabel = scene.add.text(dashX, dashY, '»', {
     fontSize: '26px', color: '#ffbbaa', fontStyle: 'bold',
   }).setOrigin(0.5).setScrollFactor(0).setDepth(41).setVisible(player.hasDash);
+  addToGameplayUi(scene, [dashBtn, dashLabel]);
 
   if (player.hasDash) {
     dashBtn.setInteractive({ useHandCursor: true });
