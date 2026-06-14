@@ -35,15 +35,19 @@ export function applyCameraZoom(scene: Phaser.Scene): void {
   scene.cameras.main.setZoom(getDprCap());
 }
 
-/** Configure a static UI scene's camera for the physical canvas: zoom = DPRcap
- *  AND centre on the logical origin. The centring is essential — a zoomed camera
- *  pivots on its (physical) viewport midpoint, so without recentring, logical-
- *  authored UI (0..logicalW) is pushed off-frame. centreOn(logicalW/2, logicalH/2)
- *  sets scroll to -(physical−logical)/2 so the logical viewport fills the canvas.
- *  Gameplay scenes do their own centreOn/follow via CameraController instead.
- *  Scrolling UI scenes (Upgrade/Store) take this as their scroll baseline. */
+/** Configure a static UI scene's camera for the physical canvas: origin (0,0) +
+ *  scroll 0 + zoom = DPRcap. With this, a logical-authored object at (x,y) renders
+ *  at physical (x·DPRcap, y·DPRcap), filling the canvas — REGARDLESS of its
+ *  scrollFactor.
+ *
+ *  This must NOT use centreOn: centreOn fills the frame by setting scroll, but
+ *  setScrollFactor(0) objects ignore scroll, so a centred camera leaves every
+ *  fixed/overlay element (e.g. PauseScene's full-screen dim + buttons) pushed
+ *  off-frame under zoom. origin-0 has no such dependence and matches the gameplay
+ *  UI camera. Scrolling UI scenes (Upgrade/Store) capture cam.scrollY (= 0 here) as
+ *  their scroll baseline and clamp relative to it, so they are unaffected. */
 export function setupUiCamera(scene: Phaser.Scene): void {
   const cam = scene.cameras.main;
+  cam.setOrigin(0, 0);
   cam.setZoom(getDprCap());
-  cam.centerOn(logicalWidth(scene) / 2, logicalHeight(scene) / 2);
 }

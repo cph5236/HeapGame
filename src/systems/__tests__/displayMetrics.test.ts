@@ -55,17 +55,21 @@ describe('displayMetrics', () => {
     expect(setZoom).toHaveBeenCalledWith(2);
   });
 
-  it('setupUiCamera zooms AND centres on the logical origin', () => {
+  it('setupUiCamera pins origin to (0,0) and zooms by DPRcap (no centreOn)', () => {
     stubWindow(2);
     const setZoom = vi.fn();
+    const setOrigin = vi.fn();
     const centerOn = vi.fn();
     const scene = {
       scale: { width: 822, height: 1600 },
-      cameras: { main: { setZoom, centerOn } },
+      cameras: { main: { setZoom, setOrigin, centerOn } },
     } as unknown as Phaser.Scene;
     setupUiCamera(scene);
+    // origin (0,0) + zoom DPRcap maps logical (x,y) → physical (x·DPRcap, y·DPRcap)
+    // for BOTH scrollFactor-0 and scrollFactor-1 content. centreOn would break
+    // scrollFactor-0 (fixed/overlay) elements, so it must NOT be used.
+    expect(setOrigin).toHaveBeenCalledWith(0, 0);
     expect(setZoom).toHaveBeenCalledWith(2);
-    // logical 822/2 = 411 wide, 1600/2 = 800 tall → centre (205.5, 400)
-    expect(centerOn).toHaveBeenCalledWith(205.5, 400);
+    expect(centerOn).not.toHaveBeenCalled();
   });
 });

@@ -20,18 +20,25 @@ import { getDprCap, applyCameraZoom } from './systems/displayMetrics';
 // Text uses getDprCap() resolution so characters render at native DPI. This only
 // changes the internal render resolution — display size and layout are unaffected
 // — and any per-call `resolution` in the style still takes precedence.
-Phaser.GameObjects.GameObjectFactory.register('text', function (
+//
+// We assign the prototype method DIRECTLY rather than via GameObjectFactory.register:
+// register() is a no-op when a factory of that name already exists
+// (`if (!prototype.hasOwnProperty(type))`), and Phaser's built-in 'text' factory is
+// registered at import time — so register('text', …) silently never overrode it and
+// text stayed at resolution 1 (blurry under the DPRcap camera zoom). Direct prototype
+// assignment is the only way to win.
+Phaser.GameObjects.GameObjectFactory.prototype.text = function (
   this: Phaser.GameObjects.GameObjectFactory,
   x: number,
   y: number,
   text: string | string[],
   style?: Phaser.Types.GameObjects.Text.TextStyle,
-) {
+): Phaser.GameObjects.Text {
   const merged = { resolution: getDprCap(), ...(style ?? {}) };
   return this.displayList.add(
     new Phaser.GameObjects.Text(this.scene, x, y, text, merged),
-  );
-});
+  ) as Phaser.GameObjects.Text;
+};
 
 // Force the Canvas renderer when using the dev scene shortcut OR the DPR-gate
 // harness — headless Chromium has no GPU framebuffer, so WebGL fails to boot
