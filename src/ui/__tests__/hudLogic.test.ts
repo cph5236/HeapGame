@@ -45,7 +45,7 @@ describe('controlClusterLayout', () => {
     expect(l.stick).toEqual({ x: 28 + 64, y: 800 - 28 - 64 });
     expect(l.dash).toEqual({ x: 480 - 28 - 34, y: 800 - 28 - 34 });
     expect(l.place.x).toBe(480 - 28 - 34);
-    expect(l.place.y).toBe((800 - 28 - 34) - 34 - 14 - 30);
+    expect(l.place.y).toBe((800 - 28 - 34) - 34 - 14 - dims.placeH / 2);
   });
   it('right side mirrors horizontally', () => {
     const r = controlClusterLayout('right', 480, 800, dims);
