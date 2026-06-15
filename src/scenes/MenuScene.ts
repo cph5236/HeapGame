@@ -904,7 +904,7 @@ export class MenuScene extends Phaser.Scene {
 
     const ctrlHint = this.add.text(cx, CONTENT_TOP + 108,
       controlHelpLines(im.isMobile, ctrlMode).join('\n'),
-      { fontSize: '11px', color: '#aaaacc', align: 'left', lineSpacing: 3 },
+      { fontSize: '13px', color: '#d8dcf2', align: 'left', lineSpacing: 3 },
     ).setOrigin(0.5, 0).setDepth(33).setVisible(false);
 
     const controlsItems = [modeLabel, tiltOpt, joyOpt, sideLabel, leftOpt, rightOpt, ctrlHint];
