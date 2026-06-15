@@ -97,6 +97,8 @@ export class GameScene extends Phaser.Scene {
   private _holdElapsed = 0;
   private _liveZoneBottomY: number | null = null;
   private _holdBar!: Phaser.GameObjects.Graphics;
+  private _placeBtnX = 0;
+  private _placeBtnY = 0;
   private checkpointRespawn = false;
   private _runKills:     Partial<Record<EnemyKind, number>> = {};
   private _runStartTime: number | null = null;
@@ -331,6 +333,8 @@ export class GameScene extends Phaser.Scene {
         placeW: HUD_PLACE_W, placeH: HUD_PLACE_H, placeGap: HUD_PLACE_GAP,
       });
       const px = layout.place.x, py = layout.place.y;
+      this._placeBtnX = px;
+      this._placeBtnY = py;
 
       this.placeBtnBg = this.add.rectangle(px, py, HUD_PLACE_W, HUD_PLACE_H, 0xff9012, 0.95)
         .setScrollFactor(0).setDepth(40).setVisible(false)
@@ -346,10 +350,6 @@ export class GameScene extends Phaser.Scene {
 
       this.topZoneText = this.add.text(0, 0, '').setVisible(false);
       addToGameplayUi(this, [this.placeBtnBg, this.placeBtnLabel, this.topZoneText]);
-
-      im.setSuppressionRect('place', {
-        x: px - HUD_PLACE_W / 2, y: py - HUD_PLACE_H / 2, w: HUD_PLACE_W, h: HUD_PLACE_H,
-      });
     } else {
       // Desktop placement hint
       this.topZoneText = this.add.text(logicalWidth(this) / 2, 82, 'SPACE \u2014 add to heap', {
@@ -520,9 +520,11 @@ export class GameScene extends Phaser.Scene {
       this.placeBtnBg?.setVisible(showPlaceUI);
       this.placeBtnLabel?.setVisible(showPlaceUI);
       // Register/clear the PLACE button's screen zone so tapping it never jumps.
-      // Rect mirrors the button geom: centred at (w/2, 82), size 280×56.
       im.setSuppressionRect(
-        'place', showPlaceUI ? { x: logicalWidth(this) / 2 - 140, y: 82 - 28, w: 280, h: 56 } : null,
+        'place',
+        showPlaceUI
+          ? { x: this._placeBtnX - HUD_PLACE_W / 2, y: this._placeBtnY - HUD_PLACE_H / 2, w: HUD_PLACE_W, h: HUD_PLACE_H }
+          : null,
       );
     } else {
       this.topZoneText.setVisible(showPlaceUI);
@@ -551,15 +553,15 @@ export class GameScene extends Phaser.Scene {
     if (showPlaceUI) {
       const holdActive = canPlace && holdInputActive;
       if (im.isMobile) {
-        this.placeBtnBg?.setStrokeStyle(2, holdActive ? 0x88ddff : 0x4488dd);
-        // Bar anchored to bottom of button: center=(logicalWidth/2, 82), size=(280, 56)
-        this._drawHoldBar(progress, logicalWidth(this) / 2 - 134, 96, 268, 8);
+        this.placeBtnBg?.setStrokeStyle(holdActive ? 3 : 2, 0xffffff, holdActive ? 0.95 : 0.5);
+        // Hold bar just above the PLACE button
+        this._drawHoldBar(progress, this._placeBtnX - HUD_PLACE_W / 2, this._placeBtnY - HUD_PLACE_H / 2 - 12, HUD_PLACE_W, 6);
       } else {
         // Bar anchored below topZoneText at (logicalWidth/2, 82)
         this._drawHoldBar(progress, logicalWidth(this) / 2 - 100, 97, 200, 6);
       }
     } else {
-      if (im.isMobile) this.placeBtnBg?.setStrokeStyle(2, 0x4488dd);
+      if (im.isMobile) this.placeBtnBg?.setStrokeStyle(2, 0xffffff, 0.5);
       this._holdBar.clear();
     }
   }
