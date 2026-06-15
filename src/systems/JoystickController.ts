@@ -39,7 +39,16 @@ export class JoystickController {
       .setStrokeStyle(2, 0x8899bb).setScrollFactor(0).setDepth(40);
     this.thumb = scene.add.circle(x, y, JOYSTICK_RADIUS * 0.42, 0x6688ff, 0.9)
       .setScrollFactor(0).setDepth(41);
-    addToGameplayUi(scene, [this.base, this.thumb]);
+
+    // Base: soften fill + border; add a faint static direction guide ring inside it.
+    this.base.setFillStyle(0x14182c, 0.42).setStrokeStyle(2, 0xffffff, 0.28);
+    const guide = scene.add.circle(x, y, JOYSTICK_RADIUS - 8)
+      .setStrokeStyle(1, 0xffffff, 0.14).setScrollFactor(0).setDepth(40);
+    // Thumb: brighter fill, with a subtle inner highlight ring (static accent at base center).
+    this.thumb.setFillStyle(0x4f63e6, 0.95);
+    const thumbHi = scene.add.circle(x, y, JOYSTICK_RADIUS * 0.42 - 4)
+      .setStrokeStyle(2, 0x9db4ff, 0.6).setScrollFactor(0).setDepth(42);
+    addToGameplayUi(scene, [this.base, this.thumb, guide, thumbHi]);
 
     this.joy = new VirtualJoystick(scene, {
       x, y,
