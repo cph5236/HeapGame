@@ -177,7 +177,11 @@ export class PickupManager {
       this.grab(this.activeIndex);
     }
 
-    this.cullBelow(this.scene.cameras.main.worldView.bottom + CULL_MARGIN);
+    // scrollY + cam.height/zoom (not cam.worldView.bottom): worldView is stale on
+    // the first update frame (refreshed in preRender), which would cull every
+    // pickup spawned during create() before the camera settles. See GameScene cull.
+    const cam = this.scene.cameras.main;
+    this.cullBelow(cam.scrollY + cam.height / cam.zoom + CULL_MARGIN);
   }
 
   /** Dev-only: force-spawn a pickup at a world location (used by scene-preview). */
