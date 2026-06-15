@@ -12,8 +12,9 @@ import {
   applyPolygonToGenerator,
   polygonTopY,
 } from '../systems/HeapPolygonLoader';
-import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades } from '../systems/SaveData';
+import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode } from '../systems/SaveData';
 import { HUD } from '../ui/HUD';
+import { showDashIndicator } from '../ui/hudLogic';
 import { InputManager } from '../systems/InputManager';
 import { mountJoystick } from '../systems/mountJoystick';
 import type { JoystickHandle } from '../systems/mountJoystick';
@@ -65,7 +66,6 @@ export class GameScene extends Phaser.Scene {
   private heapGenerator!: HeapGenerator;
   private placeKey!: Phaser.Input.Keyboard.Key;
   private topZoneText!: Phaser.GameObjects.Text;
-  private scoreText!: Phaser.GameObjects.Text;
   private placeBtnBg?: Phaser.GameObjects.Rectangle;
   private placeBtnLabel?: Phaser.GameObjects.Text;
   private blockPlaced: boolean = false;
@@ -319,12 +319,6 @@ export class GameScene extends Phaser.Scene {
     this._holdBar = this.add.graphics().setScrollFactor(0).setDepth(26);
     addToGameplayUi(this, this._holdBar);
 
-    // HUD: score (always visible)
-    this.scoreText = this.add.text(logicalWidth(this) / 2, 30, 'Score: 0', {
-      fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
-    addToGameplayUi(this, this.scoreText);
-
     if (im.isMobile) {
       // Mobile placement button — replaces the text hint, appears in top zone
       this.placeBtnBg = this.add.rectangle(logicalWidth(this) / 2, 82, 280, 56, 0x1155aa, 0.88)
@@ -355,11 +349,16 @@ export class GameScene extends Phaser.Scene {
     this.buffManager = new BuffManager(this, this.player);
     this.placeableManager = new PlaceableManager(this, this.player, this.heapWalkableGroup, this.heapWallGroup, this._heapId, this.buffManager);
 
-    // HUD: ability indicators (dash bar, air jumps, wall jump)
-    this.hud = new HUD(this, this.player, this.placeableManager);
+    // HUD: ability indicators (dash bar, air jumps, wall jump), score, pause button
+    this.hud = new HUD(this, this.player, {
+      placeableManager: this.placeableManager,
+      showDashIndicator: showDashIndicator(im.isMobile, getEffectiveControlMode()),
+      onPause: () => this.openPauseMenu(),
+    });
 
-    // Pause menu button (☰) — top-right corner
-    this.createMenuButton();
+    // Preserve ESC/P pause keybindings
+    this.input.keyboard?.on('keydown-ESC', () => this.openPauseMenu());
+    this.input.keyboard?.on('keydown-P',   () => this.openPauseMenu());
 
     // When the run ends we launch ScoreScene and pause this scene. Phaser's pause
     // halts update() but leaves looping sounds playing, so the trash-wall rumble and
@@ -499,7 +498,7 @@ export class GameScene extends Phaser.Scene {
     if (score !== this._lastScore) {
       this._lastScore = score;
       const ft = Math.floor(score / SCORE_DISPLAY_DIVISOR);
-      this.scoreText.setText(`${ft} ft`);
+      this.hud.setScore(`${ft} ft`);
     }
 
     // Top zone UI
@@ -814,31 +813,6 @@ export class GameScene extends Phaser.Scene {
       duration: 900, ease: 'Cubic.Out',
       onComplete: () => txt.destroy(),
     });
-  }
-
-  private createMenuButton(): void {
-    const bx = logicalWidth(this) - 22;
-    const by = 22;
-
-    const btnGfx = this.add.graphics().setScrollFactor(0).setDepth(26);
-    btnGfx.fillStyle(0x000000, 0.65);
-    btnGfx.fillCircle(bx, by, 14);
-    btnGfx.lineStyle(2, 0x8899bb, 1);
-    btnGfx.strokeCircle(bx, by, 14);
-
-    // ☰ hamburger glyph
-    const glyph = this.add.text(bx, by, '☰', {
-      fontSize: '16px', color: '#ffffff', fontStyle: 'bold',
-      stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(27);
-
-    const hitZone = this.add.zone(bx, by, 40, 40).setScrollFactor(0).setDepth(27)
-      .setInteractive({ useHandCursor: true });
-    hitZone.on('pointerup', () => this.openPauseMenu());
-    addToGameplayUi(this, [btnGfx, glyph, hitZone]);
-
-    this.input.keyboard?.on('keydown-ESC', () => this.openPauseMenu());
-    this.input.keyboard?.on('keydown-P',   () => this.openPauseMenu());
   }
 
   private openPauseMenu(): void {
