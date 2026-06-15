@@ -178,7 +178,13 @@ export class HeapChunkRenderer {
     const canvas = document.createElement('canvas');
     canvas.width  = W;
     canvas.height = H;
-    const ctx = canvas.getContext('2d');
+    // willReadFrequently: this canvas is baked once then immediately read back by
+    // Phaser's textures.addCanvas (getImageData). Without the hint the context is
+    // GPU-backed, so every chunk's readback is a slow GPU→CPU roundtrip — on a real
+    // device GameScene bakes the whole pre-built heap at create() (hundreds of
+    // chunks), stalling create() before the HUD is built and flooding the console
+    // with willReadFrequently warnings. A CPU-backed canvas reads back cheaply.
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
     // Translate the polygon from world space into local (canvas) space.
