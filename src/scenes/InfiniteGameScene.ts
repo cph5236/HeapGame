@@ -16,6 +16,8 @@ import { CameraController } from '../systems/CameraController';
 import { InputManager } from '../systems/InputManager';
 import { mountJoystick } from '../systems/mountJoystick';
 import type { JoystickHandle } from '../systems/mountJoystick';
+import { logicalWidth } from '../systems/displayMetrics';
+import { setupGameplayUiCamera, addToGameplayUi } from '../systems/GameplayUiCamera';
 import { HUD } from '../ui/HUD';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { LayerGenerator } from '../systems/LayerGenerator';
@@ -104,6 +106,10 @@ export class InfiniteGameScene extends Phaser.Scene {
   constructor() { super({ key: 'InfiniteGameScene' }); }
 
   create(): void {
+    // Dedicated UI camera for the (zoomed, following) gameplay scene — must run
+    // before any HUD/world objects are created. See GameplayUiCamera.
+    setupGameplayUiCamera(this);
+
     this._runKills     = {};
     this._runStartTime = null;
     this._playerDead   = false;
@@ -291,6 +297,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       fontSize: '18px', color: '#ffffff',
       stroke: '#000000', strokeThickness: 2,
     }).setScrollFactor(0).setDepth(20);
+    addToGameplayUi(this, this.scoreText);
 
     this.createMenuButton();
 
@@ -311,6 +318,8 @@ export class InfiniteGameScene extends Phaser.Scene {
     }).setScrollFactor(0).setDepth(30).setVisible(false).setInteractive()
       .on('pointerdown', () => this.toggleNoclip());
 
+    addToGameplayUi(this, [this.debugText, this.noclipButton]);
+
     // ── Background ────────────────────────────────────────────────────────────────
     new ParallaxBackground(this);
 
@@ -328,7 +337,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   }
 
   private createMenuButton(): void {
-    const bx = this.scale.width - 22;
+    const bx = logicalWidth(this) - 22;
     const by = 22;
 
     const btnGfx = this.add.graphics().setScrollFactor(0).setDepth(26);
@@ -337,7 +346,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     btnGfx.lineStyle(2, 0x8899bb, 1);
     btnGfx.strokeCircle(bx, by, 14);
 
-    this.add.text(bx, by, '☰', {
+    const glyph = this.add.text(bx, by, '☰', {
       fontSize: '16px', color: '#ffffff', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(27);
@@ -345,6 +354,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     const hitZone = this.add.zone(bx, by, 40, 40).setScrollFactor(0).setDepth(27)
       .setInteractive({ useHandCursor: true });
     hitZone.on('pointerup', () => this.openPauseMenu());
+    addToGameplayUi(this, [btnGfx, glyph, hitZone]);
 
     this.input.keyboard?.on('keydown-ESC', () => this.openPauseMenu());
     this.input.keyboard?.on('keydown-P',   () => this.openPauseMenu());
@@ -386,9 +396,14 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.hud.update();
 
     // ── Heap generation ───────────────────────────────────────────────────────────
+    // Use scrollY (+ logical viewport height) rather than cam.worldView, which is
+    // only refreshed in preRender (AFTER update) and is therefore stale (≈0) on the
+    // first update frame — matching the workaround in GameScene. Less critical here
+    // (Infinite regenerates every frame so nothing is permanently culled), but it
+    // keeps frame-1 enemy visibility + lookahead generation from using y≈0.
     const cam    = this.cameras.main;
-    const camTop = cam.worldView.top;
-    const camBot = cam.worldView.bottom;
+    const camTop = cam.scrollY;
+    const camBot = cam.scrollY + cam.height / cam.zoom;
 
     // Layer generation — drive each column ahead of the player
     const targetY = this.player.sprite.y - INFINITE_LOOKAHEAD_CHUNKS * CHUNK_BAND_HEIGHT;

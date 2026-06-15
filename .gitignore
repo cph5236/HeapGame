@@ -20,3 +20,5 @@ todo/
 screenshots/
 .playwright-mcp/
 StorelistingScreenshots/
+# DPR gate screenshot artifact (regenerated each run)
+dpr-gate.png

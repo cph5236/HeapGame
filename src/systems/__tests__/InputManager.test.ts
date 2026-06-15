@@ -681,6 +681,30 @@ describe('InputManager — UI button suppression zones', () => {
     im.update(16, false);
     expect(im.jumpJustPressed).toBe(true);
   });
+
+  it('hit-tests suppression zones in logical space when transform returns physical coords', async () => {
+    // Simulate DPRcap = 2: page (logical) -> physical game coords.
+    // Use vi.stubGlobal so jsdom's real window is restored after (no global leak).
+    vi.stubGlobal('window', { devicePixelRatio: 2, location: { search: '' } });
+    try {
+      vi.resetModules();
+      const { InputManager } = await import('../InputManager');
+      const im = InputManager.getInstance();
+      im.attachScreenTransform({
+        transformX: (px: number) => px * 2,   // physical
+        transformY: (py: number) => py * 2,
+      } as unknown as Parameters<typeof im.attachScreenTransform>[0]);
+      // Logical button rect at logical (100..200, 100..150)
+      im.setSuppressionRect('grab', { x: 100, y: 100, w: 100, h: 50 });
+      // A touch at logical page (150,120) is inside the logical rect.
+      expect((im as unknown as { isInSuppressionZone(x: number, y: number): boolean }).isInSuppressionZone(150, 120)).toBe(true);
+      // A touch at logical (300,300) is outside.
+      expect((im as unknown as { isInSuppressionZone(x: number, y: number): boolean }).isInSuppressionZone(300, 300)).toBe(false);
+      im.setSuppressionRect('grab', null);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 // ── InputManager — controlMode gating + injection ──────────────────────────────

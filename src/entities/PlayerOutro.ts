@@ -1,4 +1,6 @@
 import type Phaser from 'phaser';
+import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
+import { addToGameplayUi } from '../systems/GameplayUiCamera';
 
 export type OutroKind = 'death' | 'success';
 
@@ -112,9 +114,12 @@ export class PlayerOutro {
 
     this.sourceSprite.setVisible(false);
 
+    // Register all three overlay objects to the gameplay UI camera
+    addToGameplayUi(this.scene, [this.fadeGfx, this.gradientGfx, this.proxy]);
+
     // Destination: death → screen center; success → screen top-center
-    const w = this.scene.scale.width;
-    const h = this.scene.scale.height;
+    const w = logicalWidth(this.scene);
+    const h = logicalHeight(this.scene);
     const destX = Math.floor(w / 2);
     const destY = Math.floor(h / 2);
 
@@ -238,6 +243,8 @@ export class PlayerOutro {
       const targetScale = (this.deathSymbolSprite as unknown as { scaleX: number }).scaleX;
       this.deathSymbolSprite.setScale(0);
 
+      addToGameplayUi(this.scene, this.deathSymbolSprite);
+
       const growTween = this.scene.tweens.add({
         targets: this.deathSymbolSprite,
         scaleX: targetScale,
@@ -267,6 +274,8 @@ export class PlayerOutro {
       this.starburstScale = 0;
       this.starburstAlpha = 1;
 
+      addToGameplayUi(this.scene, this.starburstGfx);
+
       const growTween = this.scene.tweens.add({
         targets: this,
         starburstScale: { from: 0, to: STARBURST_MAX_SCALE },
@@ -294,8 +303,8 @@ export class PlayerOutro {
   private redrawOverlay(): void {
     if (!this.fadeGfx || !this.gradientGfx || !this.proxy) return;
     const palette = PALETTE[this.kind];
-    const w = this.scene.scale.width;
-    const h = this.scene.scale.height;
+    const w = logicalWidth(this.scene);
+    const h = logicalHeight(this.scene);
 
     // fillCircle covers every corner (radius > half-diagonal). fillRect(0,0,w,h) doesn't
     // render in Phaser 3.90 Canvas mode on a scrollFactor=0 Graphics at world origin.

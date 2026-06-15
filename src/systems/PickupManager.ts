@@ -19,6 +19,8 @@ import { SALVAGE_MIN_SPACING_PX, RARITY_SCORE_MULT, Rarity, SalvageItem } from '
 import { CHUNK_BAND_HEIGHT } from '../constants';
 import { InputManager } from './InputManager';
 import { AudioManager } from './AudioManager';
+import { logicalWidth, logicalHeight } from './displayMetrics';
+import { addToGameplayUi } from './GameplayUiCamera';
 import { getLogger } from '../logging';
 
 const PICKUP_SIZE     = 28;                    // px visual footprint (overlay offset)
@@ -175,7 +177,11 @@ export class PickupManager {
       this.grab(this.activeIndex);
     }
 
-    this.cullBelow(this.scene.cameras.main.scrollY + this.scene.cameras.main.height + CULL_MARGIN);
+    // scrollY + cam.height/zoom (not cam.worldView.bottom): worldView is stale on
+    // the first update frame (refreshed in preRender), which would cull every
+    // pickup spawned during create() before the camera settles. See GameScene cull.
+    const cam = this.scene.cameras.main;
+    this.cullBelow(cam.scrollY + cam.height / cam.zoom + CULL_MARGIN);
   }
 
   /** Dev-only: force-spawn a pickup at a world location (used by scene-preview). */
@@ -402,8 +408,8 @@ export class PickupManager {
 
   private createGrabButton(): void {
     const s = this.scene;
-    const w = s.scale.width;
-    const h = s.scale.height;
+    const w = logicalWidth(s);
+    const h = logicalHeight(s);
     this.grabBtn = s.add.rectangle(w / 2, h - 200, 200, 52, 0x0a3010, 0.9)
       .setScrollFactor(0).setDepth(24).setStrokeStyle(2, 0x44ff88)
       .setInteractive({ useHandCursor: true }).setVisible(false);
@@ -413,6 +419,7 @@ export class PickupManager {
     this.grabBtn.on('pointerup', () => {
       if (this.activeIndex >= 0) this.grab(this.activeIndex);
     });
+    addToGameplayUi(s, [this.grabBtn, this.grabLabel]);
   }
 
   private setGrabButtonVisible(visible: boolean): void {
@@ -420,8 +427,8 @@ export class PickupManager {
     this.grabLabel?.setVisible(visible);
     // Register/clear the button's screen zone so a tap on it never also jumps.
     // Rect mirrors the button geom: centred at (w/2, h-200), size 200×52.
-    const w = this.scene.scale.width;
-    const h = this.scene.scale.height;
+    const w = logicalWidth(this.scene);
+    const h = logicalHeight(this.scene);
     InputManager.getInstance().setSuppressionRect(
       'grab', visible ? { x: w / 2 - 100, y: h - 200 - 26, w: 200, h: 52 } : null,
     );
@@ -430,9 +437,10 @@ export class PickupManager {
   // ── Carried HUD indicator ────────────────────────────────────────────────────
 
   private createCarriedHud(): void {
-    this.carriedText = this.scene.add.text(this.scene.scale.width / 2, 56, '', {
+    this.carriedText = this.scene.add.text(logicalWidth(this.scene) / 2, 56, '', {
       fontSize: '14px', color: '#ffdd44', stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
+    addToGameplayUi(this.scene, this.carriedText);
   }
 
   private refreshCarriedHud(): void {

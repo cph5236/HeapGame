@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { buildControlsOverlay, type ControlsOverlay } from '../ui/buildControlsOverlay';
 import { buildVolumePanel, type VolumePanel } from '../ui/buildVolumePanel';
 import { InputManager } from '../systems/InputManager';
@@ -35,10 +36,11 @@ export class PauseScene extends Phaser.Scene {
   }
 
   create(): void {
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2;
+    setupUiCamera(this);
+    const cx = logicalWidth(this) / 2;
+    const cy = logicalHeight(this) / 2;
 
-    const bg = this.add.rectangle(cx, cy, this.scale.width, this.scale.height, 0x000000, 0.72)
+    const bg = this.add.rectangle(cx, cy, logicalWidth(this), logicalHeight(this), 0x000000, 0.72)
       .setScrollFactor(0).setDepth(40).setInteractive();
 
     const titleY = cy - (BTN_H * 4 + BTN_GAP * 3) / 2 - 48;
@@ -47,7 +49,7 @@ export class PauseScene extends Phaser.Scene {
     }).setOrigin(0.5).setScrollFactor(0).setDepth(42);
 
     const panelH = BTN_H * 4 + BTN_GAP * 3 + 40;
-    const panel = this.add.rectangle(cx, cy, Math.min(PANEL_W, this.scale.width - 32), panelH, 0x0d0d20)
+    const panel = this.add.rectangle(cx, cy, Math.min(PANEL_W, logicalWidth(this) - 32), panelH, 0x0d0d20)
       .setScrollFactor(0).setDepth(41).setStrokeStyle(2, 0x4455aa).setInteractive();
 
     this.menuParts = [bg, title, panel];
@@ -83,22 +85,22 @@ export class PauseScene extends Phaser.Scene {
     });
 
     // Shared "← Back" button shown on any sub-view.
-    const backY = this.scale.height - 48;
-    const backBg = this.add.rectangle(this.scale.width / 2, backY, 160, 40, 0x222244)
+    const backY = logicalHeight(this) - 48;
+    const backBg = this.add.rectangle(logicalWidth(this) / 2, backY, 160, 40, 0x222244)
       .setScrollFactor(0).setDepth(47).setStrokeStyle(2, 0x8899bb).setInteractive({ useHandCursor: true })
       .setVisible(false);
-    const backLbl = this.add.text(this.scale.width / 2, backY, '← Back', {
+    const backLbl = this.add.text(logicalWidth(this) / 2, backY, '← Back', {
       fontSize: '17px', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(48).setVisible(false);
     backBg.on('pointerup', () => this.showView('menu'));
     this.backBtn = [backBg, backLbl];
 
     // ── Exit-confirm sub-view (hidden until 'confirm') ─────────────────────────
-    const ccx = this.scale.width / 2;
-    const ccy = this.scale.height / 2;
-    const cbg = this.add.rectangle(ccx, ccy, this.scale.width, this.scale.height, 0x000000, 0.8)
+    const ccx = logicalWidth(this) / 2;
+    const ccy = logicalHeight(this) / 2;
+    const cbg = this.add.rectangle(ccx, ccy, logicalWidth(this), logicalHeight(this), 0x000000, 0.8)
       .setScrollFactor(0).setDepth(49).setVisible(false).setInteractive();
-    const cpanel = this.add.rectangle(ccx, ccy, Math.min(320, this.scale.width - 32), 200, 0x0d0d20)
+    const cpanel = this.add.rectangle(ccx, ccy, Math.min(320, logicalWidth(this) - 32), 200, 0x0d0d20)
       .setScrollFactor(0).setDepth(50).setStrokeStyle(2, 0xff4444).setVisible(false);
     const cmsg = this.add.text(ccx, ccy - 50, 'Quit run?\nThis run\'s progress is lost.', {
       fontSize: '17px', color: '#ffdddd', align: 'center', stroke: '#000000', strokeThickness: 2,
@@ -122,7 +124,7 @@ export class PauseScene extends Phaser.Scene {
     // The suppression is decided at touchstart, so it must be registered while the
     // overlay is up; resumeGame()/exitToMenu() clear it.
     InputManager.getInstance().setSuppressionRect('pause', {
-      x: 0, y: 0, w: this.scale.width, h: this.scale.height,
+      x: 0, y: 0, w: logicalWidth(this), h: logicalHeight(this),
     });
   }
 

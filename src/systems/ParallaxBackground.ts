@@ -15,6 +15,7 @@ import {
   CLOUD_TEX_OFFSET_X,
   CLOUD_TEX_OFFSET_Y,
 } from './backgroundEntities';
+import { logicalWidth, logicalHeight } from './displayMetrics';
 
 interface Cloud {
   sprite: Phaser.GameObjects.Image;
@@ -97,8 +98,8 @@ export class ParallaxBackground {
 
     for (let i = 0; i < CLOUD_POOL_SIZE; i++) {
       const scale = Phaser.Math.FloatBetween(0.6, 1.4);
-      const virtualX = Phaser.Math.Between(-80, this.scene.scale.width + 80);
-      const virtualY = Phaser.Math.Between(-this.scene.scale.height, this.scene.scale.height);
+      const virtualX = Phaser.Math.Between(-80, logicalWidth(this.scene) + 80);
+      const virtualY = Phaser.Math.Between(-logicalHeight(this.scene), logicalHeight(this.scene));
 
       const sprite = this.scene.add
         .image(virtualX, virtualY, CLOUD_TEXTURE_KEY)
@@ -113,8 +114,8 @@ export class ParallaxBackground {
 
   private updateClouds(dx: number, dy: number, scrollY: number): void {
     // Hide clouds when the player is below the cloud-start altitude.
-    // scrollY + this.scene.scale.height is the world Y of the camera bottom edge.
-    const inCloudZone = scrollY + this.scene.scale.height <= CLOUD_START_WORLD_Y;
+    // scrollY + logicalHeight(this.scene) is the world Y of the camera bottom edge.
+    const inCloudZone = scrollY + logicalHeight(this.scene) <= CLOUD_START_WORLD_Y;
 
     for (const cloud of this.clouds) {
       if (!inCloudZone) {
@@ -130,15 +131,15 @@ export class ParallaxBackground {
       cloud.virtualY += -dy * (1 - CLOUD_PARALLAX_FACTOR);
 
       // Recycle: drifted below screen bottom
-      if (cloud.virtualY > this.scene.scale.height + 200) {
-        cloud.virtualX = Phaser.Math.Between(-60, this.scene.scale.width + 60);
+      if (cloud.virtualY > logicalHeight(this.scene) + 200) {
+        cloud.virtualX = Phaser.Math.Between(-60, logicalWidth(this.scene) + 60);
         cloud.virtualY = Phaser.Math.Between(-300, -80);
       }
 
       // Recycle: drifted above screen top (player fell fast)
       if (cloud.virtualY < -400) {
-        cloud.virtualX = Phaser.Math.Between(-60, this.scene.scale.width + 60);
-        cloud.virtualY = this.scene.scale.height + Phaser.Math.Between(20, 200);
+        cloud.virtualX = Phaser.Math.Between(-60, logicalWidth(this.scene) + 60);
+        cloud.virtualY = logicalHeight(this.scene) + Phaser.Math.Between(20, 200);
       }
 
       cloud.sprite.setPosition(cloud.virtualX, cloud.virtualY);

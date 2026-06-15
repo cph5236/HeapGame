@@ -4,6 +4,7 @@ import type { PortalDef } from '../data/portalDefs';
 import type { ScanlineRow, Vertex } from './HeapPolygon';
 import { RECYCLE_ITEM_COUNT, CHUNK_BAND_HEIGHT } from '../constants';
 import { isPointInsidePolygon } from './EnemySpawnMath';
+import { logicalHeight } from './displayMetrics';
 
 /**
  * Scans `rows` (ordered top→bottom, ascending Y) to find the topmost row
@@ -118,7 +119,7 @@ export class PortalManager {
 
   update(): void {
     const camBottom   = this.scene.cameras.main.worldView.bottom;
-    const screenHeight = this.scene.scale.height;
+    const screenHeight = logicalHeight(this.scene);
 
     // Cull pairs where even the exit portal (smaller Y = higher up) is off-screen
     for (let i = this.pairs.length - 1; i >= 0; i--) {

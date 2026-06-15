@@ -4,6 +4,7 @@ import Phaser from 'phaser';
 // @ts-ignore — plugin ships JS; we type it structurally below.
 import VirtualJoystick from 'phaser3-rex-plugins/plugins/virtualjoystick.js';
 import { InputManager } from './InputManager';
+import { addToGameplayUi } from './GameplayUiCamera';
 import {
   axisFromForce, zoneFromAxis, initDoubleTap, stepDoubleTap,
 } from './joystickMath';
@@ -38,6 +39,7 @@ export class JoystickController {
       .setStrokeStyle(2, 0x8899bb).setScrollFactor(0).setDepth(40);
     this.thumb = scene.add.circle(x, y, JOYSTICK_RADIUS * 0.42, 0x6688ff, 0.9)
       .setScrollFactor(0).setDepth(41);
+    addToGameplayUi(scene, [this.base, this.thumb]);
 
     this.joy = new VirtualJoystick(scene, {
       x, y,

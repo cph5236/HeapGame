@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { HeapSummary } from '../../shared/heapTypes';
+import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { setSelectedHeapId, finalizeLegacyPlaced, getPlayerGuid } from '../systems/SaveData';
 import { HeapClient } from '../systems/HeapClient';
 import { drawDifficulty } from '../ui/DifficultyStars';
@@ -23,6 +24,7 @@ export class HeapSelectScene extends Phaser.Scene {
   constructor() { super({ key: 'HeapSelectScene' }); }
 
   create(): void {
+    setupUiCamera(this);
     const bg = this.add.graphics();
     const bands: [number, number, number][] = [
       [0,   47,  0x0a0818], [47,  47,  0x0e0d24], [94,  47,  0x121530],
@@ -34,19 +36,19 @@ export class HeapSelectScene extends Phaser.Scene {
     ];
     for (const [y, h, color] of bands) {
       bg.fillStyle(color, 1);
-      bg.fillRect(0, y, this.scale.width, h);
+      bg.fillRect(0, y, logicalWidth(this), h);
     }
     bg.fillStyle(0x3e280e, 1);
-    bg.fillRect(0, 854, this.scale.width, Math.max(0, this.scale.height - 854));
+    bg.fillRect(0, 854, logicalWidth(this), Math.max(0, logicalHeight(this) - 854));
 
-    this.add.text(this.scale.width / 2, 34, 'SELECT A HEAP', {
+    this.add.text(logicalWidth(this) / 2, 34, 'SELECT A HEAP', {
       fontSize: '20px', fontStyle: 'bold', color: '#ffffff',
       stroke: '#000000', strokeThickness: 3,
       letterSpacing: 2,
     }).setOrigin(0.5);
 
     // Header underline
-    this.add.rectangle(this.scale.width / 2, 58, this.scale.width - 2 * ROW_PAD_X, 1, 0x334466);
+    this.add.rectangle(logicalWidth(this) / 2, 58, logicalWidth(this) - 2 * ROW_PAD_X, 1, 0x334466);
 
     // Back arrow \u2014 top-left, matches StoreScene/UpgradeScene
     const backHit = this.add.rectangle(30, 34, 52, 52, 0x000000, 0)
@@ -61,11 +63,11 @@ export class HeapSelectScene extends Phaser.Scene {
     const catalog = (this.game.registry.get('heapCatalog') as HeapSummary[] | undefined) ?? [];
 
     if (catalog.length === 0) {
-      this.add.text(this.scale.width / 2, this.scale.height / 2,
+      this.add.text(logicalWidth(this) / 2, logicalHeight(this) / 2,
         'No heaps available — check connection', {
         fontSize: '16px', color: '#8899aa',
         stroke: '#000000', strokeThickness: 2,
-        align: 'center', wordWrap: { width: this.scale.width - 40 },
+        align: 'center', wordWrap: { width: logicalWidth(this) - 40 },
       }).setOrigin(0.5);
       return;
     }
@@ -98,14 +100,14 @@ export class HeapSelectScene extends Phaser.Scene {
   private drawRow(heap: HeapSummary, y: number, active: boolean, rowIndex: number): Phaser.GameObjects.Rectangle {
     const bgColor = active ? 0x1a2040 : (rowIndex % 2 === 0 ? 0x141629 : 0x0f1020);
     const rowBg = this.add.rectangle(
-      this.scale.width / 2, y + ROW_H / 2,
-      this.scale.width - 2 * ROW_PAD_X, ROW_H - 6,
+      logicalWidth(this) / 2, y + ROW_H / 2,
+      logicalWidth(this) - 2 * ROW_PAD_X, ROW_H - 6,
       bgColor,
     ).setStrokeStyle(active ? 2 : 1, active ? 0xff9922 : 0x1e2a44)
      .setInteractive({ useHandCursor: true });
 
     // Right: three stats stacked — label right-aligned, value right-aligned
-    const rx       = this.scale.width - ROW_PAD_X - 14;
+    const rx       = logicalWidth(this) - ROW_PAD_X - 14;
     const valX     = rx;                             // value right edge
     const lblX     = rx - 50;                        // label right edge (gap before value)
     const divX     = rx - 118;                       // divider x
@@ -209,21 +211,21 @@ export class HeapSelectScene extends Phaser.Scene {
   private createFooter(): void {
     const im = InputManager.getInstance();
 
-    this.add.rectangle(this.scale.width / 2, this.scale.height - 25, this.scale.width, 50, 0x111118, 0.88)
+    this.add.rectangle(logicalWidth(this) / 2, logicalHeight(this) - 25, logicalWidth(this), 50, 0x111118, 0.88)
       .setDepth(9);
 
     if (im.isMobile) {
       const backBtnBg = this.add.rectangle(
-        this.scale.width / 2, this.scale.height - 25, 200, 36, 0x1a0800,
+        logicalWidth(this) / 2, logicalHeight(this) - 25, 200, 36, 0x1a0800,
       ).setStrokeStyle(1, 0xff9922).setInteractive({ useHandCursor: true })
        .setDepth(10);
-      this.add.text(this.scale.width / 2, this.scale.height - 25, '\u2190 Back to Menu', {
+      this.add.text(logicalWidth(this) / 2, logicalHeight(this) - 25, '\u2190 Back to Menu', {
         fontSize: '15px', color: '#ff9922',
         stroke: '#000000', strokeThickness: 1,
       }).setOrigin(0.5).setDepth(11);
       backBtnBg.on('pointerup', () => this.scene.start('MenuScene'));
     } else {
-      this.add.text(this.scale.width / 2, this.scale.height - 25,
+      this.add.text(logicalWidth(this) / 2, logicalHeight(this) - 25,
         '\u2191\u2193 navigate   ENTER select   R scores   ESC back',
         { fontSize: '16px', color: '#b1abab' },
       ).setOrigin(0.5).setDepth(10);

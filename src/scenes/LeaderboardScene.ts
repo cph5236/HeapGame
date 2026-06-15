@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { ScoreClient } from '../systems/ScoreClient';
 import type { LeaderboardEntry } from '../../shared/scoreTypes';
 
@@ -52,8 +53,9 @@ export class LeaderboardScene extends Phaser.Scene {
   }
 
   create(): void {
-    const W = this.scale.width;
-    const H = this.scale.height;
+    setupUiCamera(this);
+    const W = logicalWidth(this);
+    const H = logicalHeight(this);
 
     // Backdrop — clicking outside the panel closes the modal
     const backdrop = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.7).setInteractive();
