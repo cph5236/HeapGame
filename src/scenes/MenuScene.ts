@@ -354,11 +354,16 @@ export class MenuScene extends Phaser.Scene {
   private openNameDialog(): void {
     const current = getPlayerName();
 
+    // On mobile the soft keyboard covers the lower half of the screen, so anchor
+    // the panel near the top (top ~50%) instead of vertically centring it.
+    const isMobile = InputManager.getInstance().isMobile;
+
     const overlay = document.createElement('div');
     overlay.style.cssText = [
       'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.75)',
-      'display:flex', 'align-items:center', 'justify-content:center',
+      'display:flex', `align-items:${isMobile ? 'flex-start' : 'center'}`, 'justify-content:center',
       'z-index:9999', 'font-family:monospace',
+      isMobile ? 'padding-top:6vh' : '',
     ].join(';');
 
     const panel = document.createElement('div');
@@ -442,11 +447,16 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private openRedeemDialog(onResult: (result: RedeemResult) => void): void {
+    // On mobile the soft keyboard covers the lower half of the screen, so anchor
+    // the panel near the top (top ~50%) instead of vertically centring it.
+    const isMobile = InputManager.getInstance().isMobile;
+
     const overlay = document.createElement('div');
     overlay.style.cssText = [
       'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.75)',
-      'display:flex', 'align-items:center', 'justify-content:center',
+      'display:flex', `align-items:${isMobile ? 'flex-start' : 'center'}`, 'justify-content:center',
       'z-index:9999', 'font-family:monospace',
+      isMobile ? 'padding-top:6vh' : '',
     ].join(';');
 
     const panel = document.createElement('div');
