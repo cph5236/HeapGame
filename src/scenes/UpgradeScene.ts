@@ -158,10 +158,10 @@ export class UpgradeScene extends Phaser.Scene {
     const backHit = this.add.rectangle(30, 50, 52, 52, 0x000000, 0)
       .setInteractive({ useHandCursor: true })
       .setDepth(11).setScrollFactor(0);
-    this.add.text(12, 34, '\u2190', {
+    this.add.text(30, 50, '\u2190', {
       fontSize: '48px', color: '#ff9922',
       stroke: '#000000', strokeThickness: 3,
-    }).setDepth(11).setScrollFactor(0);
+    }).setOrigin(0.5).setDepth(11).setScrollFactor(0);
     backHit.on('pointerup', () => this.scene.start('MenuScene'));
 
     this.titleShadow = this.add.text(logicalWidth(this) / 2 + 2, 52, 'UPGRADES', {
