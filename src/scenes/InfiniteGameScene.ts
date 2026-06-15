@@ -396,9 +396,14 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.hud.update();
 
     // ── Heap generation ───────────────────────────────────────────────────────────
+    // Use scrollY (+ logical viewport height) rather than cam.worldView, which is
+    // only refreshed in preRender (AFTER update) and is therefore stale (≈0) on the
+    // first update frame — matching the workaround in GameScene. Less critical here
+    // (Infinite regenerates every frame so nothing is permanently culled), but it
+    // keeps frame-1 enemy visibility + lookahead generation from using y≈0.
     const cam    = this.cameras.main;
-    const camTop = cam.worldView.top;
-    const camBot = cam.worldView.bottom;
+    const camTop = cam.scrollY;
+    const camBot = cam.scrollY + cam.height / cam.zoom;
 
     // Layer generation — drive each column ahead of the player
     const targetY = this.player.sprite.y - INFINITE_LOOKAHEAD_CHUNKS * CHUNK_BAND_HEIGHT;
