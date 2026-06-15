@@ -12,9 +12,9 @@ import {
   applyPolygonToGenerator,
   polygonTopY,
 } from '../systems/HeapPolygonLoader';
-import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode } from '../systems/SaveData';
+import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode, getJoystickSide } from '../systems/SaveData';
 import { HUD } from '../ui/HUD';
-import { showDashIndicator } from '../ui/hudLogic';
+import { showDashIndicator, controlClusterLayout } from '../ui/hudLogic';
 import { InputManager } from '../systems/InputManager';
 import { mountJoystick } from '../systems/mountJoystick';
 import type { JoystickHandle } from '../systems/mountJoystick';
@@ -35,6 +35,12 @@ import {
   SCORE_DISPLAY_DIVISOR,
   MAX_WALL_AUDIBLE_DISTANCE,
   SURFACE_SNAP_TOLERANCE_PX,
+  JOYSTICK_RADIUS,
+  JOYSTICK_MARGIN,
+  DASH_BUTTON_RADIUS,
+  HUD_PLACE_W,
+  HUD_PLACE_H,
+  HUD_PLACE_GAP,
 } from '../constants';
 import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
@@ -320,23 +326,30 @@ export class GameScene extends Phaser.Scene {
     addToGameplayUi(this, this._holdBar);
 
     if (im.isMobile) {
-      // Mobile placement button — replaces the text hint, appears in top zone
-      this.placeBtnBg = this.add.rectangle(logicalWidth(this) / 2, 82, 280, 56, 0x1155aa, 0.88)
-        .setScrollFactor(0).setDepth(24).setVisible(false)
-        .setStrokeStyle(2, 0x4488dd);
+      const layout = controlClusterLayout(getJoystickSide(), logicalWidth(this), logicalHeight(this), {
+        joyRadius: JOYSTICK_RADIUS, joyMargin: JOYSTICK_MARGIN, dashRadius: DASH_BUTTON_RADIUS,
+        placeW: HUD_PLACE_W, placeH: HUD_PLACE_H, placeGap: HUD_PLACE_GAP,
+      });
+      const px = layout.place.x, py = layout.place.y;
+
+      this.placeBtnBg = this.add.rectangle(px, py, HUD_PLACE_W, HUD_PLACE_H, 0xff9012, 0.95)
+        .setScrollFactor(0).setDepth(40).setVisible(false)
+        .setStrokeStyle(2, 0xffffff, 0.5);
       this.placeBtnBg.setInteractive({ useHandCursor: true });
       this.placeBtnBg.on('pointerdown', () => im.startPlace());
-      this.placeBtnBg.on('pointerup', () => im.endPlace());
-      this.placeBtnBg.on('pointerout', () => im.endPlace());
+      this.placeBtnBg.on('pointerup',   () => im.endPlace());
+      this.placeBtnBg.on('pointerout',  () => im.endPlace());
 
-      this.placeBtnLabel = this.add.text(logicalWidth(this) / 2, 82, 'PLACE BLOCK', {
-        fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
-        stroke: '#000000', strokeThickness: 3,
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(25).setVisible(false);
+      this.placeBtnLabel = this.add.text(px, py, 'PLACE', {
+        fontSize: '15px', color: '#241200', fontStyle: 'bold',
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(41).setVisible(false);
 
-      // Dummy topZoneText (not shown on mobile)
       this.topZoneText = this.add.text(0, 0, '').setVisible(false);
       addToGameplayUi(this, [this.placeBtnBg, this.placeBtnLabel, this.topZoneText]);
+
+      im.setSuppressionRect('place', {
+        x: px - HUD_PLACE_W / 2, y: py - HUD_PLACE_H / 2, w: HUD_PLACE_W, h: HUD_PLACE_H,
+      });
     } else {
       // Desktop placement hint
       this.topZoneText = this.add.text(logicalWidth(this) / 2, 82, 'SPACE \u2014 add to heap', {
