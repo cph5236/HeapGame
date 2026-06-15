@@ -438,7 +438,15 @@ export class GameScene extends Phaser.Scene {
 
     const cam       = this.cameras.main;
     const camTop    = cam.scrollY;
-    const camBottom = cam.worldView.bottom;
+    // Visible world bottom = scrollY + viewport-height-in-world-units. We compute
+    // it from scrollY + cam.height/zoom rather than cam.worldView.bottom because
+    // worldView is only refreshed in preRender (AFTER update): on the very first
+    // update frame it is still stale (≈0), so a worldView-based cull threshold
+    // would wipe every chunk baked during create() — and GameScene's pre-built
+    // heap is rendered once and never regenerates, so the heap silhouette would
+    // vanish for the whole run. scrollY is set immediately by centerOn, so this
+    // form is correct from frame 1 and still DPR-correct (cam.height is physical).
+    const camBottom = cam.scrollY + cam.height / cam.zoom;
 
     this.trashWallManager.update(this.player.sprite.y, delta, this.pickupManager.getWallSpeedMult() * this.buffManager.getWallSpeedMult());
     if (!this._playerDead) {
