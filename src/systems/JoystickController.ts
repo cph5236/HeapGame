@@ -29,6 +29,8 @@ export class JoystickController {
   private joy: RexJoystick;
   private base: Phaser.GameObjects.Arc;
   private thumb: Phaser.GameObjects.Arc;
+  private guide: Phaser.GameObjects.Arc;
+  private thumbHi: Phaser.GameObjects.Arc;
   private im = InputManager.getInstance();
 
   private prevDown = false;
@@ -42,13 +44,13 @@ export class JoystickController {
 
     // Base: soften fill + border; add a faint static direction guide ring inside it.
     this.base.setFillStyle(0x14182c, 0.42).setStrokeStyle(2, 0xffffff, 0.28);
-    const guide = scene.add.circle(x, y, JOYSTICK_RADIUS - 8)
+    this.guide = scene.add.circle(x, y, JOYSTICK_RADIUS - 8)
       .setStrokeStyle(1, 0xffffff, 0.14).setScrollFactor(0).setDepth(40);
     // Thumb: brighter fill, with a subtle inner highlight ring (static accent at base center).
     this.thumb.setFillStyle(0x4f63e6, 0.95);
-    const thumbHi = scene.add.circle(x, y, JOYSTICK_RADIUS * 0.42 - 4)
+    this.thumbHi = scene.add.circle(x, y, JOYSTICK_RADIUS * 0.42 - 4)
       .setStrokeStyle(2, 0x9db4ff, 0.6).setScrollFactor(0).setDepth(42);
-    addToGameplayUi(scene, [this.base, this.thumb, guide, thumbHi]);
+    addToGameplayUi(scene, [this.base, this.thumb, this.guide, this.thumbHi]);
 
     this.joy = new VirtualJoystick(scene, {
       x, y,
@@ -91,6 +93,8 @@ export class JoystickController {
   setVisible(v: boolean): void {
     this.base.setVisible(v);
     this.thumb.setVisible(v);
+    this.guide.setVisible(v);
+    this.thumbHi.setVisible(v);
     this.joy.enable = v;
   }
 
@@ -98,6 +102,8 @@ export class JoystickController {
     this.joy.destroy();   // detaches rex pointer handlers
     this.base.destroy();
     this.thumb.destroy();
+    this.guide.destroy();
+    this.thumbHi.destroy();
     this.im.diveHeld = false;
     this.im.setLadderDrag(false, false);
   }
