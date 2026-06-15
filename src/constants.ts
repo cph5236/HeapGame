@@ -149,3 +149,14 @@ export const LEADERBOARD_TOP_N      = 5;  // number of top entries shown in lead
 
 // ── Portals ────────────────────────────────────────────────────────────────────
 export const RECYCLE_ITEM_COUNT = 16;
+
+// ── In-game UI redesign (Clean Arcade) ──────────────────────────────────────
+export const HUD_INSET        = 12;   // px padding from top/side screen edges
+export const HUD_TRAY_PAD      = 10;  // inner padding of the ability tray panel
+export const HUD_DASH_BAR_W    = 46;  // slim dash cooldown bar width
+export const HUD_DASH_BAR_H    = 8;   // slim dash cooldown bar height
+export const HUD_PLACE_W       = 80;  // PLACE button width
+export const HUD_PLACE_H       = 60;  // PLACE button height
+export const HUD_PLACE_GAP     = 14;  // gap between dash button and PLACE
+export const HUD_SCRIM_TOP_H   = 64;  // top legibility scrim height
+export const HUD_SCRIM_BOT_H   = 150; // bottom legibility scrim height
