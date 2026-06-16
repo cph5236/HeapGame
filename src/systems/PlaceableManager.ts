@@ -683,10 +683,13 @@ export class PlaceableManager {
       g.fillRoundedRect(sx, sy, HOTBAR.slotW, HOTBAR.slotH, HOTBAR.slotRadius);
       g.lineStyle(1, 0xffffff, 0.14);
       g.strokeRoundedRect(sx, sy, HOTBAR.slotW, HOTBAR.slotH, HOTBAR.slotRadius);
-      // accent stripe (top corners rounded only)
+      // accent stripe — inset flat bar across the slot's straight top edge. A
+      // rounded stripe can't be used: stripeH (6) < slotRadius (9), and Phaser's
+      // fillRoundedRect doesn't clamp the radius, so it would render a lens shape;
+      // matching the slot radius is impossible on a bar this thin. Insetting by
+      // slotRadius keeps the bar within the rounded corners with no protrusion.
       g.fillStyle(ACCENT_COLORS[itemId as keyof typeof ACCENT_COLORS] ?? 0x888888, 1);
-      g.fillRoundedRect(sx, sy, HOTBAR.slotW, HOTBAR.stripeH,
-        { tl: HOTBAR.slotRadius, tr: HOTBAR.slotRadius, bl: 0, br: 0 });
+      g.fillRect(sx + HOTBAR.slotRadius, sy, HOTBAR.slotW - 2 * HOTBAR.slotRadius, HOTBAR.stripeH);
 
       // hit area + name
       this.hotbarItems[defIdx]?.setPosition(cx, L.slotCy).setVisible(true);

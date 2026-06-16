@@ -35,5 +35,13 @@ describe('computeHotbarLayout', () => {
     expect(L.slotCxs).toHaveLength(0);
     expect(L.showLeft).toBe(false);
     expect(L.showRight).toBe(false);
+    // panel must stay wide enough for the "BACKPACK" title, never collapse to 2·padX
+    expect(L.panelW).toBe(HOTBAR.minPanelW);
+  });
+
+  it('keeps a single-item tray centered (min width does not shift it)', () => {
+    const L = computeHotbarLayout({ gameWidth: 448, gameHeight: 970, ownedCount: 1, scrollOffset: 0 });
+    expect(L.slotCxs).toHaveLength(1);
+    expect(L.slotCxs[0]).toBeCloseTo(L.panelCx);
   });
 });

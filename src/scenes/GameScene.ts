@@ -387,14 +387,14 @@ export class GameScene extends Phaser.Scene {
     // Dev preview: ?dev=GameScene&params={"_devOutro":"death"} or {"_devOutro":"success"}
     // or {"_devPickup":"spring-coil"} to force-spawn a salvage pickup beside the player.
     // Optional {"_devRarity":"mythic"} sets the rolled rarity (default 'rare').
-    // {"_devHotbar":"few"} seeds 3 placeables; {"_devHotbar":"scroll"} seeds all
-    // items so the backpack tray overflows — then opens the tray for screenshots.
+    // {"_devHotbar":"few"} seeds 3 placeables; "scroll" seeds all items so the
+    // tray overflows; "empty" opens it with no items — then opens for screenshots.
     const initData = this.scene.settings.data as
       { _devOutro?: 'death' | 'success'; _devPickup?: string; _devRarity?: Rarity;
-        _devDx?: number; _devDy?: number; _devHotbar?: 'few' | 'scroll' } | undefined;
+        _devDx?: number; _devDy?: number; _devHotbar?: 'few' | 'scroll' | 'empty' } | undefined;
     if (initData?._devHotbar) {
-      const seed = initData._devHotbar === 'scroll'
-        ? ITEM_DEFS
+      const seed = initData._devHotbar === 'scroll' ? ITEM_DEFS
+        : initData._devHotbar === 'empty' ? []
         : ITEM_DEFS.filter(d => d.category === 'placeable');
       seed.forEach((d, i) => addItem(d.id, i + 1));
       this.placeableManager.openHotbar();

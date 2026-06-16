@@ -9,6 +9,10 @@ export const HOTBAR = {
   cornerRadius: 12,
   slotRadius: 9,
   stripeH: 6,
+  // Floor so the "BACKPACK" title never overflows a near-empty panel. Equals the
+  // natural width of a single slot (slotW + 2·padX = 86), so a 1-item tray stays
+  // centered while an empty tray still has room for the title.
+  minPanelW: 86,
 } as const;
 
 export interface HotbarLayoutParams {
@@ -46,7 +50,8 @@ export function computeHotbarLayout(p: HotbarLayoutParams): HotbarLayout {
 
   const scrollSpace = needsScroll ? 2 * (HOTBAR.scrollBtnW + HOTBAR.scrollBtnGap) : 0;
   const slotsW      = Math.max(0, visibleCount * HOTBAR.slotStride - HOTBAR.slotGap);
-  const panelW      = Math.min(slotsW + 2 * HOTBAR.padX + scrollSpace, p.gameWidth - 10);
+  const fitW        = Math.max(slotsW + 2 * HOTBAR.padX + scrollSpace, HOTBAR.minPanelW);
+  const panelW      = Math.min(fitW, p.gameWidth - 10);
   const panelH      = HOTBAR.headerH + HOTBAR.padTop + HOTBAR.slotH + HOTBAR.padBottom;
 
   const panelCx = p.gameWidth / 2;
