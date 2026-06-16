@@ -2,8 +2,11 @@
 
 
 # Mobile
- - when joystick controls is auto enabled Main menu has some button that pops up to turn on tilt controls which is in the way. This should just be changed to a popup message that says it auto turned on joystick controls and how it can be changed in the settings. 
+
 # Scenes
+- infinite game mode some portions of the heap are considered a wall block when they should be a walkable surface. this causes the player when they land on that surface they get kicked off of it very quickly and thats jarring during game play. 
+
+- infinite gamemode. Trashcan portals entrance/exit spawn too close together sometimes they should have a rule to not spawn so close to each other 
 
 # Gameplay
-- using items gets blocked by Bad back pack UI - make it so only items you have are shown and if it scales too large it needs a scroll bar instead of extending off screen.
+- Gradient over the gameplay scene on the top and bottom ofthe screen is unneeded - remove. its very faint and just distracting.
