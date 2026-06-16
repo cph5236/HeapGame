@@ -3,9 +3,10 @@ import { Player } from '../entities/Player';
 import type { PlaceableManager } from '../systems/PlaceableManager';
 import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { addToGameplayUi } from '../systems/GameplayUiCamera';
+import { InputManager } from '../systems/InputManager';
 import { AbilityTray } from './AbilityTray';
 import { HUD as TH, makePanel, makeScrim } from './hudTheme';
-import { HUD_INSET, HUD_SCRIM_TOP_H, HUD_SCRIM_BOT_H } from '../constants';
+import { HUD_INSET, HUD_SCRIM_TOP_H, HUD_SCRIM_BOT_H, HUD_NOTCH_DROP } from '../constants';
 
 export interface HudOptions {
   placeableManager?: PlaceableManager;
@@ -34,8 +35,12 @@ export class HUD {
 
     // ── Score chip (top-center) ──────────────────────────────────────────────
     const chipY = HUD_INSET + 16;
-    parts.push(makePanel(scene, w / 2, chipY, 116, 30, 16).setDepth(19));
-    this.scoreText = scene.add.text(w / 2, chipY, '0 ft', {
+    // Drop the centred score chip on mobile so it clears a front-camera notch.
+    const scoreY = chipY + (InputManager.getInstance().isMobile ? HUD_NOTCH_DROP : 0);
+    // Darker fill (0.66) than the default panel so the readout stays legible
+    // against the bright sky at the top of a run.
+    parts.push(makePanel(scene, w / 2, scoreY, 116, 30, 16, 0.66).setDepth(19));
+    this.scoreText = scene.add.text(w / 2, scoreY, '0 ft', {
       fontSize: '14px', color: TH.textWhite, fontStyle: 'bold',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
     parts.push(this.scoreText);
@@ -65,7 +70,7 @@ export class HUD {
     }
 
     // ── Revive badge (below score, center) ───────────────────────────────────
-    this.reviveBadge = scene.add.text(w / 2, chipY + 26, '♥ REVIVE', {
+    this.reviveBadge = scene.add.text(w / 2, scoreY + 26, '♥ REVIVE', {
       fontSize: '12px', color: '#ff6688', stroke: '#000000', strokeThickness: 3, fontStyle: 'bold',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
     parts.push(this.reviveBadge);

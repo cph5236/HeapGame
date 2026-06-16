@@ -160,3 +160,4 @@ export const HUD_PLACE_H       = 60;  // PLACE button height
 export const HUD_PLACE_GAP     = 14;  // gap between dash button and PLACE
 export const HUD_SCRIM_TOP_H   = 64;  // top legibility scrim height
 export const HUD_SCRIM_BOT_H   = 150; // bottom legibility scrim height
+export const HUD_NOTCH_DROP    = 18;  // extra top offset for the centred score chip on mobile (clears a front-camera notch)

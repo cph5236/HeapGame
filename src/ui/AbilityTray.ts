@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
-import { HUD, makePanel } from './hudTheme';
+import { HUD, makePanel, makeCloudIcon, makeWallJumpIcon, makeDashChevrons } from './hudTheme';
 import { airJumpPipStates, dashBarFillFraction } from './hudLogic';
 import { HUD_DASH_BAR_W, HUD_DASH_BAR_H, HUD_INSET, HUD_TRAY_PAD } from '../constants';
 
@@ -16,14 +16,15 @@ export class AbilityTray {
     this.player = player;
     this.showDash = showDashIndicator;
 
-    // Tray geometry: a column anchored top-left under the inset.
+    // Tray geometry: a column anchored top-left under the inset. Generous row
+    // height + column width so the icons/pips don't feel cramped (PC feedback).
     const left = HUD_INSET;
     const top  = HUD_INSET;
-    const colW = 56;
+    const colW = 70;
     const max  = player.maxAirJumpsCount;
     const hasWall = player.hasWallJump;
     const rows = 1 + (hasWall ? 1 : 0) + (showDashIndicator ? 1 : 0);
-    const rowH = 26;
+    const rowH = 32;
     const panelH = HUD_TRAY_PAD * 2 + rows * rowH;
     const cx = left + colW / 2;
 
@@ -33,14 +34,14 @@ export class AbilityTray {
 
     let rowY = top + HUD_TRAY_PAD + rowH / 2;
 
-    // Air-jump: cloud glyph + pip row.
+    // Air-jump: cloud glyph + pip row (pips spaced out for clarity).
     this.objects.push(
-      scene.add.image(cx, rowY - 4, 'cloud').setScrollFactor(0).setDepth(20).setScale(0.9),
+      makeCloudIcon(scene, cx, rowY - 5).setDepth(20),
     );
-    const pipGap = 9;
+    const pipGap = 13;
     const startX = cx - ((max - 1) * pipGap) / 2;
     for (let i = 0; i < max; i++) {
-      const pip = scene.add.circle(startX + i * pipGap, rowY + 8, 3, HUD.cloud)
+      const pip = scene.add.circle(startX + i * pipGap, rowY + 11, 3.5, HUD.cloud)
         .setScrollFactor(0).setDepth(20);
       this.pips.push(pip);
       this.objects.push(pip);
@@ -49,19 +50,15 @@ export class AbilityTray {
 
     // Wall-jump icon (single charge → lit/dim).
     if (hasWall) {
-      this.wallIcon = scene.add.image(cx, rowY, 'wall-jump').setScrollFactor(0).setDepth(20);
+      this.wallIcon = makeWallJumpIcon(scene, cx, rowY).setDepth(20);
       this.objects.push(this.wallIcon);
       rowY += rowH;
     }
 
-    // Dash bar: » glyph + slim cooldown bar (only when no on-screen dash button).
+    // Dash: slim cooldown bar (blue = charged) with orange-red accelerating
+    // chevrons layered over its head (only when there's no on-screen dash button).
     if (showDashIndicator && player.hasDash) {
-      const barLeft = cx - HUD_DASH_BAR_W / 2 + 6;
-      this.objects.push(
-        scene.add.text(barLeft - 12, rowY, '»', {
-          fontSize: '13px', color: '#9cf', fontStyle: 'bold',
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(20),
-      );
+      const barLeft = cx - HUD_DASH_BAR_W / 2;
       this.objects.push(
         scene.add.rectangle(barLeft, rowY, HUD_DASH_BAR_W, HUD_DASH_BAR_H, 0x000000, 0.45)
           .setOrigin(0, 0.5).setScrollFactor(0).setDepth(20).setStrokeStyle(1, HUD.border, HUD.borderAlpha),
@@ -69,6 +66,9 @@ export class AbilityTray {
       this.dashFill = scene.add.rectangle(barLeft, rowY, HUD_DASH_BAR_W, HUD_DASH_BAR_H, HUD.dashGlow, 1)
         .setOrigin(0, 0.5).setScrollFactor(0).setDepth(21);
       this.objects.push(this.dashFill);
+      this.objects.push(
+        makeDashChevrons(scene, barLeft + 2, rowY).setDepth(22),
+      );
     }
   }
 
