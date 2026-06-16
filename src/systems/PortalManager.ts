@@ -31,6 +31,16 @@ export function randBetween(range: [number, number], rng: () => number = Math.ra
 }
 
 /**
+ * True when the exit surface sits a valid distance above the entrance.
+ * Y grows downward, so the exit must be higher up (smaller Y) and the gap
+ * (entranceY − exitY) must fall within [range[0], range[1]].
+ */
+export function isPortalGapValid(entranceY: number, exitY: number, range: [number, number]): boolean {
+  const gap = entranceY - exitY;
+  return gap >= range[0] && gap <= range[1];
+}
+
+/**
  * Finds the topmost surface at `x` using polygon edges (non-clip edges only),
  * then verifies `clearanceRequired` px of clear air above it.
  * Clip edges at bandTopY and bandTopY+CHUNK_BAND_HEIGHT are skipped.
@@ -193,6 +203,13 @@ export class PortalManager {
     const bBandTop = Math.floor(bSurfaceY / CHUNK_BAND_HEIGHT) * CHUNK_BAND_HEIGHT;
     const bPolygon = this.getBandPolygon(bColIdx, bBandTop);
     if (bPolygon && bPolygon.length > 0 && isPointInsidePolygon(bX, bSurfaceY - 1, bPolygon)) return;
+
+    // The band-search can return a surface anywhere in its CHUNK_BAND_HEIGHT band, so the
+    // found exit may sit much closer than portalRange intended — reject pairs outside the gap.
+    if (!isPortalGapValid(aSurfaceY, bSurfaceY, this.def.portalRange)) {
+      if (this.debug) console.log(`[Portal] rejected: gap ${Math.round(aSurfaceY - bSurfaceY)} outside [${this.def.portalRange}]`);
+      return;
+    }
 
     if (this.debug) console.log(`[Portal] spawning pair entrance=(${Math.round(aX)},${Math.round(aSurfaceY)}) exit=(${Math.round(bX)},${Math.round(bSurfaceY)})`);
     this.createPair(aX, aSurfaceY, aAngle, bX, bSurfaceY, bAngle);

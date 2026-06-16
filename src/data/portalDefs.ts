@@ -2,7 +2,7 @@ import portalUrl from '../sprites/Portal/Trashcan-portal.png?url';
 
 export interface PortalDef {
   spawnPortalEveryY:  [number, number];  // [min, max] px of climb between entrance spawns
-  portalRange:        [number, number];  // [min, max] px above entrance to place exit
+  portalRange:        [number, number];  // [min, max] px the exit must sit above the entrance
   invincibilityMs:    number;
   width:              number;
   height:             number;
@@ -13,7 +13,7 @@ export interface PortalDef {
 
 export const PORTAL_DEF: PortalDef = {
   spawnPortalEveryY:  [200, 400],
-  portalRange:        [300, 500],
+  portalRange:        [500, 1000],
   invincibilityMs:    2_000,
   width:              40,
   height:             50,
