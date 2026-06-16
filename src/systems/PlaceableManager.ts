@@ -17,6 +17,9 @@ import { getLogger } from '../logging';
 import { InputManager } from './InputManager';
 import { logicalWidth, logicalHeight, getDprCap } from './displayMetrics';
 import { addToGameplayUi } from './GameplayUiCamera';
+import { HUD_THEME } from '../ui/hudTheme';
+import { ACCENT_COLORS } from '../data/itemAccents';
+import { computeHotbarLayout, HOTBAR } from './hotbarLayout';
 
 export const enum PlacementState { Closed, Hotbar, Placing }
 
@@ -58,15 +61,16 @@ export class PlaceableManager {
   private _lastPtrX:      number = Number.NaN;
   private _lastPtrY:      number = Number.NaN;
 
-  private hotbarBg!:           Phaser.GameObjects.Rectangle;
-  private hotbarItems:         Phaser.GameObjects.Rectangle[] = [];
+  private hotbarGfx!:          Phaser.GameObjects.Graphics;
+  private hotbarTitle!:        Phaser.GameObjects.Text;
+  private hotbarItems:         Phaser.GameObjects.Rectangle[] = [];  // transparent hit areas
   private hotbarLabels:        Phaser.GameObjects.Text[] = [];
   private hotbarQtys:          Phaser.GameObjects.Text[] = [];
   private hotbarScrollOffset:  number = 0;
   private hotbarOwnedIds:      string[] = [];
-  private scrollLeftBtn!:      Phaser.GameObjects.Rectangle;
+  private scrollLeftBtn!:      Phaser.GameObjects.Rectangle;  // transparent hit area
   private scrollLeftTxt!:      Phaser.GameObjects.Text;
-  private scrollRightBtn!:     Phaser.GameObjects.Rectangle;
+  private scrollRightBtn!:     Phaser.GameObjects.Rectangle;  // transparent hit area
   private scrollRightTxt!:     Phaser.GameObjects.Text;
 
   private confirmBtn!:    Phaser.GameObjects.Rectangle;
@@ -170,26 +174,30 @@ export class PlaceableManager {
       .rectangle(0, 0, 32, 32, 0x44ff88, 0.5)
       .setOrigin(0.5, 1).setDepth(30).setVisible(false);
 
-    // Hotbar background panel (screen-space)
-    this.hotbarBg = scene.add.rectangle(
-      GAME_WIDTH / 2, GAME_HEIGHT - 130, GAME_WIDTH - 20, 100, 0x0a0818, 0.94,
-    ).setScrollFactor(0).setDepth(25).setStrokeStyle(1, 0x2a2240).setVisible(false);
+    // Chrome for the whole tray is drawn in one Graphics, redrawn in refreshHotbar.
+    this.hotbarGfx = scene.add.graphics().setScrollFactor(0).setDepth(25).setVisible(false);
 
-    // Build item slots for each ITEM_DEF — positions set dynamically in refreshHotbar
+    // Title
+    this.hotbarTitle = scene.add.text(0, 0, 'BACKPACK', {
+      fontSize: '11px', color: HUD_THEME.textWhite, fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 1,
+    }).setOrigin(0.5).setLetterSpacing(2).setScrollFactor(0).setDepth(27).setVisible(false);
+
+    // Per-item: transparent interactive hit area + name + qty (positions set in refreshHotbar)
     ITEM_DEFS.forEach((def) => {
-      const slot = scene.add.rectangle(0, 0, 80, 70, 0x1a0820)
+      const slot = scene.add.rectangle(0, 0, HOTBAR.slotW, HOTBAR.slotH, 0x000000, 0)
         .setScrollFactor(0).setDepth(26)
-        .setStrokeStyle(1, 0x4455aa).setVisible(false)
+        .setVisible(false)
         .setInteractive({ useHandCursor: true });
 
       const label = scene.add.text(0, 0, def.name, {
-        fontSize: '11px', color: '#ffffff', stroke: '#000000', strokeThickness: 1,
-        align: 'center', wordWrap: { width: 76 },
+        fontSize: '11px', color: '#ffffff', stroke: '#000000', strokeThickness: 2,
+        align: 'center', wordWrap: { width: HOTBAR.slotW - 8 },
       }).setOrigin(0.5).setScrollFactor(0).setDepth(27).setVisible(false);
 
-      const qty = scene.add.text(0, 0, 'x0', {
-        fontSize: '14px', color: '#ffdd77', stroke: '#000000', strokeThickness: 2,
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(27).setVisible(false);
+      const qty = scene.add.text(0, 0, '', {
+        fontSize: '11px', color: '#0a0c1a', fontStyle: 'bold',
+      }).setOrigin(1, 0).setScrollFactor(0).setDepth(28).setVisible(false);
 
       slot.on('pointerup', () => this.selectItem(def.id));
 
@@ -198,12 +206,10 @@ export class PlaceableManager {
       this.hotbarQtys.push(qty);
     });
 
-    // Scroll buttons — shown when owned items exceed visible slots
-    const scrollBtnY = GAME_HEIGHT - 130;
-    this.scrollLeftBtn = scene.add.rectangle(0, scrollBtnY, 28, 70, 0x0d0d1a)
-      .setScrollFactor(0).setDepth(27).setStrokeStyle(1, 0x4455aa)
-      .setInteractive({ useHandCursor: true }).setVisible(false);
-    this.scrollLeftTxt = scene.add.text(0, scrollBtnY, '◀', {
+    // Scroll buttons — transparent hit areas; chrome + glyph drawn/positioned in refreshHotbar
+    this.scrollLeftBtn = scene.add.rectangle(0, 0, HOTBAR.scrollBtnW, HOTBAR.slotH, 0x000000, 0)
+      .setScrollFactor(0).setDepth(27).setInteractive({ useHandCursor: true }).setVisible(false);
+    this.scrollLeftTxt = scene.add.text(0, 0, '◀', {
       fontSize: '15px', color: '#aabbff', stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(28).setVisible(false);
     this.scrollLeftBtn.on('pointerup', () => {
@@ -211,14 +217,13 @@ export class PlaceableManager {
       this.refreshHotbar();
     });
 
-    this.scrollRightBtn = scene.add.rectangle(0, scrollBtnY, 28, 70, 0x0d0d1a)
-      .setScrollFactor(0).setDepth(27).setStrokeStyle(1, 0x4455aa)
-      .setInteractive({ useHandCursor: true }).setVisible(false);
-    this.scrollRightTxt = scene.add.text(0, scrollBtnY, '▶', {
+    this.scrollRightBtn = scene.add.rectangle(0, 0, HOTBAR.scrollBtnW, HOTBAR.slotH, 0x000000, 0)
+      .setScrollFactor(0).setDepth(27).setInteractive({ useHandCursor: true }).setVisible(false);
+    this.scrollRightTxt = scene.add.text(0, 0, '▶', {
       fontSize: '15px', color: '#aabbff', stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(28).setVisible(false);
     this.scrollRightBtn.on('pointerup', () => {
-      const maxOffset = Math.max(0, this.hotbarOwnedIds.length - this.hotbarMaxVisible());
+      const maxOffset = Math.max(0, this.hotbarOwnedIds.length - this.hotbarMaxVisibleCount());
       this.hotbarScrollOffset = Math.min(maxOffset, this.hotbarScrollOffset + 1);
       this.refreshHotbar();
     });
@@ -259,7 +264,7 @@ export class PlaceableManager {
     // Register all screen-space hotbar/placement UI to the gameplay UI camera.
     // (Ghost rects above are world-space — left on the main camera.)
     addToGameplayUi(scene, [
-      this.hotbarBg, ...this.hotbarItems, ...this.hotbarLabels, ...this.hotbarQtys,
+      this.hotbarGfx, this.hotbarTitle, ...this.hotbarItems, ...this.hotbarLabels, ...this.hotbarQtys,
       this.scrollLeftBtn, this.scrollLeftTxt, this.scrollRightBtn, this.scrollRightTxt,
       this.confirmBtn, this.confirmTxt, this.cancelBtn, this.cancelTxt, this.statusLabel,
     ]);
@@ -613,71 +618,116 @@ export class PlaceableManager {
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
-  private hotbarMaxVisible(): number {
-    // Reserve 40px on each side for scroll buttons + 10px panel padding each side
-    return Math.max(1, Math.floor((logicalWidth(this.scene) - 100 + 8) / 88));
+  private hotbarMaxVisibleCount(): number {
+    return computeHotbarLayout({
+      gameWidth: logicalWidth(this.scene), gameHeight: logicalHeight(this.scene),
+      ownedCount: this.hotbarOwnedIds.length, scrollOffset: this.hotbarScrollOffset,
+    }).visibleCount;
   }
 
   private refreshHotbar(): void {
     const GAME_WIDTH  = logicalWidth(this.scene);
     const GAME_HEIGHT = logicalHeight(this.scene);
-    const slotW = 80, slotGap = 8, slotStride = slotW + slotGap;
-    const panelY = GAME_HEIGHT - 130;
 
-    // Only show items the player owns (qty > 0), respecting checkpoint exclusion
+    // Only show items the player owns (qty > 0), respecting checkpoint exclusion.
     this.hotbarOwnedIds = ITEM_DEFS
       .filter(def => !(this._excludeCheckpoint && def.id === 'checkpoint'))
       .filter(def => getItemQuantity(def.id) > 0)
       .map(def => def.id);
 
-    // Hide all slots first
+    const L = computeHotbarLayout({
+      gameWidth: GAME_WIDTH, gameHeight: GAME_HEIGHT,
+      ownedCount: this.hotbarOwnedIds.length, scrollOffset: this.hotbarScrollOffset,
+    });
+    this.hotbarScrollOffset = L.scrollOffset;
+
+    // Hide all per-item objects first.
     ITEM_DEFS.forEach((_, i) => {
       this.hotbarItems[i]?.setVisible(false);
       this.hotbarLabels[i]?.setVisible(false);
       this.hotbarQtys[i]?.setVisible(false);
     });
 
-    const ownedCount  = this.hotbarOwnedIds.length;
-    const maxVisible  = this.hotbarMaxVisible();
-    const needsScroll = ownedCount > maxVisible;
-    const maxOffset   = Math.max(0, ownedCount - maxVisible);
-    this.hotbarScrollOffset = Math.min(this.hotbarScrollOffset, maxOffset);
+    // ── Draw chrome ────────────────────────────────────────────────────────────
+    const g = this.hotbarGfx;
+    g.clear();
+    g.setVisible(true);
 
-    const scrollBtnSpace = needsScroll ? 40 : 0;
-    const visibleCount   = Math.min(ownedCount, maxVisible);
-    const totalSlotW     = Math.max(0, visibleCount * slotStride - slotGap);
-    const panelW         = Math.min(totalSlotW + 20 + scrollBtnSpace * 2, GAME_WIDTH - 10);
+    const panelX = L.panelCx - L.panelW / 2;
+    const panelY = L.panelCy - L.panelH / 2;
 
-    this.hotbarBg.setPosition(GAME_WIDTH / 2, panelY).setSize(panelW, 100).setVisible(true);
+    // Panel
+    g.fillStyle(HUD_THEME.panelFill, 0.55);
+    g.fillRoundedRect(panelX, panelY, L.panelW, L.panelH, HOTBAR.cornerRadius);
+    g.lineStyle(1, HUD_THEME.border, 0.18);
+    g.strokeRoundedRect(panelX, panelY, L.panelW, L.panelH, HOTBAR.cornerRadius);
+    // Header divider
+    const divY = panelY + HOTBAR.headerH;
+    g.lineStyle(1, HUD_THEME.border, 0.12);
+    g.lineBetween(panelX + 8, divY, panelX + L.panelW - 8, divY);
 
-    // Slot start X: left edge of panel + padding + scroll button space + half slot
-    const slotAreaStartX = GAME_WIDTH / 2 - panelW / 2 + 10 + scrollBtnSpace + slotW / 2;
-    const visibleIds = this.hotbarOwnedIds.slice(this.hotbarScrollOffset, this.hotbarScrollOffset + maxVisible);
+    this.hotbarTitle.setPosition(L.panelCx, L.headerCy).setVisible(true);
 
+    // Slots
+    const visibleIds = this.hotbarOwnedIds.slice(L.scrollOffset, L.scrollOffset + L.visibleCount);
     visibleIds.forEach((itemId, vi) => {
       const defIdx = ITEM_DEFS.findIndex(d => d.id === itemId);
       if (defIdx < 0) return;
-      const sx  = slotAreaStartX + vi * slotStride;
+      const cx = L.slotCxs[vi];
+      const sx = cx - HOTBAR.slotW / 2;
+      const sy = L.slotCy - HOTBAR.slotH / 2;
       const qty = getItemQuantity(itemId);
-      this.hotbarItems[defIdx]?.setPosition(sx, panelY).setVisible(true).setAlpha(1);
-      this.hotbarLabels[defIdx]?.setPosition(sx, panelY - 14).setVisible(true);
-      this.hotbarQtys[defIdx]?.setPosition(sx, panelY + 18).setText(`x${qty}`).setVisible(true);
+
+      // slot body
+      g.fillStyle(0xffffff, 0.06);
+      g.fillRoundedRect(sx, sy, HOTBAR.slotW, HOTBAR.slotH, HOTBAR.slotRadius);
+      g.lineStyle(1, 0xffffff, 0.14);
+      g.strokeRoundedRect(sx, sy, HOTBAR.slotW, HOTBAR.slotH, HOTBAR.slotRadius);
+      // accent stripe (top corners rounded only)
+      g.fillStyle(ACCENT_COLORS[itemId as keyof typeof ACCENT_COLORS] ?? 0x888888, 1);
+      g.fillRoundedRect(sx, sy, HOTBAR.slotW, HOTBAR.stripeH,
+        { tl: HOTBAR.slotRadius, tr: HOTBAR.slotRadius, bl: 0, br: 0 });
+
+      // hit area + name
+      this.hotbarItems[defIdx]?.setPosition(cx, L.slotCy).setVisible(true);
+      this.hotbarLabels[defIdx]?.setPosition(cx, L.slotCy + 6).setVisible(true);
+
+      // qty pill (top-right) — size to the text
+      const qtyTxt = this.hotbarQtys[defIdx];
+      if (qtyTxt) {
+        qtyTxt.setText(`×${qty}`);
+        const pillRight = sx + HOTBAR.slotW - 4;
+        const pillTop   = sy + 4;
+        const pillW = qtyTxt.width + 8;
+        const pillH = qtyTxt.height + 2;
+        g.fillStyle(0xffce8a, 1);
+        g.fillRoundedRect(pillRight - pillW, pillTop, pillW, pillH, 6);
+        qtyTxt.setPosition(pillRight - 4, pillTop + 1).setVisible(true);
+      }
     });
 
     // Scroll buttons
-    const leftBtnX  = GAME_WIDTH / 2 - panelW / 2 + 14;
-    const rightBtnX = GAME_WIDTH / 2 + panelW / 2 - 14;
-    const showLeft  = needsScroll && this.hotbarScrollOffset > 0;
-    const showRight = needsScroll && this.hotbarScrollOffset < maxOffset;
-    this.scrollLeftBtn.setPosition(leftBtnX, panelY).setVisible(showLeft);
-    this.scrollLeftTxt.setPosition(leftBtnX, panelY).setVisible(showLeft);
-    this.scrollRightBtn.setPosition(rightBtnX, panelY).setVisible(showRight);
-    this.scrollRightTxt.setPosition(rightBtnX, panelY).setVisible(showRight);
+    const drawBtn = (cx: number, show: boolean,
+                     btn: Phaser.GameObjects.Rectangle, txt: Phaser.GameObjects.Text) => {
+      btn.setPosition(cx, L.slotCy).setVisible(show);
+      txt.setPosition(cx, L.slotCy).setVisible(show);
+      if (!show) return;
+      const bx = cx - HOTBAR.scrollBtnW / 2;
+      const by = L.slotCy - HOTBAR.slotH / 2;
+      g.fillStyle(0xffffff, 0.05);
+      g.fillRoundedRect(bx, by, HOTBAR.scrollBtnW, HOTBAR.slotH, HOTBAR.slotRadius);
+      g.lineStyle(1, 0xffffff, 0.14);
+      g.strokeRoundedRect(bx, by, HOTBAR.scrollBtnW, HOTBAR.slotH, HOTBAR.slotRadius);
+    };
+    drawBtn(L.leftBtnCx,  L.showLeft,  this.scrollLeftBtn,  this.scrollLeftTxt);
+    drawBtn(L.rightBtnCx, L.showRight, this.scrollRightBtn, this.scrollRightTxt);
   }
 
   private setHotbarVisible(visible: boolean): void {
     if (!visible) {
-      this.hotbarBg.setVisible(false);
+      this.hotbarGfx?.clear();
+      this.hotbarGfx?.setVisible(false);
+      this.hotbarTitle?.setVisible(false);
       this.hotbarItems.forEach(o => o.setVisible(false));
       this.hotbarLabels.forEach(o => o.setVisible(false));
       this.hotbarQtys.forEach(o => o.setVisible(false));
