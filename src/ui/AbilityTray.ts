@@ -23,7 +23,7 @@ export class AbilityTray {
     const colW = 70;
     const max  = player.maxAirJumpsCount;
     const hasWall = player.hasWallJump;
-    const rows = 1 + (hasWall ? 1 : 0) + (showDashIndicator ? 1 : 0);
+    const rows = 1 + (hasWall ? 1 : 0) + (showDashIndicator && player.hasDash ? 1 : 0);
     const rowH = 32;
     const panelH = HUD_TRAY_PAD * 2 + rows * rowH;
     const cx = left + colW / 2;
