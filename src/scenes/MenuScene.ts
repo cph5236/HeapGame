@@ -41,7 +41,7 @@ export class MenuScene extends Phaser.Scene {
   private leaderboardIcon!: Phaser.GameObjects.Text;
 
   private _forceSettingsOpen = false;
-  private tiltPrompt?: Phaser.GameObjects.Text;
+  private tiltPrompt?: Phaser.GameObjects.Container;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -599,31 +599,65 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0).setDepth(9);
 
     if (im.isMobile && !im.tiltPermissionGranted) {
-      const tiltBtn = this.add.text(logicalWidth(this) / 2, logicalHeight(this) - 94, 'Enable Tilt Controls', {
-        fontSize: '17px',
-        color: '#88aaff',
-        stroke: '#000000',
-        strokeThickness: 2,
-      }).setOrigin(0.5).setAlpha(0).setDepth(9).setInteractive({ useHandCursor: true });
+      if (im.tiltPermissionBlocked) {
+        // Cross-origin iframe (e.g. itch.io): the iOS tilt-permission dialog can never
+        // appear, so don't offer it. Auto-use the joystick and explain why.
+        this.fallbackToJoystick(
+          'Joystick controls enabled — your browser blocks tilt steering. Change controls in Settings.',
+        );
+      } else {
+        const cx = logicalWidth(this) / 2;
+        const mkBtn = (y: number, label: string, bg: string, color: string) =>
+          this.add.text(cx, y, label, {
+            fontSize: '17px',
+            color,
+            backgroundColor: bg,
+            padding: { x: 14, y: 8 },
+            stroke: '#000000',
+            strokeThickness: 2,
+          }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
-      tiltBtn.on('pointerup', () => {
-        im.requestTiltPermission().then((granted) => {
-          tiltBtn.setVisible(false);
-          // iOS: if permission was blocked (e.g. itch.io's cross-origin iframe), or
-          // granted but no orientation data arrives, fall back to the joystick.
-          if (!granted) { this.fallbackToJoystick(); return; }
-          this.time.delayedCall(TILT_WATCHDOG_MS, () => {
-            if (getEffectiveControlMode() === 'tilt' && !im.tiltDataReceived) this.fallbackToJoystick();
+        const enableBtn = mkBtn(logicalHeight(this) - 116, 'Enable Tilt Controls', '#2244aa', '#ffffff');
+        const keepBtn   = mkBtn(logicalHeight(this) - 66,  'Keep Joystick Controls', '#1a1a2e', '#cccccc');
+
+        enableBtn.on('pointerup', () => {
+          im.requestTiltPermission().then((granted) => {
+            this.setTiltPromptVisible(false);
+            // iOS: if permission was blocked, or granted but no orientation data
+            // arrives, fall back to the joystick.
+            if (!granted) { this.fallbackToJoystick(); return; }
+            this.time.delayedCall(TILT_WATCHDOG_MS, () => {
+              if (getEffectiveControlMode() === 'tilt' && !im.tiltDataReceived) this.fallbackToJoystick();
+            });
           });
         });
-      });
 
-      this.tweens.add({ targets: tiltBtn, alpha: 1, duration: 300, delay: 2000 });
-      tiltBtn.setVisible(getEffectiveControlMode() === 'tilt');
-      this.tiltPrompt = tiltBtn;
+        keepBtn.on('pointerup', () => {
+          // Explicit dismiss: switch to the joystick for this session only (saved pref
+          // untouched) and hide the prompt. No "unavailable" toast — this is a choice.
+          setSessionControlMode('joystick');
+          this.setTiltPromptVisible(false);
+        });
+
+        const container = this.add.container(0, 0, [enableBtn, keepBtn]).setDepth(9).setAlpha(0);
+        this.tweens.add({ targets: container, alpha: 1, duration: 300, delay: 2000 });
+        this.tiltPrompt = container;
+        this.setTiltPromptVisible(getEffectiveControlMode() === 'tilt');
+      }
     }
 
     this.startTiltWatchdog(im);
+  }
+
+  /** Show/hide the tilt-prompt container and toggle its buttons' interactivity in
+   *  step, so a hidden prompt can never receive taps. */
+  private setTiltPromptVisible(visible: boolean): void {
+    if (!this.tiltPrompt) return;
+    this.tiltPrompt.setVisible(visible);
+    for (const child of this.tiltPrompt.list) {
+      const input = (child as Phaser.GameObjects.GameObject).input;
+      if (input) input.enabled = visible;
+    }
   }
 
   /** On mobile in tilt mode, auto-fall back to the joystick if device-tilt never
@@ -640,12 +674,14 @@ export class MenuScene extends Phaser.Scene {
 
   /** Switch to the joystick for this session (does NOT overwrite the saved pref),
    *  hide the tilt prompt, and briefly notify the player. */
-  private fallbackToJoystick(): void {
+  private fallbackToJoystick(
+    message = 'Tilt unavailable — joystick controls enabled. Change controls in Settings.',
+  ): void {
     if (getEffectiveControlMode() === 'joystick') return;
     setSessionControlMode('joystick');
-    this.tiltPrompt?.setVisible(false);
+    this.setTiltPromptVisible(false);
     const notice = this.add.text(logicalWidth(this) / 2, logicalHeight(this) - 94,
-      'Tilt unavailable — joystick controls enabled', {
+      message, {
         fontSize: '15px', color: '#ffd070', stroke: '#000000', strokeThickness: 2,
         align: 'center', wordWrap: { width: logicalWidth(this) - 40 },
       }).setOrigin(0.5).setDepth(10).setAlpha(0);
@@ -926,7 +962,9 @@ export class MenuScene extends Phaser.Scene {
     // applies to tilt mode, and only when the device hasn't granted permission).
     const refreshTiltPrompt = () => {
       const im2 = InputManager.getInstance();
-      this.tiltPrompt?.setVisible(ctrlMode === 'tilt' && im2.isMobile && !im2.tiltPermissionGranted);
+      this.setTiltPromptVisible(
+        ctrlMode === 'tilt' && im2.isMobile && !im2.tiltPermissionGranted && !im2.tiltPermissionBlocked,
+      );
     };
 
     // An explicit choice clears any auto-fallback session override (it wins).
