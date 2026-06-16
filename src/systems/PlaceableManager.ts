@@ -58,10 +58,16 @@ export class PlaceableManager {
   private _lastPtrX:      number = Number.NaN;
   private _lastPtrY:      number = Number.NaN;
 
-  private hotbarBg!:      Phaser.GameObjects.Rectangle;
-  private hotbarItems:    Phaser.GameObjects.Rectangle[] = [];
-  private hotbarLabels:   Phaser.GameObjects.Text[] = [];
-  private hotbarQtys:     Phaser.GameObjects.Text[] = [];
+  private hotbarBg!:           Phaser.GameObjects.Rectangle;
+  private hotbarItems:         Phaser.GameObjects.Rectangle[] = [];
+  private hotbarLabels:        Phaser.GameObjects.Text[] = [];
+  private hotbarQtys:          Phaser.GameObjects.Text[] = [];
+  private hotbarScrollOffset:  number = 0;
+  private hotbarOwnedIds:      string[] = [];
+  private scrollLeftBtn!:      Phaser.GameObjects.Rectangle;
+  private scrollLeftTxt!:      Phaser.GameObjects.Text;
+  private scrollRightBtn!:     Phaser.GameObjects.Rectangle;
+  private scrollRightTxt!:     Phaser.GameObjects.Text;
 
   private confirmBtn!:    Phaser.GameObjects.Rectangle;
   private confirmTxt!:    Phaser.GameObjects.Text;
@@ -120,8 +126,8 @@ export class PlaceableManager {
       return;
     }
     this.state = PlacementState.Hotbar;
+    this.hotbarScrollOffset = 0;
     this.refreshHotbar();
-    this.setHotbarVisible(true);
   }
 
   closeAll(): void {
@@ -169,27 +175,19 @@ export class PlaceableManager {
       GAME_WIDTH / 2, GAME_HEIGHT - 130, GAME_WIDTH - 20, 100, 0x0a0818, 0.94,
     ).setScrollFactor(0).setDepth(25).setStrokeStyle(1, 0x2a2240).setVisible(false);
 
-    // Build item slots for each ITEM_DEF
-    const slotW  = 80;
-    const slotH  = 70;
-    const totalW = ITEM_DEFS.length * (slotW + 8) - 8;
-    const startX = GAME_WIDTH / 2 - totalW / 2 + slotW / 2;
-    const slotY  = GAME_HEIGHT - 130;
-
-    ITEM_DEFS.forEach((def, i) => {
-      const sx = startX + i * (slotW + 8);
-
-      const slot = scene.add.rectangle(sx, slotY, slotW, slotH, 0x1a0820)
+    // Build item slots for each ITEM_DEF — positions set dynamically in refreshHotbar
+    ITEM_DEFS.forEach((def) => {
+      const slot = scene.add.rectangle(0, 0, 80, 70, 0x1a0820)
         .setScrollFactor(0).setDepth(26)
         .setStrokeStyle(1, 0x4455aa).setVisible(false)
         .setInteractive({ useHandCursor: true });
 
-      const label = scene.add.text(sx, slotY - 14, def.name, {
+      const label = scene.add.text(0, 0, def.name, {
         fontSize: '11px', color: '#ffffff', stroke: '#000000', strokeThickness: 1,
-        align: 'center', wordWrap: { width: slotW - 4 },
+        align: 'center', wordWrap: { width: 76 },
       }).setOrigin(0.5).setScrollFactor(0).setDepth(27).setVisible(false);
 
-      const qty = scene.add.text(sx, slotY + 18, 'x0', {
+      const qty = scene.add.text(0, 0, 'x0', {
         fontSize: '14px', color: '#ffdd77', stroke: '#000000', strokeThickness: 2,
       }).setOrigin(0.5).setScrollFactor(0).setDepth(27).setVisible(false);
 
@@ -200,14 +198,30 @@ export class PlaceableManager {
       this.hotbarQtys.push(qty);
     });
 
-    if (this._excludeCheckpoint) {
-      const cpIdx = ITEM_DEFS.findIndex(d => d.id === 'checkpoint');
-      if (cpIdx >= 0) {
-        this.hotbarItems[cpIdx]?.setVisible(false).disableInteractive();
-        this.hotbarLabels[cpIdx]?.setVisible(false);
-        this.hotbarQtys[cpIdx]?.setVisible(false);
-      }
-    }
+    // Scroll buttons — shown when owned items exceed visible slots
+    const scrollBtnY = GAME_HEIGHT - 130;
+    this.scrollLeftBtn = scene.add.rectangle(0, scrollBtnY, 28, 70, 0x0d0d1a)
+      .setScrollFactor(0).setDepth(27).setStrokeStyle(1, 0x4455aa)
+      .setInteractive({ useHandCursor: true }).setVisible(false);
+    this.scrollLeftTxt = scene.add.text(0, scrollBtnY, '◀', {
+      fontSize: '15px', color: '#aabbff', stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(28).setVisible(false);
+    this.scrollLeftBtn.on('pointerup', () => {
+      this.hotbarScrollOffset = Math.max(0, this.hotbarScrollOffset - 1);
+      this.refreshHotbar();
+    });
+
+    this.scrollRightBtn = scene.add.rectangle(0, scrollBtnY, 28, 70, 0x0d0d1a)
+      .setScrollFactor(0).setDepth(27).setStrokeStyle(1, 0x4455aa)
+      .setInteractive({ useHandCursor: true }).setVisible(false);
+    this.scrollRightTxt = scene.add.text(0, scrollBtnY, '▶', {
+      fontSize: '15px', color: '#aabbff', stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(28).setVisible(false);
+    this.scrollRightBtn.on('pointerup', () => {
+      const maxOffset = Math.max(0, this.hotbarOwnedIds.length - this.hotbarMaxVisible());
+      this.hotbarScrollOffset = Math.min(maxOffset, this.hotbarScrollOffset + 1);
+      this.refreshHotbar();
+    });
 
     // Confirm button
     this.confirmBtn = scene.add.rectangle(
@@ -246,6 +260,7 @@ export class PlaceableManager {
     // (Ghost rects above are world-space — left on the main camera.)
     addToGameplayUi(scene, [
       this.hotbarBg, ...this.hotbarItems, ...this.hotbarLabels, ...this.hotbarQtys,
+      this.scrollLeftBtn, this.scrollLeftTxt, this.scrollRightBtn, this.scrollRightTxt,
       this.confirmBtn, this.confirmTxt, this.cancelBtn, this.cancelTxt, this.statusLabel,
     ]);
   }
@@ -598,19 +613,80 @@ export class PlaceableManager {
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
+  private hotbarMaxVisible(): number {
+    // Reserve 40px on each side for scroll buttons + 10px panel padding each side
+    return Math.max(1, Math.floor((logicalWidth(this.scene) - 100 + 8) / 88));
+  }
+
   private refreshHotbar(): void {
-    ITEM_DEFS.forEach((def, i) => {
-      const qty = getItemQuantity(def.id);
-      this.hotbarQtys[i]?.setText(`x${qty}`);
-      this.hotbarItems[i]?.setAlpha(qty > 0 ? 1 : 0.45);
+    const GAME_WIDTH  = logicalWidth(this.scene);
+    const GAME_HEIGHT = logicalHeight(this.scene);
+    const slotW = 80, slotGap = 8, slotStride = slotW + slotGap;
+    const panelY = GAME_HEIGHT - 130;
+
+    // Only show items the player owns (qty > 0), respecting checkpoint exclusion
+    this.hotbarOwnedIds = ITEM_DEFS
+      .filter(def => !(this._excludeCheckpoint && def.id === 'checkpoint'))
+      .filter(def => getItemQuantity(def.id) > 0)
+      .map(def => def.id);
+
+    // Hide all slots first
+    ITEM_DEFS.forEach((_, i) => {
+      this.hotbarItems[i]?.setVisible(false);
+      this.hotbarLabels[i]?.setVisible(false);
+      this.hotbarQtys[i]?.setVisible(false);
     });
+
+    const ownedCount  = this.hotbarOwnedIds.length;
+    const maxVisible  = this.hotbarMaxVisible();
+    const needsScroll = ownedCount > maxVisible;
+    const maxOffset   = Math.max(0, ownedCount - maxVisible);
+    this.hotbarScrollOffset = Math.min(this.hotbarScrollOffset, maxOffset);
+
+    const scrollBtnSpace = needsScroll ? 40 : 0;
+    const visibleCount   = Math.min(ownedCount, maxVisible);
+    const totalSlotW     = Math.max(0, visibleCount * slotStride - slotGap);
+    const panelW         = Math.min(totalSlotW + 20 + scrollBtnSpace * 2, GAME_WIDTH - 10);
+
+    this.hotbarBg.setPosition(GAME_WIDTH / 2, panelY).setSize(panelW, 100).setVisible(true);
+
+    // Slot start X: left edge of panel + padding + scroll button space + half slot
+    const slotAreaStartX = GAME_WIDTH / 2 - panelW / 2 + 10 + scrollBtnSpace + slotW / 2;
+    const visibleIds = this.hotbarOwnedIds.slice(this.hotbarScrollOffset, this.hotbarScrollOffset + maxVisible);
+
+    visibleIds.forEach((itemId, vi) => {
+      const defIdx = ITEM_DEFS.findIndex(d => d.id === itemId);
+      if (defIdx < 0) return;
+      const sx  = slotAreaStartX + vi * slotStride;
+      const qty = getItemQuantity(itemId);
+      this.hotbarItems[defIdx]?.setPosition(sx, panelY).setVisible(true).setAlpha(1);
+      this.hotbarLabels[defIdx]?.setPosition(sx, panelY - 14).setVisible(true);
+      this.hotbarQtys[defIdx]?.setPosition(sx, panelY + 18).setText(`x${qty}`).setVisible(true);
+    });
+
+    // Scroll buttons
+    const leftBtnX  = GAME_WIDTH / 2 - panelW / 2 + 14;
+    const rightBtnX = GAME_WIDTH / 2 + panelW / 2 - 14;
+    const showLeft  = needsScroll && this.hotbarScrollOffset > 0;
+    const showRight = needsScroll && this.hotbarScrollOffset < maxOffset;
+    this.scrollLeftBtn.setPosition(leftBtnX, panelY).setVisible(showLeft);
+    this.scrollLeftTxt.setPosition(leftBtnX, panelY).setVisible(showLeft);
+    this.scrollRightBtn.setPosition(rightBtnX, panelY).setVisible(showRight);
+    this.scrollRightTxt.setPosition(rightBtnX, panelY).setVisible(showRight);
   }
 
   private setHotbarVisible(visible: boolean): void {
-    this.hotbarBg.setVisible(visible);
-    this.hotbarItems.forEach(o => o.setVisible(visible));
-    this.hotbarLabels.forEach(o => o.setVisible(visible));
-    this.hotbarQtys.forEach(o => o.setVisible(visible));
+    if (!visible) {
+      this.hotbarBg.setVisible(false);
+      this.hotbarItems.forEach(o => o.setVisible(false));
+      this.hotbarLabels.forEach(o => o.setVisible(false));
+      this.hotbarQtys.forEach(o => o.setVisible(false));
+      this.scrollLeftBtn?.setVisible(false);
+      this.scrollLeftTxt?.setVisible(false);
+      this.scrollRightBtn?.setVisible(false);
+      this.scrollRightTxt?.setVisible(false);
+    }
+    // visible=true is handled by refreshHotbar()
   }
 
   private setPlacementUIVisible(visible: boolean): void {
