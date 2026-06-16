@@ -118,6 +118,8 @@ export const PLATFORM_MAX_HEIGHT = 56;
 export const FLOOR_BODY_HEIGHT          = 8;  // short in Y
 export const MAX_WALKABLE_SLOPE_DEG     = 35; // surfaces steeper than this are walls
 export const MOUNTAIN_CLIMBER_INCREMENT = 3;  // degrees added per upgrade level
+// Min outward jut (px) before a walkable-slope row becomes a non-standable wall (a perchable lip); smaller juts stay walkable ramps.
+export const OVERHANG_WALL_MIN_JUT_PX   = 24;
 
 // ── Placement ─────────────────────────────────────────────────────────────────
 export const PEAK_BONUS_ZONE_PX    = 80;    // px above heap topY that qualifies for peak bonus
