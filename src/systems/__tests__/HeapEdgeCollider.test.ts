@@ -329,23 +329,48 @@ describe('HeapEdgeCollider – wallSide setData', () => {
     }
   });
 
-  it('classifies a gentle OVERHANG (edge juts out over the row below) as a wall, not walkable', () => {
+  it('classifies a gentle continuous OUTWARD-leaning ramp as WALKABLE, not a wall', () => {
     const walkableGroup = makeMockGroup();
     const wallGroup = makeMockGroup();
 
-    // Gentle (~15°) left edge that narrows going down → the upper rows jut out over
-    // the lower ones (overhang). Not standable even though it's below the steepness
-    // threshold, so it must be a wall.
+    // A shallow (~30°) left edge that leans outward as it rises: each row juts out
+    // ~7px over the row below. The slope is walkable and the per-row jut is small —
+    // this is a climbable ramp, NOT a perchable lip, so it must be walkable.
+    // (Regression: previously ANY outward lean forced these surfaces to walls, which
+    //  disabled their tops and ejected the player sideways — the reported bug.)
     const rows: ScanlineRow[] = [
-      { y: 0, leftX: 100, rightX: 200 },
-      { y: 4, leftX: 115, rightX: 200 },
-      { y: 8, leftX: 130, rightX: 200 },
+      { y: 0, leftX: 100, rightX: 300 },
+      { y: 4, leftX: 107, rightX: 300 }, // jut = 7px over row below, slope ≈ 30°
+      { y: 8, leftX: 114, rightX: 300 },
     ];
 
     const collider = new HeapEdgeCollider(35);
     collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
 
-    // Left overhang slabs are walls tagged with wallSide 'left'.
+    // The left ramp slabs must be walkable; only the vertical right edge is a wall.
+    expect(walkableGroup.create).toHaveBeenCalled();
+    expect(wallGroup.created.some(img =>
+      (img.setData as any).mock.calls.some((c: unknown[]) => c[0] === 'wallSide' && c[1] === 'left'),
+    )).toBe(false);
+  });
+
+  it('classifies a PRONOUNCED jutting lip (large outward jut) as a wall', () => {
+    const walkableGroup = makeMockGroup();
+    const wallGroup = makeMockGroup();
+
+    // A near-flat row that juts out far (≫ threshold) over the row below — a perchable
+    // lip on an otherwise steep face. Must stay a non-standable wall so it can't be
+    // used to refresh air jumps (the original overhang intent).
+    const rows: ScanlineRow[] = [
+      { y: 0, leftX: 100, rightX: 300 },
+      { y: 4, leftX: 140, rightX: 300 }, // jut = 40px over row below → lip
+      { y: 8, leftX: 145, rightX: 300 },
+    ];
+
+    const collider = new HeapEdgeCollider(35);
+    collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
+
+    // Row 0's left edge juts 40px over row 1 → wall tagged wallSide 'left'.
     expect(wallGroup.created.some(img =>
       (img.setData as any).mock.calls.some((c: unknown[]) => c[0] === 'wallSide' && c[1] === 'left'),
     )).toBe(true);

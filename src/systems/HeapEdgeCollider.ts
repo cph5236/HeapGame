@@ -3,6 +3,7 @@ import { HeapEntry } from '../data/heapTypes';
 import {
   CHUNK_BAND_HEIGHT,
   MAX_WALKABLE_SLOPE_DEG,
+  OVERHANG_WALL_MIN_JUT_PX,
   FLOOR_BODY_HEIGHT,
   SURFACE_QUERY_TOLERANCE_PX,
 } from '../constants';
@@ -155,16 +156,23 @@ export class HeapEdgeCollider {
     const rightIsWall = computeRowSlopeAngleDeg(rows, i, 'right') > this.walkableSlopeDeg;
 
     // Overhang: this row extends further out than the row below (heap gets wider going up).
-    // Overhang undersides should block the player jumping from below.
-    const leftIsOverhang  = rowBelow !== null && row.leftX  < rowBelow.leftX;
-    const rightIsOverhang = rowBelow !== null && row.rightX > rowBelow.rightX;
+    // `jut` is how far out it sticks (px); >0 means an overhang. Overhang undersides
+    // should block the player jumping from below, so wall slabs keep their underside.
+    const leftJut  = rowBelow !== null ? rowBelow.leftX - row.leftX  : 0;
+    const rightJut = rowBelow !== null ? row.rightX - rowBelow.rightX : 0;
+    const leftIsOverhang  = leftJut  > 0;
+    const rightIsOverhang = rightJut > 0;
 
-    // A row-side is a wall if it's steep OR an overhang. An overhang (the edge juts
-    // out over the row below) isn't a surface you should stand on even when its slope
-    // is shallow — otherwise the player clips onto the protruding lip and refreshes.
+    // A row-side is a wall if it's steep OR a *pronounced* overhang. A small outward
+    // lean is just a gentle climbable ramp (still walkable). Only a jut larger than
+    // OVERHANG_WALL_MIN_JUT_PX is a genuine perchable lip that shouldn't be stood on —
+    // standing on it lets the player refresh air jumps mid-climb of a steep face.
+    const leftIsLip  = leftJut  > OVERHANG_WALL_MIN_JUT_PX;
+    const rightIsLip = rightJut > OVERHANG_WALL_MIN_JUT_PX;
+
     return {
-      left:  (leftIsWall  || leftIsOverhang)  ? { kind: 'wall', side: 'left',  isOverhang: leftIsOverhang  } : { kind: 'walkable' },
-      right: (rightIsWall || rightIsOverhang) ? { kind: 'wall', side: 'right', isOverhang: rightIsOverhang } : { kind: 'walkable' },
+      left:  (leftIsWall  || leftIsLip)  ? { kind: 'wall', side: 'left',  isOverhang: leftIsOverhang  } : { kind: 'walkable' },
+      right: (rightIsWall || rightIsLip) ? { kind: 'wall', side: 'right', isOverhang: rightIsOverhang } : { kind: 'walkable' },
     };
   }
 

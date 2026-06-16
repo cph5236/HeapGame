@@ -118,6 +118,12 @@ export const PLATFORM_MAX_HEIGHT = 56;
 export const FLOOR_BODY_HEIGHT          = 8;  // short in Y
 export const MAX_WALKABLE_SLOPE_DEG     = 35; // surfaces steeper than this are walls
 export const MOUNTAIN_CLIMBER_INCREMENT = 3;  // degrees added per upgrade level
+// A shallow-sloped surface that juts out over the row 4px below it is only demoted
+// to a (non-standable) wall when the jut exceeds this many px — a genuine "lip" you
+// could perch on to refresh air jumps. Smaller juts are just gentle outward-leaning
+// ramps and stay walkable. ≈0.6× PLAYER_WIDTH. Without this, noise-driven ramps in
+// infinite mode were wall-ified and ejected the player sideways on landing.
+export const OVERHANG_WALL_MIN_JUT_PX   = 24;
 
 // ── Placement ─────────────────────────────────────────────────────────────────
 export const PEAK_BONUS_ZONE_PX    = 80;    // px above heap topY that qualifies for peak bonus
