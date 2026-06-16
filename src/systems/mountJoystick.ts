@@ -7,7 +7,7 @@ import { logicalWidth, logicalHeight } from './displayMetrics';
 import { addToGameplayUi } from './GameplayUiCamera';
 import { JOYSTICK_RADIUS, JOYSTICK_MARGIN, DASH_BUTTON_RADIUS, HUD_PLACE_W, HUD_PLACE_H, HUD_PLACE_GAP } from '../constants';
 import { controlClusterLayout } from '../ui/hudLogic';
-import { HUD } from '../ui/hudTheme';
+import { HUD_THEME } from '../ui/hudTheme';
 
 export interface JoystickHandle {
   update(delta: number): void;
@@ -50,7 +50,7 @@ export function mountJoystick(
 
   const dashX = layout.dash.x, dashY = layout.dash.y;
   const dashBtn = scene.add.circle(dashX, dashY, DASH_BUTTON_RADIUS, 0x14100c, 0.5)
-    .setStrokeStyle(2, HUD.dashStroke).setScrollFactor(0).setDepth(40).setVisible(player.hasDash);
+    .setStrokeStyle(2, HUD_THEME.dashStroke).setScrollFactor(0).setDepth(40).setVisible(player.hasDash);
   const dashLabel = scene.add.text(dashX, dashY, '»', {
     fontSize: '26px', color: '#ffd0c2', fontStyle: 'bold',
   }).setOrigin(0.5).setScrollFactor(0).setDepth(41).setVisible(player.hasDash);

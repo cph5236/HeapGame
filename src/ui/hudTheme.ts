@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { getDprCap } from '../systems/displayMetrics';
 
 /** Clean Arcade palette. Numbers are 0xRRGGBB; strings are for Text styles. */
-export const HUD = {
+export const HUD_THEME = {
   panelFill:   0x0a0c1a, panelAlpha: 0.45,
   border:      0xffffff, borderAlpha: 0.12,
   accent:      0xff9922,           // orange (primary action)
@@ -21,15 +21,15 @@ export const HUD = {
  *  stay readable over the brighter sky, e.g. the score chip). */
 export function makePanel(
   scene: Phaser.Scene, cx: number, cy: number, w: number, h: number, radius = 14,
-  fillAlpha: number = HUD.panelAlpha,
+  fillAlpha: number = HUD_THEME.panelAlpha,
 ): Phaser.GameObjects.Image {
   const key = `hud-panel-${w}x${h}-${radius}-${fillAlpha}`;
   if (!scene.textures.exists(key)) {
     const dpr = getDprCap();
     const g = scene.make.graphics({ x: 0, y: 0 }, false);
-    g.fillStyle(HUD.panelFill, fillAlpha);
+    g.fillStyle(HUD_THEME.panelFill, fillAlpha);
     g.fillRoundedRect(0, 0, w * dpr, h * dpr, radius * dpr);
-    g.lineStyle(1 * dpr, HUD.border, HUD.borderAlpha);
+    g.lineStyle(1 * dpr, HUD_THEME.border, HUD_THEME.borderAlpha);
     g.strokeRoundedRect(0, 0, w * dpr, h * dpr, radius * dpr);
     g.generateTexture(key, Math.ceil(w * dpr), Math.ceil(h * dpr));
     g.destroy();
@@ -47,7 +47,7 @@ export function makeCloudIcon(
   if (!scene.textures.exists(key)) {
     const dpr = getDprCap();
     const g = scene.make.graphics({ x: 0, y: 0 }, false);
-    g.fillStyle(HUD.cloud, 1);
+    g.fillStyle(HUD_THEME.cloud, 1);
     // Flat-ish rounded base, then overlapping puffs for the billowy top.
     g.fillRoundedRect(3 * dpr, 10 * dpr, 26 * dpr, 8 * dpr, 4 * dpr);
     g.fillCircle(11 * dpr, 10 * dpr, 7 * dpr);
@@ -77,11 +77,11 @@ export function makeWallJumpIcon(
     const g = scene.make.graphics({ x: 0, y: 0 }, false);
 
     // Wall bar.
-    g.fillStyle(HUD.cloud, 1);
+    g.fillStyle(HUD_THEME.cloud, 1);
     g.fillRoundedRect(u(8), u(8), u(6), u(48), u(2));
 
     // Bounce arrow (tail → wall vertex → launch) + arrowhead, stroked.
-    g.lineStyle(u(lw), HUD.cloud, 1);
+    g.lineStyle(u(lw), HUD_THEME.cloud, 1);
     g.beginPath();
     g.moveTo(u(46), u(54)); g.lineTo(u(17), u(34)); g.lineTo(u(48), u(16));
     g.strokePath();
@@ -122,13 +122,13 @@ export function makeDashChevrons(
     ];
     const g = scene.make.graphics({ x: 0, y: 0 }, false);
     for (const { a, pts } of chevs) {
-      g.lineStyle(u(sw), HUD.dashChevron, a);
+      g.lineStyle(u(sw), HUD_THEME.dashChevron, a);
       g.beginPath();
       g.moveTo(u(pts[0][0]), u(pts[0][1]));
       g.lineTo(u(pts[1][0]), u(pts[1][1]));
       g.lineTo(u(pts[2][0]), u(pts[2][1]));
       g.strokePath();
-      g.fillStyle(HUD.dashChevron, a);
+      g.fillStyle(HUD_THEME.dashChevron, a);
       for (const [px, py] of pts) g.fillCircle(u(px), u(py), u(sw / 2));
     }
     g.generateTexture(key, Math.ceil(u(56)), Math.ceil(u(24)));
@@ -149,7 +149,7 @@ export function makeScrim(
     const ph = Math.ceil(h * dpr);
     const g = scene.make.graphics({ x: 0, y: 0 }, false);
     for (let i = 0; i < ph; i++) {
-      const t = i / (ph - 1);
+      const t = ph > 1 ? i / (ph - 1) : 0;
       const a = topAlpha + (botAlpha - topAlpha) * t;
       g.fillStyle(0x080814, a);
       g.fillRect(0, i, dpr, 1);

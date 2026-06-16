@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
-import { HUD, makePanel, makeCloudIcon, makeWallJumpIcon, makeDashChevrons } from './hudTheme';
+import { HUD_THEME, makePanel, makeCloudIcon, makeWallJumpIcon, makeDashChevrons } from './hudTheme';
 import { airJumpPipStates, dashBarFillFraction } from './hudLogic';
 import { HUD_DASH_BAR_W, HUD_DASH_BAR_H, HUD_INSET, HUD_TRAY_PAD } from '../constants';
 
@@ -41,7 +41,7 @@ export class AbilityTray {
     const pipGap = 13;
     const startX = cx - ((max - 1) * pipGap) / 2;
     for (let i = 0; i < max; i++) {
-      const pip = scene.add.circle(startX + i * pipGap, rowY + 11, 3.5, HUD.cloud)
+      const pip = scene.add.circle(startX + i * pipGap, rowY + 11, 3.5, HUD_THEME.cloud)
         .setScrollFactor(0).setDepth(20);
       this.pips.push(pip);
       this.objects.push(pip);
@@ -61,9 +61,9 @@ export class AbilityTray {
       const barLeft = cx - HUD_DASH_BAR_W / 2;
       this.objects.push(
         scene.add.rectangle(barLeft, rowY, HUD_DASH_BAR_W, HUD_DASH_BAR_H, 0x000000, 0.45)
-          .setOrigin(0, 0.5).setScrollFactor(0).setDepth(20).setStrokeStyle(1, HUD.border, HUD.borderAlpha),
+          .setOrigin(0, 0.5).setScrollFactor(0).setDepth(20).setStrokeStyle(1, HUD_THEME.border, HUD_THEME.borderAlpha),
       );
-      this.dashFill = scene.add.rectangle(barLeft, rowY, HUD_DASH_BAR_W, HUD_DASH_BAR_H, HUD.dashGlow, 1)
+      this.dashFill = scene.add.rectangle(barLeft, rowY, HUD_DASH_BAR_W, HUD_DASH_BAR_H, HUD_THEME.dashGlow, 1)
         .setOrigin(0, 0.5).setScrollFactor(0).setDepth(21);
       this.objects.push(this.dashFill);
       this.objects.push(
@@ -81,7 +81,7 @@ export class AbilityTray {
     if (this.showDash && this.dashFill) {
       const f = dashBarFillFraction(this.player.dashCooldownFraction);
       this.dashFill.scaleX = f;
-      this.dashFill.fillColor = f >= 1 ? HUD.dashGlow : HUD.dashDim;
+      this.dashFill.fillColor = f >= 1 ? HUD_THEME.dashGlow : HUD_THEME.dashDim;
     }
   }
 }
