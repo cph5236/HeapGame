@@ -20,6 +20,19 @@ export interface ScreenTransform {
   transformY(pageY: number): number;
 }
 
+/** True when the page runs inside a cross-origin iframe (e.g. itch.io). In that
+ *  context iOS blocks DeviceOrientationEvent.requestPermission(), so tilt is
+ *  unreachable. Reading a property of window.top throws when it's cross-origin. */
+function isCrossOriginFrame(): boolean {
+  try {
+    if (window.self === window.top) return false;   // top-level browsing context
+    void (window.top as Window).location.href;        // same-origin parent: readable
+    return false;
+  } catch {
+    return true;                                       // access threw → cross-origin
+  }
+}
+
 export class InputManager {
   private static instance: InputManager;
 
@@ -59,6 +72,12 @@ export class InputManager {
   // grant before any orientation events arrive. The tilt watchdog uses this to wait
   // for the permission tap instead of falling back prematurely.
   requiresPermissionGesture = false;
+
+  // True when tilt permission can never be granted in this context: iOS requires a
+  // user-gesture grant AND we're inside a cross-origin iframe (e.g. itch.io), where
+  // DeviceOrientationEvent.requestPermission() is blocked and the dialog never appears.
+  // The menu uses this to skip the tilt prompt and auto-enable the joystick instead.
+  tiltPermissionBlocked = false;
 
   // Internal tilt
   private gamma = 0;
@@ -258,6 +277,8 @@ export class InputManager {
     if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
       // iOS 13+ — must wait for user gesture
       this.requiresPermissionGesture = true;
+      // In a cross-origin iframe the gesture grant is blocked outright (no dialog).
+      this.tiltPermissionBlocked = isCrossOriginFrame();
     } else {
       // Android / desktop with tilt — attach immediately
       this.attachTiltListener();

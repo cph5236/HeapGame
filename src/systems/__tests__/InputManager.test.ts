@@ -760,3 +760,67 @@ describe('InputManager — controlMode gating + injection', () => {
     expect(im.dragDown).toBe(false);
   });
 });
+
+describe('InputManager — tiltPermissionBlocked', () => {
+  // Minimal mobile window stub. `self`/`top` control iframe detection;
+  // addEventListener is needed because the mobile constructor + tilt setup attach listeners.
+  function buildWindow(opts: { self: unknown; top: unknown }) {
+    const w: Record<string, unknown> = {
+      ontouchstart: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    w.self = opts.self === 'w' ? w : opts.self;
+    w.top  = opts.top  === 'w' ? w : opts.top;
+    return w;
+  }
+
+  // A DeviceOrientationEvent whose presence of requestPermission decides iOS-vs-Android.
+  function stubIos() {
+    vi.stubGlobal('DeviceOrientationEvent', { requestPermission: () => Promise.resolve('granted') });
+  }
+  function stubAndroid() {
+    vi.stubGlobal('DeviceOrientationEvent', {}); // no requestPermission
+  }
+
+  it('iOS top-level (not in iframe): not blocked', async () => {
+    vi.stubGlobal('window', buildWindow({ self: 'w', top: 'w' })); // self === top
+    vi.stubGlobal('navigator', { maxTouchPoints: 1 });
+    stubIos();
+    const { InputManager } = await import('../InputManager');
+    const im = InputManager.getInstance();
+    expect(im.requiresPermissionGesture).toBe(true);
+    expect(im.tiltPermissionBlocked).toBe(false);
+  });
+
+  it('iOS in cross-origin iframe: blocked', async () => {
+    const crossOriginTop = { get location() { throw new Error('cross-origin'); } };
+    vi.stubGlobal('window', buildWindow({ self: 'w', top: crossOriginTop }));
+    vi.stubGlobal('navigator', { maxTouchPoints: 1 });
+    stubIos();
+    const { InputManager } = await import('../InputManager');
+    const im = InputManager.getInstance();
+    expect(im.tiltPermissionBlocked).toBe(true);
+  });
+
+  it('iOS in same-origin iframe: not blocked', async () => {
+    const sameOriginTop = { location: { href: 'http://localhost/' } };
+    vi.stubGlobal('window', buildWindow({ self: 'w', top: sameOriginTop }));
+    vi.stubGlobal('navigator', { maxTouchPoints: 1 });
+    stubIos();
+    const { InputManager } = await import('../InputManager');
+    const im = InputManager.getInstance();
+    expect(im.tiltPermissionBlocked).toBe(false);
+  });
+
+  it('Android (no permission gesture): not blocked', async () => {
+    const crossOriginTop = { get location() { throw new Error('cross-origin'); } };
+    vi.stubGlobal('window', buildWindow({ self: 'w', top: crossOriginTop }));
+    vi.stubGlobal('navigator', { maxTouchPoints: 1 });
+    stubAndroid();
+    const { InputManager } = await import('../InputManager');
+    const im = InputManager.getInstance();
+    expect(im.requiresPermissionGesture).toBe(false);
+    expect(im.tiltPermissionBlocked).toBe(false);
+  });
+});
