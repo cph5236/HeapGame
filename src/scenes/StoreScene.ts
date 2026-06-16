@@ -2,6 +2,7 @@
 import Phaser from 'phaser';
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { ITEM_DEFS, ItemCategory } from '../data/itemDefs';
+import { ACCENT_COLORS } from '../data/itemAccents';
 import { getBalance, getItemQuantity, purchaseItem } from '../systems/SaveData';
 import { InputManager } from '../systems/InputManager';
 
@@ -18,17 +19,6 @@ const TAB_LABELS: Array<{ label: string; value: ItemCategory | 'all' }> = [
   { label: 'Placeable',   value: 'placeable' },
   { label: 'Consumable',  value: 'consumable' },
 ];
-
-const ACCENT_COLORS: Record<string, number> = {
-  ladder:     0x44cc88,
-  ibeam:      0x4488ff,
-  checkpoint: 0xffaa22,
-  shield:     0xcc44ff,
-  revive:     0xff5577,
-  adrenaline: 0xff7733,
-  pogo:       0x33ddff,
-  stall:      0xaa88ff,
-};
 
 export class StoreScene extends Phaser.Scene {
   private selectedIndex: number = 0;
