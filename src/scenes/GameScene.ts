@@ -12,8 +12,9 @@ import {
   applyPolygonToGenerator,
   polygonTopY,
 } from '../systems/HeapPolygonLoader';
-import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades } from '../systems/SaveData';
+import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode, getJoystickSide } from '../systems/SaveData';
 import { HUD } from '../ui/HUD';
+import { showDashIndicator, controlClusterLayout } from '../ui/hudLogic';
 import { InputManager } from '../systems/InputManager';
 import { mountJoystick } from '../systems/mountJoystick';
 import type { JoystickHandle } from '../systems/mountJoystick';
@@ -34,6 +35,12 @@ import {
   SCORE_DISPLAY_DIVISOR,
   MAX_WALL_AUDIBLE_DISTANCE,
   SURFACE_SNAP_TOLERANCE_PX,
+  JOYSTICK_RADIUS,
+  JOYSTICK_MARGIN,
+  DASH_BUTTON_RADIUS,
+  HUD_PLACE_W,
+  HUD_PLACE_H,
+  HUD_PLACE_GAP,
 } from '../constants';
 import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance } from '../systems/SaveData';
@@ -65,7 +72,6 @@ export class GameScene extends Phaser.Scene {
   private heapGenerator!: HeapGenerator;
   private placeKey!: Phaser.Input.Keyboard.Key;
   private topZoneText!: Phaser.GameObjects.Text;
-  private scoreText!: Phaser.GameObjects.Text;
   private placeBtnBg?: Phaser.GameObjects.Rectangle;
   private placeBtnLabel?: Phaser.GameObjects.Text;
   private blockPlaced: boolean = false;
@@ -91,6 +97,8 @@ export class GameScene extends Phaser.Scene {
   private _holdElapsed = 0;
   private _liveZoneBottomY: number | null = null;
   private _holdBar!: Phaser.GameObjects.Graphics;
+  private _placeBtnX = 0;
+  private _placeBtnY = 0;
   private checkpointRespawn = false;
   private _runKills:     Partial<Record<EnemyKind, number>> = {};
   private _runStartTime: number | null = null;
@@ -319,28 +327,27 @@ export class GameScene extends Phaser.Scene {
     this._holdBar = this.add.graphics().setScrollFactor(0).setDepth(26);
     addToGameplayUi(this, this._holdBar);
 
-    // HUD: score (always visible)
-    this.scoreText = this.add.text(logicalWidth(this) / 2, 30, 'Score: 0', {
-      fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
-    addToGameplayUi(this, this.scoreText);
-
     if (im.isMobile) {
-      // Mobile placement button — replaces the text hint, appears in top zone
-      this.placeBtnBg = this.add.rectangle(logicalWidth(this) / 2, 82, 280, 56, 0x1155aa, 0.88)
-        .setScrollFactor(0).setDepth(24).setVisible(false)
-        .setStrokeStyle(2, 0x4488dd);
+      const layout = controlClusterLayout(getJoystickSide(), logicalWidth(this), logicalHeight(this), {
+        joyRadius: JOYSTICK_RADIUS, joyMargin: JOYSTICK_MARGIN, dashRadius: DASH_BUTTON_RADIUS,
+        placeW: HUD_PLACE_W, placeH: HUD_PLACE_H, placeGap: HUD_PLACE_GAP,
+      });
+      const px = layout.place.x, py = layout.place.y;
+      this._placeBtnX = px;
+      this._placeBtnY = py;
+
+      this.placeBtnBg = this.add.rectangle(px, py, HUD_PLACE_W, HUD_PLACE_H, 0xff9012, 0.95)
+        .setScrollFactor(0).setDepth(40).setVisible(false)
+        .setStrokeStyle(2, 0xffffff, 0.5);
       this.placeBtnBg.setInteractive({ useHandCursor: true });
       this.placeBtnBg.on('pointerdown', () => im.startPlace());
-      this.placeBtnBg.on('pointerup', () => im.endPlace());
-      this.placeBtnBg.on('pointerout', () => im.endPlace());
+      this.placeBtnBg.on('pointerup',   () => im.endPlace());
+      this.placeBtnBg.on('pointerout',  () => im.endPlace());
 
-      this.placeBtnLabel = this.add.text(logicalWidth(this) / 2, 82, 'PLACE BLOCK', {
-        fontSize: '22px', color: '#ffffff', fontStyle: 'bold',
-        stroke: '#000000', strokeThickness: 3,
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(25).setVisible(false);
+      this.placeBtnLabel = this.add.text(px, py, 'PLACE', {
+        fontSize: '15px', color: '#241200', fontStyle: 'bold',
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(41).setVisible(false);
 
-      // Dummy topZoneText (not shown on mobile)
       this.topZoneText = this.add.text(0, 0, '').setVisible(false);
       addToGameplayUi(this, [this.placeBtnBg, this.placeBtnLabel, this.topZoneText]);
     } else {
@@ -355,11 +362,16 @@ export class GameScene extends Phaser.Scene {
     this.buffManager = new BuffManager(this, this.player);
     this.placeableManager = new PlaceableManager(this, this.player, this.heapWalkableGroup, this.heapWallGroup, this._heapId, this.buffManager);
 
-    // HUD: ability indicators (dash bar, air jumps, wall jump)
-    this.hud = new HUD(this, this.player, this.placeableManager);
+    // HUD: ability indicators (dash bar, air jumps, wall jump), score, pause button
+    this.hud = new HUD(this, this.player, {
+      placeableManager: this.placeableManager,
+      showDashIndicator: showDashIndicator(im.isMobile, getEffectiveControlMode()),
+      onPause: () => this.openPauseMenu(),
+    });
 
-    // Pause menu button (☰) — top-right corner
-    this.createMenuButton();
+    // Preserve ESC/P pause keybindings
+    this.input.keyboard?.on('keydown-ESC', () => this.openPauseMenu());
+    this.input.keyboard?.on('keydown-P',   () => this.openPauseMenu());
 
     // When the run ends we launch ScoreScene and pause this scene. Phaser's pause
     // halts update() but leaves looping sounds playing, so the trash-wall rumble and
@@ -499,7 +511,7 @@ export class GameScene extends Phaser.Scene {
     if (score !== this._lastScore) {
       this._lastScore = score;
       const ft = Math.floor(score / SCORE_DISPLAY_DIVISOR);
-      this.scoreText.setText(`${ft} ft`);
+      this.hud.setScore(`${ft} ft`);
     }
 
     // Top zone UI
@@ -508,9 +520,11 @@ export class GameScene extends Phaser.Scene {
       this.placeBtnBg?.setVisible(showPlaceUI);
       this.placeBtnLabel?.setVisible(showPlaceUI);
       // Register/clear the PLACE button's screen zone so tapping it never jumps.
-      // Rect mirrors the button geom: centred at (w/2, 82), size 280×56.
       im.setSuppressionRect(
-        'place', showPlaceUI ? { x: logicalWidth(this) / 2 - 140, y: 82 - 28, w: 280, h: 56 } : null,
+        'place',
+        showPlaceUI
+          ? { x: this._placeBtnX - HUD_PLACE_W / 2, y: this._placeBtnY - HUD_PLACE_H / 2, w: HUD_PLACE_W, h: HUD_PLACE_H }
+          : null,
       );
     } else {
       this.topZoneText.setVisible(showPlaceUI);
@@ -539,15 +553,15 @@ export class GameScene extends Phaser.Scene {
     if (showPlaceUI) {
       const holdActive = canPlace && holdInputActive;
       if (im.isMobile) {
-        this.placeBtnBg?.setStrokeStyle(2, holdActive ? 0x88ddff : 0x4488dd);
-        // Bar anchored to bottom of button: center=(logicalWidth/2, 82), size=(280, 56)
-        this._drawHoldBar(progress, logicalWidth(this) / 2 - 134, 96, 268, 8);
+        this.placeBtnBg?.setStrokeStyle(holdActive ? 3 : 2, 0xffffff, holdActive ? 0.95 : 0.5);
+        // Hold bar just above the PLACE button
+        this._drawHoldBar(progress, this._placeBtnX - HUD_PLACE_W / 2, this._placeBtnY - HUD_PLACE_H / 2 - 12, HUD_PLACE_W, 6);
       } else {
         // Bar anchored below topZoneText at (logicalWidth/2, 82)
         this._drawHoldBar(progress, logicalWidth(this) / 2 - 100, 97, 200, 6);
       }
     } else {
-      if (im.isMobile) this.placeBtnBg?.setStrokeStyle(2, 0x4488dd);
+      if (im.isMobile) this.placeBtnBg?.setStrokeStyle(2, 0xffffff, 0.5);
       this._holdBar.clear();
     }
   }
@@ -814,31 +828,6 @@ export class GameScene extends Phaser.Scene {
       duration: 900, ease: 'Cubic.Out',
       onComplete: () => txt.destroy(),
     });
-  }
-
-  private createMenuButton(): void {
-    const bx = logicalWidth(this) - 22;
-    const by = 22;
-
-    const btnGfx = this.add.graphics().setScrollFactor(0).setDepth(26);
-    btnGfx.fillStyle(0x000000, 0.65);
-    btnGfx.fillCircle(bx, by, 14);
-    btnGfx.lineStyle(2, 0x8899bb, 1);
-    btnGfx.strokeCircle(bx, by, 14);
-
-    // ☰ hamburger glyph
-    const glyph = this.add.text(bx, by, '☰', {
-      fontSize: '16px', color: '#ffffff', fontStyle: 'bold',
-      stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(27);
-
-    const hitZone = this.add.zone(bx, by, 40, 40).setScrollFactor(0).setDepth(27)
-      .setInteractive({ useHandCursor: true });
-    hitZone.on('pointerup', () => this.openPauseMenu());
-    addToGameplayUi(this, [btnGfx, glyph, hitZone]);
-
-    this.input.keyboard?.on('keydown-ESC', () => this.openPauseMenu());
-    this.input.keyboard?.on('keydown-P',   () => this.openPauseMenu());
   }
 
   private openPauseMenu(): void {

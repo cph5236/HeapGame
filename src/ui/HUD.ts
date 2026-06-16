@@ -3,170 +3,88 @@ import { Player } from '../entities/Player';
 import type { PlaceableManager } from '../systems/PlaceableManager';
 import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { addToGameplayUi } from '../systems/GameplayUiCamera';
-const MARGIN_R = 20;   // gap from right screen edge
-const ICON_GAP = 14;   // gap between icon groups
-const DASH_W   = 80;
-const DASH_H   = 28;
-const ICON_BG_R = 30;  // radius of radial-gradient icon backgrounds
-const RADIAL_TEX_KEY = 'hud-radial-bg';
-const RADIAL_TEX_SIZE = ICON_BG_R * 2 + 2; // a bit of padding for the +1 outer radius
+import { InputManager } from '../systems/InputManager';
+import { AbilityTray } from './AbilityTray';
+import { HUD_THEME as TH, makePanel, makeScrim } from './hudTheme';
+import { HUD_INSET, HUD_SCRIM_TOP_H, HUD_SCRIM_BOT_H, HUD_NOTCH_DROP } from '../constants';
 
-/**
- * Bakes the radial-gradient circle once per game into a cached texture so HUD
- * icons can use a single textured quad instead of 14 live fillCircle ops/frame.
- */
-function ensureRadialTexture(scene: Phaser.Scene): void {
-  if (scene.textures.exists(RADIAL_TEX_KEY)) return;
-  const g = scene.make.graphics({ x: 0, y: 0 }, false);
-  const c = RADIAL_TEX_SIZE / 2;
-  const steps = 14;
-  for (let i = 0; i < steps; i++) {
-    const t      = i / (steps - 1);
-    const radius = ICON_BG_R * (1 - t * 0.88) + 1;
-    g.fillStyle(0x111111, t * 0.65);
-    g.fillCircle(c, c, radius);
-  }
-  g.generateTexture(RADIAL_TEX_KEY, RADIAL_TEX_SIZE, RADIAL_TEX_SIZE);
-  g.destroy();
-}
-
-function addRadialBg(scene: Phaser.Scene, cx: number, cy: number): Phaser.GameObjects.Image {
-  ensureRadialTexture(scene);
-  return scene.add.image(cx, cy, RADIAL_TEX_KEY).setScrollFactor(0).setDepth(19);
+export interface HudOptions {
+  placeableManager?: PlaceableManager;
+  showDashIndicator: boolean;
+  onPause: () => void;
 }
 
 export class HUD {
+  private readonly tray: AbilityTray;
+  private readonly scoreText: Phaser.GameObjects.Text;
+  private readonly reviveBadge: Phaser.GameObjects.Text;
   private readonly player: Player;
-  private readonly dashFill:  Phaser.GameObjects.Rectangle;
-  private readonly dashLabel: Phaser.GameObjects.Text;
-  private readonly cloudIcons:    Phaser.GameObjects.Image[] = [];
-  private readonly wallJumpIcons: Phaser.GameObjects.Image[] = [];
-  private readonly reviveBadge:   Phaser.GameObjects.Text;
-  private readonly hudY:          number;
 
-  constructor(scene: Phaser.Scene, player: Player, placeableManager?: PlaceableManager) {
-    this.hudY = logicalHeight(scene) - 44;
+  constructor(scene: Phaser.Scene, player: Player, opts: HudOptions) {
     this.player = player;
-
-    // Every screen-space object created here is registered to the gameplay UI
-    // layer at the end so it renders on the (non-following) UI camera.
+    const w = logicalWidth(scene);
     const parts: Phaser.GameObjects.GameObject[] = [];
 
-    // Build positions right-to-left so the layout adapts to which abilities are unlocked
-    let cursorX = logicalWidth(scene) - MARGIN_R; // start from right edge
+    // ── Legibility scrims ────────────────────────────────────────────────────
+    parts.push(makeScrim(scene, 0, 0, w, HUD_SCRIM_TOP_H, 0.55, 0).setDepth(18));
+    parts.push(makeScrim(scene, 0, logicalHeight(scene) - HUD_SCRIM_BOT_H, w, HUD_SCRIM_BOT_H, 0, 0.5).setDepth(18));
 
-    // ── Dash bar (rightmost) ────────────────────────────────────────────────
-    if (player.hasDash) {
-      const dashLeft = cursorX - DASH_W;
-      const dashCX   = dashLeft + DASH_W / 2;
+    // ── Ability tray (top-left) ──────────────────────────────────────────────
+    this.tray = new AbilityTray(scene, player, opts.showDashIndicator);
+    parts.push(...this.tray.objects);
 
-      parts.push(scene.add.rectangle(dashCX, this.hudY, DASH_W, DASH_H, 0x000000, 0.55)
-        .setScrollFactor(0).setDepth(19));
+    // ── Score chip (top-center) ──────────────────────────────────────────────
+    const chipY = HUD_INSET + 16;
+    // Drop the centred score chip on mobile so it clears a front-camera notch.
+    const scoreY = chipY + (InputManager.getInstance().isMobile ? HUD_NOTCH_DROP : 0);
+    // Darker fill (0.66) than the default panel so the readout stays legible
+    // against the bright sky at the top of a run.
+    parts.push(makePanel(scene, w / 2, scoreY, 116, 30, 16, 0.66).setDepth(19));
+    this.scoreText = scene.add.text(w / 2, scoreY, '0 ft', {
+      fontSize: '14px', color: TH.textWhite, fontStyle: 'bold',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
+    parts.push(this.scoreText);
 
-      // Left-anchored fill: scaleX maps directly to fillW (no geometry rebuild).
-      this.dashFill = scene.add.rectangle(dashLeft, this.hudY, DASH_W, DASH_H, 0x44aaff, 1)
-        .setOrigin(0, 0.5)
-        .setScrollFactor(0)
-        .setDepth(20)
-        .setVisible(false);
+    // ── Pause button (top-right) ─────────────────────────────────────────────
+    const pauseX = w - HUD_INSET - 19;
+    parts.push(makePanel(scene, pauseX, chipY, 38, 38, 12).setDepth(19));
+    parts.push(scene.add.text(pauseX, chipY, '☰', {
+      fontSize: '18px', color: TH.textWhite, fontStyle: 'bold',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(20));
+    const pauseHit = scene.add.zone(pauseX, chipY, 44, 44).setScrollFactor(0).setDepth(21)
+      .setInteractive({ useHandCursor: true });
+    pauseHit.on('pointerup', opts.onPause);
+    parts.push(pauseHit);
 
-      this.dashLabel = scene.add.text(dashCX, this.hudY, 'DASH', {
-        fontSize: '14px',
-        color: '#ffffff',
-        stroke: '#000000',
-        strokeThickness: 3,
-        fontStyle: 'bold',
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(21);
-
-      cursorX = dashLeft - ICON_GAP;
-    } else {
-      this.dashFill  = scene.add.rectangle(0, 0, 1, 1, 0).setVisible(false);
-      this.dashLabel = scene.add.text(0, 0, '').setVisible(false);
-    }
-    parts.push(this.dashFill, this.dashLabel);
-
-    // ── Wall jump icon (1 charge, right of clouds) ──────────────────────────
-    if (player.hasWallJump) {
-      const iconCX = cursorX - ICON_BG_R;
-      parts.push(addRadialBg(scene, iconCX, this.hudY));
-      const icon = scene.add.image(iconCX, this.hudY, 'wall-jump')
-        .setScrollFactor(0).setDepth(20);
-      this.wallJumpIcons.push(icon);
-      parts.push(icon);
-      cursorX = iconCX - ICON_BG_R - ICON_GAP;
-    }
-
-    // ── Air jump clouds ─────────────────────────────────────────────────────
-    // Lay out clouds right-to-left so the rightmost dims first
-    const cloudSpacing = ICON_BG_R * 2 + 6;
-    for (let i = player.maxAirJumpsCount - 1; i >= 0; i--) {
-      const cx = cursorX - ICON_BG_R;
-      parts.push(addRadialBg(scene, cx, this.hudY));
-      const icon = scene.add.image(cx, this.hudY, 'cloud')
-        .setScrollFactor(0).setDepth(20).setScale(1.1);
-      this.cloudIcons[i] = icon;
-      parts.push(icon);
-      cursorX -= cloudSpacing;
-    }
-
-    // ── Hotbar bag icon (bottom-left) ──────────────────────────────────────────
-    if (placeableManager) {
-      const bagX = 36;
-      const bagY = this.hudY;
-
-      parts.push(addRadialBg(scene, bagX, bagY));
-
-      parts.push(scene.add.text(bagX, bagY, '\uD83C\uDF92', {
-        fontSize: '26px',
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(21));
-
-      const bagHit = scene.add.zone(bagX, bagY, 52, 52)
-        .setScrollFactor(0).setDepth(22)
+    // ── Hotbar bag (top strip, left of pause) ── DECISION: moved off bottom-left
+    if (opts.placeableManager) {
+      const bagX = pauseX - 44;
+      parts.push(makePanel(scene, bagX, chipY, 38, 38, 12).setDepth(19));
+      parts.push(scene.add.text(bagX, chipY, '🎒', { fontSize: '20px' })
+        .setOrigin(0.5).setScrollFactor(0).setDepth(20));
+      const bagHit = scene.add.zone(bagX, chipY, 44, 44).setScrollFactor(0).setDepth(21)
         .setInteractive({ useHandCursor: true });
-
-      bagHit.on('pointerup', () => placeableManager.openHotbar());
+      const pm = opts.placeableManager;
+      bagHit.on('pointerup', () => pm.openHotbar());
       parts.push(bagHit);
     }
 
-    // ── Revive armed badge (top-left, persistent while a revive is held) ────────
-    this.reviveBadge = scene.add.text(8, 64, '♥ REVIVE', {
-      fontSize: '13px', color: '#ff6688', stroke: '#000000', strokeThickness: 3,
-      fontStyle: 'bold',
-    }).setScrollFactor(0).setDepth(21).setVisible(false);
+    // ── Revive badge (below score, center) ───────────────────────────────────
+    this.reviveBadge = scene.add.text(w / 2, scoreY + 26, '♥ REVIVE', {
+      fontSize: '12px', color: '#ff6688', stroke: '#000000', strokeThickness: 3, fontStyle: 'bold',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
     parts.push(this.reviveBadge);
 
     addToGameplayUi(scene, parts);
   }
 
+  /** Update the centered score/height readout. */
+  setScore(text: string): void {
+    this.scoreText.setText(text);
+  }
+
   update(): void {
-    // Dash fill
-    if (this.player.hasDash) {
-      const fraction = this.player.dashCooldownFraction;
-      const fillW    = Math.round((1 - fraction) * DASH_W);
-      const ready    = fraction === 0;
-
-      if (fillW > 0) {
-        this.dashFill.setVisible(true);
-        this.dashFill.scaleX = fillW / DASH_W;
-        this.dashFill.fillColor = ready ? 0x44aaff : 0x225588;
-      } else {
-        this.dashFill.setVisible(false);
-      }
-      this.dashLabel.setColor(ready ? '#ffffff' : '#aaccee');
-    }
-
-    // Air jump clouds — rightmost dims first as jumps are used
-    const jumpsLeft = this.player.airJumpsLeft;
-    for (let i = 0; i < this.cloudIcons.length; i++) {
-      this.cloudIcons[i]?.setAlpha(i < jumpsLeft ? 1.0 : 0.25);
-    }
-
-    // Wall jump icon
-    if (this.wallJumpIcons.length > 0) {
-      this.wallJumpIcons[0].setAlpha(this.player.canWallJump ? 1.0 : 0.25);
-    }
-
-    // Revive armed badge
+    this.tray.update();
     this.reviveBadge.setVisible(this.player.isReviveArmed);
   }
 }

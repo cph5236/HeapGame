@@ -16,14 +16,14 @@ import { CameraController } from '../systems/CameraController';
 import { InputManager } from '../systems/InputManager';
 import { mountJoystick } from '../systems/mountJoystick';
 import type { JoystickHandle } from '../systems/mountJoystick';
-import { logicalWidth } from '../systems/displayMetrics';
 import { setupGameplayUiCamera, addToGameplayUi } from '../systems/GameplayUiCamera';
 import { HUD } from '../ui/HUD';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { LayerGenerator } from '../systems/LayerGenerator';
 import { computeBandPolygon, simplifyPolygon, type Vertex } from '../systems/HeapPolygon';
 import { buildRunScore } from '../systems/buildRunScore';
-import { getPlayerConfig, addBalance, getUpgrades } from '../systems/SaveData';
+import { getPlayerConfig, addBalance, getUpgrades, getEffectiveControlMode } from '../systems/SaveData';
+import { showDashIndicator } from '../ui/hudLogic';
 import { ENEMY_DEFS, DEFAULT_ENEMY_PARAMS } from '../data/enemyDefs';
 import { getLogger } from '../logging';
 import { BRIDGE_DEF } from '../data/bridgeDefs';
@@ -72,7 +72,6 @@ export class InfiniteGameScene extends Phaser.Scene {
   private hud!: HUD;
   private im!: InputManager;
   private joystick: JoystickHandle | null = null;
-  private scoreText!: Phaser.GameObjects.Text;
 
   private walkableGroups: Phaser.Physics.Arcade.StaticGroup[] = [];
   private wallGroups:     Phaser.Physics.Arcade.StaticGroup[] = [];
@@ -292,16 +291,17 @@ export class InfiniteGameScene extends Phaser.Scene {
     );
 
     // ── HUD / score text ─────────────────────────────────────────────────────────
-    this.hud = new HUD(this, this.player, this.placeableManager);
-    this.scoreText = this.add.text(8, 8, '0 ft', {
-      fontSize: '18px', color: '#ffffff',
-      stroke: '#000000', strokeThickness: 2,
-    }).setScrollFactor(0).setDepth(20);
-    addToGameplayUi(this, this.scoreText);
-
-    this.createMenuButton();
-
     this.im = InputManager.getInstance();
+    this.hud = new HUD(this, this.player, {
+      placeableManager: this.placeableManager,
+      showDashIndicator: showDashIndicator(this.im.isMobile, getEffectiveControlMode()),
+      onPause: () => this.openPauseMenu(),
+    });
+
+    // Preserve ESC/P pause keybindings
+    this.input.keyboard?.on('keydown-ESC', () => this.openPauseMenu());
+    this.input.keyboard?.on('keydown-P',   () => this.openPauseMenu());
+
     this.joystick = mountJoystick(this, this.im, this.player);
     this.input.keyboard!.on('keydown-R', () => this.placeableManager.openHotbar());
     this.input.keyboard!.on('keydown-F2', () => this.toggleDebugMode());
@@ -336,30 +336,6 @@ export class InfiniteGameScene extends Phaser.Scene {
     }
   }
 
-  private createMenuButton(): void {
-    const bx = logicalWidth(this) - 22;
-    const by = 22;
-
-    const btnGfx = this.add.graphics().setScrollFactor(0).setDepth(26);
-    btnGfx.fillStyle(0x000000, 0.65);
-    btnGfx.fillCircle(bx, by, 14);
-    btnGfx.lineStyle(2, 0x8899bb, 1);
-    btnGfx.strokeCircle(bx, by, 14);
-
-    const glyph = this.add.text(bx, by, '☰', {
-      fontSize: '16px', color: '#ffffff', fontStyle: 'bold',
-      stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(27);
-
-    const hitZone = this.add.zone(bx, by, 40, 40).setScrollFactor(0).setDepth(27)
-      .setInteractive({ useHandCursor: true });
-    hitZone.on('pointerup', () => this.openPauseMenu());
-    addToGameplayUi(this, [btnGfx, glyph, hitZone]);
-
-    this.input.keyboard?.on('keydown-ESC', () => this.openPauseMenu());
-    this.input.keyboard?.on('keydown-P',   () => this.openPauseMenu());
-  }
-
   private openPauseMenu(): void {
     if (this.scene.isActive('PauseScene')) return;
     this.scene.launch('PauseScene', {
@@ -375,7 +351,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       this._runStartTime = this.time.now;
       getLogger().event({ type: 'run:start', heapId: INFINITE_HEAP_ID, mode: 'infinite' });
     }
-    this.scoreText.setText(`${Math.floor(score / 100)} ft`);
+    this.hud.setScore(`${Math.floor(score / 100)} ft`);
 
     // ── Bridge slope correction ───────────────────────────────────────────────────
     if (this.bridgePenetration > 0) {
