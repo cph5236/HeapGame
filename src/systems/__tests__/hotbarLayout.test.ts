@@ -28,4 +28,12 @@ describe('computeHotbarLayout', () => {
     expect(L.showLeft).toBe(false);
     expect(L.showRight).toBe(true);
   });
+
+  it('handles an empty backpack', () => {
+    const L = computeHotbarLayout({ gameWidth: 448, gameHeight: 970, ownedCount: 0, scrollOffset: 0 });
+    expect(L.visibleCount).toBe(0);
+    expect(L.slotCxs).toHaveLength(0);
+    expect(L.showLeft).toBe(false);
+    expect(L.showRight).toBe(false);
+  });
 });
