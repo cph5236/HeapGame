@@ -375,6 +375,41 @@ describe('HeapEdgeCollider – wallSide setData', () => {
       (img.setData as any).mock.calls.some((c: unknown[]) => c[0] === 'wallSide' && c[1] === 'left'),
     )).toBe(true);
   });
+
+  it('keeps the bottom row of a vertical wall above a contraction non-standable (no perchable lip)', () => {
+    const walkableGroup = makeMockGroup();
+    const wallGroup = makeMockGroup();
+
+    // Real-data shape (normal mode, observed player perch): a vertical left wall
+    // (leftX≈157) that contracts at its base — leftX climbs going down. The
+    // min()-of-segments slope rule flips the LAST vertical row (y=8) to walkable
+    // because its single downward segment into the contraction is shallow (≈34°),
+    // giving it a solid top a wall-sliding player barely catches to refresh air
+    // jumps. Because its row above is a wall and it leans outward, it must stay a
+    // wall. The genuine contraction ramp below it (y≥12) must remain walkable.
+    const rows: ScanlineRow[] = [
+      { y: 0,  leftX: 157, rightX: 828 }, // vertical wall
+      { y: 4,  leftX: 157, rightX: 828 }, // vertical wall
+      { y: 8,  leftX: 157, rightX: 828 }, // wall base: above is wall, below juts to 163 (overhang, shallow)
+      { y: 12, leftX: 163, rightX: 827 }, // contraction ramp — genuine walkable
+      { y: 16, leftX: 176, rightX: 823 }, // contraction ramp
+      { y: 20, leftX: 189, rightX: 820 }, // contraction ramp
+    ];
+
+    const collider = new HeapEdgeCollider(35);
+    collider.buildFromScanlines(0, rows, walkableGroup as any, wallGroup as any);
+
+    const countAtY = (g: ReturnType<typeof makeMockGroup>, y: number) =>
+      g.create.mock.calls.filter((c: unknown[]) => c[1] === y).length;
+
+    // The y=8 wall-base row must be fully wall (both sides) — no walkable left lip.
+    expect(countAtY(walkableGroup, 8)).toBe(0);
+    expect(countAtY(wallGroup, 8)).toBe(2);
+
+    // No cascade: the contraction ramp just below stays a walkable surface.
+    expect(countAtY(walkableGroup, 12)).toBe(1); // left ramp slab is walkable
+    expect(countAtY(wallGroup, 12)).toBe(1);     // only the steep right edge is a wall
+  });
 });
 
 // ── Characterization: cullBands ────────────────────────────────────────────
