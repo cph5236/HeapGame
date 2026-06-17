@@ -75,12 +75,19 @@ Registered in `src/main.ts`. Builds a minimal world:
 - **Win condition**: place a block in the top zone (reusing the existing place flow).
 - **Excluded**: trash wall, checkpoints, server load, band streaming, live zones,
   ScoreScene.
-- `update()` drives player, animator, enemy, pickup, camera, joystick, **and**
-  `director.tick()` / forwards detected actions to the director.
+- `update()` drives player, animator, enemy, pickup, camera, joystick, and forwards
+  detected actions to the director via `notify(...)` (the director itself is
+  event-driven — no per-frame tick).
+- **Step side effects** (spawn rat, position camera, show the place button) live in
+  the scene, keyed off `step.id` in the director's `onStepEnter` callback — see the
+  director section for why the closures don't live on the step.
 
 #### 2. `TutorialDirector` — `src/systems/TutorialDirector.ts`
 
-A pure, unit-testable step machine. Holds an ordered `TutorialStep[]` and a cursor.
+A pure, unit-testable step machine that holds an ordered `TutorialStep[]` and a
+cursor and **knows nothing about Phaser or `TutorialScene`**. Steps are plain data —
+no scene-touching closures — so the module imports no scene and tests construct it
+with stub callbacks. All side effects are the scene's job, dispatched by `step.id`.
 
 ```ts
 type PlayerAction =
@@ -88,22 +95,30 @@ type PlayerAction =
   | 'stomp' | 'pickup' | 'placeBlock';
 
 interface TutorialStep {
-  id: string;
+  id: string;                       // scene switches side effects off this
   message: string;
   advanceOn: 'tap' | PlayerAction;
-  setup?: (scene: TutorialScene) => void;   // e.g. spawn rat, position camera
-  onAdvance?: (scene: TutorialScene) => void;
+  mode: 'info' | 'hint';            // info = freeze + Next button; hint = non-blocking
+}
+
+interface TutorialCallbacks {
+  onStepEnter(step: TutorialStep): void;  // scene: run side effects, show overlay
+  onComplete(): void;                     // scene: mark done + route to real run
 }
 ```
 
 API:
-- `start()` — begin at step 0, run its `setup`, request the appropriate popup.
-- `notify(action: PlayerAction)` — called by the scene when a gameplay action occurs;
-  advances iff it matches the current step's `advanceOn`.
-- `tapNext()` — advances a `'tap'`-gated step.
-- `skip()` — jump straight to complete.
+- `start()` — set cursor to 0, fire `onStepEnter(step0)`.
+- `notify(action: PlayerAction)` — advances **iff** it matches the current step's
+  `advanceOn` (and the step is action-gated); fires `onStepEnter` for the next step,
+  or `onComplete` when the list is exhausted.
+- `tapNext()` — advances a `'tap'`-gated step (ignored if the current step is
+  action-gated).
+- `skip()` — jump straight to `onComplete`.
 
-Callbacks to the scene: `onShowPopup(message, mode)`, `onHidePopup()`, `onComplete()`.
+The scene's `onStepEnter` handler reads `step.mode` to drive the overlay (freeze +
+Next button vs. non-blocking hint) and switches on `step.id` to apply side effects
+(spawn the rat, enable the place button, etc.).
 
 #### 3. `TutorialOverlay` — `src/ui/TutorialOverlay.ts`
 
