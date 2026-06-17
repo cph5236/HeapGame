@@ -136,26 +136,3 @@ export function makeDashChevrons(
   }
   return scene.add.image(x, y, key).setScrollFactor(0).setOrigin(0, 0.5).setDisplaySize(W, H);
 }
-
-/** Bake a 1×H vertical alpha-fade strip (top→bottom) and stretch it to the screen
- *  width. Used for the top/bottom legibility scrims. */
-export function makeScrim(
-  scene: Phaser.Scene, x: number, y: number, w: number, h: number,
-  topAlpha: number, botAlpha: number,
-): Phaser.GameObjects.Image {
-  const key = `hud-scrim-${h}-${topAlpha}-${botAlpha}`;
-  if (!scene.textures.exists(key)) {
-    const dpr = getDprCap();
-    const ph = Math.ceil(h * dpr);
-    const g = scene.make.graphics({ x: 0, y: 0 }, false);
-    for (let i = 0; i < ph; i++) {
-      const t = ph > 1 ? i / (ph - 1) : 0;
-      const a = topAlpha + (botAlpha - topAlpha) * t;
-      g.fillStyle(0x080814, a);
-      g.fillRect(0, i, dpr, 1);
-    }
-    g.generateTexture(key, dpr, ph);
-    g.destroy();
-  }
-  return scene.add.image(x, y, key).setOrigin(0, 0).setDisplaySize(w, h).setScrollFactor(0);
-}
