@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findPortalSurface, randBetween } from '../PortalManager';
+import { findPortalSurface, randBetween, isPortalGapValid } from '../PortalManager';
 import type { ScanlineRow } from '../HeapPolygon';
 
 // rows ordered top→bottom (ascending Y, as LayerGenerator produces them)
@@ -42,6 +42,36 @@ describe('findPortalSurface', () => {
       { y: 41,  leftX: 50, rightX: 200 }, // y=41 > clearTop(40), < surface(100) → obstruction
     ];
     expect(findPortalSurface(rows, 125, 60)).toBeNull();
+  });
+});
+
+describe('isPortalGapValid', () => {
+  // Y grows downward, so a valid exit is ABOVE the entrance (smaller Y).
+  const range: [number, number] = [500, 1000];
+
+  it('accepts a gap within [min, max]', () => {
+    expect(isPortalGapValid(2000, 1300, range)).toBe(true); // gap 700
+  });
+
+  it('accepts the exact minimum gap', () => {
+    expect(isPortalGapValid(2000, 1500, range)).toBe(true); // gap 500
+  });
+
+  it('accepts the exact maximum gap', () => {
+    expect(isPortalGapValid(2000, 1000, range)).toBe(true); // gap 1000
+  });
+
+  it('rejects an exit too close above the entrance', () => {
+    expect(isPortalGapValid(2000, 1700, range)).toBe(false); // gap 300
+  });
+
+  it('rejects an exit too far above the entrance', () => {
+    expect(isPortalGapValid(2000, 800, range)).toBe(false); // gap 1200
+  });
+
+  it('rejects an exit at or below the entrance', () => {
+    expect(isPortalGapValid(2000, 2000, range)).toBe(false); // gap 0
+    expect(isPortalGapValid(2000, 2300, range)).toBe(false); // gap -300 (below)
   });
 });
 
