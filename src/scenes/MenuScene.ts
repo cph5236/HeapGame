@@ -599,6 +599,17 @@ export class MenuScene extends Phaser.Scene {
       strokeThickness: 2,
     }).setOrigin(0.5).setAlpha(0).setDepth(9);
 
+    // How to Play replay button — below the UPGRADES/STORE row
+    const howToPlayBtn = this.add.text(logicalWidth(this) / 2, 675 - shift, 'How to Play', {
+      fontSize: '14px',
+      color: '#cccccc',
+      backgroundColor: '#00000066',
+      padding: { x: 10, y: 6 },
+      stroke: '#000000',
+      strokeThickness: 1,
+    }).setOrigin(0.5).setAlpha(0).setDepth(9).setInteractive({ useHandCursor: true });
+    howToPlayBtn.on('pointerup', () => this.scene.start('TutorialScene'));
+
     if (im.isMobile && !im.tiltPermissionGranted) {
       if (im.tiltPermissionBlocked) {
         // Cross-origin iframe (e.g. itch.io): the iOS tilt-permission dialog can never

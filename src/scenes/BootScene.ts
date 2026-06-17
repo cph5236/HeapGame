@@ -6,7 +6,7 @@ import { generateAllTextures } from '../entities/TextureGenerators';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { MOCK_HEAP_HEIGHT_PX } from '../constants';
-import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, setGpgsPlayerId, setPlayerName, getRawSaveForCloudSync, applyMergedSave, mergeCloudSave } from '../systems/SaveData';
+import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, setGpgsPlayerId, setPlayerName, getRawSaveForCloudSync, applyMergedSave, mergeCloudSave, getTutorialDone } from '../systems/SaveData';
 import type { RawSave } from '../systems/SaveData';
 import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
 import { initLogger } from '../logging';
@@ -138,7 +138,7 @@ export class BootScene extends Phaser.Scene {
       });
 
     // Start MenuScene immediately — does not wait on the network call.
-    this.scene.start('MenuScene');
+    this.scene.start(getTutorialDone() ? 'MenuScene' : 'TutorialScene');
   }
 
   /**
