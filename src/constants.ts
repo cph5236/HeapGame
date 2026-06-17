@@ -161,3 +161,13 @@ export const HUD_PLACE_W       = 80;  // PLACE button width
 export const HUD_PLACE_H       = 60;  // PLACE button height
 export const HUD_PLACE_GAP     = 14;  // gap between dash button and PLACE
 export const HUD_NOTCH_DROP    = 18;  // extra top offset for the centred score chip on mobile (clears a front-camera notch)
+
+// ── Off-screen enemy indicator (Threat Radar) ───────────────────────────────
+/** Detection radius (world px) at upgrade level 0 — the base everyone gets. */
+export const ENEMY_RADAR_BASE_RANGE_PX   = 600;
+/** Added detection range per Threat Radar level (+10% of base per level). */
+export const ENEMY_RADAR_RANGE_PER_LEVEL = 0.10;
+/** Arrow inset from the screen edge, in logical px. */
+export const ENEMY_RADAR_MARGIN_PX       = 24;
+/** Max simultaneous arrows (pool size). */
+export const ENEMY_RADAR_MAX_ARROWS      = 8;
