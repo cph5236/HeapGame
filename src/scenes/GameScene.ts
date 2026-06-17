@@ -12,8 +12,9 @@ import {
   applyPolygonToGenerator,
   polygonTopY,
 } from '../systems/HeapPolygonLoader';
-import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode, getJoystickSide } from '../systems/SaveData';
+import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode, getJoystickSide, getUpgradeLevel } from '../systems/SaveData';
 import { HUD } from '../ui/HUD';
+import { EnemyRadar } from '../ui/EnemyRadar';
 import { showDashIndicator, controlClusterLayout } from '../ui/hudLogic';
 import { InputManager } from '../systems/InputManager';
 import { mountJoystick } from '../systems/mountJoystick';
@@ -41,6 +42,8 @@ import {
   HUD_PLACE_W,
   HUD_PLACE_H,
   HUD_PLACE_GAP,
+  ENEMY_RADAR_BASE_RANGE_PX,
+  ENEMY_RADAR_RANGE_PER_LEVEL,
 } from '../constants';
 import { EnemyManager } from '../systems/EnemyManager';
 import { addBalance, addItem } from '../systems/SaveData';
@@ -57,7 +60,7 @@ import { PICKUP_DEFS } from '../data/pickupDefs';
 import type { Rarity } from '../../shared/pickupScores';
 import { TrashWallManager } from '../systems/TrashWallManager';
 import { TRASH_WALL_DEF } from '../data/trashWallDef';
-import type { EnemyKind } from '../entities/Enemy';
+import { Enemy, type EnemyKind } from '../entities/Enemy';
 import { buildRunScore } from '../systems/buildRunScore';
 import { ENEMY_DEFS, DEFAULT_ENEMY_PARAMS } from '../data/enemyDefs';
 import type { HeapParams } from '../../shared/heapTypes';
@@ -68,6 +71,7 @@ export class GameScene extends Phaser.Scene {
   private playerAnimator!: PlayerAnimator;
   private playerOutro!: PlayerOutro;
   private hud!: HUD;
+  private enemyRadar!: EnemyRadar;
   private heapWalkableGroup!: Phaser.Physics.Arcade.StaticGroup;
   private heapWallGroup!:     Phaser.Physics.Arcade.StaticGroup;
   private heapGenerator!: HeapGenerator;
@@ -370,6 +374,10 @@ export class GameScene extends Phaser.Scene {
       onPause: () => this.openPauseMenu(),
     });
 
+    const radarLevel = getUpgradeLevel('enemy_radar');
+    const radarRange = ENEMY_RADAR_BASE_RANGE_PX * (1 + ENEMY_RADAR_RANGE_PER_LEVEL * radarLevel);
+    this.enemyRadar = new EnemyRadar(this, radarRange);
+
     // Preserve ESC/P pause keybindings
     this.input.keyboard?.on('keydown-ESC', () => this.openPauseMenu());
     this.input.keyboard?.on('keydown-P',   () => this.openPauseMenu());
@@ -391,7 +399,8 @@ export class GameScene extends Phaser.Scene {
     // tray overflows; "empty" opens it with no items — then opens for screenshots.
     const initData = this.scene.settings.data as
       { _devOutro?: 'death' | 'success'; _devPickup?: string; _devRarity?: Rarity;
-        _devDx?: number; _devDy?: number; _devHotbar?: 'few' | 'scroll' | 'empty' } | undefined;
+        _devDx?: number; _devDy?: number; _devHotbar?: 'few' | 'scroll' | 'empty';
+        _devRadarFixture?: boolean } | undefined;
     if (initData?._devHotbar) {
       const seed = initData._devHotbar === 'scroll' ? ITEM_DEFS
         : initData._devHotbar === 'empty' ? []
@@ -405,6 +414,21 @@ export class GameScene extends Phaser.Scene {
       const dx = initData._devDx ?? 40;   // >72 places it out of overlay range (glow-only)
       const dy = initData._devDy ?? 0;
       this.pickupManager.devForceSpawn(def, rarity, this.player.sprite.x + dx, this.spawnY + PLAYER_HEIGHT / 2 + dy);
+    }
+    if (initData?._devRadarFixture) {
+      const px = this.player.sprite.x;
+      const py = this.player.sprite.y;
+      // Fixed off-screen positions: above, below, far right, and the OPPOSITE
+      // world edge (exercises the wrap arrow). new Enemy adds itself to the group.
+      const spots = [
+        { x: px,             y: py - 400 },              // above
+        { x: px,             y: py + 400 },              // below
+        { x: px + 450,       y: py },                    // far right (off-screen)
+        { x: WORLD_WIDTH - 20, y: py },                  // opposite edge → wrap arrow
+      ];
+      for (const s of spots) {
+        new Enemy(this, this.enemyManager.group, s.x, s.y, ENEMY_DEFS.percher);
+      }
     }
     if (initData?._devOutro) {
       const kind = initData._devOutro;
@@ -479,6 +503,13 @@ export class GameScene extends Phaser.Scene {
     if (!this._playerDead) {
       this.enemyManager.update(camTop, camBottom, this.player.sprite.x, this.player.sprite.y);
     }
+    this.enemyRadar.update(
+      cam,
+      [this.enemyManager.group],
+      this.player.sprite.x,
+      this.player.sprite.y,
+      this.player.worldWidth + this.player.wrapPadX,
+    );
     this.chunkRenderer.cullChunks(camBottom);
     this.edgeCollider.cullBands(camBottom, 2000);
 
