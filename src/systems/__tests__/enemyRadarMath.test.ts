@@ -55,10 +55,26 @@ describe('computeBlip', () => {
     expect(b.y).toBe(876); // height - margin
     expect(b.angle).toBeCloseTo(Math.PI / 2, 5);
   });
-  it('clamps to a corner for an off-bottom-right enemy', () => {
+  it('pins an off-bottom-right enemy to the edge its direction ray exits first', () => {
+    // dx=300, dy=500 from centre (240,450): the ray reaches the right margin (x=456,
+    // t=0.72) before the bottom margin (y=876, t=0.852), so it exits the right edge.
     const b = computeBlip(540, 950, PX, PY, VIEW, OPTS)!;
     expect(b.x).toBe(456);
-    expect(b.y).toBe(876);
+    expect(b.y).toBeCloseTo(810, 5);
+    expect(b.angle).toBeCloseTo(Math.atan2(500, 300), 5);
+  });
+  it('treats a wrap-side enemy as off-screen even when its ghost lands inside the view', () => {
+    // After a wrap the camera follow-offset shifts the view a half-screen; here it
+    // spans [-480, 0]. The enemy's real sprite is at the far right (950, off-screen),
+    // but its wrap ghost (-250) maps INSIDE this offset view. The on-screen test must
+    // use the RAW position, so the arrow still shows — pinned to the LEFT edge,
+    // pointing the wrap direction, not floating mid-screen.
+    const view: RadarView = { x: -480, y: 0, width: 480, height: 900 };
+    const b = computeBlip(950, 450, 30, 450, view, OPTS)!;
+    expect(b).not.toBeNull();
+    expect(b.x).toBe(24); // left edge (margin)
+    expect(Math.abs(b.angle)).toBeCloseTo(Math.PI, 5);
+    expect(b.dist).toBeCloseTo(280, 5);
   });
   it('puts the arrow on the NEAR edge for a wrap-side enemy', () => {
     // Player near the left edge; camera view starts at -210. Enemy at the far

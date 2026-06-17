@@ -68,19 +68,35 @@ export function computeBlip(
   const dist = Math.hypot(dx, dy);
   if (dist > opts.rangePx) return null;
 
-  const sx = wx - view.x;
-  const sy = enemyY - view.y;
-  const onScreen = sx >= 0 && sx <= view.width && sy >= 0 && sy <= view.height;
-  if (onScreen) return null;
+  // On-screen test uses the RAW rendered position: enemies are only ever drawn at
+  // enemyX (nothing re-renders them at the wrapped ghost), so a wrap-side enemy
+  // whose ghost happens to fall inside the (possibly offset) view is still genuinely
+  // off-screen and must keep its arrow.
+  const rawSx = enemyX - view.x;
+  const rawSy = enemyY - view.y;
+  if (rawSx >= 0 && rawSx <= view.width && rawSy >= 0 && rawSy <= view.height) {
+    return null;
+  }
 
+  // Pin the arrow to a margin rect by casting a ray from the viewport centre along
+  // the player→enemy direction (dx, dy already uses the wrap-resolved x, so the
+  // arrow points the way the player travels to reach the enemy). Ray-from-centre
+  // guarantees an edge point even when the wrapped ghost lands inside the rect —
+  // a component-wise clamp would leave it mid-screen pointing nowhere.
   const minX = opts.marginPx;
   const maxX = view.width - opts.marginPx;
   const minY = opts.marginPx;
   const maxY = view.height - opts.marginPx;
-  const cx = Math.min(Math.max(sx, minX), maxX);
-  const cy = Math.min(Math.max(sy, minY), maxY);
-  const angle = Math.atan2(sy - cy, sx - cx);
-  return { x: cx, y: cy, angle, dist };
+  const ox = view.width / 2;
+  const oy = view.height / 2;
+  let t = Infinity;
+  if (dx > 0) t = Math.min(t, (maxX - ox) / dx);
+  else if (dx < 0) t = Math.min(t, (minX - ox) / dx);
+  if (dy > 0) t = Math.min(t, (maxY - oy) / dy);
+  else if (dy < 0) t = Math.min(t, (minY - oy) / dy);
+  if (!Number.isFinite(t)) t = 0; // enemy coincident with centre (degenerate)
+  const angle = Math.atan2(dy, dx);
+  return { x: ox + t * dx, y: oy + t * dy, angle, dist };
 }
 
 /**
