@@ -178,10 +178,15 @@ The fixture geometry is authored so each move is genuinely required to progress.
 
 ### First-run detection & entry
 
-- **`SaveData`**: add `tutorialDone: boolean` (default `false`) to the save, with
-  `getTutorialDone()` / `setTutorialDone(value)`, behind a `schemaVersion` bump that
-  follows the existing migration pattern (new saves and migrated old saves default to
-  `false`).
+- **`SaveData`**: add an optional `tutorialDone?: boolean` field (like the existing
+  `verboseLogging?` — **no `schemaVersion` bump needed**) with
+  `getTutorialDone(): boolean` (`load().tutorialDone ?? false`) and
+  `setTutorialDone(value)`. Defaults distinguish genuinely-new from existing players:
+  - `freshSave()` (no prior localStorage = new player) sets `tutorialDone: false` →
+    tutorial runs.
+  - `migrate()` (any existing save = already played) preserves
+    `parsed.tutorialDone ?? true` in every branch → existing players are **not**
+    forced through the tutorial.
 - **`BootScene`**: first scene = `getTutorialDone() ? 'MenuScene' : 'TutorialScene'`.
   The heap catalog load continues async in the background regardless. Because this
   bypasses MenuScene, `TutorialScene` is responsible for `loadGameAssets()` (see the
@@ -196,8 +201,9 @@ The fixture geometry is authored so each move is genuinely required to progress.
 
 - **Unit — `TutorialDirector`**: advances on the correct tap/action; ignores a wrong
   action; `skip()` jumps to complete; `onComplete` fires once.
-- **Unit — `SaveData`**: `getTutorialDone`/`setTutorialDone` round-trip; migration of
-  an old save defaults `tutorialDone` to `false`.
+- **Unit — `SaveData`**: `getTutorialDone`/`setTutorialDone` round-trip; a brand-new
+  save defaults `tutorialDone` to `false` (tutorial runs); a migrated existing save
+  defaults it to `true` (tutorial skipped).
 - **Unit — `Player` emits**: each of jump / wall-jump / dash / dive emits
   `player-action` with the right `kind` exactly once per action, at its fire site,
   with no emit when the action doesn't fire.
