@@ -13,6 +13,7 @@ import { formatDifficulty } from '../ui/DifficultyStars';
 import { createVolumeSlider } from '../ui/buildVolumePanel';
 import { controlHelpLines } from '../ui/controlHelp';
 import { loadGameAssets } from './loadGameAssets';
+import { entranceScale } from './menuIntro';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 
@@ -1088,29 +1089,36 @@ export class MenuScene extends Phaser.Scene {
   // ── Entrance animation ───────────────────────────────────────────────────────
 
   private runEntranceSequence(): void {
-    this.tweens.add({ targets: this.farSilhouette,  alpha: 1,    duration: 600, delay: 0    });
-    this.tweens.add({ targets: this.nearSilhouette, alpha: 1,    duration: 600, delay: 300  });
-    this.tweens.add({ targets: this.horizonGlow,    alpha: 1,    duration: 400, delay: 600  });
-    this.tweens.add({ targets: this.playerFigure,   alpha: 0.85, duration: 500, delay: 700  });
-    this.tweens.add({ targets: this.titleShadow,    alpha: 0.65, duration: 400, delay: 900  });
-    this.tweens.add({ targets: this.titleText,      alpha: 1,    duration: 500, delay: 1000 });
-    this.tweens.add({ targets: this.taglineText,    alpha: 1,    duration: 400, delay: 1300 });
-    this.tweens.add({ targets: [this.balanceText, this.playerNameText], alpha: 1, duration: 300, delay: 1500 });
-    this.tweens.add({ targets: [this.heapPickerBg, this.heapPickerText, this.heapPickerStars, this.leaderboardBg, this.leaderboardIcon], alpha: 1, duration: 300, delay: 1600 });
-    this.tweens.add({ targets: this.startBg,   alpha: 1, duration: 400, delay: 1700 });
+    // Play the full cinematic once per app-session; compress every return to the
+    // menu (from Game/Upgrade/Store) into a brief window. The registry flag lives
+    // for the game instance's lifetime and resets on a true page reload.
+    const firstTime = this.game.registry.get('menuIntroSeen') !== true;
+    this.game.registry.set('menuIntroSeen', true);
+    const s = entranceScale(firstTime);
+
+    this.tweens.add({ targets: this.farSilhouette,  alpha: 1,    duration: 600 * s, delay: 0          });
+    this.tweens.add({ targets: this.nearSilhouette, alpha: 1,    duration: 600 * s, delay: 300  * s   });
+    this.tweens.add({ targets: this.horizonGlow,    alpha: 1,    duration: 400 * s, delay: 600  * s   });
+    this.tweens.add({ targets: this.playerFigure,   alpha: 0.85, duration: 500 * s, delay: 700  * s   });
+    this.tweens.add({ targets: this.titleShadow,    alpha: 0.65, duration: 400 * s, delay: 900  * s   });
+    this.tweens.add({ targets: this.titleText,      alpha: 1,    duration: 500 * s, delay: 1000 * s   });
+    this.tweens.add({ targets: this.taglineText,    alpha: 1,    duration: 400 * s, delay: 1300 * s   });
+    this.tweens.add({ targets: [this.balanceText, this.playerNameText], alpha: 1, duration: 300 * s, delay: 1500 * s });
+    this.tweens.add({ targets: [this.heapPickerBg, this.heapPickerText, this.heapPickerStars, this.leaderboardBg, this.leaderboardIcon], alpha: 1, duration: 300 * s, delay: 1600 * s });
+    this.tweens.add({ targets: this.startBg,   alpha: 1, duration: 400 * s, delay: 1700 * s });
     this.tweens.add({
       targets: this.startText,
       alpha: 1,
-      duration: 400,
-      delay: 1700,
+      duration: 400 * s,
+      delay: 1700 * s,
       onComplete: () => this.startPulse(),
     });
-    this.tweens.add({ targets: this.upgradeBg,   alpha: 1, duration: 300, delay: 1900 });
-    this.tweens.add({ targets: this.upgradeText, alpha: 1, duration: 300, delay: 1900 });
-    this.tweens.add({ targets: this.storeBg,   alpha: 1, duration: 300, delay: 2000 });
-    this.tweens.add({ targets: this.storeText, alpha: 1, duration: 300, delay: 2000 });
+    this.tweens.add({ targets: this.upgradeBg,   alpha: 1, duration: 300 * s, delay: 1900 * s });
+    this.tweens.add({ targets: this.upgradeText, alpha: 1, duration: 300 * s, delay: 1900 * s });
+    this.tweens.add({ targets: this.storeBg,   alpha: 1, duration: 300 * s, delay: 2000 * s });
+    this.tweens.add({ targets: this.storeText, alpha: 1, duration: 300 * s, delay: 2000 * s });
 
-    this.time.delayedCall(2100, () => this.startTwinkle());
+    this.time.delayedCall(2100 * s, () => this.startTwinkle());
 
     // Player idle bob (start immediately — subtle at 0 alpha, becomes visible with fade)
     this.tweens.add({
