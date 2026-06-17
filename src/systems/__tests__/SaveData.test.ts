@@ -27,6 +27,8 @@ import {
   getSchemaVersionForTests,
   getVerboseLogging,
   setVerboseLogging,
+  getTutorialDone,
+  setTutorialDone,
   getSoundSettings,
   setSoundVolume,
   getAdRunState,
@@ -397,6 +399,27 @@ describe('verboseLogging', () => {
     localStorage.setItem('heap_save', JSON.stringify({ schemaVersion: 3, balance: 0, upgrades: {}, inventory: {}, placed: {}, selectedHeapId: '', playerGuid: 'g', playerName: 'n', highScores: {} }));
     resetCacheForTests();
     expect(getVerboseLogging()).toBe(false);
+  });
+});
+
+// ── Tutorial done flag ────────────────────────────────────────────────────────
+
+describe('tutorialDone flag', () => {
+  beforeEach(() => { localStorage.clear(); resetCacheForTests(); });
+
+  it('defaults to false for a brand-new save', () => {
+    expect(getTutorialDone()).toBe(false);
+  });
+
+  it('round-trips through set', () => {
+    setTutorialDone(true);
+    expect(getTutorialDone()).toBe(true);
+  });
+
+  it('defaults to true when migrating an existing save that lacks the field', () => {
+    localStorage.setItem('heap_save', JSON.stringify({ schemaVersion: 4, balance: 5 }));
+    resetCacheForTests();
+    expect(getTutorialDone()).toBe(true);
   });
 });
 
