@@ -10,7 +10,7 @@
 export const ENTRANCE_FULL_SPAN_MS = 2300;
 
 /** Compressed span (ms) used on every visit after the first this session. */
-export const ENTRANCE_FAST_SPAN_MS = 500;
+export const ENTRANCE_FAST_SPAN_MS = 1000;
 
 /**
  * Multiplier applied to every entrance delay/duration. First visit plays at

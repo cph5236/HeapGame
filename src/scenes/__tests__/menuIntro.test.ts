@@ -14,9 +14,10 @@ describe('entranceScale', () => {
     expect(entranceScale(false)).toBeCloseTo(ENTRANCE_FAST_SPAN_MS / ENTRANCE_FULL_SPAN_MS);
   });
 
-  it('keeps the fast span well under the full span', () => {
-    // A returning player should not wait anywhere near the first-visit duration.
-    expect(ENTRANCE_FAST_SPAN_MS).toBeLessThan(ENTRANCE_FULL_SPAN_MS / 3);
+  it('keeps the fast span meaningfully shorter than the full span', () => {
+    // A returning player waits noticeably less than the first-visit duration,
+    // while still leaving enough room for the fade to feel graceful.
+    expect(ENTRANCE_FAST_SPAN_MS).toBeLessThan(ENTRANCE_FULL_SPAN_MS / 2);
   });
 
   it('scales the longest first-visit delay into the fast window', () => {
