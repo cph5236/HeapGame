@@ -164,7 +164,7 @@ export const HUD_NOTCH_DROP    = 18;  // extra top offset for the centred score 
 
 // ── Off-screen enemy indicator (Threat Radar) ───────────────────────────────
 /** Detection radius (world px) at upgrade level 0 — the base everyone gets. */
-export const ENEMY_RADAR_BASE_RANGE_PX   = 600;
+export const ENEMY_RADAR_BASE_RANGE_PX   = 350;
 /** Added detection range per Threat Radar level (+10% of base per level). */
 export const ENEMY_RADAR_RANGE_PER_LEVEL = 0.10;
 /** Arrow inset from the screen edge, in logical px. */

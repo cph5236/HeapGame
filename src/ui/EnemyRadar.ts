@@ -7,7 +7,7 @@ import { ENEMY_RADAR_MARGIN_PX, ENEMY_RADAR_MAX_ARROWS } from '../constants';
 
 const ARROW_KEY   = 'enemy-radar-arrow';
 const ARROW_BOX   = 18; // logical px (square texture display size)
-const ARROW_DEPTH = 18; // above world, below the score/pause chips (depth 19/20)
+const ARROW_DEPTH = 30; // above the HUD chips (score/pause/revive sit at depth 19–21)
 
 /**
  * Screen-edge arrows pointing toward nearby off-screen enemies. Lives on the
