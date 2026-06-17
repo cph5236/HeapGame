@@ -213,6 +213,8 @@ export class Player {
 
     const jumpFired     = this.tryGroundOrAirJump(ctx);
     const wallJumpFired = this.tryWallJump(ctx);
+    if (jumpFired)     this.sprite.scene.events.emit('player-action', 'jump');
+    if (wallJumpFired) this.sprite.scene.events.emit('player-action', 'walljump');
     this.consumeJumpBufferOnFire(jumpFired || wallJumpFired);
 
     this.applyWallSlide(ctx);
@@ -454,6 +456,7 @@ export class Player {
       this.sprite.setVelocityX(dir * PLAYER_DASH_VELOCITY);
       this.dashCooldown = DASH_COOLDOWN_MS * this.carryCooldownMult * this.buffCooldownMult;
       this.dashActive   = DASH_DURATION_MS;
+      this.sprite.scene.events.emit('player-action', 'dash');
       AudioManager.play('player-dash');
     }
   }
@@ -549,6 +552,7 @@ export class Player {
 
     if (im.diveJustFired && !holdingDown) {
       this.diveActive = DASH_DURATION_MS; // mobile swipe-down burst
+      this.sprite.scene.events.emit('player-action', 'dive');
     }
 
     // Guard dive against same-frame jump: do not overwrite jump velocity
