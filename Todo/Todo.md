@@ -11,6 +11,8 @@ Call the Integrity API at important moments in your app to check that it's your 
 
 -- Tutorial add a tutorial that new players can play through just a simple example heap that is very easy to climb spawn like 1 rat on it add an item to pickup, Add pop up messages that pause the game so the player can read. Add a button to skip tutorial if the player chooses to. run the player through the full gameplay of the game. 
 
+- Enemy off screen indicator - often when switching heap sides I run into an enemy 
+
 ### UI
 
 ### ENEMIES
