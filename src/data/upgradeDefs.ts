@@ -72,4 +72,11 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     maxLevel: 4,        // designer: set to desired max
     cost: (l) => [300, 600, 1200, 2400][l - 1], // designer: replace with actual costs
   },
+  {
+    id: 'enemy_radar',
+    name: 'Threat Radar',
+    description: (l) => `+${l * 10}% off-screen enemy detection range`,
+    maxLevel: 3,
+    cost: (l) => [300, 600, 1200][l - 1],
+  },
 ];

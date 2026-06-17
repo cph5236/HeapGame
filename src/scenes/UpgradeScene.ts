@@ -20,6 +20,7 @@ const ACCENT_COLORS: Record<string, number> = {
   jump_boost:  0x22ccff,
   stomp_gold:  0xff8844,
   peak_hunter: 0xcc44ff,
+  enemy_radar: 0xff3b30,
 };
 
 export class UpgradeScene extends Phaser.Scene {

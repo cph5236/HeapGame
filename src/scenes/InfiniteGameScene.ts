@@ -18,11 +18,12 @@ import { mountJoystick } from '../systems/mountJoystick';
 import type { JoystickHandle } from '../systems/mountJoystick';
 import { setupGameplayUiCamera, addToGameplayUi } from '../systems/GameplayUiCamera';
 import { HUD } from '../ui/HUD';
+import { EnemyRadar } from '../ui/EnemyRadar';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { LayerGenerator } from '../systems/LayerGenerator';
 import { computeBandPolygon, simplifyPolygon, type Vertex } from '../systems/HeapPolygon';
 import { buildRunScore } from '../systems/buildRunScore';
-import { getPlayerConfig, addBalance, getUpgrades, getEffectiveControlMode } from '../systems/SaveData';
+import { getPlayerConfig, addBalance, getUpgrades, getEffectiveControlMode, getUpgradeLevel } from '../systems/SaveData';
 import { showDashIndicator } from '../ui/hudLogic';
 import { ENEMY_DEFS, DEFAULT_ENEMY_PARAMS } from '../data/enemyDefs';
 import { getLogger } from '../logging';
@@ -49,6 +50,8 @@ import {
   INFINITE_LOOKAHEAD_CHUNKS,
   MAX_WALL_AUDIBLE_DISTANCE,
   SURFACE_SNAP_TOLERANCE_PX,
+  ENEMY_RADAR_BASE_RANGE_PX,
+  ENEMY_RADAR_RANGE_PER_LEVEL,
 } from '../constants';
 import { snapPlayerToSurface, depenetratePlayerFromWall } from '../systems/HeapCollisionHelpers';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
@@ -79,6 +82,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   private generators:     HeapGenerator[]  = [];
   private layerGenerators: LayerGenerator[] = [];
   private enemyManagers:  EnemyManager[]   = [];
+  private enemyRadar!: EnemyRadar;
   private colBandPolygons: Map<number, Vertex[]>[] = [];
   private trashWallManager!: TrashWallManager;
   private buffManager!:      BuffManager;
@@ -298,6 +302,10 @@ export class InfiniteGameScene extends Phaser.Scene {
       onPause: () => this.openPauseMenu(),
     });
 
+    const radarLevel = getUpgradeLevel('enemy_radar');
+    const radarRange = ENEMY_RADAR_BASE_RANGE_PX * (1 + ENEMY_RADAR_RANGE_PER_LEVEL * radarLevel);
+    this.enemyRadar = new EnemyRadar(this, radarRange);
+
     // Preserve ESC/P pause keybindings
     this.input.keyboard?.on('keydown-ESC', () => this.openPauseMenu());
     this.input.keyboard?.on('keydown-P',   () => this.openPauseMenu());
@@ -405,6 +413,14 @@ export class InfiniteGameScene extends Phaser.Scene {
         em.update(camTop, camBot, this.player.sprite.x, this.player.sprite.y);
       }
     }
+
+    this.enemyRadar.update(
+      cam,
+      this.enemyManagers.map(em => em.group),
+      this.player.sprite.x,
+      this.player.sprite.y,
+      this.player.worldWidth + this.player.wrapPadX,
+    );
 
     this.trashWallManager.update(this.player.sprite.y, delta, this.buffManager.getWallSpeedMult());
     if (!this._playerDead) {
