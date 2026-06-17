@@ -144,16 +144,31 @@ export class HeapEdgeCollider {
   // ── Core: wall edges get narrow tall slabs; walkable rows get a full-width span ──
 
   /**
+   * Base wall test for a single row-side, independent of neighbouring rows'
+   * classification: a side is a wall if its slope is steep (> walkableSlopeDeg) OR
+   * it juts out over the row below by more than OVERHANG_WALL_MIN_JUT_PX (a
+   * pronounced, perchable lip). A small outward lean is just a gentle climbable
+   * ramp and stays walkable. Deliberately excludes the wall-base rule in
+   * classifyRow so that rule can never cascade down a genuine ramp.
+   */
+  private sideIsWallByBase(rows: ScanlineRow[], i: number, side: 'left' | 'right'): boolean {
+    if (i < 0 || i >= rows.length) return false;
+    const steep    = computeRowSlopeAngleDeg(rows, i, side) > this.walkableSlopeDeg;
+    const rowBelow = i + 1 < rows.length ? rows[i + 1] : null;
+    const jut = rowBelow === null ? 0
+      : side === 'left' ? rowBelow.leftX - rows[i].leftX
+      :                   rows[i].rightX - rowBelow.rightX;
+    return steep || jut > OVERHANG_WALL_MIN_JUT_PX;
+  }
+
+  /**
    * Classify a row's left and right edges as walkable or wall.
-   * Wall detection: slope > walkableSlopeDeg.
+   * Wall detection: slope > walkableSlopeDeg, or a pronounced overhang lip.
    * Overhang detection: row extends further out than the row below.
    */
   private classifyRow(rows: ScanlineRow[], i: number): RowClassification {
     const row      = rows[i];
     const rowBelow = i + 1 < rows.length ? rows[i + 1] : null;
-
-    const leftIsWall  = computeRowSlopeAngleDeg(rows, i, 'left')  > this.walkableSlopeDeg;
-    const rightIsWall = computeRowSlopeAngleDeg(rows, i, 'right') > this.walkableSlopeDeg;
 
     // Overhang: this row extends further out than the row below (heap gets wider going up).
     // `jut` is how far out it sticks (px); >0 means an overhang. Overhang undersides
@@ -163,16 +178,23 @@ export class HeapEdgeCollider {
     const leftIsOverhang  = leftJut  > 0;
     const rightIsOverhang = rightJut > 0;
 
-    // A row-side is a wall if it's steep OR a *pronounced* overhang. A small outward
-    // lean is just a gentle climbable ramp (still walkable). Only a jut larger than
-    // OVERHANG_WALL_MIN_JUT_PX is a genuine perchable lip that shouldn't be stood on —
-    // standing on it lets the player refresh air jumps mid-climb of a steep face.
-    const leftIsLip  = leftJut  > OVERHANG_WALL_MIN_JUT_PX;
-    const rightIsLip = rightJut > OVERHANG_WALL_MIN_JUT_PX;
+    // Wall-base / contraction lip: a walkable, outward-leaning row sitting directly
+    // beneath a wall on the same side is the base of that wall (where the heap
+    // contracts), not a standalone ramp. The min()-of-segments slope rule can flip
+    // such a row to "walkable" off a single shallow downward segment, giving it a
+    // solid top that catches a wall-sliding player and refreshes their air jumps.
+    // Demote it back to a wall. The row-above test uses the base classification (not
+    // this rule), so only the single transition row is demoted — it never cascades
+    // down a genuine climbable ramp whose rows are walkable by the base rule.
+    const leftIsBaseLip  = leftIsOverhang  && this.sideIsWallByBase(rows, i - 1, 'left');
+    const rightIsBaseLip = rightIsOverhang && this.sideIsWallByBase(rows, i - 1, 'right');
+
+    const leftIsWall  = this.sideIsWallByBase(rows, i, 'left')  || leftIsBaseLip;
+    const rightIsWall = this.sideIsWallByBase(rows, i, 'right') || rightIsBaseLip;
 
     return {
-      left:  (leftIsWall  || leftIsLip)  ? { kind: 'wall', side: 'left',  isOverhang: leftIsOverhang  } : { kind: 'walkable' },
-      right: (rightIsWall || rightIsLip) ? { kind: 'wall', side: 'right', isOverhang: rightIsOverhang } : { kind: 'walkable' },
+      left:  leftIsWall  ? { kind: 'wall', side: 'left',  isOverhang: leftIsOverhang  } : { kind: 'walkable' },
+      right: rightIsWall ? { kind: 'wall', side: 'right', isOverhang: rightIsOverhang } : { kind: 'walkable' },
     };
   }
 
