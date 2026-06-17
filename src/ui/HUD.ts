@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import type { PlaceableManager } from '../systems/PlaceableManager';
-import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
+import { logicalWidth } from '../systems/displayMetrics';
 import { addToGameplayUi } from '../systems/GameplayUiCamera';
 import { InputManager } from '../systems/InputManager';
 import { AbilityTray } from './AbilityTray';
-import { HUD_THEME as TH, makePanel, makeScrim } from './hudTheme';
-import { HUD_INSET, HUD_SCRIM_TOP_H, HUD_SCRIM_BOT_H, HUD_NOTCH_DROP } from '../constants';
+import { HUD_THEME as TH, makePanel } from './hudTheme';
+import { HUD_INSET, HUD_NOTCH_DROP } from '../constants';
 
 export interface HudOptions {
   placeableManager?: PlaceableManager;
@@ -24,10 +24,6 @@ export class HUD {
     this.player = player;
     const w = logicalWidth(scene);
     const parts: Phaser.GameObjects.GameObject[] = [];
-
-    // ── Legibility scrims ────────────────────────────────────────────────────
-    parts.push(makeScrim(scene, 0, 0, w, HUD_SCRIM_TOP_H, 0.55, 0).setDepth(18));
-    parts.push(makeScrim(scene, 0, logicalHeight(scene) - HUD_SCRIM_BOT_H, w, HUD_SCRIM_BOT_H, 0, 0.5).setDepth(18));
 
     // ── Ability tray (top-left) ──────────────────────────────────────────────
     this.tray = new AbilityTray(scene, player, opts.showDashIndicator);
