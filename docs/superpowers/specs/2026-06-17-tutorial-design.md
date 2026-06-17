@@ -52,6 +52,16 @@ Shared setup (collider wiring, stomp/damage overlap) is extracted into a small h
 
 Registered in `src/main.ts`. Builds a minimal world:
 
+- **Asset loading (first-run requirement)**: gameplay assets (rat/item/player
+  sprites, sounds, heap tiles) are normally loaded by `MenuScene.create()` via
+  `loadGameAssets()`. The first-run path starts `TutorialScene` *before* MenuScene
+  ever runs, so the tutorial must call `loadGameAssets(this)` itself and defer world
+  construction until `registry.gameAssetsReady === true` (it's already true if the
+  player reached the tutorial via the menu replay button — `loadGameAssets` is
+  idempotent). Build the world in a `startWhenAssetsReady()` step that either runs
+  immediately or waits once on the `gameAssetsReady` event, mirroring BootScene's
+  dev-launch pattern (`BootScene.ts:152, 173-175`). Until then, show a lightweight
+  loading state.
 - **Fixed heap fixture** (`src/data/tutorialFixture.ts`): a hand-authored `Vertex[]`
   forming a short, gentle staircase with one wall section (forces a wall-jump), one
   gap (forces a dash), and a flat top zone for the final block placement. Rendered
@@ -100,18 +110,35 @@ Callbacks to the scene: `onShowPopup(message, mode)`, `onHidePopup()`, `onComple
 Phaser UI on the UI camera (scrollFactor 0). Two display modes:
 
 - **Info popup** (tap-gated): dim full-screen layer + centered message panel + **Next**
-  button. **Pauses physics** (`this.physics.pause()`) while showing — satisfies "pause
-  the game so the player can read"; resumes on dismiss.
+  button. **Freezes gameplay** while showing — satisfies "pause the game so the player
+  can read." `physics.pause()` alone is insufficient: `Player.update()` still runs
+  every frame on an active scene and a buffered tap would leak a jump on dismiss
+  (this is exactly why PauseScene also clears input —
+  `PauseScene.ts:143-145`). The freeze model, owned by the tutorial:
+  - A `gameplayFrozen` flag on `TutorialScene`. While set, `update()` early-returns
+    before driving player / enemy / pickup / placeable logic (the overlay, camera,
+    and director still tick so the **Next** button stays responsive).
+  - On show: `InputManager.setSuppressionRect('tutorial', <full screen>)` so taps
+    don't reach gameplay; on dismiss: clear that rect **and**
+    `clearBufferedActions()` so the dismiss tap can't fire a jump on resume.
+  This keeps the popup and its button live (same-scene UI) without the separate-scene
+  `scene.pause()` dance, while matching PauseScene's input-safety guarantees.
 - **Action hint** (action-gated): a *non-blocking* banner (e.g. "Try it: swipe to
-  dash"). Physics keeps running so the player can perform the move.
+  dash"). `gameplayFrozen` is **false** so the player can actually perform the move.
 - Persistent **Skip Tutorial** button in a corner, always visible → `director.skip()`.
 
 ### Detection plumbing
 
-- `Player` emits `this.scene.events.emit('player-action', kind)` at its existing
-  fire points: jump and wall-jump (`Player.ts:214-216`), dash (`Player.ts:456`), dive
-  (`Player.ts:551`). Only `TutorialScene` listens; other scenes have no listener, so
-  the cost is negligible. `'move'` is detected by the scene polling player velocity.
+- **Player change (budgeted, not free plumbing):** the current `Player` emits **no**
+  events. This design adds four `this.scene.events.emit('player-action', kind)` calls
+  at its existing fire points — jump and wall-jump (`Player.ts:214-216`), dash
+  (`Player.ts:456`), dive (`Player.ts:551`) — emitting `'jump' | 'walljump' | 'dash'
+  | 'dive'`. These sites already compute the fire booleans/transitions, so the change
+  is small and local, but it is a real modification to a shared entity: it carries its
+  own task and unit test (emit fires exactly once per action, at the right site).
+  Only `TutorialScene` subscribes; other scenes have no listener, so cost is
+  negligible. `'move'` is detected by the scene polling player velocity (no Player
+  change needed).
 - **Stomp** and **pickup** are detected directly in `TutorialScene`'s own overlap /
   pickup handlers, which call `director.notify('stomp' | 'pickup')`.
 - **placeBlock** is detected via the existing place-complete hook → `director.notify('placeBlock')`.
@@ -141,7 +168,9 @@ The fixture geometry is authored so each move is genuinely required to progress.
   follows the existing migration pattern (new saves and migrated old saves default to
   `false`).
 - **`BootScene`**: first scene = `getTutorialDone() ? 'MenuScene' : 'TutorialScene'`.
-  The heap catalog load continues async in the background regardless.
+  The heap catalog load continues async in the background regardless. Because this
+  bypasses MenuScene, `TutorialScene` is responsible for `loadGameAssets()` (see the
+  TutorialScene asset-loading bullet above).
 - **`MenuScene`**: a compact **"How to Play"** button that launches `TutorialScene`
   to replay anytime.
 - **On finish or skip**: `setTutorialDone(true)`, then start `GameScene` if
@@ -154,6 +183,9 @@ The fixture geometry is authored so each move is genuinely required to progress.
   action; `skip()` jumps to complete; `onComplete` fires once.
 - **Unit — `SaveData`**: `getTutorialDone`/`setTutorialDone` round-trip; migration of
   an old save defaults `tutorialDone` to `false`.
+- **Unit — `Player` emits**: each of jump / wall-jump / dash / dive emits
+  `player-action` with the right `kind` exactly once per action, at its fire site,
+  with no emit when the action doesn't fire.
 - **Build**: `npm run build` clean (catches TS errors tests miss).
 - **Visual**: scene-preview screenshot of `TutorialScene` with the overlay showing.
 
