@@ -49,8 +49,10 @@ export interface Blip { x: number; y: number; angle: number; dist: number; }
 export function wrapNearestX(enemyX: number, playerX: number, period: number): number;
 
 /** Returns a screen-space blip, or null if the enemy is on-screen OR beyond rangePx.
- *  Screen mapping: world→logical-screen is (wx - view.x, wy - view.y), because the
- *  main camera's zoom = DPRcap makes worldView dimensions equal the logical viewport.
+ *  Screen mapping: world→logical-screen is (wx - view.x, wy - view.y). `view` is the
+ *  *logical* visible rect: { x: cam.scrollX, y: cam.scrollY, width: cam.width/zoom,
+ *  height: cam.height/zoom }. We use scroll, NOT cam.worldView — see the staleness
+ *  note under the renderer. (zoom = DPRcap makes width/zoom == the logical viewport.)
  *  Position is clamped to a rect inset by marginPx; angle points from the clamped
  *  edge point toward the (wrapped) enemy position. */
 export function computeBlip(
@@ -76,17 +78,30 @@ the wrapped screen position against `[0, width] × [0, height]`. `dist = hypot(d
 Same shape as `HUD`: constructed once, registered to the gameplay UI camera, refreshed
 each frame.
 
-- **Constructor `(scene, rangePx)`:** generates one small triangular arrow texture via
-  `graphics.generateTexture(...)`, creates a fixed pool of `ENEMY_RADAR_MAX_ARROWS`
-  arrow `Image`s — each `setScrollFactor(0)`, depth above world / with other HUD,
-  initially hidden — and registers them via `addToGameplayUi(scene, parts)`. Stores
-  `rangePx`.
+- **Constructor `(scene, rangePx)`:** generates one small triangular arrow texture,
+  **DPR-baked like every other HUD primitive** (`hudTheme` bakes at `getDprCap()`):
+  draw the triangle in a logical box scaled by `dpr`, `generateTexture(key, W*dpr,
+  H*dpr)`, then `scene.add.image(...).setDisplaySize(W, H)` so it stays crisp on
+  high-DPI. Creates a fixed pool of `ENEMY_RADAR_MAX_ARROWS` arrow `Image`s — each
+  `setScrollFactor(0)`, depth above world / with other HUD, initially hidden — and
+  registers them via `addToGameplayUi(scene, parts)`. Stores `rangePx`.
 - **`update(camera, enemyGroups, playerX, playerY, wrapPeriod)`:** gathers enemy
   positions from the passed `Phaser.Physics.Arcade.Group[]` (public groups only — no
-  coupling to `EnemyManager` internals), builds a `RadarView` from
-  `camera.worldView`, calls `selectBlips(...)`, then for each pool slot either
+  coupling to `EnemyManager` internals), builds the `RadarView` from
+  `camera.scrollX/scrollY` + `camera.width/height / camera.zoom` (**not**
+  `camera.worldView`), calls `selectBlips(...)`, then for each pool slot either
   positions+rotates+shows the matching blip or hides the slot. Reuses a scratch array
   to avoid per-frame allocation.
+
+  **Why scroll, not `worldView`:** [`GameScene.ts`](../../../src/scenes/GameScene.ts)
+  documents that `camera.worldView` is refreshed only in `preRender` (AFTER `update`),
+  so it is stale (≈0) on the first update frame and lags by a frame thereafter. The
+  existing ground-cull code already uses `scrollY + cam.height/zoom` for this reason.
+  The radar runs in the gameplay `update` loop, so it must do the same — using
+  `worldView` there would make arrows briefly point at the wrong edge during fast
+  camera motion and wrap transitions. `scrollX/scrollY` are set at `create()` (via
+  `centerOn`) and updated with the follow, so they are the freshest value available in
+  `update`.
 
 ### 3. Upgrade integration
 
@@ -147,8 +162,17 @@ INFINITE_EDGE_PAD`).
   - **wrap case:** enemy near `x = worldWidth`, player near `x = 0` → arrow on the
     LEFT edge (near side), within range, even though linear distance > range
   - `selectBlips` returns nearest N, capped at `max`
-- **`EnemyRadar` / wiring:** `npm run build` (TS) + a `npm run scene-preview` screenshot
-  with enemies positioned off-screen to confirm arrows render at the right edges.
+- **`EnemyRadar` / wiring:** `npm run build` (TS) + a deterministic `npm run
+  scene-preview` screenshot. Random enemy spawns can't be screenshotted reproducibly,
+  so add a dev fixture to GameScene's existing `_dev*` preview-param block
+  ([GameScene.ts:387-394](../../../src/scenes/GameScene.ts#L387-L394)): a
+  `_devRadarFixture?: boolean` that, when set, directly spawns enemies (via
+  `enemyManager.group`) at a few fixed off-screen world positions relative to the
+  player — including one at the **opposite world edge** to exercise the wrap arrow.
+  Preview command becomes e.g.
+  `npm run scene-preview -- GameScene '{"_devRadarFixture":true}' pixel7`. The fixture
+  is dev-only (gated by the same preview path as the other `_dev*` params) and ships
+  with the feature as the documented way to verify the radar visually.
 
 ## Out of scope (YAGNI)
 
