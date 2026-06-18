@@ -16,6 +16,7 @@ import { loadGameAssets } from './loadGameAssets';
 import { entranceScale } from './menuIntro';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
+import { openFeedbackOverlay } from './FeedbackOverlay';
 
 export class MenuScene extends Phaser.Scene {
   private farSilhouette!: Phaser.GameObjects.Graphics;
@@ -96,6 +97,7 @@ export class MenuScene extends Phaser.Scene {
     this.createPrompts(im);
     this.createHeapPicker();
     this.createSettingsButton();
+    this.createFeedbackButton();
     this.createVersionLabel();
     if (!im.isMobile) this.createHotkeyLegend();
     this.runEntranceSequence();
@@ -1074,6 +1076,28 @@ export class MenuScene extends Phaser.Scene {
         this.scene.restart();
       }
     });
+  }
+
+  private createFeedbackButton(): void {
+    const bx = logicalWidth(this) - 58;   // left of the ☰ gear at width-22
+    const by = 22;
+
+    const gfx = this.add.graphics().setDepth(20);
+    gfx.fillStyle(0x000000, 0.65);
+    gfx.fillCircle(bx, by, 14);
+    gfx.lineStyle(2, 0x8899bb, 1);
+    gfx.strokeCircle(bx, by, 14);
+    this.add.text(bx, by, '🐛', { fontSize: '15px' }).setOrigin(0.5).setDepth(20);
+
+    this.add.zone(bx, by, 36, 36).setDepth(20)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => {
+        this.setMenuInputEnabled(false);
+        openFeedbackOverlay({
+          heapId: null,
+          onClose: () => this.setMenuInputEnabled(true),
+        });
+      });
   }
 
   // ── Version label ────────────────────────────────────────────────────────────
