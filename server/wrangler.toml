@@ -60,3 +60,10 @@ namespace_id = "1005"
   [ratelimits.simple]
   limit = 10
   period = 60
+
+[[ratelimits]]
+name = "RL_FEEDBACK"
+namespace_id = "1006"
+  [ratelimits.simple]
+  limit = 5
+  period = 60
