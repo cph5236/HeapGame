@@ -67,3 +67,45 @@ describe('POST /feedback', () => {
     expect(row.heap_id).toBeNull();
   });
 });
+
+function getReq(query = '', secret?: string): Request {
+  const headers: Record<string, string> = {};
+  if (secret) headers['X-Admin-Secret'] = secret;
+  return new Request(`http://x/feedback${query}`, { method: 'GET', headers });
+}
+
+async function seed(db: MockFeedbackDB, n: number) {
+  for (let i = 0; i < n; i++) {
+    await db.insert(
+      { category: 'bug', playerGuid: 'g', sessionId: 's', message: `m${i}`,
+        appVersion: '1', platform: 'web', heapId: null, userAgent: 'UA' },
+      'T',
+    );
+  }
+}
+
+describe('GET /feedback (admin)', () => {
+  it('401s without the admin secret when one is configured', async () => {
+    const { app } = makeApp(new MockFeedbackDB(), 's3cret');
+    expect((await app.fetch(getReq('', undefined))).status).toBe(401);
+  });
+
+  it('returns all rows ascending with the correct secret', async () => {
+    const db = new MockFeedbackDB();
+    await seed(db, 3);
+    const { app } = makeApp(db, 's3cret');
+    const res = await app.fetch(getReq('', 's3cret'));
+    expect(res.status).toBe(200);
+    const rows = await res.json();
+    expect(rows.map((r: { id: number }) => r.id)).toEqual([1, 2, 3]);
+  });
+
+  it('filters by since_id', async () => {
+    const db = new MockFeedbackDB();
+    await seed(db, 3);
+    const { app } = makeApp(db, 's3cret');
+    const res = await app.fetch(getReq('?since_id=1', 's3cret'));
+    const rows = await res.json();
+    expect(rows.map((r: { id: number }) => r.id)).toEqual([2, 3]);
+  });
+});
