@@ -114,7 +114,7 @@ interface MockSprite {
   scaleY: number;
   flipX: boolean;
   body: MockBody;
-  scene: object;
+  scene: any;
   setDisplaySize: () => MockSprite;
   setDepth: () => MockSprite;
   setVelocityX: (v: number) => MockSprite;
@@ -161,6 +161,12 @@ function makeSprite(overrides: Partial<MockBody> = {}): MockSprite {
 
 /** Minimal Phaser.Scene mock — only the slice Player's constructor calls. */
 function makeScene(sprite: MockSprite) {
+  const events = {
+    emit: vi.fn(),
+    on: vi.fn(() => events),
+    off: vi.fn(() => events),
+  };
+
   return {
     physics: {
       add: {
@@ -173,6 +179,7 @@ function makeScene(sprite: MockSprite) {
         addKey: () => ({ isDown: false }),
       },
     },
+    events,
   };
 }
 
@@ -193,6 +200,7 @@ async function makePlayer(opts: {
   }
 
   const scene = makeScene(sprite);
+  sprite.scene = scene; // Inject the scene reference into the sprite mock
 
   const defaultConfig = {
     maxAirJumps: 1,
@@ -214,7 +222,7 @@ async function makePlayer(opts: {
     (player as any).sprite = sprite;
   }
 
-  return { player, sprite, spy: sprite._spy };
+  return { player, sprite, spy: sprite._spy, sceneEvents: scene.events };
 }
 
 // ── Reset IM state before each test ───────────────────────────────────────────
@@ -1978,6 +1986,138 @@ describe('Player — world wrap (X)', () => {
     player.update(16);
     expect(sprite.x).toBeCloseTo(x, 5);
     expect(player.wrapDir).toBe(0);
+  });
+});
+
+// ── 20. Player-action events (tutorial support) ─────────────────────────────
+
+describe('Player — player-action events', () => {
+  it('emits player-action "jump" when a ground jump fires', async () => {
+    const { player, sceneEvents } = await makePlayer({ onGround: true });
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+
+    expect(sceneEvents.emit).toHaveBeenCalledWith('player-action', 'jump');
+  });
+
+  it('emits player-action "jump" for air jump', async () => {
+    const { player, sceneEvents } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).airJumpsRemaining = 1;
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+
+    expect(sceneEvents.emit).toHaveBeenCalledWith('player-action', 'jump');
+  });
+
+  it('emits player-action "walljump" when a wall jump fires', async () => {
+    const { player, sceneEvents } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    imState.jumpJustPressed = true;
+
+    player.update(16);
+
+    expect(sceneEvents.emit).toHaveBeenCalledWith('player-action', 'walljump');
+  });
+
+  it('does NOT emit player-action "jump" when no jump fires', async () => {
+    const { player, sceneEvents } = await makePlayer({ onGround: true });
+    // No jump input
+
+    player.update(16);
+
+    expect(sceneEvents.emit).not.toHaveBeenCalledWith('player-action', 'jump');
+  });
+
+  it('emits player-action "dash" when a dash fires', async () => {
+    const { player, sceneEvents } = await makePlayer({
+      onGround: true,
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    imState.dashJustFired = true;
+    imState.dashDir = 1;
+
+    player.update(16);
+
+    expect(sceneEvents.emit).toHaveBeenCalledWith('player-action', 'dash');
+  });
+
+  it('does NOT emit player-action "dash" when dash cooldown is active', async () => {
+    const { player, sceneEvents } = await makePlayer({
+      onGround: false, // Start airborne so cooldown doesn't get reset by landing
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    // First dash fires and sets cooldown
+    imState.dashJustFired = true;
+    imState.dashDir = 1;
+    player.update(16);
+    expect(sceneEvents.emit).toHaveBeenCalledWith('player-action', 'dash');
+    const dashCooldownAfterFire = (player as any).dashCooldown;
+    expect(dashCooldownAfterFire).toBe(DASH_COOLDOWN_MS);
+
+    // Second frame: dashJustFired is still true, but cooldown is now active (still > 0)
+    sceneEvents.emit.mockClear();
+    imState.dashJustFired = true; // Try to fire again immediately
+    player.update(16);
+
+    // Dash should NOT fire because cooldown is still active
+    expect(sceneEvents.emit).not.toHaveBeenCalledWith('player-action', 'dash');
+  });
+
+  it('emits player-action "dive" when diveJustFired fires', async () => {
+    const { player, sceneEvents } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    imState.diveJustFired = true;
+
+    player.update(16);
+
+    expect(sceneEvents.emit).toHaveBeenCalledWith('player-action', 'dive');
+  });
+
+  it('does NOT emit player-action "dive" when on ground', async () => {
+    const { player, sceneEvents } = await makePlayer({
+      onGround: true,
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+    });
+    imState.diveJustFired = true;
+
+    player.update(16);
+
+    expect(sceneEvents.emit).not.toHaveBeenCalledWith('player-action', 'dive');
+  });
+
+  it('emits only once per action — does not retrigger on successive frames', async () => {
+    const { player, sceneEvents } = await makePlayer({
+      onGround: true,
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    imState.dashJustFired = true;
+    imState.dashDir = 1;
+
+    player.update(16);
+    expect(sceneEvents.emit).toHaveBeenCalledTimes(1);
+
+    // Next frame: dashJustFired is reset, dash is active but not "fired"
+    imState.dashJustFired = false;
+    sceneEvents.emit.mockClear();
+    player.update(16);
+
+    expect(sceneEvents.emit).not.toHaveBeenCalledWith('player-action', 'dash');
   });
 });
 

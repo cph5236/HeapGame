@@ -46,6 +46,7 @@ interface RawSave {
   gpgsPlayerId?:  string;
   highScores:     Record<string, number>;
   verboseLogging?: boolean;
+  tutorialDone?:   boolean;
   _legacyPlaced?: PlacedItemSave[];
   soundSettings?: SoundSettings;
   adRunsSinceLast?: number;
@@ -79,6 +80,7 @@ function freshSave(): RawSave {
     playerGuid:     generateGuid(),
     playerName:     generateDefaultName(),
     highScores:     {},
+    tutorialDone:   false,
     soundSettings:  { ...DEFAULT_SOUND_SETTINGS },
   };
 }
@@ -109,6 +111,7 @@ function migrate(parsed: any): RawSave {
       playerName:     parsed.playerName     ?? generateDefaultName(),
       gpgsPlayerId:   parsed.gpgsPlayerId,
       highScores:     parsed.highScores     ?? {},
+      tutorialDone:   parsed.tutorialDone   ?? true,
       verboseLogging: parsed.verboseLogging,
       _legacyPlaced:  parsed._legacyPlaced,
       soundSettings:  parsed.soundSettings  ?? { ...DEFAULT_SOUND_SETTINGS },
@@ -132,6 +135,7 @@ function migrate(parsed: any): RawSave {
       playerGuid:     parsed.playerGuid ?? generateGuid(),
       playerName:     parsed.playerName ?? generateDefaultName(),
       highScores:     parsed.highScores ?? {},
+      tutorialDone:   parsed.tutorialDone ?? true,
       verboseLogging: parsed.verboseLogging,
       soundSettings:  { ...DEFAULT_SOUND_SETTINGS },
       // v1 items have no world-height context — leave Y as-is; can't safely remap
@@ -152,6 +156,7 @@ function migrate(parsed: any): RawSave {
     playerName:     parsed.playerName     ?? generateDefaultName(),
     gpgsPlayerId:   parsed.gpgsPlayerId,
     highScores:     parsed.highScores     ?? {},
+    tutorialDone:   parsed.tutorialDone   ?? true,
     verboseLogging: parsed.verboseLogging,
     soundSettings:  { ...DEFAULT_SOUND_SETTINGS },
     _legacyPlaced:  parsed._legacyPlaced,
@@ -377,6 +382,14 @@ export function setVerboseLogging(enabled: boolean): void {
   const data = load();
   data.verboseLogging = enabled;
   persist(data);
+}
+
+// ── Tutorial done flag ─────────────────────────────────────────────────────────
+
+export function getTutorialDone(): boolean { return load().tutorialDone ?? false; }
+export function setTutorialDone(value: boolean): void {
+  const data = load();
+  persist({ ...data, tutorialDone: value });
 }
 
 // ── Selected heap ────────────────────────────────────────────────────────────
