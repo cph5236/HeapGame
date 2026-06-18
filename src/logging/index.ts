@@ -45,6 +45,9 @@ export function getLogger(): Logger { return _logger; }
 export function setLogger(l: Logger): void { _logger = l; }
 export function _resetLoggerForTests(): void { _logger = new NullLogger(); }
 
+/** Public accessor for the logging envelope, reused by non-logging callers (feedback). */
+export function getLogEnvelope(): LogEnvelope { return getEnvelope(); }
+
 /** Call once at app boot (BootScene), after SaveData module is importable. */
 export function initLogger(): void {
   const logger = new RemoteLogger({
