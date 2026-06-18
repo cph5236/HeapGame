@@ -15,27 +15,30 @@ import type { JoystickHandle } from '../systems/mountJoystick';
 import {
   applyPolygonToGenerator,
   polygonTopY,
-  findSurfaceYFromPolygon,
 } from '../systems/HeapPolygonLoader';
 import { setupGameplayUiCamera, addToGameplayUi } from '../systems/GameplayUiCamera';
 import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
-import { getPlayerConfig, setTutorialDone, getJoystickSide } from '../systems/SaveData';
+import { getPlayerConfig, setTutorialDone, getJoystickSide, getEffectiveControlMode } from '../systems/SaveData';
 import { TutorialDirector, type TutorialStep } from '../systems/TutorialDirector';
 import { TutorialOverlay } from '../ui/TutorialOverlay';
 import { loadGameAssets } from './loadGameAssets';
 import {
   TUTORIAL_HEAP,
   TUTORIAL_WORLD_HEIGHT,
+  TUTORIAL_SPAWN_X,
+  TUTORIAL_SPAWN_Y,
   TUTORIAL_RAT_X,
+  TUTORIAL_RAT_SURFACE_Y,
   TUTORIAL_ITEM_X,
+  TUTORIAL_ITEM_SURFACE_Y,
   TUTORIAL_STEPS,
+  tutorialMessage,
 } from '../data/tutorialFixture';
 import { ENEMY_DEFS } from '../data/enemyDefs';
 import { PICKUP_DEFS } from '../data/pickupDefs';
 import {
   WORLD_WIDTH,
   SKY_PAD,
-  PLAYER_HEIGHT,
   PLACE_HOLD_DURATION_MS,
   HUD_PLACE_W,
   HUD_PLACE_H,
@@ -66,7 +69,6 @@ export class TutorialScene extends Phaser.Scene {
   private _ready = false;
   private spawnY: number = 0;
   private _holdElapsed = 0;
-  private _prevCarried = 0;
   private placeKey!: Phaser.Input.Keyboard.Key;
   private placeBtnBg?: Phaser.GameObjects.Rectangle;
   private placeBtnLabel?: Phaser.GameObjects.Text;
@@ -104,11 +106,17 @@ export class TutorialScene extends Phaser.Scene {
     this.chunkRenderer = new HeapChunkRenderer(this);
 
     // Player setup
-    this.spawnY = TUTORIAL_WORLD_HEIGHT - PLAYER_HEIGHT / 2 - 1;
+    // Spawn on the low-left shoulder (above its tread), not the world floor — the
+    // floor at y=H is inside the heap body in this fixture. See tutorialFixture.
+    this.spawnY = TUTORIAL_SPAWN_Y;
     const playerConfig = getPlayerConfig();
     // Grant tutorial abilities on the player
     const cfg = { ...playerConfig, dash: true, dive: true, wallJump: true };
-    this.player = new Player(this, WORLD_WIDTH * 0.0625, this.spawnY, cfg);
+    this.player = new Player(this, TUTORIAL_SPAWN_X, this.spawnY, cfg);
+    // Drive the Player's floor clamp from the tutorial world height (it defaults to
+    // MOCK_HEAP_HEIGHT_PX ≈ 5,000,000, which would let the player fall forever). With
+    // this set, any fall stops at the world base and the player can't drop off the map.
+    this.player.worldHeight = TUTORIAL_WORLD_HEIGHT;
 
     // Collision helpers
     this.edgeCollider = new HeapEdgeCollider(cfg.maxWalkableSlopeDeg);
@@ -262,18 +270,26 @@ export class TutorialScene extends Phaser.Scene {
 
   private onStepEnter(step: TutorialStep): void {
     if (step.id === 'stomp') {
-      this.spawnTutorialRat();
+      // Spawn the rat a beat after the step starts. The dive advances this step the
+      // instant it begins, while the player is still descending; this short delay
+      // lets them land first, so the dive can't auto-stomp a rat spawned under them.
+      this.time.delayedCall(700, () => this.spawnTutorialRat());
     }
     if (step.id === 'pickup') {
       this.spawnTutorialItem();
     }
 
+    const message = tutorialMessage(step, {
+      mobile: this.im.isMobile,
+      mode: getEffectiveControlMode(),
+    });
+
     if (step.mode === 'info') {
       this.freeze();
-      this.overlay.showInfo(step.message);
+      this.overlay.showInfo(message);
     } else {
       this.unfreeze();
-      this.overlay.showHint(step.message);
+      this.overlay.showHint(message);
     }
   }
 
@@ -294,24 +310,19 @@ export class TutorialScene extends Phaser.Scene {
   }
 
   private spawnTutorialRat(): void {
-    const surfaceY = findSurfaceYFromPolygon(
-      TUTORIAL_RAT_X,
-      ENEMY_DEFS.percher.width,
-      TUTORIAL_HEAP,
-      TUTORIAL_WORLD_HEIGHT,
-    );
-    new Enemy(this, this.enemyManager.group, TUTORIAL_RAT_X, surfaceY, ENEMY_DEFS.percher);
+    // Enemy y is the sprite CENTER, so lift it by half its height to rest on the
+    // authored surface (percher has gravity off and is positioned explicitly).
+    const centerY = TUTORIAL_RAT_SURFACE_Y - ENEMY_DEFS.percher.height / 2;
+    const rat = new Enemy(this, this.enemyManager.group, TUTORIAL_RAT_X, centerY, ENEMY_DEFS.percher);
+    // The Enemy ctor sends perchers walking right; the tutorial rat has no patrol
+    // bounds (it isn't in EnemyManager's runtime), so stop it and let it idle in place.
+    rat.sprite.setVelocityX(0);
+    rat.sprite.play('rat-idle');
   }
 
   private spawnTutorialItem(): void {
-    const surfaceY = findSurfaceYFromPolygon(
-      TUTORIAL_ITEM_X,
-      50, // approximate pickup width for surface finding
-      TUTORIAL_HEAP,
-      TUTORIAL_WORLD_HEIGHT,
-    );
-    // Spawn a positive rarity item (spring-coil is good for tutorial)
-    this.pickupManager.devForceSpawn(PICKUP_DEFS[0], 'rare', TUTORIAL_ITEM_X, surfaceY);
+    // devForceSpawn rests the item just above the surface Y it's given.
+    this.pickupManager.devForceSpawn(PICKUP_DEFS[0], 'rare', TUTORIAL_ITEM_X, TUTORIAL_ITEM_SURFACE_Y);
   }
 
   private readonly isStomping = (
@@ -359,15 +370,21 @@ export class TutorialScene extends Phaser.Scene {
     this.pickupManager.update(this.player.sprite.x, this.player.sprite.y);
     this.enemyManager.update(0, this.player.sprite.y + 5000, this.player.sprite.x, this.player.sprite.y);
 
-    // Move detection
-    if (Math.abs(this.player.sprite.body!.velocity.x) > 5) {
-      this.director.notify('move');
-    }
-
-    // Pickup detection
-    if (this.pickupManager.getCarriedCount() > this._prevCarried) {
-      this._prevCarried = this.pickupManager.getCarriedCount();
-      this.director.notify('pickup');
+    // Step satisfaction — polled against live world state and gated to the active
+    // step, so a check that would fire a frame early (before the director is on
+    // that step) is simply retried next frame instead of being lost forever.
+    const step = this.director.currentStep;
+    if (step) {
+      // Move: any horizontal motion.
+      if (step.id === 'move' && Math.abs(this.player.sprite.body!.velocity.x) > 5) {
+        this.director.notify('move');
+      }
+      // Pickup: satisfied while the tutorial item is being carried. Polled against
+      // the live carried count (not a frame-to-frame delta) so a mistimed increment
+      // can never be skipped — the cause of the mobile "can't proceed" hang.
+      if (step.id === 'pickup' && this.pickupManager.getCarriedCount() > 0) {
+        this.director.notify('pickup');
+      }
     }
 
     // Place UI logic

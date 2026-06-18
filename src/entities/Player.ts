@@ -82,6 +82,7 @@ export class Player {
   private dashCooldown:        number = 0; // ms remaining
   private dashActive:         number = 0; // ms remaining of active dash
   private diveActive:         number = 0; // ms remaining of mobile dive burst
+  private wasDiving:          boolean = false; // rising-edge tracker for keyboard/hold dive emit
   private coyoteTimer:        number = 0; // ms remaining of coyote-time grace
   private momentumX:          number = 0; // airborne horizontal momentum (px/s)
 
@@ -545,7 +546,7 @@ export class Player {
 
   /** Slam downward while airborne; release to return to normal fall speed. */
   private updateDive(ctx: FrameCtx, delta: number): void {
-    if (!this.diveEnabled || ctx.onGround) return;
+    if (!this.diveEnabled || ctx.onGround) { this.wasDiving = false; return; }
     const im = InputManager.getInstance();
     const holdingDown = this.downKeys.some(k => k.isDown) || im.diveHeld;
     this.diveActive = Math.max(0, this.diveActive - delta);
@@ -553,7 +554,13 @@ export class Player {
     if (im.diveJustFired && !holdingDown) {
       this.diveActive = DASH_DURATION_MS; // mobile swipe-down burst
       this.sprite.scene.events.emit('player-action', 'dive');
+    } else if (holdingDown && !this.wasDiving) {
+      // Keyboard / hold-to-dive: emit on the rising edge (already airborne here,
+      // since onGround returns early above). The mobile burst above is edge-based
+      // on diveJustFired; this covers the held-key path the burst misses.
+      this.sprite.scene.events.emit('player-action', 'dive');
     }
+    this.wasDiving = holdingDown;
 
     // Guard dive against same-frame jump: do not overwrite jump velocity
     const jumpedThisFrame = this._justJumped || this._justAirJumped || this._justWallJumped;

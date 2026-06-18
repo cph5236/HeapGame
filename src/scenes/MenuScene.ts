@@ -599,17 +599,6 @@ export class MenuScene extends Phaser.Scene {
       strokeThickness: 2,
     }).setOrigin(0.5).setAlpha(0).setDepth(9);
 
-    // How to Play replay button — below the UPGRADES/STORE row
-    const howToPlayBtn = this.add.text(logicalWidth(this) / 2, 675 - shift, 'How to Play', {
-      fontSize: '14px',
-      color: '#cccccc',
-      backgroundColor: '#00000066',
-      padding: { x: 10, y: 6 },
-      stroke: '#000000',
-      strokeThickness: 1,
-    }).setOrigin(0.5).setAlpha(0).setDepth(9).setInteractive({ useHandCursor: true });
-    howToPlayBtn.on('pointerup', () => this.scene.start('TutorialScene'));
-
     if (im.isMobile && !im.tiltPermissionGranted) {
       if (im.tiltPermissionBlocked) {
         // Cross-origin iframe (e.g. itch.io): the iOS tilt-permission dialog can never
@@ -868,7 +857,7 @@ export class MenuScene extends Phaser.Scene {
     // ── Tab containers ────────────────────────────────────────────────────────
     const CONTENT_TOP = TAB_Y + TAB_H / 2 + 12;
 
-    // Player tab content — order: Redeem Code, Analytics, Reset (top → bottom)
+    // Player tab content — order: Redeem Code, Analytics, How to Play, Reset (top → bottom)
 
     // 1. Redeem code (top) — button opens a DOM dialog; result shown below.
     const codeBtnBg = this.add.rectangle(cx, CONTENT_TOP + 24, 260, 48, 0x1a3a5c)
@@ -894,13 +883,20 @@ export class MenuScene extends Phaser.Scene {
       fontSize: '11px', color: '#88aa88',
     }).setOrigin(0, 0.5).setDepth(33).setVisible(false);
 
-    // 3. Reset all data (bottom).
-    const resetBg = this.add.rectangle(cx, CONTENT_TOP + 190, 260, 52, 0x881111)
+    // 3. How to Play — replays the interactive tutorial.
+    const howToPlayBg = this.add.rectangle(cx, CONTENT_TOP + 190, 260, 48, 0x2a2a4c)
+      .setDepth(32).setVisible(false).setStrokeStyle(2, 0x8888cc).setInteractive({ useHandCursor: true });
+    const howToPlayLabel = this.add.text(cx, CONTENT_TOP + 190, 'HOW TO PLAY', {
+      fontSize: '18px', color: '#ccccff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(33).setVisible(false);
+
+    // 4. Reset all data (bottom).
+    const resetBg = this.add.rectangle(cx, CONTENT_TOP + 258, 260, 52, 0x881111)
       .setDepth(32).setVisible(false).setStrokeStyle(2, 0xff4444).setInteractive({ useHandCursor: true });
-    const resetLabel = this.add.text(cx, CONTENT_TOP + 190, 'Reset All Data', {
+    const resetLabel = this.add.text(cx, CONTENT_TOP + 258, 'Reset All Data', {
       fontSize: '20px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(33).setVisible(false);
-    const resetWarning = this.add.text(cx, CONTENT_TOP + 232, 'Clears all coins, upgrades\nand placed blocks.', {
+    const resetWarning = this.add.text(cx, CONTENT_TOP + 300, 'Clears all coins, upgrades\nand placed blocks.', {
       fontSize: '14px', color: '#aa8888', align: 'center',
     }).setOrigin(0.5).setDepth(32).setVisible(false);
 
@@ -986,7 +982,7 @@ export class MenuScene extends Phaser.Scene {
     rightOpt.on('pointerup', () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'right'; setJoystickSide('right'); paintSide(); });
 
     // ── Tab switching ─────────────────────────────────────────────────────────
-    const devItems    = [codeBtnBg, codeBtnLabel, codeResult, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint, resetBg, resetLabel, resetWarning];
+    const devItems    = [howToPlayBg, howToPlayLabel, codeBtnBg, codeBtnLabel, codeResult, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint, resetBg, resetLabel, resetWarning];
 
     const showSoundsTab = () => {
       soundsTabBg.setFillStyle(0x2244aa);  soundsTabText.setColor('#ffffff').setFontStyle('bold');
@@ -1022,6 +1018,8 @@ export class MenuScene extends Phaser.Scene {
     devTabText.setInteractive({ useHandCursor: true }).on('pointerup', showDevTab);
 
     // ── Wire Player tab buttons ───────────────────────────────────────────────
+    howToPlayBg.on('pointerup', () => this.scene.start('TutorialScene'));
+
     codeBtnBg.on('pointerup', () => {
       this.openRedeemDialog((result) => {
         codeResult.setText(result.message)
