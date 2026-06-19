@@ -26,7 +26,8 @@ at `/heaps`. Tests run via Vitest.
 Schema changes require a migration file — never edit `server/schema.sql` alone.
 1. Add `server/migrations/NNNN_description.sql` with only the incremental SQL
 2. Update `server/schema.sql` to the final intended state (for fresh installs)
-Apply: `cd server && npx wrangler d1 migrations apply heap-db --local` (or `--remote`).
+Apply: `cd server && npx wrangler d1 migrations apply heap --local` (or `--remote`).
+(The D1 `database_name` is `heap` — see `server/wrangler.toml`. The binding is `DB`.)
 Never edit an applied migration — write a new one. One migration per change.
 
 ## Scene preview devices

@@ -1079,18 +1079,14 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private createFeedbackButton(): void {
-    const bx = logicalWidth(this) - 58;   // left of the ☰ gear at width-22
-    const by = 22;
+    const label = this.add.text(14, 22, 'Send Feedback', {
+      fontFamily: 'monospace',
+      fontSize: '15px',
+      fontStyle: 'normal',
+      color: '#a34930',
+    }).setOrigin(0, 0.5).setDepth(20);
 
-    const gfx = this.add.graphics().setDepth(20);
-    gfx.fillStyle(0x000000, 0.65);
-    gfx.fillCircle(bx, by, 14);
-    gfx.lineStyle(2, 0x8899bb, 1);
-    gfx.strokeCircle(bx, by, 14);
-    this.add.text(bx, by, '🐛', { fontSize: '15px' }).setOrigin(0.5).setDepth(20);
-
-    this.add.zone(bx, by, 36, 36).setDepth(20)
-      .setInteractive({ useHandCursor: true })
+    label.setInteractive({ useHandCursor: true })
       .on('pointerup', () => {
         this.setMenuInputEnabled(false);
         openFeedbackOverlay({
