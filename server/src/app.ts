@@ -6,10 +6,12 @@ import { heapRoutes } from './routes/heap';
 import { scoreRoutes } from './routes/scores';
 import { logRoutes } from './routes/log';
 import { codeRoutes } from './routes/codes';
+import { feedbackRoutes } from './routes/feedback';
 import { requireAdminSecret } from './middleware/adminAuth';
 import { rateLimit, type RateLimiter, setRateLimitSink } from './middleware/rateLimit';
 import type { Sink } from './logging/Sink';
 import type { RewardCodeDB } from './codeDb';
+import type { FeedbackDB } from './feedbackDb';
 
 export interface AppOptions {
   /** Comma-separated origin list, or '*' to allow all (dev only). */
@@ -23,9 +25,12 @@ export interface AppOptions {
     global?: RateLimiter;
     log?:    RateLimiter;
     codes?:  RateLimiter;
+    feedback?: RateLimiter;
   };
   /** Reward-code D1 access. If unset, /codes is not mounted. */
   codeDb?: RewardCodeDB;
+  /** Feedback D1 access. If unset, /feedback is not mounted. */
+  feedbackDb?: FeedbackDB;
   /** Sink for incoming /log entries. If unset, /log is not mounted. */
   logSink?: Sink;
 }
@@ -87,6 +92,14 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
     app.post('/codes', adminGate);
     app.get ('/codes', adminGate);
     app.route('/codes', codeRoutes(opts.codeDb, () => opts.logSink));
+  }
+
+  if (opts.feedbackDb) {
+    // Public submit — rate-limited, no admin gate.
+    app.post('/feedback', rateLimit(lim.feedback, 'feedback'));
+    // Admin read — behind the admin gate.
+    app.get('/feedback', adminGate);
+    app.route('/feedback', feedbackRoutes(opts.feedbackDb));
   }
 
   if (opts.logSink) {

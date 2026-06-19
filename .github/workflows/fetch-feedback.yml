@@ -1,0 +1,31 @@
+name: Fetch Feedback
+
+on:
+  workflow_dispatch:
+    inputs:
+      since_id:
+        description: 'Only return feedback with id greater than this (blank = all)'
+        required: false
+        default: ''
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch feedback from the worker
+        env:
+          BASE_URL: ${{ secrets.VITE_HEAP_SERVER_URL }}
+          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+          SINCE_ID: ${{ inputs.since_id }}
+        run: |
+          set -euo pipefail
+          URL="${BASE_URL}/feedback"
+          if [ -n "${SINCE_ID}" ]; then URL="${URL}?since_id=${SINCE_ID}"; fi
+          curl -sS -f -H "X-Admin-Secret: ${ADMIN_SECRET}" "${URL}" -o feedback.json
+          echo "Fetched $(jq 'length' feedback.json) feedback row(s)."
+
+      - name: Upload feedback artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: feedback
+          path: feedback.json

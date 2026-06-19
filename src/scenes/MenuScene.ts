@@ -16,6 +16,7 @@ import { loadGameAssets } from './loadGameAssets';
 import { entranceScale } from './menuIntro';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
+import { openFeedbackOverlay } from './FeedbackOverlay';
 
 export class MenuScene extends Phaser.Scene {
   private farSilhouette!: Phaser.GameObjects.Graphics;
@@ -96,6 +97,7 @@ export class MenuScene extends Phaser.Scene {
     this.createPrompts(im);
     this.createHeapPicker();
     this.createSettingsButton();
+    this.createFeedbackButton();
     this.createVersionLabel();
     if (!im.isMobile) this.createHotkeyLegend();
     this.runEntranceSequence();
@@ -1074,6 +1076,24 @@ export class MenuScene extends Phaser.Scene {
         this.scene.restart();
       }
     });
+  }
+
+  private createFeedbackButton(): void {
+    const label = this.add.text(14, 22, 'Send Feedback', {
+      fontFamily: 'monospace',
+      fontSize: '15px',
+      fontStyle: 'normal',
+      color: '#a34930',
+    }).setOrigin(0, 0.5).setDepth(20);
+
+    label.setInteractive({ useHandCursor: true })
+      .on('pointerup', () => {
+        this.setMenuInputEnabled(false);
+        openFeedbackOverlay({
+          heapId: null,
+          onClose: () => this.setMenuInputEnabled(true),
+        });
+      });
   }
 
   // ── Version label ────────────────────────────────────────────────────────────
