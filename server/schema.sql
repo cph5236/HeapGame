@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS code_redemptions (
   PRIMARY KEY (code, player_guid)   -- one redemption per player
 );
 
-CREATE TABLE feedback (
+CREATE TABLE IF NOT EXISTS feedback (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   category    TEXT    NOT NULL,
   player_guid TEXT    NOT NULL,
