@@ -69,6 +69,21 @@ describe('getPlayerConfig – maxWalkableSlopeDeg', () => {
   });
 });
 
+describe('getPlayerConfig – jumpBoost', () => {
+  it('is 0 when jump_boost is level 0', () => {
+    expect(getPlayerConfig().jumpBoost).toBe(0);
+  });
+
+  it('is defined and numeric at every level up to maxLevel (8)', () => {
+    for (let level = 0; level <= 8; level++) {
+      store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { jump_boost: level } });
+      const { jumpBoost } = getPlayerConfig();
+      expect(jumpBoost).toBeTypeOf('number');
+      expect(Number.isNaN(jumpBoost)).toBe(false);
+    }
+  });
+});
+
 describe('getPlayerConfig – moneyMultiplier', () => {
   it('is 1 when money_mult is level 0', () => {
     expect(getPlayerConfig().moneyMultiplier).toBe(1);
