@@ -84,6 +84,28 @@ describe('getPlayerConfig – jumpBoost', () => {
   });
 });
 
+describe('getPlayerConfig – stompBonus', () => {
+  it('is defined and numeric at every level up to maxLevel (3)', () => {
+    for (let level = 0; level <= 3; level++) {
+      store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { stomp_gold: level } });
+      const { stompBonus } = getPlayerConfig();
+      expect(stompBonus).toBeTypeOf('number');
+      expect(Number.isNaN(stompBonus)).toBe(false);
+    }
+  });
+});
+
+describe('getPlayerConfig – peakMultiplier', () => {
+  it('is defined and numeric at every level up to maxLevel (4)', () => {
+    for (let level = 0; level <= 4; level++) {
+      store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { peak_hunter: level } });
+      const { peakMultiplier } = getPlayerConfig();
+      expect(peakMultiplier).toBeTypeOf('number');
+      expect(Number.isNaN(peakMultiplier)).toBe(false);
+    }
+  });
+});
+
 describe('getPlayerConfig – moneyMultiplier', () => {
   it('is 1 when money_mult is level 0', () => {
     expect(getPlayerConfig().moneyMultiplier).toBe(1);
