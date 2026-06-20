@@ -77,6 +77,7 @@ describe('getPlayerConfig – jumpBoost', () => {
   it('is defined and numeric at every level up to maxLevel (8)', () => {
     for (let level = 0; level <= 8; level++) {
       store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { jump_boost: level } });
+      resetCacheForTests();
       const { jumpBoost } = getPlayerConfig();
       expect(jumpBoost).toBeTypeOf('number');
       expect(Number.isNaN(jumpBoost)).toBe(false);
@@ -98,6 +99,7 @@ describe('getPlayerConfig – stompBonus', () => {
   it('is defined and numeric at every level up to maxLevel (3)', () => {
     for (let level = 0; level <= 3; level++) {
       store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { stomp_gold: level } });
+      resetCacheForTests();
       const { stompBonus } = getPlayerConfig();
       expect(stompBonus).toBeTypeOf('number');
       expect(Number.isNaN(stompBonus)).toBe(false);
@@ -109,10 +111,22 @@ describe('getPlayerConfig – peakMultiplier', () => {
   it('is defined and numeric at every level up to maxLevel (4)', () => {
     for (let level = 0; level <= 4; level++) {
       store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { peak_hunter: level } });
+      resetCacheForTests();
       const { peakMultiplier } = getPlayerConfig();
       expect(peakMultiplier).toBeTypeOf('number');
       expect(Number.isNaN(peakMultiplier)).toBe(false);
     }
+  });
+
+  // Matches upgradeDefs.ts's description text directly: each level's "X.XX× peak
+  // coins" IS the total multiplier at that level (not a delta to sum), and level 0
+  // is the neutral 1× baseline (no peak bonus yet).
+  it.each([
+    [0, 1.0], [1, 1.25], [2, 1.50], [3, 1.75], [4, 2.00],
+  ])('level %i grants peakMultiplier %f', (level, expected) => {
+    store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { peak_hunter: level } });
+    resetCacheForTests();
+    expect(getPlayerConfig().peakMultiplier).toBeCloseTo(expected, 10);
   });
 });
 
