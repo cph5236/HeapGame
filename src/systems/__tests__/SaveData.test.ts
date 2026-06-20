@@ -105,6 +105,17 @@ describe('getPlayerConfig – stompBonus', () => {
       expect(Number.isNaN(stompBonus)).toBe(false);
     }
   });
+
+  // Matches upgradeDefs.ts's description text directly: each level's "+X coins
+  // per stomp" IS the total per-stomp reward at that level (not a delta to sum).
+  // Level 0 is the un-upgraded baseline reward (25), not part of the description array.
+  it.each([
+    [0, 25], [1, 40], [2, 50], [3, 60],
+  ])('level %i grants stompBonus %i', (level, expected) => {
+    store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { stomp_gold: level } });
+    resetCacheForTests();
+    expect(getPlayerConfig().stompBonus).toBe(expected);
+  });
 });
 
 describe('getPlayerConfig – peakMultiplier', () => {

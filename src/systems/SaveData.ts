@@ -348,7 +348,7 @@ export function getPlayerConfig(): PlayerConfig {
     dive:                getUpgradeLevel('dive') > 0,
     moneyMultiplier:     1 + getUpgradeLevel('money_mult') * MONEY_MULT_PER_LEVEL,
     jumpBoost:           [0, 25, 35, 45, 55, 60, 65, 70, 75][jl],
-    stompBonus:          [25, 50, 90, 150][sl],
+    stompBonus:          [25, 40, 50, 60][sl],
     peakMultiplier:      [1.0, 1.25, 1.50, 1.75, 2.00][pl],
     maxWalkableSlopeDeg: MAX_WALKABLE_SLOPE_DEG + getUpgradeLevel('mountain_climber') * MOUNTAIN_CLIMBER_INCREMENT,
   };
