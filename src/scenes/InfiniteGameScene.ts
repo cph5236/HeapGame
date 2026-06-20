@@ -10,6 +10,7 @@ import { EnemyManager } from '../systems/EnemyManager';
 import { TrashWallManager } from '../systems/TrashWallManager';
 import { BuffManager } from '../systems/BuffManager';
 import { PlaceableManager } from '../systems/PlaceableManager';
+import { PickupManager } from '../systems/PickupManager';
 import { BridgeSpawner } from '../systems/BridgeSpawner';
 import { PortalManager, findPortalSurfaceFromPolygon } from '../systems/PortalManager';
 import { CameraController } from '../systems/CameraController';
@@ -90,6 +91,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   private trashWallManager!: TrashWallManager;
   private buffManager!:      BuffManager;
   private placeableManager!: PlaceableManager;
+  private pickupManager!:    PickupManager;
   private bridgeSpawner!:    BridgeSpawner;
   private portalManager!:    PortalManager;
 
@@ -165,6 +167,7 @@ export class InfiniteGameScene extends Phaser.Scene {
         }
         this.bridgeSpawner?.onBandLoaded(bandTopY);
         this.placeableManager?.retryPendingSpawns();
+        this.pickupManager?.onBandLoaded(bandTopY, vertices);
       };
 
       this.walkableGroups.push(walkable);
@@ -270,6 +273,15 @@ export class InfiniteGameScene extends Phaser.Scene {
       true, // resnapOnLoad — heap polygons differ per run; snap saved items to nearest surface within SNAP_RADIUS
       true, // excludeCheckpoint
     );
+
+    // No single full heap polygon exists in infinite mode (each column generates
+    // forever) — leave PickupManager's heapPolygon empty, which just skips the
+    // interior/underside rejection test and keeps the angle-based surface filter.
+    this.pickupManager = new PickupManager(this, this.player, {
+      base:     DEFAULT_HEAP_PARAMS.baseItemSpawnRate,
+      positive: DEFAULT_HEAP_PARAMS.positiveItemSpawnRate,
+      negative: DEFAULT_HEAP_PARAMS.negativeItemSpawnRate,
+    });
 
     // ── Enemy overlaps ───────────────────────────────────────────────────────────
     for (const em of this.enemyManagers) {
@@ -382,6 +394,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     snapPlayerToSurface(this.player, this.edgeColliders, SURFACE_SNAP_TOLERANCE_PX);
     this.placeableManager.update();
     this.buffManager.update(delta);
+    this.pickupManager.update(this.player.sprite.x, this.player.sprite.y);
     this.hud.update();
 
     // ── Heap generation ───────────────────────────────────────────────────────────
@@ -426,9 +439,10 @@ export class InfiniteGameScene extends Phaser.Scene {
       this.player.sprite.x,
       this.player.sprite.y,
       this.player.worldWidth + this.player.wrapPadX,
+      this.pickupManager.getRadarTargets(),
     );
 
-    this.trashWallManager.update(this.player.sprite.y, delta, this.buffManager.getWallSpeedMult());
+    this.trashWallManager.update(this.player.sprite.y, delta, this.pickupManager.getWallSpeedMult() * this.buffManager.getWallSpeedMult());
     if (!this._playerDead) {
       const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
       const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
@@ -494,7 +508,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     const score      = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
     const elapsedMs  = this._runStartTime !== null ? this.time.now - this._runStartTime : 0;
     const runResult  = buildRunScore(
-      { baseHeightPx: score, kills: this._runKills, elapsedMs },
+      { baseHeightPx: score, kills: this._runKills, elapsedMs, salvageBonus: this.pickupManager.getCarriedBonus() },
       ENEMY_DEFS,
       true,
       this._heapParams.scoreMult,
@@ -522,6 +536,7 @@ export class InfiniteGameScene extends Phaser.Scene {
         baseHeightPx:        score,
         kills:               this._runKills,
         elapsedMs,
+        salvageItems:        this.pickupManager.getCarriedItems(),
         heapParams: {
           ...this._heapParams,
           name: '∞ Infinite Heap',
