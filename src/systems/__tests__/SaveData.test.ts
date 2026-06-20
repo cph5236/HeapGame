@@ -69,6 +69,78 @@ describe('getPlayerConfig – maxWalkableSlopeDeg', () => {
   });
 });
 
+describe('getPlayerConfig – jumpBoost', () => {
+  it('is 0 when jump_boost is level 0', () => {
+    expect(getPlayerConfig().jumpBoost).toBe(0);
+  });
+
+  it('is defined and numeric at every level up to maxLevel (8)', () => {
+    for (let level = 0; level <= 8; level++) {
+      store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { jump_boost: level } });
+      resetCacheForTests();
+      const { jumpBoost } = getPlayerConfig();
+      expect(jumpBoost).toBeTypeOf('number');
+      expect(Number.isNaN(jumpBoost)).toBe(false);
+    }
+  });
+
+  // Matches upgradeDefs.ts's description text directly: each level's "+X jump power" IS
+  // the total boost at that level (not a delta to sum) — keeps the upgrade UI in sync
+  // with what the player actually gets.
+  it.each([
+    [0, 0], [1, 25], [2, 35], [3, 45], [4, 55], [5, 60], [6, 65], [7, 70], [8, 75],
+  ])('level %i grants jumpBoost %i', (level, expected) => {
+    store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { jump_boost: level } });
+    expect(getPlayerConfig().jumpBoost).toBe(expected);
+  });
+});
+
+describe('getPlayerConfig – stompBonus', () => {
+  it('is defined and numeric at every level up to maxLevel (3)', () => {
+    for (let level = 0; level <= 3; level++) {
+      store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { stomp_gold: level } });
+      resetCacheForTests();
+      const { stompBonus } = getPlayerConfig();
+      expect(stompBonus).toBeTypeOf('number');
+      expect(Number.isNaN(stompBonus)).toBe(false);
+    }
+  });
+
+  // Matches upgradeDefs.ts's description text directly: each level's "+X coins
+  // per stomp" IS the total per-stomp reward at that level (not a delta to sum).
+  // Level 0 is the un-upgraded baseline reward (25), not part of the description array.
+  it.each([
+    [0, 25], [1, 40], [2, 50], [3, 60],
+  ])('level %i grants stompBonus %i', (level, expected) => {
+    store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { stomp_gold: level } });
+    resetCacheForTests();
+    expect(getPlayerConfig().stompBonus).toBe(expected);
+  });
+});
+
+describe('getPlayerConfig – peakMultiplier', () => {
+  it('is defined and numeric at every level up to maxLevel (4)', () => {
+    for (let level = 0; level <= 4; level++) {
+      store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { peak_hunter: level } });
+      resetCacheForTests();
+      const { peakMultiplier } = getPlayerConfig();
+      expect(peakMultiplier).toBeTypeOf('number');
+      expect(Number.isNaN(peakMultiplier)).toBe(false);
+    }
+  });
+
+  // Matches upgradeDefs.ts's description text directly: each level's "X.XX× peak
+  // coins" IS the total multiplier at that level (not a delta to sum), and level 0
+  // is the neutral 1× baseline (no peak bonus yet).
+  it.each([
+    [0, 1.0], [1, 1.25], [2, 1.50], [3, 1.75], [4, 2.00],
+  ])('level %i grants peakMultiplier %f', (level, expected) => {
+    store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { peak_hunter: level } });
+    resetCacheForTests();
+    expect(getPlayerConfig().peakMultiplier).toBeCloseTo(expected, 10);
+  });
+});
+
 describe('getPlayerConfig – moneyMultiplier', () => {
   it('is 1 when money_mult is level 0', () => {
     expect(getPlayerConfig().moneyMultiplier).toBe(1);

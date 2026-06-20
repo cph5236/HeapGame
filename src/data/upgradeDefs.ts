@@ -48,7 +48,7 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
   {
     id: 'stomp_gold',
     name: 'Stomp Bounty',
-    description: (l) => `+${[50, 100, 150][Math.max(1, l) - 1]} coins per stomp`,
+    description: (l) => `+${[40, 50, 60][Math.max(1, l) - 1]} coins per stomp`,
     maxLevel: 3,
     cost: (l) => [250, 500, 1000][l - 1],
   },
