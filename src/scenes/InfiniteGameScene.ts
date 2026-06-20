@@ -446,7 +446,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       this.debugText.setText([
         `Player: (${px}, ${py})  ${colLabel}`,
         `Cam: (${Math.round(cam.scrollX)}, ${Math.round(cam.scrollY)})`,
-        `Score: ${Math.floor(score / 100)} ft  elapsed: ${Math.round(elapsed / 1000)}s`,
+        `Score: ${Math.floor(score / SCORE_DISPLAY_DIVISOR)} ft  elapsed: ${Math.round(elapsed / 1000)}s`,
         `Difficulty: ${factor.toFixed(2)}  spawnMult: ${spawnMult.toFixed(2)}`,
         `Enemies: ${totalEnemies}`,
       ].join('\n'));
