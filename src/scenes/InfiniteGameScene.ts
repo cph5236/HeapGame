@@ -52,6 +52,7 @@ import {
   SURFACE_SNAP_TOLERANCE_PX,
   ENEMY_RADAR_BASE_RANGE_PX,
   ENEMY_RADAR_RANGE_PER_LEVEL,
+  SCORE_DISPLAY_DIVISOR,
 } from '../constants';
 import { snapPlayerToSurface, depenetratePlayerFromWall } from '../systems/HeapCollisionHelpers';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
@@ -359,7 +360,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       this._runStartTime = this.time.now;
       getLogger().event({ type: 'run:start', heapId: INFINITE_HEAP_ID, mode: 'infinite' });
     }
-    this.hud.setScore(`${Math.floor(score / 100)} ft`);
+    this.hud.setScore(`${Math.floor(score / SCORE_DISPLAY_DIVISOR)} ft`);
 
     // ── Bridge slope correction ───────────────────────────────────────────────────
     if (this.bridgePenetration > 0) {
