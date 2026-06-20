@@ -63,7 +63,7 @@ describe('registerRun', () => {
   });
 
   it('seeds an unseeded target and increments when enabled', () => {
-    expect(registerRun(true, () => 0)).toBe(false);          // seeds target=MIN(2), runsSinceLast 0->1
+    expect(registerRun(true, () => 0)).toBe(false);          // seeds target=AD_CADENCE_MIN, runsSinceLast 0->1
     expect(getAdRunState()).toEqual({ runsSinceLast: 1, target: AD_CADENCE_MIN });
   });
 

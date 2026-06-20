@@ -1,7 +1,7 @@
 import { getAdRunState, setAdRunState } from '../SaveData';
 
-export const AD_CADENCE_MIN = 2;
-export const AD_CADENCE_MAX = 5;
+export const AD_CADENCE_MIN = 40;
+export const AD_CADENCE_MAX = 50;
 
 export interface AdRunState {
   runsSinceLast: number;
