@@ -429,6 +429,10 @@ export class GameScene extends Phaser.Scene {
       for (const s of spots) {
         new Enemy(this, this.enemyManager.group, s.x, s.y, ENEMY_DEFS.percher);
       }
+      // Off-screen pickups (left + up-right) exercise the blue salvage arrows.
+      const pdef = PICKUP_DEFS[0];
+      this.pickupManager.devForceSpawn(pdef, 'rare', px - 450, py);
+      this.pickupManager.devForceSpawn(pdef, 'rare', px + 300, py - 350);
     }
     if (initData?._devOutro) {
       const kind = initData._devOutro;
@@ -509,6 +513,7 @@ export class GameScene extends Phaser.Scene {
       this.player.sprite.x,
       this.player.sprite.y,
       this.player.worldWidth + this.player.wrapPadX,
+      this.pickupManager.getRadarTargets(),
     );
     this.chunkRenderer.cullChunks(camBottom);
     this.edgeCollider.cullBands(camBottom, 2000);
