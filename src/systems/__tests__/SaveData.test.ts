@@ -83,10 +83,11 @@ describe('getPlayerConfig – jumpBoost', () => {
     }
   });
 
-  // Matches upgradeDefs.ts's per-level description deltas (+25, +35, +45, +55, +60, +65, +70, +75),
-  // summed cumulatively — keeps the actual boost in sync with what the upgrade UI tells the player.
+  // Matches upgradeDefs.ts's description text directly: each level's "+X jump power" IS
+  // the total boost at that level (not a delta to sum) — keeps the upgrade UI in sync
+  // with what the player actually gets.
   it.each([
-    [0, 0], [1, 25], [2, 60], [3, 105], [4, 160], [5, 220], [6, 285], [7, 355], [8, 430],
+    [0, 0], [1, 25], [2, 35], [3, 45], [4, 55], [5, 60], [6, 65], [7, 70], [8, 75],
   ])('level %i grants jumpBoost %i', (level, expected) => {
     store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { jump_boost: level } });
     expect(getPlayerConfig().jumpBoost).toBe(expected);
