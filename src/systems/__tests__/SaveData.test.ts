@@ -69,6 +69,22 @@ describe('getPlayerConfig – maxWalkableSlopeDeg', () => {
   });
 });
 
+describe('getPlayerConfig – moneyMultiplier', () => {
+  it('is 1 when money_mult is level 0', () => {
+    expect(getPlayerConfig().moneyMultiplier).toBe(1);
+  });
+
+  it('adds 5% (0.05) per money_mult level', () => {
+    store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { money_mult: 5 } });
+    expect(getPlayerConfig().moneyMultiplier).toBeCloseTo(1.25, 10);
+  });
+
+  it('reaches 2.0× at max level 20', () => {
+    store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { money_mult: 20 } });
+    expect(getPlayerConfig().moneyMultiplier).toBeCloseTo(2.0, 10);
+  });
+});
+
 // ── Inventory ─────────────────────────────────────────────────────────────────
 
 describe('getItemQuantity', () => {

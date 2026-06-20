@@ -1,6 +1,6 @@
 import { UPGRADE_DEFS } from '../data/upgradeDefs';
 import { ITEM_DEFS } from '../data/itemDefs';
-import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT } from '../constants';
+import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL } from '../constants';
 
 const SAVE_KEY = 'heap_save';
 const CURRENT_SCHEMA = 4;
@@ -346,7 +346,7 @@ export function getPlayerConfig(): PlayerConfig {
     wallJump:            getUpgradeLevel('wall_jump') > 0,
     dash:                getUpgradeLevel('dash') > 0,
     dive:                getUpgradeLevel('dive') > 0,
-    moneyMultiplier:     1 + getUpgradeLevel('money_mult') * 0.1,
+    moneyMultiplier:     1 + getUpgradeLevel('money_mult') * MONEY_MULT_PER_LEVEL,
     jumpBoost:           [0, 70, 150, 240][jl],
     stompBonus:          [25, 50, 90, 150][sl],
     peakMultiplier:      [1.25, 1.40, 1.60, 1.85][pl],
