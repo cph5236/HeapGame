@@ -9,6 +9,8 @@ Call the Integrity API at important moments in your app to check that it's your 
 
 - The claw elevator.
 
+- Make score-screen ad cadence (`AD_CADENCE_MIN`/`AD_CADENCE_MAX` in `src/systems/ads/AdCadence.ts`) DB-controlled (e.g. via `/heaps` config or a dedicated remote-config endpoint) instead of hardcoded constants, so it can be tuned per-build without a release.
+
 ### UI
 
 ### ENEMIES
