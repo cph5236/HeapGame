@@ -17,6 +17,7 @@ import {
   getRawSaveForCloudSync,
 } from '../systems/SaveData';
 import { buildCoinBreakdown, BreakdownRow } from '../systems/coinBreakdown';
+import { formatMult } from '../systems/formatMult';
 import { buildRunScore, RunScoreRow } from '../systems/buildRunScore';
 import { computeSalvageBonus, SalvageItem } from '../../shared/pickupScores';
 import type { EnemyKind } from '../entities/Enemy';
@@ -639,7 +640,7 @@ export class ScoreScene extends Phaser.Scene {
         // off_peak_bonus is a flat add; others are multipliers
         const label    = row.type === 'off_peak_bonus'
           ? `+\u00a0${row.multiplier}\u2002${this.rowLabel(row.type)}`
-          : `\u00d7\u00a0${row.multiplier.toFixed(1)}\u2002${this.rowLabel(row.type)}`;
+          : `\u00d7\u00a0${formatMult(row.multiplier)}\u2002${this.rowLabel(row.type)}`;
         const labelTxt = this.add.text(left + 8, mid, label, {
           fontSize: '11px', fontFamily: 'monospace', color: c.labelHex,
         }).setOrigin(0, 0.5);

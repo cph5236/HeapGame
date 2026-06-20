@@ -1,4 +1,5 @@
-import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT } from '../constants';
+import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL } from '../constants';
+import { formatMult } from '../systems/formatMult';
 
 export interface UpgradeDef {
   id:          string;
@@ -33,7 +34,7 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
   {
     id: 'money_mult',
     name: 'Coin Multiplier',
-    description: (l) => `${(1 + l * 0.05).toFixed(1)}\u00d7 coins`,
+    description: (l) => `${formatMult(1 + l * MONEY_MULT_PER_LEVEL)}\u00d7 coins`,
     maxLevel: 20,
     cost: (l) => [100, 300, 500, 700, 900, 1100, 1300, 1500, 1700, 1900, 2100, 2300, 2500, 2700, 2900, 3100, 3300, 3500, 3700, 3900][l - 1],
   },

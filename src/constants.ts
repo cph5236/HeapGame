@@ -124,6 +124,7 @@ export const OVERHANG_WALL_MIN_JUT_PX   = 24;
 // ── Placement ─────────────────────────────────────────────────────────────────
 export const PEAK_BONUS_ZONE_PX    = 80;    // px above heap topY that qualifies for peak bonus
 export const PEAK_COIN_MULTIPLIER  = 1.25;  // coin multiplier for placing at the peak
+export const MONEY_MULT_PER_LEVEL  = 0.05;  // Coin Multiplier upgrade: +5% coins per level (lvl 20 → 2.0×)
 export const PLACE_HOLD_DURATION_MS = 1000; // ms player must hold to confirm placement
 export const SNAP_RADIUS           = 80;    // px below pointer to search for a walkable surface
 
