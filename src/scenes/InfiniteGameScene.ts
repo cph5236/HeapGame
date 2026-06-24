@@ -167,6 +167,10 @@ export class InfiniteGameScene extends Phaser.Scene {
         }
         this.bridgeSpawner?.onBandLoaded(bandTopY);
         this.placeableManager?.retryPendingSpawns();
+        // Same per-band-vertices-as-polygon trick as em.setPolygon above — without
+        // this the interior/underside rejection test is skipped entirely, letting
+        // pickups spawn on undersides / inside walls (only the angle filter ran).
+        this.pickupManager?.setPolygon(vertices);
         this.pickupManager?.onBandLoaded(bandTopY, vertices);
       };
 
@@ -275,8 +279,8 @@ export class InfiniteGameScene extends Phaser.Scene {
     );
 
     // No single full heap polygon exists in infinite mode (each column generates
-    // forever) — leave PickupManager's heapPolygon empty, which just skips the
-    // interior/underside rejection test and keeps the angle-based surface filter.
+    // forever) — heapPolygon is kept up to date per-band instead (see
+    // pickupManager.setPolygon in onBandLoaded above).
     this.pickupManager = new PickupManager(this, this.player, {
       base:     DEFAULT_HEAP_PARAMS.baseItemSpawnRate,
       positive: DEFAULT_HEAP_PARAMS.positiveItemSpawnRate,
