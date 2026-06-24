@@ -107,10 +107,17 @@ export class BootScene extends Phaser.Scene {
         this.game.registry.set('activeHeapId', pick.id);
         this.game.registry.set('heapParams',   pick.params);
 
-        return HeapClient.load(pick.id).then((polygon) => {
-          this.game.registry.set('heapPolygon', polygon);
+        const ready = () => {
           this.game.registry.set('heapCatalogReady', true);
           this.game.events.emit('heapCatalogReady');
+        };
+        if (pick.params.isInfinite) {
+          this.game.registry.set('heapPolygon', []);
+          return HeapClient.primeEnemyParams(pick.id).then(ready);
+        }
+        return HeapClient.load(pick.id).then((polygon) => {
+          this.game.registry.set('heapPolygon', polygon);
+          ready();
         });
       })
       .catch(() => {
