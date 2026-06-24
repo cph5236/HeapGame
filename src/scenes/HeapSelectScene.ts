@@ -272,8 +272,10 @@ export class HeapSelectScene extends Phaser.Scene {
 
     if (heap.params.isInfinite) {
       this.game.registry.set('heapPolygon', []);
-      finalizeLegacyPlaced(heap.id);
-      this.scene.start('MenuScene');
+      HeapClient.primeEnemyParams(heap.id).finally(() => {
+        finalizeLegacyPlaced(heap.id);
+        this.scene.start('MenuScene');
+      });
       return;
     }
 

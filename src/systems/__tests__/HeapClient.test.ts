@@ -343,3 +343,44 @@ describe('HeapClient.getLiveZoneBottomY', () => {
     expect(HeapClient.getLiveZoneBottomY('xyz')).toBe(800);
   });
 });
+
+// ── primeEnemyParams() ──────────────────────────────────────────────────────────
+
+describe('HeapClient.primeEnemyParams', () => {
+  const HEAP = 'FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF';
+  const PARAMS = {
+    percher: { spawnStartPxAboveFloor: 0, spawnEndPxAboveFloor: -1, spawnRampPxAboveFloor: 15000, spawnChanceMin: 0.15, spawnChanceMax: 0.45 },
+  };
+
+  it('fetches /enemy-params and makes getEnemyParams return them', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => PARAMS }));
+    await HeapClient.primeEnemyParams(HEAP);
+    expect(global.fetch).toHaveBeenCalledWith(`${BASE}/heaps/${HEAP}/enemy-params`);
+    expect(HeapClient.getEnemyParams(HEAP)).toEqual(PARAMS);
+  });
+
+  it('is a no-op on non-ok response (getEnemyParams stays null)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+    await HeapClient.primeEnemyParams(HEAP);
+    expect(HeapClient.getEnemyParams(HEAP)).toBeNull();
+  });
+
+  it('is a no-op when fetch throws', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('net')));
+    await expect(HeapClient.primeEnemyParams(HEAP)).resolves.toBeUndefined();
+    expect(HeapClient.getEnemyParams(HEAP)).toBeNull();
+  });
+
+  it('merges enemyParams into an existing cache without clobbering liveZone/baseId', async () => {
+    localStorageStub.setItem(
+      `heap_cache_${HEAP}`,
+      JSON.stringify({ version: 5, baseId: 'b1', liveZone: [{ x: 1, y: 2 }] }),
+    );
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => PARAMS }));
+    await HeapClient.primeEnemyParams(HEAP);
+    const cache = JSON.parse(localStorageStub.getItem(`heap_cache_${HEAP}`)!);
+    expect(cache.baseId).toBe('b1');
+    expect(cache.liveZone).toEqual([{ x: 1, y: 2 }]);
+    expect(cache.enemyParams).toEqual(PARAMS);
+  });
+});

@@ -5,10 +5,10 @@ import type { Vertex } from '../systems/HeapPolygon';
 import { generateAllTextures } from '../entities/TextureGenerators';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
-import { MOCK_HEAP_HEIGHT_PX } from '../constants';
 import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, setGpgsPlayerId, setPlayerName, getRawSaveForCloudSync, applyMergedSave, mergeCloudSave, getTutorialDone } from '../systems/SaveData';
 import type { RawSave } from '../systems/SaveData';
 import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
+import { buildInfiniteEntry } from '../data/infiniteCatalog';
 import { initLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { AudioManager } from '../systems/AudioManager';
@@ -87,27 +87,8 @@ export class BootScene extends Phaser.Scene {
     // Kick off catalog/polygon fetch in the background — does not block the menu.
     HeapClient.list()
       .then((summaries) => {
-        const infiniteEntry: HeapSummary = {
-          id: INFINITE_HEAP_ID,
-          version: 1,
-          createdAt: '2026-01-01T00:00:00.000Z',
-          topY: NaN,
-          params: {
-            name: 'Infinite Heap',
-            difficulty: 5.0,
-            spawnRateMult: 1.0,
-            coinMult: 1.0,
-            scoreMult: 1.0,
-            worldHeight: MOCK_HEAP_HEIGHT_PX,
-            isInfinite: true,
-            ghostPointCount: 1,
-            baseItemSpawnRate: 0.33,
-            positiveItemSpawnRate: 0.15,
-            negativeItemSpawnRate: 0.85,
-          },
-        };
         const deduped = summaries.filter(s => s.id !== INFINITE_HEAP_ID);
-        deduped.push(infiniteEntry);
+        deduped.push(buildInfiniteEntry(summaries));
         this.game.registry.set('heapCatalog', deduped);
 
         if (deduped.length === 0) {
@@ -126,10 +107,17 @@ export class BootScene extends Phaser.Scene {
         this.game.registry.set('activeHeapId', pick.id);
         this.game.registry.set('heapParams',   pick.params);
 
-        return HeapClient.load(pick.id).then((polygon) => {
-          this.game.registry.set('heapPolygon', polygon);
+        const ready = () => {
           this.game.registry.set('heapCatalogReady', true);
           this.game.events.emit('heapCatalogReady');
+        };
+        if (pick.params.isInfinite) {
+          this.game.registry.set('heapPolygon', []);
+          return HeapClient.primeEnemyParams(pick.id).then(ready);
+        }
+        return HeapClient.load(pick.id).then((polygon) => {
+          this.game.registry.set('heapPolygon', polygon);
+          ready();
         });
       })
       .catch(() => {

@@ -181,6 +181,25 @@ export class HeapClient {
   }
 
   /**
+   * Fetch a heap's enemy spawn config from the base-independent
+   * GET /heaps/:id/enemy-params endpoint and cache it so getEnemyParams() can
+   * read it synchronously. Used for the procedural infinite heap, which has no
+   * base polygon and so cannot use load(). No-op on network failure — callers
+   * fall back to DEFAULT_ENEMY_PARAMS.
+   */
+  static async primeEnemyParams(heapId: string): Promise<void> {
+    try {
+      const res = await fetchWithLog(`${SERVER_URL}/heaps/${heapId}/enemy-params`);
+      if (!res.ok) return;
+      const enemyParams = (await res.json()) as HeapEnemyParams;
+      const cache = loadCache(heapId) ?? { version: 0, baseId: '', liveZone: [] };
+      saveCache(heapId, { ...cache, enemyParams });
+    } catch {
+      // silent — caller falls back to DEFAULT_ENEMY_PARAMS
+    }
+  }
+
+  /**
    * Returns the maximum Y value (freeze line) of the cached liveZone for a heap.
    * Returns null if the cache is absent or the liveZone is empty.
    */
