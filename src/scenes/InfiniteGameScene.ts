@@ -56,6 +56,8 @@ import {
 } from '../constants';
 import { snapPlayerToSurface, depenetratePlayerFromWall } from '../systems/HeapCollisionHelpers';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
+import type { HeapParams } from '../../shared/heapTypes';
+import { HeapClient } from '../systems/HeapClient';
 import type { EnemyKind } from '../entities/Enemy';
 
 function makeColBounds(): [number, number][] {
@@ -100,6 +102,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   private colSeeds:         number[] = [];
   private spawnedBands:     Set<number>[] = [];
   private playerConfig!: ReturnType<typeof getPlayerConfig>;
+  private _heapParams!: HeapParams;
   private debugMode = false;
   private debugText?: Phaser.GameObjects.Text;
   private bridgePenetration = 0;
@@ -131,6 +134,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, INFINITE_WORLD_WIDTH, MOCK_HEAP_HEIGHT_PX, false, false, true, true);
     this.colBounds    = makeColBounds();
     this.playerConfig = getPlayerConfig();
+    this._heapParams = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
 
     // ── 3 heap columns ─────────────────────────────────────────────────────────
     this.colSeeds = [];
@@ -149,7 +153,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       this.layerGenerators.push(layerGen);
 
       const em = new EnemyManager(this, 1.0, xMin, xMax);
-      em.setEnemyParams(DEFAULT_ENEMY_PARAMS);
+      em.setEnemyParams(HeapClient.getEnemyParams(INFINITE_HEAP_ID) ?? DEFAULT_ENEMY_PARAMS);
 
       const colIdx = i;
       gen.onBandLoaded = (bandTopY, vertices) => {
@@ -405,8 +409,9 @@ export class InfiniteGameScene extends Phaser.Scene {
     // ── Difficulty ramp ───────────────────────────────────────────────────────────
     const elapsed = this._runStartTime !== null ? this.time.now - this._runStartTime : 0;
     const factor  = computeDifficultyFactor(score, elapsed);
-    const spawnMult = INFINITE_MIN_SPAWN_MULT +
+    const curveMult = INFINITE_MIN_SPAWN_MULT +
       factor * (INFINITE_MAX_SPAWN_MULT - INFINITE_MIN_SPAWN_MULT);
+    const spawnMult = this._heapParams.spawnRateMult * curveMult;
 
     for (const em of this.enemyManagers) {
       em.setSpawnRateMult(spawnMult);
@@ -492,7 +497,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       { baseHeightPx: score, kills: this._runKills, elapsedMs },
       ENEMY_DEFS,
       true,
-      1.0,
+      this._heapParams.scoreMult,
     );
 
     this.playerOutro.play('death', () => {
@@ -518,9 +523,8 @@ export class InfiniteGameScene extends Phaser.Scene {
         kills:               this._runKills,
         elapsedMs,
         heapParams: {
-          ...DEFAULT_HEAP_PARAMS,
+          ...this._heapParams,
           name: '∞ Infinite Heap',
-          difficulty: 5.0,
           isInfinite: true,
         },
       });
@@ -557,7 +561,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.player.refundAirJump();
     this.player.sprite.setVelocityY(PLAYER_JUMP_VELOCITY);
 
-    const reward = this.playerConfig.stompBonus;
+    const reward = Math.round(this.playerConfig.stompBonus * this._heapParams.coinMult);
     addBalance(reward);
     const marker = this.add.text(e.x, e.y - 16, `+${reward}`, {
       fontSize: '22px', color: '#ffdd44', stroke: '#000000', strokeThickness: 3,
