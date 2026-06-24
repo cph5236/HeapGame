@@ -1,5 +1,5 @@
 // src/systems/enemyRadarMath.ts
-// Pure geometry for the off-screen enemy indicator (Threat Radar). No Phaser
+// Pure geometry for the off-screen radar (enemies + pickups). No Phaser
 // value import, so it unit-tests cleanly in the Vitest `node` environment.
 
 export interface RadarView {

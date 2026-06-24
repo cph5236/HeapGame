@@ -198,6 +198,11 @@ export class PickupManager {
   /** Aggregate trash-wall speed multiplier from carried items (1 = unaffected). */
   getWallSpeedMult(): number { return this.aggregate.wallSpeedMult; }
 
+  /** Live positions of uncollected pickups, for the off-screen radar's blue arrows.
+   *  Returns the internal array (read-only): grabbed/culled pickups are spliced out,
+   *  so every entry is on the heap and satisfies {x,y}. Valid until the next update(). */
+  getRadarTargets(): readonly { x: number; y: number }[] { return this.pickups; }
+
   // ── Spawning ──────────────────────────────────────────────────────────────
 
   private spawnPickup(def: PickupDef, rarity: Rarity, x: number, surfaceY: number): void {

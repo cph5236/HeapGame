@@ -75,8 +75,8 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
   },
   {
     id: 'enemy_radar',
-    name: 'Threat Radar',
-    description: (l) => `+${l * 10}% off-screen enemy detection range`,
+    name: 'Radar',
+    description: (l) => `+${l * 10}% off-screen enemy & pickup detection range`,
     maxLevel: 3,
     cost: (l) => [300, 600, 1200][l - 1],
   },
