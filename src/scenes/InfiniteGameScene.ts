@@ -282,9 +282,9 @@ export class InfiniteGameScene extends Phaser.Scene {
     // forever) — heapPolygon is kept up to date per-band instead (see
     // pickupManager.setPolygon in onBandLoaded above).
     this.pickupManager = new PickupManager(this, this.player, {
-      base:     DEFAULT_HEAP_PARAMS.baseItemSpawnRate,
-      positive: DEFAULT_HEAP_PARAMS.positiveItemSpawnRate,
-      negative: DEFAULT_HEAP_PARAMS.negativeItemSpawnRate,
+      base:     this._heapParams.baseItemSpawnRate     ?? DEFAULT_HEAP_PARAMS.baseItemSpawnRate,
+      positive: this._heapParams.positiveItemSpawnRate ?? DEFAULT_HEAP_PARAMS.positiveItemSpawnRate,
+      negative: this._heapParams.negativeItemSpawnRate ?? DEFAULT_HEAP_PARAMS.negativeItemSpawnRate,
     });
 
     // ── Enemy overlaps ───────────────────────────────────────────────────────────
