@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { UPGRADE_DEFS } from '../data/upgradeDefs';
 import { getBalance, getUpgradeLevel, purchaseUpgrade, getUpgrades } from '../systems/SaveData';
+import { syncSaveToCloud } from '../systems/cloudSave';
 import { InputManager } from '../systems/InputManager';
 import { getLogger } from '../logging';
 
@@ -340,6 +341,7 @@ export class UpgradeScene extends Phaser.Scene {
     const cost = def.cost(oldLevel + 1);
     const success = purchaseUpgrade(id);
     if (success) {
+      syncSaveToCloud();
       getLogger().event({
         type: 'upgrade:purchased',
         itemType: id,

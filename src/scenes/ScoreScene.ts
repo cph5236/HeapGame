@@ -14,8 +14,8 @@ import {
   getGpgsPlayerId,
   getPlayerName,
   getPlaced,
-  getRawSaveForCloudSync,
 } from '../systems/SaveData';
+import { syncSaveToCloud } from '../systems/cloudSave';
 import { buildCoinBreakdown, BreakdownRow } from '../systems/coinBreakdown';
 import { formatMult } from '../systems/formatMult';
 import { buildRunScore, RunScoreRow } from '../systems/buildRunScore';
@@ -951,8 +951,7 @@ export class ScoreScene extends Phaser.Scene {
       }
 
       // Save snapshot to cloud after each run.
-      const cloudData = JSON.stringify(getRawSaveForCloudSync());
-      PlayGamesClient.saveSnapshot(cloudData);
+      syncSaveToCloud();
 
       this.renderLeaderboardEntries(ctx, PANEL_TOP, PANEL_W, ROW_H);
     });
