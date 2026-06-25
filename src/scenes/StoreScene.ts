@@ -4,6 +4,7 @@ import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMe
 import { ITEM_DEFS, ItemCategory } from '../data/itemDefs';
 import { ACCENT_COLORS } from '../data/itemAccents';
 import { getBalance, getItemQuantity, purchaseItem } from '../systems/SaveData';
+import { syncSaveToCloud } from '../systems/cloudSave';
 import { InputManager } from '../systems/InputManager';
 
 const ROW_START_Y   = 160;
@@ -358,6 +359,7 @@ export class StoreScene extends Phaser.Scene {
     const id = ITEM_DEFS[this.selectedIndex].id;
     const success = purchaseItem(id);
     if (success) {
+      syncSaveToCloud();
       this.rows[this.selectedIndex].flashSuccess();
       this.time.delayedCall(450, () => this.refreshAll());
     } else {

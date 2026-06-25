@@ -5,6 +5,7 @@ import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMe
 import { AudioManager } from '../systems/AudioManager';
 import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode } from '../systems/SaveData';
 import { redeemCode, type RedeemResult } from '../systems/CodeClient';
+import { syncSaveToCloud } from '../systems/cloudSave';
 import { TILT_WATCHDOG_MS } from '../constants';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
@@ -522,6 +523,9 @@ export class MenuScene extends Phaser.Scene {
       const result = await redeemCode(input.value);
       onResult(result);
       if (result.status === 'success') {
+        // Reward already written to local SaveData — push it to the cloud now so
+        // a stale snapshot can't clobber the redeemed coins/items on next launch.
+        syncSaveToCloud();
         msg.style.color = '#88ff88';
         msg.textContent = result.message;
         setTimeout(close, 900);
