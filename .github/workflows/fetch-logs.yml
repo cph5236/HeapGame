@@ -1,0 +1,126 @@
+name: Fetch Logs
+
+# Pulls log entries from the production Analytics Engine dataset (heap_logs)
+# via the Cloudflare AE SQL API and uploads them as a downloadable artifact.
+# This is the logs counterpart to fetch-feedback.yml — feedback lives in D1,
+# logs live in Analytics Engine (see server/src/index.ts: env.LOGS selects the
+# AnalyticsEngineSink in production).
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: "Log level: error | warn | event | all"
+        required: false
+        default: 'error'
+      since:
+        description: "Only logs after this UTC time (YYYY-MM-DD HH:MM:SS). Blank = use 'hours' window."
+        required: false
+        default: ''
+      hours:
+        description: "Lookback window in hours when 'since' is blank"
+        required: false
+        default: '48'
+      user_guid:
+        description: "Filter to one player (GUID, hyphens optional). Blank = all players."
+        required: false
+        default: ''
+      limit:
+        description: "Max rows to return (newest first)"
+        required: false
+        default: '500'
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query Analytics Engine
+        env:
+          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          LEVEL: ${{ inputs.level }}
+          SINCE: ${{ inputs.since }}
+          HOURS: ${{ inputs.hours }}
+          USER_GUID: ${{ inputs.user_guid }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          set -euo pipefail
+
+          # --- Validate / normalize inputs (these feed a SQL string) -----------
+          LIMIT="${LIMIT:-500}"
+          [[ "$LIMIT" =~ ^[0-9]+$ ]] || { echo "::error::limit must be an integer"; exit 1; }
+
+          # GUID is stored in AE index1 with hyphens stripped (see AnalyticsEngineSink).
+          GUID="$(printf '%s' "$USER_GUID" | tr -d '-' | tr 'A-Z' 'a-z')"
+          [[ -z "$GUID" || "$GUID" =~ ^[0-9a-f]{1,32}$ ]] || { echo "::error::user_guid must be hex"; exit 1; }
+
+          # --- Build the WHERE clause ------------------------------------------
+          WHERE="WHERE 1=1"
+          if [ -n "${SINCE}" ]; then
+            # Accept ISO 'T'/'Z' too; toDateTime wants 'YYYY-MM-DD HH:MM:SS'.
+            SINCE_NORM="$(printf '%s' "$SINCE" | tr 'T' ' ' | tr -d 'Z')"
+            [[ "$SINCE_NORM" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]] \
+              || { echo "::error::since must be 'YYYY-MM-DD HH:MM:SS'"; exit 1; }
+            WHERE="${WHERE} AND timestamp > toDateTime('${SINCE_NORM}')"
+          else
+            HOURS="${HOURS:-48}"
+            [[ "$HOURS" =~ ^[0-9]+$ ]] || { echo "::error::hours must be an integer"; exit 1; }
+            WHERE="${WHERE} AND timestamp > NOW() - INTERVAL '${HOURS}' HOUR"
+          fi
+
+          case "${LEVEL}" in
+            all|'') : ;;
+            error|warn|event) WHERE="${WHERE} AND blob1 = '${LEVEL}'" ;;
+            *) echo "::error::level must be error|warn|event|all"; exit 1 ;;
+          esac
+
+          [ -n "$GUID" ] && WHERE="${WHERE} AND index1 = '${GUID}'"
+
+          # --- Assemble the query. Column map mirrors AnalyticsEngineSink. -----
+          QUERY="SELECT
+              timestamp   AS server_ts,
+              index1      AS user_guid,
+              blob1       AS level,
+              blob2       AS event,
+              blob3       AS platform,
+              blob4       AS app_version,
+              blob5       AS session_id,
+              blob6       AS payload,
+              blob7       AS user_agent,
+              double1     AS client_ts
+            FROM heap_logs
+            ${WHERE}
+            ORDER BY timestamp DESC
+            LIMIT ${LIMIT}"
+
+          echo "Query:"; echo "$QUERY"
+
+          # --- Call the AE SQL API ---------------------------------------------
+          HTTP=$(curl -sS -X POST \
+            "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/analytics_engine/sql" \
+            -H "Authorization: Bearer ${CF_TOKEN}" \
+            -H "Content-Type: text/plain" \
+            --data-raw "${QUERY}" \
+            -o resp.json -w '%{http_code}')
+
+          if [ "$HTTP" != "200" ]; then
+            echo "::error::AE SQL API returned HTTP ${HTTP}"
+            cat resp.json
+            echo
+            echo "If this is a 401/403, the CLOUDFLARE_API_TOKEN secret needs the"
+            echo "'Account Analytics: Read' permission for this account."
+            exit 1
+          fi
+
+          # AE returns { meta, data, rows, ... }. Emit just the rows array so the
+          # artifact is a clean JSON array (same shape contract as feedback.json).
+          jq -e 'has("data")' resp.json >/dev/null \
+            || { echo "::error::unexpected response (no data field)"; cat resp.json; exit 1; }
+          jq '.data' resp.json > logs.json
+          echo "Fetched $(jq 'length' logs.json) log row(s)."
+
+      - name: Upload logs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: logs.json
