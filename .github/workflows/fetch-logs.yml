@@ -59,19 +59,24 @@ jobs:
           GUID="$(printf '%s' "$USER_GUID" | tr -d '-' | tr 'A-Z' 'a-z')"
           [[ -z "$GUID" || "$GUID" =~ ^[0-9a-f]{1,32}$ ]] || { echo "::error::user_guid must be hex"; exit 1; }
 
-          # --- Build the WHERE clause ------------------------------------------
-          WHERE="WHERE 1=1"
+          # --- Resolve the time window to an epoch-ms lower bound --------------
+          # We filter/order on double1 (the client event time, ms) rather than
+          # the AE `timestamp` column: the SQL API cannot infer that column's
+          # type for this dataset ("unable to find type of column: timestamp"),
+          # but double1 holds the same event time and queries cleanly.
           if [ -n "${SINCE}" ]; then
-            # Accept ISO 'T'/'Z' too; toDateTime wants 'YYYY-MM-DD HH:MM:SS'.
+            # Accept ISO 'T'/'Z' too; interpret as UTC.
             SINCE_NORM="$(printf '%s' "$SINCE" | tr 'T' ' ' | tr -d 'Z')"
             [[ "$SINCE_NORM" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]] \
-              || { echo "::error::since must be 'YYYY-MM-DD HH:MM:SS'"; exit 1; }
-            WHERE="${WHERE} AND timestamp > toDateTime('${SINCE_NORM}')"
+              || { echo "::error::since must be 'YYYY-MM-DD HH:MM:SS' (UTC)"; exit 1; }
+            SINCE_MS=$(date -u -d "$SINCE_NORM" +%s%3N) \
+              || { echo "::error::could not parse since as a date"; exit 1; }
           else
             HOURS="${HOURS:-48}"
             [[ "$HOURS" =~ ^[0-9]+$ ]] || { echo "::error::hours must be an integer"; exit 1; }
-            WHERE="${WHERE} AND timestamp > NOW() - INTERVAL '${HOURS}' HOUR"
+            SINCE_MS=$(( $(date -u +%s%3N) - HOURS * 3600 * 1000 ))
           fi
+          WHERE="WHERE double1 > ${SINCE_MS}"
 
           case "${LEVEL}" in
             all|'') : ;;
@@ -91,7 +96,7 @@ jobs:
 
           # --- Assemble the query. Column map mirrors AnalyticsEngineSink. -----
           QUERY="SELECT
-              timestamp   AS server_ts,
+              double1     AS client_ts,
               index1      AS user_guid,
               blob1       AS level,
               blob2       AS event,
@@ -99,11 +104,10 @@ jobs:
               blob4       AS app_version,
               blob5       AS session_id,
               blob6       AS payload,
-              blob7       AS user_agent,
-              double1     AS client_ts
+              blob7       AS user_agent
             FROM heap_logs
             ${WHERE}
-            ORDER BY timestamp DESC
+            ORDER BY double1 DESC
             LIMIT ${LIMIT}"
 
           echo "Query:"; echo "$QUERY"
