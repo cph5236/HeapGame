@@ -13,6 +13,10 @@ on:
         description: "Log level: error | warn | event | all"
         required: false
         default: 'error'
+      platform:
+        description: "Platform: web | android | ios | mobile (android+ios) | all"
+        required: false
+        default: 'all'
       since:
         description: "Only logs after this UTC time (YYYY-MM-DD HH:MM:SS). Blank = use 'hours' window."
         required: false
@@ -39,6 +43,7 @@ jobs:
           ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           LEVEL: ${{ inputs.level }}
+          PLATFORM: ${{ inputs.platform }}
           SINCE: ${{ inputs.since }}
           HOURS: ${{ inputs.hours }}
           USER_GUID: ${{ inputs.user_guid }}
@@ -72,6 +77,14 @@ jobs:
             all|'') : ;;
             error|warn|event) WHERE="${WHERE} AND blob1 = '${LEVEL}'" ;;
             *) echo "::error::level must be error|warn|event|all"; exit 1 ;;
+          esac
+
+          # Platform lives in blob3. 'mobile' = android + ios.
+          case "${PLATFORM}" in
+            all|'') : ;;
+            web|android|ios) WHERE="${WHERE} AND blob3 = '${PLATFORM}'" ;;
+            mobile) WHERE="${WHERE} AND blob3 IN ('android', 'ios')" ;;
+            *) echo "::error::platform must be web|android|ios|mobile|all"; exit 1 ;;
           esac
 
           [ -n "$GUID" ] && WHERE="${WHERE} AND index1 = '${GUID}'"

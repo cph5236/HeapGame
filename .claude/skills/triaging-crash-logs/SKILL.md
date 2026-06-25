@@ -79,8 +79,9 @@ Rows are objects ordered by `server_ts` **descending** (newest first), each with
 `user_agent`, `client_ts` (ms).
 
 **Investigating one specific report?** Skip the cursor and target it directly,
-e.g. `-f user_guid=<guid>` (the reporter's id) or a tight
-`-f since="..." -f hours=...` window. Don't advance the cursor on an ad-hoc
+e.g. `-f user_guid=<guid>` (the reporter's id), `-f platform=mobile` (android+ios;
+also `web`/`android`/`ios`), and/or a tight `-f since="YYYY-MM-DD HH:MM:SS"`
+window — for "today", pass midnight UTC. Don't advance the cursor on an ad-hoc
 investigation run — only the incremental triage run (step 5) moves it.
 
 **If `gh run watch` fails or `length` is 0 unexpectedly:** the cause is almost
