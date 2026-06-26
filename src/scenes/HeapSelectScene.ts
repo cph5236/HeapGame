@@ -9,6 +9,7 @@ import { ScoreClient } from '../systems/ScoreClient';
 import { heightFt } from '../util/format';
 import type { PlayerScoreEntry } from '../../shared/scoreTypes';
 import { getLogger } from '../logging';
+import { applyYouStats } from './heapSelectStats';
 
 const ROW_H = 102;
 const ROW_PAD_X = 16;
@@ -296,16 +297,14 @@ export class HeapSelectScene extends Phaser.Scene {
   }
 
   private refreshYouStats(): void {
-    this.sorted.forEach((heap, i) => {
-      const txt = this.rankTextByRow.get(i);
-      if (!txt) return;
-      const entry = this.playerScores.get(heap.id);
-      if (!entry) {
-        txt.setText('Rank: —').setColor('#7799bb');
-        return;
-      }
-      txt.setText(`Rank: #${entry.rank}`).setColor('#ffcc88');
-    });
+    // Guard against the fire-and-forget score fetch resolving after the scene
+    // was torn down — mutating destroyed Text objects crashes (Crash_Reports P2).
+    applyYouStats(
+      this.scene.isActive(),
+      this.sorted,
+      this.playerScores,
+      (i) => this.rankTextByRow.get(i),
+    );
   }
 
   private openHighlightedLeaderboard(): void {
