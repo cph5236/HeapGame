@@ -72,11 +72,15 @@ gh run download "$RUN_ID" -n logs              # writes ./logs.json (artifact na
 jq 'type=="array" and length' logs.json        # must print a number; errors if missing/corrupt
 ```
 
-Rows are objects ordered by `server_ts` **descending** (newest first), each with:
-`server_ts`, `user_guid`, `level`, `event` (the error message), `platform`,
-`app_version`, `session_id`, `payload` (JSON string — holds `stack`, `filename`,
-`lineno`/`colno` for window errors, or `url`/`status` for fetch errors),
-`user_agent`, `client_ts` (ms).
+Rows are objects ordered by `client_ts` **descending** (newest first), each with:
+`client_ts` (the event time as epoch **ms** — the canonical time field), `user_guid`,
+`level`, `event` (the error message), `platform`, `app_version`, `session_id`,
+`payload` (JSON string — holds `stack`, `filename`, `lineno`/`colno` for window
+errors, or `url`/`status` for fetch errors), `user_agent`.
+
+(The query deliberately avoids Analytics Engine's auto `timestamp` column — the
+SQL API can't infer its type for this dataset — and uses `double1`/`client_ts`,
+which carries the same event time, for filtering and ordering.)
 
 **Investigating one specific report?** Skip the cursor and target it directly,
 e.g. `-f user_guid=<guid>` (the reporter's id), `-f platform=mobile` (android+ios;
@@ -104,7 +108,7 @@ Crash logs are machine-captured, so the work is **clustering**, not classifying.
   the same bug clusters even across sessions.
 - **Merge by signature.** All rows sharing a signature become **one** entry that
   records the count of occurrences, distinct `user_guid`s, distinct
-  `session_id`s, the platform/app-version spread, and first/last `server_ts`.
+  `session_id`s, the platform/app-version spread, and first/last `client_ts`.
   Frequency and reach are the priority signal.
 - **Discard noise:** errors from extensions/3rd-party scripts (frames pointing
   outside the app bundle), already-fixed crashes (cross-check
@@ -147,14 +151,16 @@ refresh the date every run:
 
 ### 5. Advance the cursor
 
-Set `lastProcessedTs` to the **maximum `server_ts` in `logs.json`** (the rows are
-sorted desc, so it's the first row) — including discarded rows, so they are never
-re-fetched. Signature dedup absorbs any boundary-second overlap. Guard the value:
-never advance on a null/empty fetch, or you would skip everything.
+Set `lastProcessedTs` to the **maximum `client_ts` in `logs.json`**, converted to a
+UTC `YYYY-MM-DD HH:MM:SS` string (the form the Action's `since` input expects),
+including discarded rows, so they are never re-fetched. Signature dedup absorbs any
+boundary-second overlap. Guard the value: never advance on a null/empty fetch, or
+you would skip everything.
 
 ```bash
-MAX_TS=$(jq -r 'max_by(.server_ts).server_ts' logs.json)
-[ "$MAX_TS" = "null" ] || [ -z "$MAX_TS" ] && { echo "no rows — not advancing cursor"; exit 1; }
+MAX_MS=$(jq -r '[.[].client_ts] | max' logs.json)
+[ "$MAX_MS" = "null" ] || [ -z "$MAX_MS" ] && { echo "no rows — not advancing cursor"; exit 1; }
+MAX_TS=$(date -u -d "@$(( MAX_MS / 1000 ))" '+%Y-%m-%d %H:%M:%S')
 printf '{ "lastProcessedTs": "%s" }\n' "$MAX_TS" > Todo/crash-log-cursor.json
 ```
 
@@ -193,7 +199,7 @@ EOF
 
 | Mistake | Consequence | Fix |
 |---|---|---|
-| Cursoring by id | AE has no id; everything re-filed or skipped | Cursor on `server_ts` |
+| Cursoring by id | AE has no id; everything re-filed or skipped | Cursor on `client_ts` |
 | Advancing cursor on an ad-hoc / `user_guid` investigation run | Skips the next incremental window | Only the level=error triage run advances the cursor |
 | Filing one entry per raw row | Unreadable dump, no priority signal | Cluster by signature first |
 | Including signature volatiles (GUIDs, query strings) | Same bug fails to cluster | Strip volatile bits before grouping |
