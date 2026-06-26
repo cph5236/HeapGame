@@ -59,24 +59,22 @@ jobs:
           GUID="$(printf '%s' "$USER_GUID" | tr -d '-' | tr 'A-Z' 'a-z')"
           [[ -z "$GUID" || "$GUID" =~ ^[0-9a-f]{1,32}$ ]] || { echo "::error::user_guid must be hex"; exit 1; }
 
-          # --- Resolve the time window to an epoch-ms lower bound --------------
-          # We filter/order on double1 (the client event time, ms) rather than
-          # the AE `timestamp` column: the SQL API cannot infer that column's
-          # type for this dataset ("unable to find type of column: timestamp"),
-          # but double1 holds the same event time and queries cleanly.
+          # --- Build the time predicate ---------------------------------------
+          # AE quirk: `double1` (the event time) is SELECTable but cannot be used
+          # in WHERE or ORDER BY, and the auto `timestamp` column cannot be
+          # SELECTed. So we *filter* on `timestamp` and *output/order* on double1
+          # (the latter via jq, below — AE won't ORDER BY it).
           if [ -n "${SINCE}" ]; then
-            # Accept ISO 'T'/'Z' too; interpret as UTC.
+            # Accept ISO 'T'/'Z' too; toDateTime interprets this as UTC.
             SINCE_NORM="$(printf '%s' "$SINCE" | tr 'T' ' ' | tr -d 'Z')"
             [[ "$SINCE_NORM" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]] \
               || { echo "::error::since must be 'YYYY-MM-DD HH:MM:SS' (UTC)"; exit 1; }
-            SINCE_MS=$(date -u -d "$SINCE_NORM" +%s%3N) \
-              || { echo "::error::could not parse since as a date"; exit 1; }
+            WHERE="WHERE timestamp > toDateTime('${SINCE_NORM}')"
           else
             HOURS="${HOURS:-48}"
             [[ "$HOURS" =~ ^[0-9]+$ ]] || { echo "::error::hours must be an integer"; exit 1; }
-            SINCE_MS=$(( $(date -u +%s%3N) - HOURS * 3600 * 1000 ))
+            WHERE="WHERE timestamp > NOW() - INTERVAL '${HOURS}' HOUR"
           fi
-          WHERE="WHERE double1 > ${SINCE_MS}"
 
           case "${LEVEL}" in
             all|'') : ;;
@@ -95,6 +93,9 @@ jobs:
           [ -n "$GUID" ] && WHERE="${WHERE} AND index1 = '${GUID}'"
 
           # --- Assemble the query. Column map mirrors AnalyticsEngineSink. -----
+          # No ORDER BY: AE rejects ORDER BY double1, and timestamp isn't
+          # SELECTable. We pull the whole matching window (capped at AE's 10k
+          # ceiling) and sort newest-first by client_ts in jq below.
           QUERY="SELECT
               double1     AS client_ts,
               index1      AS user_guid,
@@ -107,8 +108,7 @@ jobs:
               blob7       AS user_agent
             FROM heap_logs
             ${WHERE}
-            ORDER BY double1 DESC
-            LIMIT ${LIMIT}"
+            LIMIT 10000"
 
           echo "Query:"; echo "$QUERY"
 
@@ -121,6 +121,14 @@ jobs:
             -o resp.json -w '%{http_code}')
 
           if [ "$HTTP" != "200" ]; then
+            # AE returns 422 "unable to find type of column" when the result set
+            # is empty (no rows to infer column types from) — i.e. nothing
+            # matched the filters. Treat that as a clean zero-row result.
+            if [ "$HTTP" = "422" ] && grep -q "unable to find type of column" resp.json; then
+              echo "[]" > logs.json
+              echo "Fetched 0 log row(s) — no logs matched the filters."
+              exit 0
+            fi
             echo "::error::AE SQL API returned HTTP ${HTTP}"
             cat resp.json
             echo
@@ -129,11 +137,13 @@ jobs:
             exit 1
           fi
 
-          # AE returns { meta, data, rows, ... }. Emit just the rows array so the
-          # artifact is a clean JSON array (same shape contract as feedback.json).
+          # AE returns { meta, data, rows, ... }. Emit just the rows array, sorted
+          # newest-first by client_ts (AE won't ORDER BY it) and trimmed to the
+          # requested limit — a clean JSON array (same contract as feedback.json).
           jq -e 'has("data")' resp.json >/dev/null \
             || { echo "::error::unexpected response (no data field)"; cat resp.json; exit 1; }
-          jq '.data' resp.json > logs.json
+          jq "[.data[] | .client_ts |= tonumber] | sort_by(.client_ts) | reverse | .[0:${LIMIT}]" \
+            resp.json > logs.json
           echo "Fetched $(jq 'length' logs.json) log row(s)."
 
       - name: Upload logs artifact
