@@ -7,7 +7,7 @@ import { CameraController } from '../systems/CameraController';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import type { Vertex } from '../systems/HeapPolygon';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
-import { getPlayConsoleId } from '../data/achievementDefs';
+import { getPlayConsoleId, HEIGHT_ACHIEVEMENT_THRESHOLDS_PX } from '../data/achievementDefs';
 import {
   applyPolygonToGenerator,
   polygonTopY,
@@ -535,14 +535,18 @@ export class GameScene extends Phaser.Scene {
       );
     }
 
-    // Height achievements
+    // Height achievements. Thresholds live in achievementDefs and are derived
+    // from displayed feet via SCORE_DISPLAY_DIVISOR, so the unlock point always
+    // matches the number the player sees on the HUD. (Hardcoded px previously
+    // assumed a 1000px/m scale that doesn't exist in-game, putting both
+    // thresholds above the climbable height of a heap so neither could fire.)
     const currentHeightPx = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
-    if (!this._reached100m && currentHeightPx >= 100_000) {
+    if (!this._reached100m && currentHeightPx >= HEIGHT_ACHIEVEMENT_THRESHOLDS_PX.reach_100m) {
       this._reached100m = true;
       const id = getPlayConsoleId('reach_100m');
       if (id) PlayGamesClient.unlockAchievement(id);
     }
-    if (!this._reached1000m && currentHeightPx >= 1_000_000) {
+    if (!this._reached1000m && currentHeightPx >= HEIGHT_ACHIEVEMENT_THRESHOLDS_PX.reach_1000m) {
       this._reached1000m = true;
       const id = getPlayConsoleId('reach_1000m');
       if (id) PlayGamesClient.unlockAchievement(id);
