@@ -93,9 +93,9 @@ jobs:
           [ -n "$GUID" ] && WHERE="${WHERE} AND index1 = '${GUID}'"
 
           # --- Assemble the query. Column map mirrors AnalyticsEngineSink. -----
-          # No ORDER BY: AE rejects ORDER BY double1, and timestamp isn't
-          # SELECTable. We pull the whole matching window (capped at AE's 10k
-          # ceiling) and sort newest-first by client_ts in jq below.
+          # AE rejects ORDER BY double1 (the raw column) but accepts ORDER BY on
+          # its SELECT alias, so we order newest-first by client_ts here. (The
+          # auto timestamp column still can't be SELECTed — filter only.)
           QUERY="SELECT
               double1     AS client_ts,
               index1      AS user_guid,
@@ -108,7 +108,8 @@ jobs:
               blob7       AS user_agent
             FROM heap_logs
             ${WHERE}
-            LIMIT 10000"
+            ORDER BY client_ts DESC
+            LIMIT ${LIMIT}"
 
           echo "Query:"; echo "$QUERY"
 
@@ -137,13 +138,12 @@ jobs:
             exit 1
           fi
 
-          # AE returns { meta, data, rows, ... }. Emit just the rows array, sorted
-          # newest-first by client_ts (AE won't ORDER BY it) and trimmed to the
-          # requested limit — a clean JSON array (same contract as feedback.json).
+          # AE returns { meta, data, rows, ... } already ordered newest-first.
+          # Emit just the rows array — a clean JSON array (same contract as
+          # feedback.json).
           jq -e 'has("data")' resp.json >/dev/null \
             || { echo "::error::unexpected response (no data field)"; cat resp.json; exit 1; }
-          jq "[.data[] | .client_ts |= tonumber] | sort_by(.client_ts) | reverse | .[0:${LIMIT}]" \
-            resp.json > logs.json
+          jq '.data' resp.json > logs.json
           echo "Fetched $(jq 'length' logs.json) log row(s)."
 
       - name: Upload logs artifact
