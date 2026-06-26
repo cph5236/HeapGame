@@ -507,7 +507,7 @@ export class GameScene extends Phaser.Scene {
     if (!this._playerDead && !this.blockPlaced) {
       this.trashWallManager.update(this.player.sprite.y, delta, this.pickupManager.getWallSpeedMult() * this.buffManager.getWallSpeedMult());
     }
-    if (!this._playerDead) {
+    if (!this._playerDead && !this.blockPlaced) {
       const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
       const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
       AudioManager.setWallProximity(wallT);
