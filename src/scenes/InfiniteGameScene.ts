@@ -446,8 +446,11 @@ export class InfiniteGameScene extends Phaser.Scene {
       this.pickupManager.getRadarTargets(),
     );
 
-    this.trashWallManager.update(this.player.sprite.y, delta, this.pickupManager.getWallSpeedMult() * this.buffManager.getWallSpeedMult());
+    // Stop advancing the delta-driven wall once dead — otherwise its kill zone
+    // keeps re-firing onKill during the outro (Crash_Reports.md P1). handleDeath
+    // already guards re-entry, but don't let the wall keep running regardless.
     if (!this._playerDead) {
+      this.trashWallManager.update(this.player.sprite.y, delta, this.pickupManager.getWallSpeedMult() * this.buffManager.getWallSpeedMult());
       const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
       const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
       AudioManager.setWallProximity(wallT);

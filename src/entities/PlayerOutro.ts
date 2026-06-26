@@ -81,7 +81,11 @@ export class PlayerOutro {
   }
 
   play(kind: OutroKind, onComplete: () => void): void {
-    if (this.playing) throw new Error('PlayerOutro: play() called while already playing');
+    // Idempotent guard: the run-end sequence can be reached from several
+    // independent paths (trash-wall kill, enemy hit, block placed/success).
+    // Once an outro is playing, a later terminal event must be a no-op rather
+    // than restart the sequence or crash. (See Crash_Reports.md P1.)
+    if (this.playing) return;
     this.playing = true;
     this.completed = false;
     this.kind = kind;

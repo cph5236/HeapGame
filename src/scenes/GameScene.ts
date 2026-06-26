@@ -224,6 +224,8 @@ export class GameScene extends Phaser.Scene {
 
     AudioManager.play('music-game');
     this.trashWallManager = new TrashWallManager(this, TRASH_WALL_DEF, () => {
+      // Run already ended (block placed / success outro running) — ignore a late wall kill.
+      if (this._playerDead || this.blockPlaced) return;
       // Revive: lift the player above the wall surface, drop the wall back below
       // them, and continue the run instead of dying.
       if (this.player.consumeRevive()) {
@@ -498,7 +500,13 @@ export class GameScene extends Phaser.Scene {
     // form is correct from frame 1 and still DPR-correct (cam.height is physical).
     const camBottom = cam.scrollY + cam.height / cam.zoom;
 
-    this.trashWallManager.update(this.player.sprite.y, delta, this.pickupManager.getWallSpeedMult() * this.buffManager.getWallSpeedMult());
+    // Stop advancing the wall once the run has ended (death or block placed).
+    // The wall is delta-driven, so physics.world.pause() in the outro does NOT
+    // halt it — left running, its kill zone re-fires onKill mid-outro and reaches
+    // PlayerOutro.play() a second time (Crash_Reports.md P1). Mirror the enemy gate.
+    if (!this._playerDead && !this.blockPlaced) {
+      this.trashWallManager.update(this.player.sprite.y, delta, this.pickupManager.getWallSpeedMult() * this.buffManager.getWallSpeedMult());
+    }
     if (!this._playerDead) {
       const wallGap = this.trashWallManager.currentWallY - this.player.sprite.y;
       const wallT = 1 - Math.min(1, Math.max(0, wallGap / MAX_WALL_AUDIBLE_DISTANCE));
@@ -658,6 +666,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private placeBlock(): void {
+    // Run already ended (died this frame) — don't start a success outro on top of it.
+    if (this._playerDead || this.blockPlaced) return;
     this.blockPlaced = true;
 
     const px     = this.player.sprite.x;
@@ -798,7 +808,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (this._playerDead) return;
+    if (this._playerDead || this.blockPlaced) return;
     this._playerDead = true;
     AudioManager.onPlayerDeath();
     this.player.freeze();

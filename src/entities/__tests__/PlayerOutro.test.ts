@@ -160,9 +160,24 @@ describe('PlayerOutro — public API contract', () => {
     expect(stub.scene.input.off).toHaveBeenCalled();
   });
 
-  it('play() throws if called twice without destroy or completion', () => {
+  it('play() called twice while playing is a safe no-op (does not throw)', () => {
     outro.play('death', onComplete);
-    expect(() => outro.play('death', onComplete)).toThrow();
+    expect(() => outro.play('death', vi.fn())).not.toThrow();
+  });
+
+  it('a second play() while already playing does not restart the sequence', () => {
+    outro.play('death', onComplete);
+    const proxyCountAfterFirst = stub.scene.add.sprite.mock.calls.length;
+    const secondOnComplete = vi.fn();
+
+    outro.play('success', secondOnComplete);
+
+    // No new overlay objects created, and the second callback is never adopted.
+    expect(stub.scene.add.sprite.mock.calls.length).toBe(proxyCountAfterFirst);
+    const finalTimer = stub.timers.find(t => t.ms === 3000);
+    finalTimer!.callback();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(secondOnComplete).not.toHaveBeenCalled();
   });
 });
 
