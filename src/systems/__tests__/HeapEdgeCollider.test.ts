@@ -412,6 +412,59 @@ describe('HeapEdgeCollider – wallSide setData', () => {
   });
 });
 
+// ── Flat plateau on vertical walls: exposed-summit classification ───────────
+
+describe('HeapEdgeCollider – flat plateau top (exposed summit)', () => {
+  const countAtY = (g: ReturnType<typeof makeMockGroup>, y: number) =>
+    g.create.mock.calls.filter((c: unknown[]) => c[1] === y).length;
+
+  it('makes a flat plateau top walkable when it is a true summit below bandTop', () => {
+    const walkableGroup = makeMockGroup();
+    const wallGroup = makeMockGroup();
+
+    // A wide flat plateau (constant leftX/rightX) sitting on vertical walls.
+    // The top row's deltaX against the identical wall row below is 0 → would read
+    // 90° (wall) under the side-slope rule. But its Y (1010) is strictly below the
+    // band top (1000), so it is a genuine exposed summit and its top must stand.
+    const rows: ScanlineRow[] = [
+      { y: 1010, leftX: 215, rightX: 745 }, // plateau top — summit (1010 > 1000)
+      { y: 1014, leftX: 215, rightX: 745 }, // vertical wall below
+      { y: 1018, leftX: 215, rightX: 745 }, // vertical wall below
+    ];
+
+    const collider = new HeapEdgeCollider(35);
+    collider.buildFromScanlines(1000, rows, walkableGroup as any, wallGroup as any);
+
+    // Top row: both half-slabs walkable (solid top spanning the full plateau).
+    expect(countAtY(walkableGroup, 1010)).toBe(2);
+    expect(countAtY(wallGroup, 1010)).toBe(0);
+
+    // The vertical sides below the plateau stay walls — you can't walk through them.
+    expect(countAtY(wallGroup, 1014)).toBe(2);
+    expect(countAtY(walkableGroup, 1014)).toBe(0);
+  });
+
+  it('keeps a wall clipped at the band boundary (y === bandTop) a wall, not a ledge', () => {
+    const walkableGroup = makeMockGroup();
+    const wallGroup = makeMockGroup();
+
+    // A tall vertical wall threading through this band from the band above is clipped
+    // at exactly y = bandTop. Its top row is NOT a summit — making it walkable would
+    // be a phantom mid-wall ledge that refreshes air-jumps. It must stay a wall.
+    const rows: ScanlineRow[] = [
+      { y: 1000, leftX: 215, rightX: 745 }, // clip row at bandTop — not a summit
+      { y: 1004, leftX: 215, rightX: 745 },
+      { y: 1008, leftX: 215, rightX: 745 },
+    ];
+
+    const collider = new HeapEdgeCollider(35);
+    collider.buildFromScanlines(1000, rows, walkableGroup as any, wallGroup as any);
+
+    expect(countAtY(walkableGroup, 1000)).toBe(0);
+    expect(countAtY(wallGroup, 1000)).toBe(2);
+  });
+});
+
 // ── Characterization: cullBands ────────────────────────────────────────────
 
 describe('HeapEdgeCollider – cullBands', () => {
