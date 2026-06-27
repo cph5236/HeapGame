@@ -20,6 +20,7 @@ import type { JoystickHandle } from '../systems/mountJoystick';
 import { setupGameplayUiCamera, addToGameplayUi } from '../systems/GameplayUiCamera';
 import { HUD } from '../ui/HUD';
 import { EnemyRadar } from '../ui/EnemyRadar';
+import { InfiniteLoadingOverlay } from '../ui/InfiniteLoadingOverlay';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { LayerGenerator } from '../systems/LayerGenerator';
 import { computeBandPolygon, simplifyPolygon, type Vertex } from '../systems/HeapPolygon';
@@ -40,7 +41,7 @@ import {
 import {
   WORLD_WIDTH,
   MOCK_HEAP_HEIGHT_PX,
-  GEN_LOOKAHEAD,
+  INFINITE_PREGEN_BANDS,
   INFINITE_WORLD_WIDTH,
   INFINITE_GAP_WIDTH,
   INFINITE_EDGE_PAD,
@@ -111,6 +112,13 @@ export class InfiniteGameScene extends Phaser.Scene {
   private noclipButton?: Phaser.GameObjects.Text;
   private debugNoclip = false;
   private heapColliders: Phaser.Physics.Arcade.Collider[] = [];
+
+  // ── Preload (loading screen) ──────────────────────────────────────────────────
+  private _preloading = false;
+  private loadingOverlay?: InfiniteLoadingOverlay;
+  private _pregenTargetY = 0;
+  private _pregenDone = 0;
+  private _pregenTotal = 0;
 
   constructor() { super({ key: 'InfiniteGameScene' }); }
 
@@ -352,17 +360,60 @@ export class InfiniteGameScene extends Phaser.Scene {
     // ── Background ────────────────────────────────────────────────────────────────
     new ParallaxBackground(this);
 
-    // ── Initial generation (sync so collision is ready frame 1) ──────────────────
-    for (let i = 0; i < 3; i++) {
-      const gen      = this.generators[i];
-      const layerGen = this.layerGenerators[i];
-      const targetY  = this.spawnY - GEN_LOOKAHEAD;
-      while (layerGen.nextBandTop > targetY) {
+    // ── Preload ──────────────────────────────────────────────────────────────────
+    // Pre-build INFINITE_PREGEN_BANDS bands per column behind a time-sliced loading
+    // overlay so the opening climb has no generation hitches. Steady-state streaming
+    // (INFINITE_LOOKAHEAD_CHUNKS) still tops the buffer up as the player climbs.
+    this.startPreload();
+  }
+
+  // ── Preload ──────────────────────────────────────────────────────────────────
+
+  /** Freeze the world, show the overlay, and begin time-sliced pre-generation. */
+  private startPreload(): void {
+    this._pregenTargetY = this.spawnY - INFINITE_PREGEN_BANDS * CHUNK_BAND_HEIGHT;
+    const startBandTop  = this.layerGenerators[0].nextBandTop;
+    const perColumn     = Math.max(0, Math.ceil((startBandTop - this._pregenTargetY) / CHUNK_BAND_HEIGHT));
+    this._pregenTotal   = perColumn * this.layerGenerators.length;
+    this._pregenDone    = 0;
+    this._preloading    = true;
+    // Pause physics so the player doesn't fall (and enemies don't drift) while the
+    // buffer builds. Resumed in finishPreload(). Static-body generation is unaffected.
+    this.physics.world.pause();
+    this.loadingOverlay = new InfiniteLoadingOverlay(this);
+    this.loadingOverlay.setProgress(0);
+  }
+
+  /** One frame of pre-generation: build bands within a time budget, update progress. */
+  private tickPreload(): void {
+    const BUDGET_MS = 6;
+    const start = performance.now();
+    let pending = true;
+    do {
+      pending = false;
+      for (let i = 0; i < this.generators.length; i++) {
+        const layerGen = this.layerGenerators[i];
+        if (layerGen.nextBandTop <= this._pregenTargetY) continue;
         const { bandTop, rows } = layerGen.nextChunk();
         const polygon = simplifyPolygon(computeBandPolygon(rows), 2);
-        if (rows.length >= 2 && polygon.length >= 3) gen.applyBandWithRows(bandTop, rows, polygon);
+        if (rows.length >= 2 && polygon.length >= 3) {
+          this.generators[i].applyBandWithRows(bandTop, rows, polygon);
+        }
+        this._pregenDone++;
+        pending = true;
       }
-    }
+    } while (pending && performance.now() - start < BUDGET_MS);
+
+    this.loadingOverlay?.setProgress(this._pregenTotal > 0 ? this._pregenDone / this._pregenTotal : 1);
+    if (!pending) this.finishPreload();
+  }
+
+  /** Buffer ready: drop the overlay and hand control to the player. */
+  private finishPreload(): void {
+    this._preloading = false;
+    this.physics.world.resume();
+    this.loadingOverlay?.destroy();
+    this.loadingOverlay = undefined;
   }
 
   private openPauseMenu(): void {
@@ -375,6 +426,10 @@ export class InfiniteGameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    // While preloading, drive band generation behind the overlay and skip all
+    // gameplay (physics is paused, so nothing moves anyway).
+    if (this._preloading) { this.tickPreload(); return; }
+
     const score = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
     if (score > 0 && this._runStartTime === null) {
       this._runStartTime = this.time.now;
@@ -618,6 +673,10 @@ export class InfiniteGameScene extends Phaser.Scene {
   };
 
   shutdown(): void {
+    // Guard against exiting mid-preload: drop the overlay and clear the paused flag.
+    this.loadingOverlay?.destroy();
+    this.loadingOverlay = undefined;
+    this._preloading = false;
     this.joystick?.destroy();
     this.joystick = null;
     this.playerAnimator.destroy();
