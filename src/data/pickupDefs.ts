@@ -143,11 +143,11 @@ export function formatEffectSummary(effect: PickupEffect): string {
   if (effect.speedMult !== 1) {
     parts.push(`${effect.speedMult > 1 ? '+' : ''}${Math.round((effect.speedMult - 1) * 100)}% spd`);
   }
-  if (effect.jumpBonus !== 0)     parts.push(`${effect.jumpBonus > 0 ? '+' : ''}${effect.jumpBonus} jump`);
+  if (effect.jumpBonus !== 0)     parts.push(`${effect.jumpBonus > 0 ? '+' : ''}${Math.round(effect.jumpBonus)} jump`);
   if (effect.extraAirJumps !== 0) parts.push(`${effect.extraAirJumps > 0 ? '+' : ''}${effect.extraAirJumps} air`);
-  if ((effect.gravityMult  ?? 1) !== 1) parts.push(effect.gravityMult!  < 1 ? 'float'   : 'heavy');
+  if ((effect.gravityMult  ?? 1) !== 1) parts.push(effect.gravityMult!  < 1 ? 'floaty'   : 'heavy');
   if ((effect.cooldownMult ?? 1) !== 1) parts.push(effect.cooldownMult! < 1 ? 'fast cd' : 'slow cd');
-  if ((effect.wallSpeedMult ?? 1) !== 1) parts.push(effect.wallSpeedMult! > 1 ? 'wall+' : 'wall-');
+  if ((effect.wallSpeedMult ?? 1) !== 1) parts.push(effect.wallSpeedMult! > 1 ? 'wall speed+' : 'wall speed -');
   return parts.join(' · ');
 }
 
