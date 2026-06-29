@@ -29,6 +29,7 @@ import type { HeapParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
+import { bottomButtonLayout } from './scoreLayout';
 import { getPlayConsoleId, LEADERBOARD_HIGH_SCORE_ID } from '../data/achievementDefs';
 
 
@@ -755,18 +756,54 @@ export class ScoreScene extends Phaser.Scene {
   // ── Bottom Buttons ────────────────────────────────────────────────────────────
 
   private createBottomButtons(): void {
-    const btnY     = logicalHeight(this) * 0.87;
-    const showAd   = this._isAdRun && !this._rewardedUsed;
-    const showCkpt = this.checkpointAvailable;
+    const btnY   = logicalHeight(this) * 0.87;
+    const showAd = this._isAdRun && !this._rewardedUsed;
 
-    if (showAd && showCkpt) {
-      this.createCheckpointButtonAt(logicalWidth(this) * 0.25, btnY, true);
-      this.createRewardedAdButtonAt(logicalWidth(this) * 0.75, btnY, true);
-    } else if (showCkpt) {
-      this.createCheckpointButtonAt(logicalWidth(this) / 2, btnY, false);
-    } else if (showAd) {
-      this.createRewardedAdButtonAt(logicalWidth(this) / 2, btnY, false);
+    const slots = bottomButtonLayout(
+      { checkpointAvailable: this.checkpointAvailable, showAd },
+      logicalWidth(this),
+    );
+
+    for (const slot of slots) {
+      switch (slot.kind) {
+        case 'checkpoint': this.createCheckpointButtonAt(slot.cx, btnY, slot.compact); break;
+        case 'playAgain':  this.createPlayAgainButtonAt(slot.cx, btnY, slot.compact); break;
+        case 'rewardedAd': this.createRewardedAdButtonAt(slot.cx, btnY, slot.compact); break;
+      }
     }
+  }
+
+  private createPlayAgainButtonAt(cx: number, cy: number, compact: boolean): void {
+    const label    = 'PLAY AGAIN';
+    const fontSize = compact ? '12px' : '14px';
+    const padX     = compact ? 14 : 20;
+
+    const btn = this.add.text(cx, cy, label, {
+      fontSize,
+      fontFamily:      'monospace',
+      color:           '#ffffff',
+      backgroundColor: '#1a4d8bcc',
+      padding:         { x: padX, y: 10 },
+      fontStyle:       'bold',
+    }).setOrigin(0.5);
+
+    btn.on('pointerover', () => { btn.setColor('#aaccff'); btn.setBackgroundColor('#2266bbcc'); });
+    btn.on('pointerout',  () => { btn.setColor('#ffffff'); btn.setBackgroundColor('#1a4d8bcc'); });
+
+    // Delay interactivity so a stray tap carried over from gameplay can't trigger
+    // an instant restart (mirrors the checkpoint button's guard).
+    this.time.delayedCall(1500, () => {
+      btn.setInteractive({ useHandCursor: true });
+      btn.once('pointerup', () => {
+        const infinite = this._heapParams.isInfinite;
+        const key      = infinite ? 'InfiniteGameScene' : 'GameScene';
+        this.commitCoins();
+        if (this._isAdRun && !this._rewardedWatched) AdClient.showInterstitial();
+        this.scene.stop('ScoreScene');
+        this.scene.stop(key);
+        this.scene.start(key);   // fresh run, no checkpoint
+      });
+    });
   }
 
   private createCheckpointButtonAt(cx: number, cy: number, compact: boolean): void {
