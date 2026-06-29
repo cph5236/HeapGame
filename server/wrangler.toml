@@ -3,11 +3,36 @@ main = "src/index.ts"
 compatibility_date = "2024-03-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Domain-sharded D1 databases. See docs/superpowers/runbooks/d1-sharding-kv-cache.md
+# for provisioning + the one-time data move. Apply migrations via migrate-d1.yml.
 [[d1_databases]]
-binding = "DB"
-database_name = "heap"
-database_id = "2806bb3d-bd95-4780-ae16-ee479eacede9"
-migrations_dir = "migrations"
+binding = "DB_HEAP"
+database_name = "heap_core"
+database_id = "6c720154-e532-4ba5-854c-c361d556f9ed"
+migrations_dir = "migrations/heap_core"
+
+[[d1_databases]]
+binding = "DB_SCORES"
+database_name = "heap_scores"
+database_id = "5e4ff42c-19b6-4fc0-b8ad-d2403e549d4d"
+migrations_dir = "migrations/heap_scores"
+
+[[d1_databases]]
+binding = "DB_REWARDS"
+database_name = "heap_rewards"
+database_id = "e4455f98-49b5-4958-95f5-68889b545a05"
+migrations_dir = "migrations/heap_rewards"
+
+[[d1_databases]]
+binding = "DB_TELEMETRY"
+database_name = "heap_telemetry"
+database_id = "10c8d42d-d08b-462e-a206-5d2767b39f8b"
+migrations_dir = "migrations/heap_telemetry"
+
+# Edge read cache (cache-aside / write-through over the heap + score repos).
+[[kv_namespaces]]
+binding = "CACHE"
+id = "a507cae477684d78991295b61a54dcc6"
 
 # Analytics Engine binding — uncomment when deploying to production.
 # In local dev (wrangler dev) the AE stub is silently no-op; omitting the
