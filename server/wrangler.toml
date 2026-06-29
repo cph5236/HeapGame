@@ -3,11 +3,37 @@ main = "src/index.ts"
 compatibility_date = "2024-03-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Domain-sharded D1 databases. database_id values are placeholders until the
+# databases are provisioned — see docs/superpowers/runbooks/d1-sharding-kv-cache.md
+# ("Provision" step) for the `wrangler d1 create` commands that emit the real ids.
 [[d1_databases]]
-binding = "DB"
-database_name = "heap"
-database_id = "2806bb3d-bd95-4780-ae16-ee479eacede9"
-migrations_dir = "migrations"
+binding = "DB_HEAP"
+database_name = "heap_core"
+database_id = "<heap_core-id>"
+migrations_dir = "migrations/heap_core"
+
+[[d1_databases]]
+binding = "DB_SCORES"
+database_name = "heap_scores"
+database_id = "<heap_scores-id>"
+migrations_dir = "migrations/heap_scores"
+
+[[d1_databases]]
+binding = "DB_REWARDS"
+database_name = "heap_rewards"
+database_id = "<heap_rewards-id>"
+migrations_dir = "migrations/heap_rewards"
+
+[[d1_databases]]
+binding = "DB_TELEMETRY"
+database_name = "heap_telemetry"
+database_id = "<heap_telemetry-id>"
+migrations_dir = "migrations/heap_telemetry"
+
+# Edge read cache (cache-aside / write-through). Placeholder id until provisioned.
+[[kv_namespaces]]
+binding = "CACHE"
+id = "<cache-namespace-id>"
 
 # Analytics Engine binding — uncomment when deploying to production.
 # In local dev (wrangler dev) the AE stub is silently no-op; omitting the
