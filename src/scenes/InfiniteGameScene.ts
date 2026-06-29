@@ -21,6 +21,7 @@ import { setupGameplayUiCamera, addToGameplayUi } from '../systems/GameplayUiCam
 import { HUD } from '../ui/HUD';
 import { EnemyRadar } from '../ui/EnemyRadar';
 import { InfiniteLoadingOverlay } from '../ui/InfiniteLoadingOverlay';
+import { preloadProgress, preloadComplete } from '../systems/infinitePreload';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { LayerGenerator } from '../systems/LayerGenerator';
 import { computeBandPolygon, simplifyPolygon, type Vertex } from '../systems/HeapPolygon';
@@ -42,6 +43,7 @@ import {
   WORLD_WIDTH,
   MOCK_HEAP_HEIGHT_PX,
   INFINITE_PREGEN_BANDS,
+  INFINITE_PREGEN_MIN_MS,
   INFINITE_WORLD_WIDTH,
   INFINITE_GAP_WIDTH,
   INFINITE_EDGE_PAD,
@@ -119,6 +121,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   private _pregenTargetY = 0;
   private _pregenDone = 0;
   private _pregenTotal = 0;
+  private _preloadStartMs = 0;
 
   constructor() { super({ key: 'InfiniteGameScene' }); }
 
@@ -371,11 +374,16 @@ export class InfiniteGameScene extends Phaser.Scene {
 
   /** Freeze the world, show the overlay, and begin time-sliced pre-generation. */
   private startPreload(): void {
+    // Idempotent: drop any prior overlay so a re-entry never orphans game objects.
+    this.loadingOverlay?.destroy();
     this._pregenTargetY = this.spawnY - INFINITE_PREGEN_BANDS * CHUNK_BAND_HEIGHT;
     const startBandTop  = this.layerGenerators[0].nextBandTop;
     const perColumn     = Math.max(0, Math.ceil((startBandTop - this._pregenTargetY) / CHUNK_BAND_HEIGHT));
     this._pregenTotal   = perColumn * this.layerGenerators.length;
     this._pregenDone    = 0;
+    // Wall-clock start: time spent in the ESC pause menu mid-load still counts
+    // toward the minimum duration, so resuming doesn't replay a fresh full ramp.
+    this._preloadStartMs = performance.now();
     this._preloading    = true;
     // Pause physics so the player doesn't fall (and enemies don't drift) while the
     // buffer builds. Resumed in finishPreload(). Static-body generation is unaffected.
@@ -404,8 +412,12 @@ export class InfiniteGameScene extends Phaser.Scene {
       }
     } while (pending && performance.now() - start < BUDGET_MS);
 
-    this.loadingOverlay?.setProgress(this._pregenTotal > 0 ? this._pregenDone / this._pregenTotal : 1);
-    if (!pending) this.finishPreload();
+    // Drive the bar by the slower of real generation and a minimum-duration ramp,
+    // and only finish once both are satisfied — so a fast load never just flashes.
+    const elapsed = performance.now() - this._preloadStartMs;
+    this.loadingOverlay?.setProgress(
+      preloadProgress(this._pregenDone, this._pregenTotal, elapsed, INFINITE_PREGEN_MIN_MS));
+    if (preloadComplete(pending, elapsed, INFINITE_PREGEN_MIN_MS)) this.finishPreload();
   }
 
   /** Buffer ready: drop the overlay and hand control to the player. */
@@ -673,10 +685,12 @@ export class InfiniteGameScene extends Phaser.Scene {
   };
 
   shutdown(): void {
-    // Guard against exiting mid-preload: drop the overlay and clear the paused flag.
+    // Guard against exiting mid-preload (quit-to-menu / restart): drop the overlay
+    // and resume the world so we never leave a paused physics world behind.
     this.loadingOverlay?.destroy();
     this.loadingOverlay = undefined;
     this._preloading = false;
+    if (this.physics.world.isPaused) this.physics.world.resume();
     this.joystick?.destroy();
     this.joystick = null;
     this.playerAnimator.destroy();

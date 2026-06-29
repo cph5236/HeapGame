@@ -30,6 +30,7 @@ export const INFINITE_GAP_WIDTH        = 350;         // gap between each heap c
 export const INFINITE_WORLD_WIDTH      = WORLD_WIDTH * 3 + INFINITE_GAP_WIDTH * 2 + INFINITE_EDGE_PAD * 2;
 export const INFINITE_LOOKAHEAD_CHUNKS = 10;          // chunks generated ahead of player during play
 export const INFINITE_PREGEN_BANDS     = 20;          // bands pre-built per column behind the loading screen
+export const INFINITE_PREGEN_MIN_MS    = 1000;        // min loading-screen duration so the bar never just flashes
 export const INFINITE_MIN_WIDTH        = 150;         // tightest squeeze (~4× player width)
 export const INFINITE_MAX_WIDTH        = 900;         // widest open section
 export const INFINITE_CENTER_DRIFT_MAX = 200;         // max px center shifts from column midpoint
