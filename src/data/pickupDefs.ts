@@ -135,7 +135,7 @@ export function aggregateModifiers(carried: readonly CarriedPickup[]): CarryModi
 }
 
 /** Compact human-readable summary of an effect, for the proximity overlay.
- *  Multiplier levers read as words (float/heavy, fast/slow cd, wall±); speed is a
+ *  Multiplier levers read as words (floaty/heavy, fast/slow cd, wall±); speed is a
  *  signed %, jump/air are signed numbers. Empty when the item has no stat effect
  *  (e.g. the instant shield). */
 export function formatEffectSummary(effect: PickupEffect): string {
@@ -147,7 +147,7 @@ export function formatEffectSummary(effect: PickupEffect): string {
   if (effect.extraAirJumps !== 0) parts.push(`${effect.extraAirJumps > 0 ? '+' : ''}${effect.extraAirJumps} air`);
   if ((effect.gravityMult  ?? 1) !== 1) parts.push(effect.gravityMult!  < 1 ? 'floaty'   : 'heavy');
   if ((effect.cooldownMult ?? 1) !== 1) parts.push(effect.cooldownMult! < 1 ? 'fast cd' : 'slow cd');
-  if ((effect.wallSpeedMult ?? 1) !== 1) parts.push(effect.wallSpeedMult! > 1 ? 'wall speed+' : 'wall speed -');
+  if ((effect.wallSpeedMult ?? 1) !== 1) parts.push(effect.wallSpeedMult! > 1 ? 'wall speed+' : 'wall speed-');
   return parts.join(' · ');
 }
 
