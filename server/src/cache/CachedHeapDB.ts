@@ -46,6 +46,13 @@ export class CachedHeapDB implements HeapDB {
     return row;
   }
 
+  // Bypass the cache entirely — the placement read-modify-write needs the
+  // authoritative row so its CAS sees the latest version. Does not populate the
+  // cache (the following write-through invalidates it anyway).
+  getHeapFresh(id: string): Promise<HeapRow | null> {
+    return this.inner.getHeapFresh(id);
+  }
+
   async getBaseVerticesById(baseId: string): Promise<Vertex[] | null> {
     const key = `cache:base:${baseId}`;
     const hit = await this.kv.get<Vertex[]>(key, 'json');
@@ -71,9 +78,18 @@ export class CachedHeapDB implements HeapDB {
     this.waitUntil(this.kv.put(`cache:base:${baseId}`, JSON.stringify(vertices), { expirationTtl: BASE_TTL }));
   }
 
-  async updateHeap(id: string, baseId: string, version: number, liveZone: Vertex[], freezeY: number): Promise<void> {
-    await this.inner.updateHeap(id, baseId, version, liveZone, freezeY);
-    await this.invalidateHeap(id);
+  async updateHeap(
+    id: string,
+    baseId: string,
+    version: number,
+    liveZone: Vertex[],
+    freezeY: number,
+    expectedVersion?: number,
+  ): Promise<boolean> {
+    const applied = await this.inner.updateHeap(id, baseId, version, liveZone, freezeY, expectedVersion);
+    // A failed CAS changed nothing — the winning writer already busted the cache.
+    if (applied) await this.invalidateHeap(id);
+    return applied;
   }
 
   async updateHeapParams(id: string, params: HeapParams): Promise<void> {
