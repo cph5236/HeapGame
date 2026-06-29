@@ -38,8 +38,8 @@ describe('tutorial fixture', () => {
   });
 
   it('is a mound mirror-symmetric about the world centre, so wraps are seamless', () => {
-    // Mirroring every vertex across x = W/2 must reproduce a matching point (the dome
-    // summit is symmetric about the centre). Small Y tolerance guards rounding.
+    // Mirroring every vertex across x = W/2 must reproduce a matching point (the flat
+    // plateau summit is symmetric about the centre). Small Y tolerance guards rounding.
     const TOL = 2;
     const mirrorExists = (vx: number, vy: number) =>
       TUTORIAL_HEAP.some(u => Math.abs(u.x - (WORLD_WIDTH - vx)) <= TOL && Math.abs(u.y - vy) <= TOL);

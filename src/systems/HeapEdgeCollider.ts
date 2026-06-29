@@ -165,8 +165,23 @@ export class HeapEdgeCollider {
    * Classify a row's left and right edges as walkable or wall.
    * Wall detection: slope > walkableSlopeDeg, or a pronounced overhang lip.
    * Overhang detection: row extends further out than the row below.
+   *
+   * Exposed-summit rule: the topmost row of a band whose Y sits strictly below
+   * `bandTop` is a genuine top surface of the heap (the scanline above it had no
+   * coverage → empty space above), so its top is standable regardless of how steep
+   * its side faces are. A flat plateau on vertical walls would otherwise read 90°
+   * (deltaX=0 against the identical wall row below) and be ejected — the reported
+   * "flat plateau misclassified as wall" bug. Rows clipped at a band boundary sit
+   * exactly at `bandTop` (a wall threading through from the band above), so they are
+   * NOT summits and keep their wall classification — this never turns a real wall
+   * into a standable ledge, only a false negative on plateaus that happen to align
+   * with a band boundary.
    */
-  private classifyRow(rows: ScanlineRow[], i: number): RowClassification {
+  private classifyRow(rows: ScanlineRow[], i: number, bandTop: number): RowClassification {
+    if (i === 0 && rows[0].y > bandTop) {
+      return { left: { kind: 'walkable' }, right: { kind: 'walkable' } };
+    }
+
     const row      = rows[i];
     const rowBelow = i + 1 < rows.length ? rows[i + 1] : null;
 
@@ -223,7 +238,7 @@ export class HeapEdgeCollider {
 
     for (let i = 0; i < rows.length; i++) {
       const row    = rows[i];
-      const cls    = this.classifyRow(rows, i);
+      const cls    = this.classifyRow(rows, i, bandTop);
       const geom   = this.slabGeometryForRow(row);
 
       bodies.push(this.createSpan(walkableGroup, wallGroup, geom.left,  row.y, cls.left));

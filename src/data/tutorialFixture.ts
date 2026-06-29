@@ -31,16 +31,17 @@ const H = TUTORIAL_WORLD_HEIGHT;
  *   - gentle shoulder + walk ........ MOVE (and wrap-around demo)
  *   - 120px vertical step ........... JUMP onto the ledge
  *   - 320px vertical wall ........... WALL-JUMP (too tall for a single jump)
- *   - gently curved DOME summit .... DASH practice (taught as the move you use to
+ *   - wide flat PLATEAU summit ..... DASH practice (taught as the move you use to
  *                                     cross the open gap when wrapping sides),
  *                                     then STOMP the rat, PICKUP the item, PLACE a block
  *
- * The summit is a gently curved DOME (peak at the centre, ~21° max flank), not a flat
- * top. This is deliberate: a perfectly flat top whose Y lands on the scanline grid is
- * misread by the collider as a vertical wall and ejects the player. A dome makes every
- * scanline row's left/right extent change, so each row classifies as the real (gentle,
- * walkable) slope. See Todo/Bugs.md ("Flat plateau top misclassified as a vertical
- * wall"); the dome sidesteps that bug rather than relying on the 1px-tilt hack.
+ * The summit is a wide FLAT plateau (constant y = H-590, the height of the two tall
+ * walls). HeapEdgeCollider's exposed-summit rule makes the topmost scanline row of a
+ * band walkable when its Y sits strictly below the band top — a genuine exposed top of
+ * the heap — so a flat plateau standing on vertical walls is standable instead of being
+ * misread as a wall and ejecting the player. See Todo/Bugs.md ("Flat plateau top
+ * misclassified as a vertical wall"). (An earlier version used a domed summit to
+ * sidestep that bug before the collider was fixed.)
  */
 export const TUTORIAL_HEAP: Vertex[] = [
   { x: 0,   y: H },          // 0  bottom-left base
@@ -48,20 +49,16 @@ export const TUTORIAL_HEAP: Vertex[] = [
   { x: 150, y: H - 150 },    // 2  move ramp top (~11° — walkable)
   { x: 150, y: H - 270 },    // 3  jump-step top (120px vertical riser)
   { x: 215, y: H - 270 },    // 4  flat after the jump
-  { x: 215, y: H - 590 },    // 5  top of the tall wall / dome left edge (wall-jump up to here)
-  { x: 290, y: H - 619 },    // 6  dome flank (~21°)
-  { x: 370, y: H - 640 },    // 7  dome flank (~15°)
-  { x: 430, y: H - 648 },    // 8  dome (rat sits here)
-  { x: 480, y: H - 650 },    // 9  dome PEAK (centre)
-  { x: 530, y: H - 648 },    // 10 dome (item sits here, mirror of 8)
-  { x: 590, y: H - 640 },    // 11 dome flank (mirror of 7)
-  { x: 670, y: H - 619 },    // 12 dome flank (mirror of 6)
-  { x: 745, y: H - 590 },    // 13 dome right edge / right wall top (mirror of 5)
-  { x: 745, y: H - 270 },    // 14 right wall base (320px drop, mirror of 4)
-  { x: 810, y: H - 270 },    // 15 flat before right jump-step (mirror of 3)
-  { x: 810, y: H - 150 },    // 16 right jump-step base (mirror of 2)
-  { x: W,   y: H - 120 },    // 17 right edge shoulder (wrap point, mirror of 1)
-  { x: W,   y: H },          // 18 bottom-right base
+  { x: 215, y: H - 590 },    // 5  top of the tall wall / plateau left edge (wall-jump up to here)
+  { x: 430, y: H - 590 },    // 6  flat plateau (rat sits here)
+  { x: 480, y: H - 590 },    // 7  flat plateau (centre)
+  { x: 530, y: H - 590 },    // 8  flat plateau (item sits here, mirror of 6)
+  { x: 745, y: H - 590 },    // 9  plateau right edge / right wall top (mirror of 5)
+  { x: 745, y: H - 270 },    // 10 right wall base (320px drop, mirror of 4)
+  { x: 810, y: H - 270 },    // 11 flat before right jump-step (mirror of 3)
+  { x: 810, y: H - 150 },    // 12 right jump-step base (mirror of 2)
+  { x: W,   y: H - 120 },    // 13 right edge shoulder (wrap point, mirror of 1)
+  { x: W,   y: H },          // 14 bottom-right base
 ];
 
 /** Player spawn: on the left move-shoulder (x < 150), dropped in from just above so
@@ -70,13 +67,13 @@ export const TUTORIAL_HEAP: Vertex[] = [
 export const TUTORIAL_SPAWN_X = 30;
 export const TUTORIAL_SPAWN_Y = H - 250;
 
-/** Rat: stands on the dome just left of the peak (vertex 8, surface y=H-648). */
+/** Rat: stands on the flat plateau just left of centre (vertex 6, surface y=H-590). */
 export const TUTORIAL_RAT_X         = 430;
-export const TUTORIAL_RAT_SURFACE_Y = H - 648;
+export const TUTORIAL_RAT_SURFACE_Y = H - 590;
 
-/** Item: sits on the dome just right of the peak (vertex 10, surface y=H-648). */
+/** Item: sits on the flat plateau just right of centre (vertex 8, surface y=H-590). */
 export const TUTORIAL_ITEM_X         = 530;
-export const TUTORIAL_ITEM_SURFACE_Y = H - 648;
+export const TUTORIAL_ITEM_SURFACE_Y = H - 590;
 
 export const TUTORIAL_STEPS: TutorialStep[] = [
   { id: 'welcome',    message: 'Welcome to Heap! Climb to the top of the Trash Heap.', advanceOn: 'tap',        mode: 'info' },

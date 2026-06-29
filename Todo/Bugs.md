@@ -37,6 +37,32 @@ it reads flat again. This matches the 1px workaround exactly.
 interior gaps — the crevasses in the same heap get filled in by the collision model
 because only `[minX, maxX]` is kept per scanline.
 
-**Status:** Deferred. Idea captured; not fixed. Touch points:
-`shared/heapPolygon/polygon.ts` (`verticesToScanlines`, `computeRowSlopeAngleDeg`),
-`src/systems/HeapEdgeCollider.ts` (`classifyRow`, `createSpan`).
+**Status:** RESOLVED (PR #80, branch `claude/plateau-wall-collision-bug-mxj1jx`).
+
+**Fix:** `HeapEdgeCollider.classifyRow` now takes `bandTop`. The topmost scanline row of
+a band whose Y is *strictly below* `bandTop` is a genuine exposed summit (nothing above
+it), so its top is forced walkable regardless of side-face slope — a flat plateau on
+vertical walls is standable instead of being ejected. A wall threading down from the
+band above is clipped at exactly `y === bandTop`, so it is NOT treated as a summit and
+keeps its wall classification: the override can only relax a wall to walkable for a true
+top, never turn a real mid-wall into a standable (air-jump-refreshing) ledge. The
+tutorial fixture's summit was reverted from the dome workaround back to a true flat
+plateau (`src/data/tutorialFixture.ts`, constant `y = H-590`). Verified end-to-end
+(`src/data/__tests__/tutorialFixtureCollision.test.ts`) plus unit tests in
+`src/systems/__tests__/HeapEdgeCollider.test.ts`.
+
+**Residual limitations (accepted — false-negative only, not fixed):** the `bandTop`
+heuristic doesn't cover two edge cases. Neither affects authored or procedural heaps
+today (we don't hand-author flat tops on band boundaries, and procedural heaps don't
+produce them), so they are left documented rather than fixed:
+  (a) A flat plateau authored *exactly* on a `CHUNK_BAND_HEIGHT` (500px) boundary gives
+      `rows[0].y === bandTop`, so the summit rule won't fire and it reads as a wall.
+      Workaround: author the plateau Y off the boundary (the original 1px nudge).
+  (b) A "mixed" band that is part-summit / part-wall-from-above can't be represented at
+      all by the single `[minX, maxX]`-span-per-row scanline model (the deeper limitation
+      above), so per-row summit detection can't distinguish it.
+The clean full fix is a per-row "top-exposed" flag computed from the FULL polygon before
+banding (threaded through the `ScanlineRow` type, `HeapGenerator.applyBandPolygon`, and
+`buildFromScanlines`/`buildFromVertices`). Deferred until authored flat-top heaps make
+it worthwhile. Touch points: `shared/heapPolygon/polygon.ts`,
+`src/systems/HeapEdgeCollider.ts` (`classifyRow`, `createSpan`), `src/systems/HeapPolygonLoader.ts`.
