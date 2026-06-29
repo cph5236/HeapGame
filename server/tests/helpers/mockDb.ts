@@ -51,6 +51,10 @@ export class MockHeapDB implements HeapDB {
     return { id, ...row };
   }
 
+  getHeapFresh(id: string): Promise<HeapRow | null> {
+    return this.getHeap(id);
+  }
+
   async createHeap(
     heapId: string,
     baseId: string,
@@ -87,10 +91,20 @@ export class MockHeapDB implements HeapDB {
     });
   }
 
-  async updateHeap(id: string, baseId: string, version: number, liveZone: Vertex[], freezeY: number): Promise<void> {
+  async updateHeap(
+    id: string,
+    baseId: string,
+    version: number,
+    liveZone: Vertex[],
+    freezeY: number,
+    expectedVersion?: number,
+  ): Promise<boolean> {
     const existing = this.heaps.get(id);
-    if (!existing) return;
+    if (!existing) return false;
+    // Compare-and-swap: reject when the row moved on since it was read.
+    if (expectedVersion !== undefined && existing.version !== expectedVersion) return false;
     this.heaps.set(id, { ...existing, base_id: baseId, version, live_zone: JSON.stringify(liveZone), freeze_y: freezeY });
+    return true;
   }
 
   async updateHeapParams(id: string, params: HeapParams): Promise<void> {

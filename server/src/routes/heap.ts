@@ -359,101 +359,120 @@ export function heapRoutes(
       return c.json({ error: 'invalid placement' }, 400);
     }
 
-    const row = await db.getHeap(id);
-    if (!row) return c.json({ error: 'Heap not found' }, 404);
+    // Read-modify-write under compare-and-swap. The heap is the shared,
+    // community-grown structure, so concurrent placements are expected. Each
+    // attempt re-reads the authoritative (uncached) row and only commits if the
+    // version is still what we read; on a lost-update conflict we re-read and
+    // retry instead of silently clobbering the other placement.
+    const PLACE_MAX_ATTEMPTS = 5;
+    for (let attempt = 0; attempt < PLACE_MAX_ATTEMPTS; attempt++) {
+      const row = await db.getHeapFresh(id);
+      if (!row) return c.json({ error: 'Heap not found' }, 404);
 
-    if (x < PLACE_X_MIN || x > PLACE_X_MAX) {
-      console.warn(`[place] reject: x out of center zone (${x}) heapId=${id}`);
-      const sink = getSink();
-      if (sink) {
-        await captureServer(sink, 'warn', 'place:rejected', { reason: 'x out of center zone', heapId: id, x, min: PLACE_X_MIN, max: PLACE_X_MAX });
+      if (x < PLACE_X_MIN || x > PLACE_X_MAX) {
+        console.warn(`[place] reject: x out of center zone (${x}) heapId=${id}`);
+        const sink = getSink();
+        if (sink) {
+          await captureServer(sink, 'warn', 'place:rejected', { reason: 'x out of center zone', heapId: id, x, min: PLACE_X_MIN, max: PLACE_X_MAX });
+        }
+        return c.json({ error: 'invalid placement' }, 400);
       }
-      return c.json({ error: 'invalid placement' }, 400);
-    }
-    if (y < 0 || y > row.world_height) {
-      console.warn(`[place] reject: y out of world bounds (${y}, world_height=${row.world_height}) heapId=${id}`);
-      const sink = getSink();
-      if (sink) {
-        await captureServer(sink, 'warn', 'place:rejected', { reason: 'y out of world bounds', heapId: id, y, worldHeight: row.world_height });
+      if (y < 0 || y > row.world_height) {
+        console.warn(`[place] reject: y out of world bounds (${y}, world_height=${row.world_height}) heapId=${id}`);
+        const sink = getSink();
+        if (sink) {
+          await captureServer(sink, 'warn', 'place:rejected', { reason: 'y out of world bounds', heapId: id, y, worldHeight: row.world_height });
+        }
+        return c.json({ error: 'invalid placement' }, 400);
       }
-      return c.json({ error: 'invalid placement' }, 400);
-    }
-    if (y < row.top_y - PLACE_HEIGHT_GRACE_PX) {
-      console.warn(`[place] reject: y above summit + grace (${y}, top_y=${row.top_y}, grace=${PLACE_HEIGHT_GRACE_PX}) heapId=${id}`);
-      const sink = getSink();
-      if (sink) {
-        await captureServer(sink, 'warn', 'place:rejected', { reason: 'y above summit + grace', heapId: id, y, topY: row.top_y, grace: PLACE_HEIGHT_GRACE_PX });
+      if (y < row.top_y - PLACE_HEIGHT_GRACE_PX) {
+        console.warn(`[place] reject: y above summit + grace (${y}, top_y=${row.top_y}, grace=${PLACE_HEIGHT_GRACE_PX}) heapId=${id}`);
+        const sink = getSink();
+        if (sink) {
+          await captureServer(sink, 'warn', 'place:rejected', { reason: 'y above summit + grace', heapId: id, y, topY: row.top_y, grace: PLACE_HEIGHT_GRACE_PX });
+        }
+        return c.json({ error: 'invalid placement' }, 400);
       }
-      return c.json({ error: 'invalid placement' }, 400);
-    }
 
-    const liveZone: Vertex[] = JSON.parse(row.live_zone);
+      const liveZone: Vertex[] = JSON.parse(row.live_zone);
 
-    // Bottom of the live zone — placements below this aren't in the active band.
-    // Mirrors HeapClient.getLiveZoneBottomY: max y of live zone, or top_y + 300 (HEAP_TOP_ZONE_PX) for fresh heaps.
-    const liveZoneBottomY = liveZone.length > 0
-      ? liveZone.reduce((max, v) => v.y > max ? v.y : max, -Infinity)
-      : row.top_y + HEAP_TOP_ZONE_PX;
-    if (y > liveZoneBottomY) {
-      console.warn(`[place] reject: y below active zone (${y} > liveZoneBottomY=${liveZoneBottomY}) heapId=${id}`);
-      const sink = getSink();
-      if (sink) {
-        await captureServer(sink, 'warn', 'place:rejected', { reason: 'y below active zone', heapId: id, y, liveZoneBottomY });
+      // Bottom of the live zone — placements below this aren't in the active band.
+      // Mirrors HeapClient.getLiveZoneBottomY: max y of live zone, or top_y + 300 (HEAP_TOP_ZONE_PX) for fresh heaps.
+      const liveZoneBottomY = liveZone.length > 0
+        ? liveZone.reduce((max, v) => v.y > max ? v.y : max, -Infinity)
+        : row.top_y + HEAP_TOP_ZONE_PX;
+      if (y > liveZoneBottomY) {
+        console.warn(`[place] reject: y below active zone (${y} > liveZoneBottomY=${liveZoneBottomY}) heapId=${id}`);
+        const sink = getSink();
+        if (sink) {
+          await captureServer(sink, 'warn', 'place:rejected', { reason: 'y below active zone', heapId: id, y, liveZoneBottomY });
+        }
+        return c.json({ error: 'invalid placement' }, 400);
       }
-      return c.json({ error: 'invalid placement' }, 400);
+
+      const baseVertices: Vertex[] = (await db.getBaseVerticesById(row.base_id)) ?? [];
+      const fullPolygon = [...baseVertices, ...liveZone];
+
+      if (isPointInside({ x, y }, fullPolygon)) {
+        return c.json({ accepted: false, version: row.version } satisfies PlaceResponse);
+      }
+
+      // Insert sorted Y ascending (summit = lowest Y = front)
+      const newVertex: Vertex = { x, y };
+      const insertIdx = liveZone.findIndex((v) => v.y > y);
+      if (insertIdx === -1) {
+        liveZone.push(newVertex);
+      } else {
+        liveZone.splice(insertIdx, 0, newVertex);
+      }
+
+      // Ghost points: jitter near a random existing live zone vertex to keep heap shape organic
+      const ghostCount = Math.max(0, Math.floor(row.ghost_point_count ?? 1));
+      for (let i = 0; i < ghostCount; i++) {
+        const anchorIdx = Math.floor(Math.random() * liveZone.length);
+        const anchor = liveZone[anchorIdx];
+        const dx = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
+        const dy = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
+        const gx = Math.max(PLACE_X_MIN, Math.min(PLACE_X_MAX, anchor.x + dx));
+        const gy = Math.max(row.top_y, Math.min(liveZoneBottomY, anchor.y + dy));
+        const gv: Vertex = { x: gx, y: gy };
+        const gIdx = liveZone.findIndex((v) => v.y > gy);
+        if (gIdx === -1) liveZone.push(gv); else liveZone.splice(gIdx, 0, gv);
+      }
+
+      const bonusCoins = y > row.top_y + OFF_PEAK_THRESHOLD_PX ? OFF_PEAK_BONUS_COINS : undefined;
+
+      let currentBaseId = row.base_id;
+      let newFreezeY = row.freeze_y;
+      let finalLiveZone = liveZone;
+
+      const freeze = checkFreeze(liveZone, baseVertices);
+      if (freeze) {
+        // Freeze is rare; on a CAS miss the new base row is orphaned (referenced
+        // by no heap) and harmless — the retry creates a fresh one.
+        const newBaseId = crypto.randomUUID();
+        const now = new Date().toISOString();
+        await db.createBase(newBaseId, id, freeze.newBaseVertices, freeze.newBaseVertexHash, now);
+        currentBaseId = newBaseId;
+        newFreezeY = freeze.newFreezeY;
+        finalLiveZone = freeze.newLiveZone;
+      }
+
+      const newVersion = row.version + 1;
+      const applied = await db.updateHeap(id, currentBaseId, newVersion, finalLiveZone, newFreezeY, row.version);
+      if (!applied) continue; // lost-update conflict — re-read and retry
+
+      await db.updateTopY(id, y);
+      return c.json({ accepted: true, version: newVersion, bonusCoins } satisfies PlaceResponse);
     }
 
-    const baseVertices: Vertex[] = (await db.getBaseVerticesById(row.base_id)) ?? [];
-    const fullPolygon = [...baseVertices, ...liveZone];
-
-    if (isPointInside({ x, y }, fullPolygon)) {
-      return c.json({ accepted: false, version: row.version } satisfies PlaceResponse);
+    // Exhausted retries under sustained contention — let the client resync via load().
+    console.warn(`[place] reject: version conflict after ${PLACE_MAX_ATTEMPTS} attempts heapId=${id}`);
+    const sink = getSink();
+    if (sink) {
+      await captureServer(sink, 'warn', 'place:rejected', { reason: 'version conflict', heapId: id, attempts: PLACE_MAX_ATTEMPTS });
     }
-
-    // Insert sorted Y ascending (summit = lowest Y = front)
-    const newVertex: Vertex = { x, y };
-    const insertIdx = liveZone.findIndex((v) => v.y > y);
-    if (insertIdx === -1) {
-      liveZone.push(newVertex);
-    } else {
-      liveZone.splice(insertIdx, 0, newVertex);
-    }
-
-    // Ghost points: jitter near a random existing live zone vertex to keep heap shape organic
-    const ghostCount = Math.max(0, Math.floor(row.ghost_point_count ?? 1));
-    for (let i = 0; i < ghostCount; i++) {
-      const anchorIdx = Math.floor(Math.random() * liveZone.length);
-      const anchor = liveZone[anchorIdx];
-      const dx = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
-      const dy = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
-      const gx = Math.max(PLACE_X_MIN, Math.min(PLACE_X_MAX, anchor.x + dx));
-      const gy = Math.max(row.top_y, Math.min(liveZoneBottomY, anchor.y + dy));
-      const gv: Vertex = { x: gx, y: gy };
-      const gIdx = liveZone.findIndex((v) => v.y > gy);
-      if (gIdx === -1) liveZone.push(gv); else liveZone.splice(gIdx, 0, gv);
-    }
-
-    const bonusCoins = y > row.top_y + OFF_PEAK_THRESHOLD_PX ? OFF_PEAK_BONUS_COINS : undefined;
-
-    let currentBaseId = row.base_id;
-    let newFreezeY = row.freeze_y;
-    let finalLiveZone = liveZone;
-
-    const freeze = checkFreeze(liveZone, baseVertices);
-    if (freeze) {
-      const newBaseId = crypto.randomUUID();
-      const now = new Date().toISOString();
-      await db.createBase(newBaseId, id, freeze.newBaseVertices, freeze.newBaseVertexHash, now);
-      currentBaseId = newBaseId;
-      newFreezeY = freeze.newFreezeY;
-      finalLiveZone = freeze.newLiveZone;
-    }
-
-    const newVersion = row.version + 1;
-    await db.updateHeap(id, currentBaseId, newVersion, finalLiveZone, newFreezeY);
-    await db.updateTopY(id, y);
-
-    return c.json({ accepted: true, version: newVersion, bonusCoins } satisfies PlaceResponse);
+    return c.json({ error: 'placement conflict' }, 409);
   });
 
   // DELETE /heaps/:id — remove heap and all its base snapshots

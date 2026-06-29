@@ -42,6 +42,12 @@ export interface HeapSummaryRow {
 export interface HeapDB {
   listHeaps(): Promise<HeapSummaryRow[]>;
   getHeap(id: string): Promise<HeapRow | null>;
+  /**
+   * Like getHeap, but guaranteed to read from the source of truth (D1),
+   * bypassing any read cache. Used by the placement read-modify-write so each
+   * attempt sees the latest version and the CAS loop converges.
+   */
+  getHeapFresh(id: string): Promise<HeapRow | null>;
   createHeap(
     heapId: string,
     baseId: string,
@@ -50,7 +56,21 @@ export interface HeapDB {
     now: string,
     params?: HeapParams,
   ): Promise<void>;
-  updateHeap(id: string, baseId: string, version: number, liveZone: Vertex[], freezeY: number): Promise<void>;
+  /**
+   * Update a heap's mutable state. When `expectedVersion` is supplied this is a
+   * compare-and-swap: the write only lands if the row's current version still
+   * equals `expectedVersion`. Returns true if a row was updated, false on a
+   * version mismatch (lost-update conflict). Omitting `expectedVersion` writes
+   * unconditionally (used by reset) and always returns true.
+   */
+  updateHeap(
+    id: string,
+    baseId: string,
+    version: number,
+    liveZone: Vertex[],
+    freezeY: number,
+    expectedVersion?: number,
+  ): Promise<boolean>;
   updateHeapParams(id: string, params: HeapParams): Promise<void>;
   updateTopY(id: string, candidateY: number): Promise<void>;
   deleteHeap(id: string): Promise<void>;
@@ -80,6 +100,11 @@ export class D1HeapDB implements HeapDB {
       .bind(id)
       .first<HeapRow>();
     return row ?? null;
+  }
+
+  // D1HeapDB has no read cache, so a fresh read is just a read.
+  getHeapFresh(id: string): Promise<HeapRow | null> {
+    return this.getHeap(id);
   }
 
   async createHeap(
@@ -116,11 +141,27 @@ export class D1HeapDB implements HeapDB {
     ]);
   }
 
-  async updateHeap(id: string, baseId: string, version: number, liveZone: Vertex[], freezeY: number): Promise<void> {
-    await this.d1
-      .prepare('UPDATE heap SET base_id = ?1, version = ?2, live_zone = ?3, freeze_y = ?4 WHERE id = ?5')
-      .bind(baseId, version, JSON.stringify(liveZone), freezeY, id)
+  async updateHeap(
+    id: string,
+    baseId: string,
+    version: number,
+    liveZone: Vertex[],
+    freezeY: number,
+    expectedVersion?: number,
+  ): Promise<boolean> {
+    if (expectedVersion === undefined) {
+      await this.d1
+        .prepare('UPDATE heap SET base_id = ?1, version = ?2, live_zone = ?3, freeze_y = ?4 WHERE id = ?5')
+        .bind(baseId, version, JSON.stringify(liveZone), freezeY, id)
+        .run();
+      return true;
+    }
+    // Compare-and-swap: only write if the version we read is still current.
+    const res = await this.d1
+      .prepare('UPDATE heap SET base_id = ?1, version = ?2, live_zone = ?3, freeze_y = ?4 WHERE id = ?5 AND version = ?6')
+      .bind(baseId, version, JSON.stringify(liveZone), freezeY, id, expectedVersion)
       .run();
+    return (res.meta.changes ?? 0) > 0;
   }
 
   async updateHeapParams(id: string, params: HeapParams): Promise<void> {
