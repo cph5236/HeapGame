@@ -6,6 +6,7 @@ import {
   scaleSpawnChance,
   computeGhostFlip,
   insetPatrolBounds,
+  shouldPatrol,
 } from '../EnemySpawnMath';
 import type { EnemySpawnParams } from '../../../shared/heapTypes';
 
@@ -201,5 +202,21 @@ describe('insetPatrolBounds', () => {
     expect(b.maxX).toBe(80);
     expect(b.minY).toBe(230); // midpoint Y, not NaN
     expect(b.maxY).toBe(230);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shouldPatrol
+// ---------------------------------------------------------------------------
+
+describe('shouldPatrol', () => {
+  it('patrols when the span is at or above the minimum width', () => {
+    expect(shouldPatrol(100, 148, 48)).toBe(true); // span exactly 48
+    expect(shouldPatrol(100, 200, 48)).toBe(true); // span 100
+  });
+
+  it('stands still when the span is below the minimum width', () => {
+    expect(shouldPatrol(100, 140, 48)).toBe(false); // span 40
+    expect(shouldPatrol(100, 100, 48)).toBe(false); // collapsed to a point
   });
 });
