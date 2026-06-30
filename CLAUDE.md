@@ -23,11 +23,20 @@ at `/heaps`. Tests run via Vitest.
 - Don't commit `.wrangler/state/` (local D1 state)
 
 ## D1 migrations
-Schema changes require a migration file — never edit `server/schema.sql` alone.
-1. Add `server/migrations/NNNN_description.sql` with only the incremental SQL
-2. Update `server/schema.sql` to the final intended state (for fresh installs)
-Apply: `cd server && npx wrangler d1 migrations apply heap --local` (or `--remote`).
-(The D1 `database_name` is `heap` — see `server/wrangler.toml`. The binding is `DB`.)
+The backend is split into four domain D1 databases (see the sharding plan/runbook
+in `docs/superpowers/`): `heap_core` (binding `DB_HEAP`), `heap_scores` (`DB_SCORES`),
+`heap_rewards` (`DB_REWARDS`), `heap_telemetry` (`DB_TELEMETRY`) — all declared in
+`server/wrangler.toml`, plus a `CACHE` KV namespace. Read-heavy repos are wrapped by
+the cache decorators in `server/src/cache/`. Pick the DB a table lives in before
+adding a migration.
+
+Schema changes require a migration file — never edit the per-DB schema alone.
+1. Add `server/migrations/<db>/NNNN_description.sql` with only the incremental SQL
+   (`<db>` is the database, e.g. `heap_core`)
+2. Update `server/schema/<db>.sql` to the final intended state (for fresh installs).
+   `server/schema.sql` is now just an index pointing at those per-DB files.
+Apply: `cd server && npx wrangler d1 migrations apply <db> --local` (or `--remote`).
+Remote applies are also driven by `.github/workflows/migrate-d1.yml` (loops all four).
 Never edit an applied migration — write a new one. One migration per change.
 
 ## Scene preview devices
