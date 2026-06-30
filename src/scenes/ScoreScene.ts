@@ -936,10 +936,14 @@ export class ScoreScene extends Phaser.Scene {
     // Panel bottom is computed up-front (the entries themselves render async) so the
     // bottom buttons can be anchored below it. For mock data the row count is known
     // exactly; for the live call we reserve the top-N rows it will request.
+    // renderLeaderboardEntries adds 2 rows (gap + the player's own row) when the
+    // player isn't in the top N. The mock path knows the data; the live path resolves
+    // async (after this synchronous return), so it must reserve the worst case — else
+    // the buttons anchor too high and overlap a taller-than-expected live panel.
     const reservedRows = this._mockLeaderboard
       ? this._mockLeaderboard.top.length
         + (this._mockLeaderboard.player && !this.playerInTop(this._mockLeaderboard) ? 2 : 0)
-      : LEADERBOARD_TOP_N;
+      : LEADERBOARD_TOP_N + 2;
     const panelBottom = PANEL_TOP + (reservedRows * ROW_H + 8);
 
     // Mock data path — renders immediately, no API call.
