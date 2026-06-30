@@ -14,6 +14,8 @@ Call the Integrity API at important moments in your app to check that it's your 
 
 Cosmetics system, Add a character editor where players can View/ buy cosmetics with coins this button with be the player icon on the main menu. Cosmetic items will be setup with a Px offset to say where they should be displayed on the player character. cosmetics are applied an ID so they can be synced to the DB to a new playerCustomization table this will contain the usersID and a json blob that contains the cosmetics applied to the User. This will be used by the client this data will be used on the highscores screens on the Top 5 scores. The Top 5 rows of scored will need to enlarged a little so each player can show off thier player customization. This customization will also change the visual look of the player in the game while the player plays. 
 
+Language detection?
+
 ### UI
 
 ### ENEMIES
