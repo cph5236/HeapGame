@@ -73,7 +73,7 @@ Rows are `FeedbackRow` objects ordered by `id` ascending (see
 a precondition, not your command. Surface it; do not try to fix by obtaining the
 secret. Likely causes:
 - repo secret `ADMIN_SECRET` or `VITE_HEAP_SERVER_URL` not set
-- remote D1 migration not applied (`cd server && npx wrangler d1 migrations apply heap --remote`)
+- remote D1 migration not applied (the `feedback` table lives in `heap_telemetry`: `cd server && npx wrangler d1 migrations apply heap_telemetry --remote`)
 
 **If 0 rows:** there is nothing new. Stop — do not open an empty PR. Report "no new
 feedback since id N."
