@@ -212,8 +212,11 @@ export class Player {
     this.applyTerrainStick(ctx);
     this.updateDash(ctx, delta);
 
-    const jumpFired     = this.tryGroundOrAirJump(ctx);
+    // Wall jump is tried first so it takes priority when it can actually fire
+    // (it costs no air jump). When it can't fire — e.g. same-wall cooldown — we
+    // fall through to the ground/air jump path instead of swallowing the press.
     const wallJumpFired = this.tryWallJump(ctx);
+    const jumpFired     = wallJumpFired ? false : this.tryGroundOrAirJump(ctx);
     if (jumpFired)     this.sprite.scene.events.emit('player-action', 'jump');
     if (wallJumpFired) this.sprite.scene.events.emit('player-action', 'walljump');
     this.consumeJumpBufferOnFire(jumpFired || wallJumpFired);
@@ -467,7 +470,6 @@ export class Player {
     const jumpPressed = !this.placementMode && this.jumpBufferTimer > 0;
     if (!jumpPressed) return false;
     const body = ctx.body;
-    const onWallForJump = this.wallJumpEnabled && (body.blocked.left || body.blocked.right);
     const canGroundJump = this.coyoteTimer > 0;
     if (canGroundJump) {
       this.momentumX = this.bufferedJumpVx !== 0 ? this.bufferedJumpVx : body.velocity.x;
@@ -478,7 +480,9 @@ export class Player {
       this._justJumped = true;
       return true;
     }
-    if (!onWallForJump && this.airJumpsRemaining > 0) {
+    // Air jump: a wall jump, when applicable, already fired earlier this frame and
+    // short-circuited this call — so reaching here means no wall jump took the press.
+    if (this.airJumpsRemaining > 0) {
       this.momentumX = this.bufferedJumpVx !== 0 ? this.bufferedJumpVx : body.velocity.x;
       this.sprite.setVelocityX(this.momentumX);
       this.sprite.setVelocityY(this.jumpVelocity);
