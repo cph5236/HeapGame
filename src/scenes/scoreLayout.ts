@@ -31,3 +31,22 @@ export function bottomButtonLayout(
 
   return [{ kind: primary, cx: width / 2, compact: false }];
 }
+
+/** Vertical center (logical y) for the bottom action-button row.
+ *
+ * The buttons are anchored just below the leaderboard panel rather than at a fixed
+ * fraction of the screen, so a tall coins-breakdown + leaderboard stack can never
+ * overrun them (the old bug: a fixed 0.87·H row rendered behind the leaderboard on
+ * short screens). The result is clamped to stay clear of the "tap for menu" prompt
+ * (~0.95·H). When there is no leaderboard at all, falls back to the legacy position.
+ */
+export function bottomButtonRowY(opts: {
+  leaderboardBottom: number | null;  // logical y of the leaderboard panel's bottom edge
+  screenHeight: number;              // logical viewport height
+}): number {
+  const GAP      = 34;                       // panel bottom → button center
+  const maxY     = opts.screenHeight * 0.89; // keep clear of the menu prompt at 0.95·H
+  const fallback = opts.screenHeight * 0.87;
+  if (opts.leaderboardBottom == null) return fallback;
+  return Math.min(opts.leaderboardBottom + GAP, maxY);
+}

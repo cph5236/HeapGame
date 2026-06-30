@@ -29,7 +29,7 @@ import type { HeapParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
-import { bottomButtonLayout } from './scoreLayout';
+import { bottomButtonLayout, bottomButtonRowY } from './scoreLayout';
 import { getPlayConsoleId, LEADERBOARD_HIGH_SCORE_ID } from '../data/achievementDefs';
 
 
@@ -192,8 +192,8 @@ export class ScoreScene extends Phaser.Scene {
     this.createScoreDisplay();
     if (this.isNewHighScore) this.createHighScoreBadge();
     this._coinsPanelBottom = this.createCoinsPanel(result.rows, result.finalCoins, balance);
-    this.createLeaderboardPanel(this._coinsPanelBottom);
-    this.createBottomButtons();
+    const leaderboardBottom = this.createLeaderboardPanel(this._coinsPanelBottom);
+    this.createBottomButtons(leaderboardBottom);
     this.createMenuPrompt();
 
     if (this._forceBreakdownOpen && this._scoreRows.length > 0) {
@@ -355,7 +355,7 @@ export class ScoreScene extends Phaser.Scene {
 
   private createHighScoreBadge(): void {
     const color = '#ffdd44';
-    this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.30, 'NEW HIGH SCORE!', {
+    this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.275, 'NEW HIGH SCORE!', {
       fontSize:      '18px',
       fontFamily:    'monospace',
       color,
@@ -528,7 +528,7 @@ export class ScoreScene extends Phaser.Scene {
     this._coinsPanelObjects = [];
 
     const PANEL_X    = logicalWidth(this) / 2;
-    const PANEL_TOP  = logicalHeight(this) * 0.37;
+    const PANEL_TOP  = logicalHeight(this) * 0.31;
     const PANEL_W    = logicalWidth(this) * 0.88;
     const ROW_H      = 26;
     const PAD_X      = 16;
@@ -755,8 +755,11 @@ export class ScoreScene extends Phaser.Scene {
 
   // ── Bottom Buttons ────────────────────────────────────────────────────────────
 
-  private createBottomButtons(): void {
-    const btnY   = logicalHeight(this) * 0.87;
+  private createBottomButtons(leaderboardBottom: number | null): void {
+    const btnY   = bottomButtonRowY({
+      leaderboardBottom,
+      screenHeight: logicalHeight(this),
+    });
     const showAd = this._isAdRun && !this._rewardedUsed;
 
     const slots = bottomButtonLayout(
@@ -922,20 +925,33 @@ export class ScoreScene extends Phaser.Scene {
 
   // ── Leaderboard Panel ─────────────────────────────────────────────────────────
 
-  private createLeaderboardPanel(topY: number): void {
-    if (!this.heapId && !this._mockLeaderboard) return;
+  private createLeaderboardPanel(topY: number): number | null {
+    if (!this.heapId && !this._mockLeaderboard) return null;
 
     const PANEL_TOP = topY;
     const PANEL_W   = logicalWidth(this) * 0.88;
     const PANEL_X   = logicalWidth(this) / 2;
     const ROW_H     = 20;
 
+    // Panel bottom is computed up-front (the entries themselves render async) so the
+    // bottom buttons can be anchored below it. For mock data the row count is known
+    // exactly; for the live call we reserve the top-N rows it will request.
+    // renderLeaderboardEntries adds 2 rows (gap + the player's own row) when the
+    // player isn't in the top N. The mock path knows the data; the live path resolves
+    // async (after this synchronous return), so it must reserve the worst case — else
+    // the buttons anchor too high and overlap a taller-than-expected live panel.
+    const reservedRows = this._mockLeaderboard
+      ? this._mockLeaderboard.top.length
+        + (this._mockLeaderboard.player && !this.playerInTop(this._mockLeaderboard) ? 2 : 0)
+      : LEADERBOARD_TOP_N + 2;
+    const panelBottom = PANEL_TOP + (reservedRows * ROW_H + 8);
+
     // Mock data path — renders immediately, no API call.
     if (this._mockLeaderboard) {
       this.time.delayedCall(1100, () => {
         this.renderLeaderboardEntries(this._mockLeaderboard!, PANEL_TOP, PANEL_W, ROW_H);
       });
-      return;
+      return panelBottom;
     }
 
     // Loading placeholder
@@ -992,6 +1008,8 @@ export class ScoreScene extends Phaser.Scene {
 
       this.renderLeaderboardEntries(ctx, PANEL_TOP, PANEL_W, ROW_H);
     });
+
+    return panelBottom;
   }
 
   private renderLeaderboardEntries(
