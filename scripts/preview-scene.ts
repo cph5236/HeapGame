@@ -28,7 +28,10 @@ if (!sceneName) {
 }
 
 const isAll       = deviceName === 'all';
-const isHeaded    = deviceName === 'headed';
+// `headed` or `headed:<device|WxH>` — opens a visible browser at the given size
+// (defaults to pixel7). The part after the colon reuses the normal device parsing.
+const isHeaded    = deviceName === 'headed' || deviceName.startsWith('headed:');
+const headedSpec  = isHeaded ? deviceName.split(':')[1] ?? 'pixel7' : 'pixel7';
 const customDims  = parseCustomDimension(deviceName);
 
 if (!isAll && !isHeaded && !DEVICES[deviceName] && !customDims) {
@@ -69,7 +72,7 @@ async function screenshotDevice(deviceKey: string, outPathOverride?: string): Pr
 }
 
 async function launchHeaded(): Promise<void> {
-  const device  = DEVICES['pixel7']; // headed defaults to pixel7 dimensions
+  const device  = DEVICES[headedSpec] ?? parseCustomDimension(headedSpec) ?? DEVICES['pixel7'];
   const browser = await chromium.launch({ headless: false });
   const context = await browser.newContext({
     viewport:          { width: device.width, height: device.height },
@@ -77,7 +80,7 @@ async function launchHeaded(): Promise<void> {
   });
   const page = await context.newPage();
 
-  console.log(`Opening ${sceneName} in headed browser (pixel7 dimensions)...`);
+  console.log(`Opening ${sceneName} in headed browser (${headedSpec} dimensions)...`);
   console.log(`URL: ${url}`);
   console.log('Close the browser window to exit.');
   await page.goto(url);
