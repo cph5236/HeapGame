@@ -13,6 +13,7 @@ import { initLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { AudioManager } from '../systems/AudioManager';
 import { AdClient } from '../systems/ads/AdClient';
+import { primeConfig } from '../systems/ConfigClient';
 import { loadGameAssets } from './loadGameAssets';
 
 export class BootScene extends Phaser.Scene {
@@ -30,6 +31,7 @@ export class BootScene extends Phaser.Scene {
     generateAllTextures(this);
     AudioManager.init(this.sound);
     AdClient.initialize().catch(() => { /* silent — ad init is optional */ });
+    primeConfig(); // fire-and-forget — AdCadence falls back to hardcoded defaults until this resolves
 
     // Default registry state so MenuScene can render before catalog resolves.
     this.game.registry.set('heapCatalog',    [] as HeapSummary[]);
