@@ -29,6 +29,7 @@ import {
   DASH_DURATION_MS,
   DASH_COOLDOWN_MS,
   WALL_JUMP_COOLDOWN_MS,
+  WALL_JUMP_PUSH,
   PLAYER_AIR_MAX_SPEED,
   WORLD_WIDTH,
   SKY_PAD,
@@ -435,11 +436,51 @@ describe('Player — tilt-kick jump', () => {
     expect(spy.setVelocityX).toContain(PLAYER_SPEED * 1.5);
     expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
     // The jump block's isMobile tilt-kick is NOT executed for wall jumps
-    // (onWallForJump guard prevents ground/air jump paths from running)
+    // (the wall jump fires first and short-circuits the ground/air jump path)
     // setVelocityX contains 180 from the walk-phase tilt, but NOT from the jump block:
     // verify that the last setVelocityX is the wall-jump vx (300), not a tilt-kick
     const lastVx = spy.setVelocityX[spy.setVelocityX.length - 1];
     expect(lastVx).toBe(PLAYER_SPEED * 1.5);
+  });
+
+  it('falls back to an air jump when on a wall but the wall jump is on same-wall cooldown', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 1, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).airJumpsRemaining = 1;
+    // Already wall-jumped from this (left) wall — same-wall cooldown is active.
+    (player as any).wallJumpCooldown = WALL_JUMP_COOLDOWN_MS;
+    (player as any).lastWallJumpSide = -1;
+
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    // Air jump fires as the fallback: vy set to jump velocity, an air jump consumed,
+    // and NO wall-jump horizontal push applied.
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
+    expect(player.airJumpsLeft).toBe(0);
+    expect(spy.setVelocityX).not.toContain(WALL_JUMP_PUSH);
+    expect(spy.setVelocityX).not.toContain(-WALL_JUMP_PUSH);
+  });
+
+  it('prefers the wall jump (no air jump consumed) when on a wall and off cooldown', async () => {
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 1, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).airJumpsRemaining = 1;
+
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    // Wall jump fires; the air jump is preserved.
+    expect(spy.setVelocityX).toContain(WALL_JUMP_PUSH); // dir=1 from blocked.left
+    expect(player.airJumpsLeft).toBe(1);
   });
 });
 
