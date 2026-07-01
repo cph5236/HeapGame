@@ -33,4 +33,9 @@ export class CachedConfigDB implements ConfigDB {
     await this.inner.set(key, value, now);
     await this.kv.delete(CONFIG_KEY);
   }
+
+  async delete(key: string): Promise<void> {
+    await this.inner.delete(key);
+    await this.kv.delete(CONFIG_KEY);
+  }
 }

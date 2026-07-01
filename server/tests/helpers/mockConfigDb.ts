@@ -15,6 +15,10 @@ export class MockConfigDB implements ConfigDB {
     this.rows.set(key, value);
   }
 
+  async delete(key: string): Promise<void> {
+    this.rows.delete(key);
+  }
+
   /** Test helper — seed a row directly without going through set(). */
   seed(key: string, value: unknown): void {
     this.rows.set(key, value);

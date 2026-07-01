@@ -199,4 +199,27 @@ describe('CachedConfigDB', () => {
     const after = await cached.getAll();
     expect(after).toEqual({ ad_cadence: { min: 10, max: 20 } });
   });
+
+  it('delete removes the key from the inner store and invalidates the cache', async () => {
+    const { inner, kv, cached } = setup();
+    inner.seed('ad_cadence', { min: 40, max: 50 });
+    inner.seed('other_key', { foo: 'bar' });
+    await cached.getAll(); // populate cache
+    expect(kv.has('cache:config:all')).toBe(true);
+
+    await cached.delete('ad_cadence');
+    expect(kv.deletes).toContain('cache:config:all');
+
+    const after = await cached.getAll();
+    expect(after).toEqual({ other_key: { foo: 'bar' } });
+  });
+
+  it('delete is a no-op (not an error) for a key that does not exist', async () => {
+    const { inner, kv, cached } = setup();
+    inner.seed('ad_cadence', { min: 40, max: 50 });
+
+    await expect(cached.delete('nonexistent_key')).resolves.toBeUndefined();
+    const after = await cached.getAll();
+    expect(after).toEqual({ ad_cadence: { min: 40, max: 50 } });
+  });
 });

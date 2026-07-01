@@ -9,6 +9,9 @@ export interface ConfigDB {
 
   /** Upsert a single key's value (JSON-encoded on write). */
   set(key: string, value: unknown, now: string): Promise<void>;
+
+  /** Remove a key. No-op (not an error) if the key doesn't exist. */
+  delete(key: string): Promise<void>;
 }
 
 /** Production implementation backed by Cloudflare D1. */
@@ -40,5 +43,9 @@ export class D1ConfigDB implements ConfigDB {
       )
       .bind(key, JSON.stringify(value), now)
       .run();
+  }
+
+  async delete(key: string): Promise<void> {
+    await this.d1.prepare('DELETE FROM app_config WHERE key = ?1').bind(key).run();
   }
 }
