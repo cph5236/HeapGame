@@ -107,6 +107,17 @@ describe('PUT /config/:key', () => {
     expect(res.status).toBe(400);
   });
 
+  it('accepts a key at exactly 64 characters (200)', async () => {
+    const app = makeApp();
+    const key64 = 'a' + 'b'.repeat(63); // 64 chars total, valid per ^[a-z][a-z0-9_]{0,63}$
+    const res = await app.request(`/config/${key64}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: 1 }),
+    });
+    expect(res.status).toBe(200);
+  });
+
   it('rejects a value over the size cap (400)', async () => {
     const app = makeApp();
     const res = await app.request('/config/big_value', {
@@ -115,6 +126,17 @@ describe('PUT /config/:key', () => {
       body: JSON.stringify({ value: 'x'.repeat(8200) }),
     });
     expect(res.status).toBe(400);
+  });
+
+  it('accepts a value at exactly the size cap (200)', async () => {
+    const app = makeApp();
+    const value = 'x'.repeat(8190); // JSON.stringify(value).length === 8192 exactly
+    const res = await app.request('/config/boundary_key', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value }),
+    });
+    expect(res.status).toBe(200);
   });
 
   it('rejects a malformed JSON body (400)', async () => {

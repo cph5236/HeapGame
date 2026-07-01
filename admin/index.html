@@ -559,10 +559,10 @@
         return `<div class="cfg-row" style="margin-bottom:12px;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <strong>${escapeHtml(key)}</strong>
-            <button class="btn-sm btn-danger" onclick="onDeleteConfigKey('${key}')">Delete</button>
+            <button class="btn-sm btn-danger" onclick="onDeleteConfigKey('${escapeHtml(key)}')">Delete</button>
           </div>
           <textarea class="cfg-value" data-key="${escapeHtml(key)}" rows="4" style="width:100%; font-family:monospace;">${pretty}</textarea>
-          <button onclick="onSaveConfigKey('${key}')">Save</button>
+          <button onclick="onSaveConfigKey('${escapeHtml(key)}')">Save</button>
         </div>`;
       }).join('');
     }
