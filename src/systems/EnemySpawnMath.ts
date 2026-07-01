@@ -88,3 +88,12 @@ export function insetPatrolBounds(
     leftV.y + ((x - leftV.x) / width) * (rightV.y - leftV.y);
   return { minX, maxX, minY: edgeY(minX), maxY: edgeY(maxX) };
 }
+
+/**
+ * Whether a rat should patrol its bounds, or stand still. Narrow spans produce
+ * twitchy in-place shuffles (walk a few px, flip animation, repeat), so below
+ * `minWidth` the rat just idles. See RAT_MIN_PATROL_PX.
+ */
+export function shouldPatrol(minX: number, maxX: number, minWidth: number): boolean {
+  return maxX - minX >= minWidth;
+}

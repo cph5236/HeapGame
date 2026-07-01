@@ -5,7 +5,7 @@ import { Enemy, applyBodyBox } from '../entities/Enemy';
 import { ENEMY_DEFS, EnemyDef } from '../data/enemyDefs';
 import { SOUND_DEFS } from '../data/soundDefs';
 import type { HeapEnemyParams } from '../../shared/heapTypes';
-import { CHUNK_BAND_HEIGHT, ENEMY_CULL_DISTANCE, MOCK_HEAP_HEIGHT_PX, RAT_PATROL_END_MARGIN_PX, WORLD_WIDTH } from '../constants';
+import { CHUNK_BAND_HEIGHT, ENEMY_CULL_DISTANCE, MOCK_HEAP_HEIGHT_PX, RAT_MIN_PATROL_PX, RAT_PATROL_END_MARGIN_PX, WORLD_WIDTH } from '../constants';
 import type { Vertex } from './HeapPolygon';
 import type { HeapEntry } from '../data/heapTypes';
 import { OBJECT_DEFS } from '../data/heapObjectDefs';
@@ -16,15 +16,16 @@ import {
   scaleSpawnChance,
   computeGhostFlip,
   insetPatrolBounds,
+  shouldPatrol,
 } from './EnemySpawnMath';
 
-export { isPointInsidePolygon, computeSurfaceAngle, spawnChance, scaleSpawnChance, computeGhostFlip, insetPatrolBounds };
+export { isPointInsidePolygon, computeSurfaceAngle, spawnChance, scaleSpawnChance, computeGhostFlip, insetPatrolBounds, shouldPatrol };
 
 const SURFACE_ANGLE_THRESHOLD = 30; // degrees — below this is a surface, above is a wall
 const RAT_IDLE_MS = 1000;
 const MIN_ENEMY_SPACING_PX = 100; // min horizontal gap between enemies spawned in the same band
 
-type RatStateName = 'walk-right' | 'idle-right' | 'walk-left' | 'idle-left';
+type RatStateName = 'walk-right' | 'idle-right' | 'walk-left' | 'idle-left' | 'stationary';
 
 /**
  * Per-enemy runtime state, kept in a Map keyed on the sprite. Avoids the
@@ -334,8 +335,18 @@ export class EnemyManager {
       rt.maxX = maxX;
       rt.minY = (minY ?? spawnY + halfH) - halfH;
       rt.maxY = (maxY ?? spawnY + halfH) - halfH;
-      rt.ratState = 'walk-right';
-      rt.idleUntil = 0;
+      if (shouldPatrol(minX, maxX, RAT_MIN_PATROL_PX)) {
+        rt.ratState = 'walk-right';
+        rt.idleUntil = 0;
+      } else {
+        // Surface too narrow to patrol without twitching — stand still.
+        rt.ratState = 'stationary';
+        const body = enemy.sprite.body as Phaser.Physics.Arcade.Body;
+        body.setVelocityX(0);
+        enemy.sprite.play('rat-idle');
+        const idleBox = ENEMY_DEFS.percher.bodyIdle;
+        if (idleBox) applyBodyBox(body, idleBox);
+      }
     }
     this.runtime.set(enemy.sprite, rt);
     // External destroys (stomp, scene shutdown) bypass our cull loop;
