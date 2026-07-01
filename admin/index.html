@@ -17,6 +17,7 @@
     .section-list { border-left-color: #0cf; }
     .section-edit { border-left-color: #0f0; }
     .section-create { border-left-color: #fa0; }
+    .section-config { border-left-color: #a0f; }
     .muted { color: #777; font-size: 12px; }
     .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; margin-left: 8px; }
     .dot-ok { background: #0f0; }
@@ -190,6 +191,16 @@
       <thead><tr><th>Code</th><th>Reward</th><th>Redeemed</th><th>Expires</th><th>Created</th></tr></thead>
       <tbody id="rc-tbody"><tr><td colspan="5" class="muted">not loaded</td></tr></tbody>
     </table>
+  </div>
+
+  <div class="section section-config">
+    <h2>Remote Config</h2>
+    <h3 style="color: #aaa; font-size: 13px;">Ad Cadence</h3>
+    <div class="row">
+      <div><label>Min runs between ads</label><input type="number" step="1" min="1" id="cfg-adCadenceMin" /></div>
+      <div><label>Max runs between ads</label><input type="number" step="1" min="1" id="cfg-adCadenceMax" /></div>
+    </div>
+    <button id="cfg-save">Save Ad Cadence</button>
   </div>
 
   <div id="status"></div>
@@ -530,6 +541,44 @@
       loadCodes();
     }
 
+    // ────── Remote Config ────────────────────────────────────────────────────
+
+    async function loadConfig() {
+      try {
+        const res = await fetch(serverUrl() + '/config');
+        if (!res.ok) throw new Error('config load failed: ' + res.status);
+        const data = await res.json();
+        const cadence = (data.config && data.config.ad_cadence) || { min: '', max: '' };
+        $('cfg-adCadenceMin').value = cadence.min;
+        $('cfg-adCadenceMax').value = cadence.max;
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    async function onSaveConfig() {
+      const min = Number($('cfg-adCadenceMin').value);
+      const max = Number($('cfg-adCadenceMax').value);
+      try {
+        const res = await adminFetch('/config/ad_cadence', {
+          method: 'PUT',
+          body: JSON.stringify({ value: { min, max } }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || ('save failed: ' + res.status));
+        }
+        setStatus('ad cadence saved', 'ok');
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    function bootConfig() {
+      $('cfg-save').onclick = onSaveConfig;
+      loadConfig();
+    }
+
     // ────── Boot ───────────────────────────────────────────────────────────
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -538,6 +587,7 @@
       bootEditHeap();
       bootCreateHeap();
       bootRewardCodes();
+      bootConfig();
     });
   </script>
 </body>
