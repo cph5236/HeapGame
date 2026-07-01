@@ -149,6 +149,28 @@ describe('PUT /config/:key', () => {
     expect(res.status).toBe(400);
   });
 
+  it('rejects a well-formed JSON body missing the "value" field (400, not 500)', async () => {
+    const app = makeApp();
+    const res = await app.request('/config/some_key', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notValue: 1 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a non-object top-level JSON body (400, not 500)', async () => {
+    const app = makeApp();
+    for (const body of ['null', '"a string"', '42', 'true']) {
+      const res = await app.request('/config/some_key', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      expect(res.status).toBe(400);
+    }
+  });
+
   it('accepts an arbitrary well-formed key with no special validation (200)', async () => {
     const configDb = new MockConfigDB();
     const app = makeApp(configDb);
