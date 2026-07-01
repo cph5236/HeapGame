@@ -39,3 +39,15 @@ INSERT OR IGNORE INTO heap_parameters (heap_id, enemy_params) VALUES (
   '00000000-0000-0000-0000-000000000000',
   '{"percher":{"spawnStartPxAboveFloor":0,"spawnEndPxAboveFloor":-1,"spawnRampPxAboveFloor":15000,"spawnChanceMin":0.15,"spawnChanceMax":0.45},"ghost":{"spawnStartPxAboveFloor":5000,"spawnEndPxAboveFloor":-1,"spawnRampPxAboveFloor":20000,"spawnChanceMin":0.10,"spawnChanceMax":0.35}}'
 );
+
+-- Generic global config store. One row per key; value is JSON-encoded.
+-- Not per-heap — this is app-wide state (e.g. ad cadence).
+CREATE TABLE IF NOT EXISTS app_config (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO app_config (key, value, updated_at) VALUES (
+  'ad_cadence', '{"min":40,"max":50}', datetime('now')
+);
