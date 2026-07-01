@@ -11,7 +11,8 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-// primeConfig() is fire-and-forget; flush microtasks so its promise chain settles.
+// primeConfig() is fire-and-forget; yield a macrotask so its promise chain
+// (including the async Response.json() parse) settles before assertions run.
 async function flush(): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, 0));
 }
