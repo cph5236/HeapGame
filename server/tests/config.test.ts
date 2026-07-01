@@ -40,16 +40,6 @@ describe('PUT /config/:key', () => {
     expect(res.status).toBe(401);
   });
 
-  it('rejects an unknown key (400)', async () => {
-    const app = makeApp();
-    const res = await app.request('/config/not_a_real_key', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: 123 }),
-    });
-    expect(res.status).toBe(400);
-  });
-
   it('rejects a malformed ad_cadence value (400)', async () => {
     const app = makeApp();
     const res = await app.request('/config/ad_cadence', {
@@ -84,5 +74,101 @@ describe('PUT /config/:key', () => {
 
     const get = await app.request('/config');
     expect(await get.json()).toEqual({ config: { ad_cadence: { min: 10, max: 20 } } });
+  });
+
+  it('rejects a key with uppercase letters (400)', async () => {
+    const app = makeApp();
+    const res = await app.request('/config/Bad_Key', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: 1 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a key starting with a digit (400)', async () => {
+    const app = makeApp();
+    const res = await app.request('/config/1bad', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: 1 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a key longer than 64 characters (400)', async () => {
+    const app = makeApp();
+    const longKey = 'a'.repeat(65);
+    const res = await app.request(`/config/${longKey}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: 1 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a value over the size cap (400)', async () => {
+    const app = makeApp();
+    const res = await app.request('/config/big_value', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: 'x'.repeat(8200) }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a malformed JSON body (400)', async () => {
+    const app = makeApp();
+    const res = await app.request('/config/some_key', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{not valid json',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts an arbitrary well-formed key with no special validation (200)', async () => {
+    const configDb = new MockConfigDB();
+    const app = makeApp(configDb);
+
+    const put = await app.request('/config/feature_flag_x', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: true }),
+    });
+    expect(put.status).toBe(200);
+    expect(await put.json()).toEqual({ ok: true, key: 'feature_flag_x' });
+
+    const get = await app.request('/config');
+    expect(await get.json()).toEqual({ config: { feature_flag_x: true } });
+  });
+});
+
+describe('DELETE /config/:key', () => {
+  it('requires the admin secret when one is configured (401)', async () => {
+    const app = makeApp(new MockConfigDB(), 's3cret');
+    const res = await app.request('/config/ad_cadence', { method: 'DELETE' });
+    expect(res.status).toBe(401);
+  });
+
+  it('deletes an existing key and it no longer appears in GET /config (200)', async () => {
+    const configDb = new MockConfigDB();
+    configDb.seed('ad_cadence', { min: 40, max: 50 });
+    configDb.seed('other_key', { foo: 'bar' });
+    const app = makeApp(configDb);
+
+    const del = await app.request('/config/ad_cadence', { method: 'DELETE' });
+    expect(del.status).toBe(200);
+    expect(await del.json()).toEqual({ ok: true, key: 'ad_cadence' });
+
+    const get = await app.request('/config');
+    expect(await get.json()).toEqual({ config: { other_key: { foo: 'bar' } } });
+  });
+
+  it('is idempotent — deleting a key that never existed still returns 200 (no error)', async () => {
+    const app = makeApp();
+    const res = await app.request('/config/never_existed', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, key: 'never_existed' });
   });
 });

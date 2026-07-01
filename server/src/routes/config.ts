@@ -3,10 +3,30 @@
 import { Hono } from 'hono';
 import type { ConfigDB } from '../configDb';
 
-/** Keys that PUT /config/:key is allowed to write. Add new keys here as they're introduced. */
-const ALLOWED_KEYS: ReadonlySet<string> = new Set(['ad_cadence']);
+const KEY_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
+const MAX_VALUE_LENGTH = 8192;
 
-function validateValue(key: string, value: unknown): string | null {
+function validateKeyFormat(key: string): string | null {
+  if (!KEY_PATTERN.test(key)) {
+    return 'key must be lowercase snake_case, start with a letter, max 64 characters';
+  }
+  return null;
+}
+
+function validateValueSize(value: unknown): string | null {
+  if (JSON.stringify(value).length > MAX_VALUE_LENGTH) {
+    return `value too large (max ${MAX_VALUE_LENGTH} characters of JSON)`;
+  }
+  return null;
+}
+
+/**
+ * Extra shape checks for keys the game currently reads. This is defense in
+ * depth on keys with real behavioral effect — it does not gate which keys
+ * can be created; any key passing validateKeyFormat/validateValueSize can be
+ * written even if it has no case here.
+ */
+function validateKnownKeyShape(key: string, value: unknown): string | null {
   if (key === 'ad_cadence') {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
       return 'value must be an object';
@@ -37,10 +57,13 @@ export function configRoutes(configDb: ConfigDB): Hono {
     return c.json({ config });
   });
 
-  // Admin write (adminGate applied in app.ts).
+  // Admin write (adminGate applied in app.ts). Any key matching the naming
+  // pattern is writable — there is no fixed allowlist. An unread key is
+  // inert (no code consumes it), so the risk is clutter, not breakage.
   app.put('/:key', async (c) => {
     const key = c.req.param('key');
-    if (!ALLOWED_KEYS.has(key)) return c.json({ error: 'unknown config key' }, 400);
+    const keyErr = validateKeyFormat(key);
+    if (keyErr) return c.json({ error: keyErr }, 400);
 
     let body: { value?: unknown };
     try {
@@ -49,10 +72,22 @@ export function configRoutes(configDb: ConfigDB): Hono {
       return c.json({ error: 'invalid request' }, 400);
     }
 
-    const err = validateValue(key, body.value);
-    if (err) return c.json({ error: err }, 400);
+    const sizeErr = validateValueSize(body.value);
+    if (sizeErr) return c.json({ error: sizeErr }, 400);
+
+    const shapeErr = validateKnownKeyShape(key, body.value);
+    if (shapeErr) return c.json({ error: shapeErr }, 400);
 
     await configDb.set(key, body.value, new Date().toISOString());
+    return c.json({ ok: true, key });
+  });
+
+  // Admin delete (adminGate applied in app.ts). Idempotent — deleting a
+  // nonexistent key is not an error. No key-format check, so an
+  // already-invalid/typo'd key can still be removed.
+  app.delete('/:key', async (c) => {
+    const key = c.req.param('key');
+    await configDb.delete(key);
     return c.json({ ok: true, key });
   });
 

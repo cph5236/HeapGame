@@ -108,8 +108,9 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
 
   if (opts.configDb) {
     // Public read — no admin gate.
-    // Admin write — behind the admin gate.
+    // Admin write/delete — behind the admin gate.
     app.put('/config/:key', adminGate);
+    app.delete('/config/:key', adminGate);
     app.route('/config', configRoutes(opts.configDb));
   }
 
