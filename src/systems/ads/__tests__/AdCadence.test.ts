@@ -1,4 +1,10 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+
+vi.mock('../../ConfigClient', () => ({
+  getConfigValue: vi.fn(() => undefined),
+}));
+import { getConfigValue } from '../../ConfigClient';
+
 import { rollTarget, decideAdRun, registerRun, AD_CADENCE_MIN, AD_CADENCE_MAX } from '../AdCadence';
 import { getAdRunState, setAdRunState, resetCacheForTests } from '../../SaveData';
 
@@ -71,5 +77,22 @@ describe('registerRun', () => {
     setAdRunState({ runsSinceLast: 1, target: 2 });
     expect(registerRun(true, () => 0)).toBe(true);           // 1->2 reaches target -> ad run
     expect(getAdRunState()).toEqual({ runsSinceLast: 0, target: AD_CADENCE_MIN });
+  });
+});
+
+describe('rollTarget with remote config', () => {
+  const mockGetConfigValue = vi.mocked(getConfigValue);
+
+  beforeEach(() => { mockGetConfigValue.mockReset(); });
+
+  it('uses the remote min/max when config is present', () => {
+    mockGetConfigValue.mockReturnValue({ min: 5, max: 5 });
+    expect(rollTarget(() => 0.5)).toBe(5);
+  });
+
+  it('falls back to AD_CADENCE_MIN/MAX when config is absent', () => {
+    mockGetConfigValue.mockReturnValue(undefined);
+    expect(rollTarget(() => 0)).toBe(AD_CADENCE_MIN);
+    expect(rollTarget(() => 0.999)).toBe(AD_CADENCE_MAX);
   });
 });
