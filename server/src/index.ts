@@ -3,8 +3,10 @@ import { D1HeapDB } from './db';
 import { D1ScoreDB } from './scoreDb';
 import { D1RewardCodeDB } from './codeDb';
 import { D1FeedbackDB } from './feedbackDb';
+import { D1ConfigDB } from './configDb';
 import { CachedHeapDB } from './cache/CachedHeapDB';
 import { CachedScoreDB } from './cache/CachedScoreDB';
+import { CachedConfigDB } from './cache/CachedConfigDB';
 import { D1Sink } from './logging/D1Sink';
 import { AnalyticsEngineSink } from './logging/AnalyticsEngineSink';
 import type { RateLimiter } from './middleware/rateLimit';
@@ -39,13 +41,15 @@ export default {
       : new D1Sink(env.DB_TELEMETRY);
     // Read-heavy repos get a KV cache decorator; transactional + telemetry repos
     // hit their domain DB directly.
-    const heapDb  = new CachedHeapDB(new D1HeapDB(env.DB_HEAP), env.CACHE, w);
-    const scoreDb = new CachedScoreDB(new D1ScoreDB(env.DB_SCORES), env.CACHE, w);
+    const heapDb   = new CachedHeapDB(new D1HeapDB(env.DB_HEAP), env.CACHE, w);
+    const scoreDb  = new CachedScoreDB(new D1ScoreDB(env.DB_SCORES), env.CACHE, w);
+    const configDb = new CachedConfigDB(new D1ConfigDB(env.DB_HEAP), env.CACHE, w);
     const app = createApp(heapDb, scoreDb, {
       allowedOrigins: env.ALLOWED_ORIGINS,
       adminSecret:    env.ADMIN_SECRET,
       codeDb:         new D1RewardCodeDB(env.DB_REWARDS),
       feedbackDb:     new D1FeedbackDB(env.DB_TELEMETRY),
+      configDb,
       limiters: {
         scores: env.RL_SCORES,
         place:  env.RL_PLACE,

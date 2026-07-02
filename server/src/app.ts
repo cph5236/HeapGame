@@ -7,11 +7,13 @@ import { scoreRoutes } from './routes/scores';
 import { logRoutes } from './routes/log';
 import { codeRoutes } from './routes/codes';
 import { feedbackRoutes } from './routes/feedback';
+import { configRoutes } from './routes/config';
 import { requireAdminSecret } from './middleware/adminAuth';
 import { rateLimit, type RateLimiter, setRateLimitSink } from './middleware/rateLimit';
 import type { Sink } from './logging/Sink';
 import type { RewardCodeDB } from './codeDb';
 import type { FeedbackDB } from './feedbackDb';
+import type { ConfigDB } from './configDb';
 
 export interface AppOptions {
   /** Comma-separated origin list, or '*' to allow all (dev only). */
@@ -31,6 +33,8 @@ export interface AppOptions {
   codeDb?: RewardCodeDB;
   /** Feedback D1 access. If unset, /feedback is not mounted. */
   feedbackDb?: FeedbackDB;
+  /** Config D1 access. If unset, /config is not mounted. */
+  configDb?: ConfigDB;
   /** Sink for incoming /log entries. If unset, /log is not mounted. */
   logSink?: Sink;
 }
@@ -100,6 +104,14 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
     // Admin read — behind the admin gate.
     app.get('/feedback', adminGate);
     app.route('/feedback', feedbackRoutes(opts.feedbackDb));
+  }
+
+  if (opts.configDb) {
+    // Public read — no admin gate.
+    // Admin write/delete — behind the admin gate.
+    app.put('/config/:key', adminGate);
+    app.delete('/config/:key', adminGate);
+    app.route('/config', configRoutes(opts.configDb));
   }
 
   if (opts.logSink) {

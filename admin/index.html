@@ -17,6 +17,7 @@
     .section-list { border-left-color: #0cf; }
     .section-edit { border-left-color: #0f0; }
     .section-create { border-left-color: #fa0; }
+    .section-config { border-left-color: #a0f; }
     .muted { color: #777; font-size: 12px; }
     .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; margin-left: 8px; }
     .dot-ok { background: #0f0; }
@@ -190,6 +191,18 @@
       <thead><tr><th>Code</th><th>Reward</th><th>Redeemed</th><th>Expires</th><th>Created</th></tr></thead>
       <tbody id="rc-tbody"><tr><td colspan="5" class="muted">not loaded</td></tr></tbody>
     </table>
+  </div>
+
+  <div class="section section-config">
+    <h2>Remote Config</h2>
+    <div id="cfg-rows"></div>
+    <h3 style="color: #aaa; font-size: 13px;">Add New Key</h3>
+    <div class="row">
+      <div><label>Key name</label><input type="text" id="cfg-newKey" placeholder="my_new_key" /></div>
+    </div>
+    <label>Value (JSON)</label><br />
+    <textarea id="cfg-newValue" rows="4" style="width:100%; font-family:monospace;"></textarea>
+    <button id="cfg-create">Create</button>
   </div>
 
   <div id="status"></div>
@@ -530,6 +543,116 @@
       loadCodes();
     }
 
+    // ────── Remote Config ────────────────────────────────────────────────────
+
+    let cachedConfig = {};
+
+    function renderConfigRows() {
+      const container = $('cfg-rows');
+      const keys = Object.keys(cachedConfig).sort();
+      if (!keys.length) {
+        container.innerHTML = '<p class="muted">no config keys yet</p>';
+        return;
+      }
+      container.innerHTML = keys.map(key => {
+        const pretty = escapeHtml(JSON.stringify(cachedConfig[key], null, 2));
+        return `<div class="cfg-row" style="margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong>${escapeHtml(key)}</strong>
+            <button class="btn-sm btn-danger" onclick="onDeleteConfigKey('${escapeHtml(key)}')">Delete</button>
+          </div>
+          <textarea class="cfg-value" data-key="${escapeHtml(key)}" rows="4" style="width:100%; font-family:monospace;">${pretty}</textarea>
+          <button onclick="onSaveConfigKey('${escapeHtml(key)}')">Save</button>
+        </div>`;
+      }).join('');
+    }
+
+    async function loadConfig() {
+      try {
+        const res = await fetch(serverUrl() + '/config');
+        if (!res.ok) throw new Error('config load failed: ' + res.status);
+        const data = await res.json();
+        cachedConfig = data.config || {};
+        renderConfigRows();
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    async function onSaveConfigKey(key) {
+      const textarea = document.querySelector('textarea.cfg-value[data-key="' + key + '"]');
+      let value;
+      try {
+        value = JSON.parse(textarea.value);
+      } catch (e) {
+        setStatus('invalid JSON for ' + key, 'err');
+        return;
+      }
+      try {
+        const res = await adminFetch('/config/' + key, {
+          method: 'PUT',
+          body: JSON.stringify({ value }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || ('save failed: ' + res.status));
+        }
+        setStatus('saved ' + key, 'ok');
+        loadConfig();
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    async function onDeleteConfigKey(key) {
+      if (!confirm('Delete config key "' + key + '"? This cannot be undone.')) return;
+      try {
+        const res = await adminFetch('/config/' + key, { method: 'DELETE' });
+        if (!res.ok) throw new Error('delete failed: ' + res.status);
+        setStatus('deleted ' + key, 'ok');
+        loadConfig();
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    async function onCreateConfigKey() {
+      const key = $('cfg-newKey').value.trim();
+      if (!key) { setStatus('key name required', 'err'); return; }
+      if (Object.prototype.hasOwnProperty.call(cachedConfig, key)) {
+        setStatus('key already exists — edit it in the list above instead', 'err');
+        return;
+      }
+      let value;
+      try {
+        value = JSON.parse($('cfg-newValue').value);
+      } catch (e) {
+        setStatus('invalid JSON value', 'err');
+        return;
+      }
+      try {
+        const res = await adminFetch('/config/' + key, {
+          method: 'PUT',
+          body: JSON.stringify({ value }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || ('create failed: ' + res.status));
+        }
+        setStatus('created ' + key, 'ok');
+        $('cfg-newKey').value = '';
+        $('cfg-newValue').value = '';
+        loadConfig();
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    function bootConfig() {
+      $('cfg-create').onclick = onCreateConfigKey;
+      loadConfig();
+    }
+
     // ────── Boot ───────────────────────────────────────────────────────────
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -538,6 +661,7 @@
       bootEditHeap();
       bootCreateHeap();
       bootRewardCodes();
+      bootConfig();
     });
   </script>
 </body>

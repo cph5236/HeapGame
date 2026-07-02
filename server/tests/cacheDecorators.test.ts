@@ -8,8 +8,10 @@
 import { describe, it, expect } from 'vitest';
 import { CachedHeapDB } from '../src/cache/CachedHeapDB';
 import { CachedScoreDB } from '../src/cache/CachedScoreDB';
+import { CachedConfigDB } from '../src/cache/CachedConfigDB';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
+import { MockConfigDB } from './helpers/mockConfigDb';
 import { MockKV } from './helpers/mockKv';
 
 const HEAP_ID = 'heap-1';
@@ -157,5 +159,67 @@ describe('CachedScoreDB', () => {
 
     await cached.pruneScores(HEAP_ID);
     expect(kv.deletes).toContain(`cache:scores:${HEAP_ID}:top`);
+  });
+});
+
+describe('CachedConfigDB', () => {
+  function setup() {
+    const inner = new MockConfigDB();
+    const kv = new MockKV();
+    const cached = new CachedConfigDB(inner, kv.asKV(), noWait);
+    return { inner, kv, cached };
+  }
+
+  it('getAll populates the cache on a miss, then serves the cached map on a hit', async () => {
+    const { inner, kv, cached } = setup();
+    inner.seed('ad_cadence', { min: 40, max: 50 });
+
+    const first = await cached.getAll();
+    expect(first).toEqual({ ad_cadence: { min: 40, max: 50 } });
+    expect(kv.has('cache:config:all')).toBe(true);
+
+    // Mutate the inner map directly (no invalidation) — a cache hit must
+    // still return the stale cached value, proving the second read didn't
+    // hit the inner store.
+    inner.seed('ad_cadence', { min: 1, max: 2 });
+    const second = await cached.getAll();
+    expect(second).toEqual({ ad_cadence: { min: 40, max: 50 } });
+  });
+
+  it('set writes through to the inner store and invalidates the cache', async () => {
+    const { inner, kv, cached } = setup();
+    inner.seed('ad_cadence', { min: 40, max: 50 });
+    await cached.getAll(); // populate cache
+    expect(kv.has('cache:config:all')).toBe(true);
+
+    await cached.set('ad_cadence', { min: 10, max: 20 }, 'now');
+    expect(kv.deletes).toContain('cache:config:all');
+    expect(kv.has('cache:config:all')).toBe(false);
+
+    const after = await cached.getAll();
+    expect(after).toEqual({ ad_cadence: { min: 10, max: 20 } });
+  });
+
+  it('delete removes the key from the inner store and invalidates the cache', async () => {
+    const { inner, kv, cached } = setup();
+    inner.seed('ad_cadence', { min: 40, max: 50 });
+    inner.seed('other_key', { foo: 'bar' });
+    await cached.getAll(); // populate cache
+    expect(kv.has('cache:config:all')).toBe(true);
+
+    await cached.delete('ad_cadence');
+    expect(kv.deletes).toContain('cache:config:all');
+
+    const after = await cached.getAll();
+    expect(after).toEqual({ other_key: { foo: 'bar' } });
+  });
+
+  it('delete is a no-op (not an error) for a key that does not exist', async () => {
+    const { inner, kv, cached } = setup();
+    inner.seed('ad_cadence', { min: 40, max: 50 });
+
+    await expect(cached.delete('nonexistent_key')).resolves.toBeUndefined();
+    const after = await cached.getAll();
+    expect(after).toEqual({ ad_cadence: { min: 40, max: 50 } });
   });
 });

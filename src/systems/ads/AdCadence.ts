@@ -1,4 +1,6 @@
 import { getAdRunState, setAdRunState } from '../SaveData';
+import { getConfigValue } from '../ConfigClient';
+import type { AdCadenceConfig } from '../../../shared/configTypes';
 
 export const AD_CADENCE_MIN = 40;
 export const AD_CADENCE_MAX = 50;
@@ -8,10 +10,20 @@ export interface AdRunState {
   target:        number;
 }
 
-/** Random target in the inclusive range [AD_CADENCE_MIN, AD_CADENCE_MAX]. */
+/** Remote-config range if present and valid, else the hardcoded fallback. */
+function currentRange(): { min: number; max: number } {
+  const remote = getConfigValue<AdCadenceConfig>('ad_cadence');
+  if (remote && typeof remote.min === 'number' && typeof remote.max === 'number' && remote.min <= remote.max) {
+    return remote;
+  }
+  return { min: AD_CADENCE_MIN, max: AD_CADENCE_MAX };
+}
+
+/** Random target in the inclusive range [AD_CADENCE_MIN, AD_CADENCE_MAX] (or remote config if present). */
 export function rollTarget(rand: () => number = Math.random): number {
-  const span = AD_CADENCE_MAX - AD_CADENCE_MIN + 1;
-  return AD_CADENCE_MIN + Math.floor(rand() * span);
+  const { min, max } = currentRange();
+  const span = max - min + 1;
+  return min + Math.floor(rand() * span);
 }
 
 /**
