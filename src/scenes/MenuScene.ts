@@ -801,9 +801,21 @@ export class MenuScene extends Phaser.Scene {
       ]).setDepth(9).setAlpha(0);
       // Wait for gameAssetsReady to swap in the real avatar
       this.game.events.once('gameAssetsReady', () => {
+        // Capture the current alpha in case the entrance tween is mid-animation
+        const oldAlpha = this.wardrobeAvatar.alpha;
         this.wardrobeAvatar.destroy();
         this.wardrobeAvatar = composeAvatar(this, getEquippedCosmetics(),
-          { x: wardrobeCx, y: rowY, scale: 0.75 }).setDepth(9).setAlpha(0);
+          { x: wardrobeCx, y: rowY, scale: 0.75 }).setDepth(9).setAlpha(oldAlpha);
+
+        // If old alpha < 1, the entrance tween hasn't finished yet,
+        // so tween the new avatar to 1 over a short duration
+        if (oldAlpha < 1) {
+          this.tweens.add({
+            targets: this.wardrobeAvatar,
+            alpha: 1,
+            duration: 200,
+          });
+        }
       });
     }
 
