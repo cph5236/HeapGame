@@ -29,7 +29,8 @@ import type { HeapParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
-import { bottomButtonLayout, bottomButtonRowY } from './scoreLayout';
+import { bottomButtonLayout, bottomButtonRowY, leaderboardRowSlots } from './scoreLayout';
+import { composeAvatar } from '../ui/avatar';
 import { getPlayConsoleId, LEADERBOARD_HIGH_SCORE_ID } from '../data/achievementDefs';
 
 
@@ -940,11 +941,13 @@ export class ScoreScene extends Phaser.Scene {
     // player isn't in the top N. The mock path knows the data; the live path resolves
     // async (after this synchronous return), so it must reserve the worst case — else
     // the buttons anchor too high and overlap a taller-than-expected live panel.
-    const reservedRows = this._mockLeaderboard
-      ? this._mockLeaderboard.top.length
-        + (this._mockLeaderboard.player && !this.playerInTop(this._mockLeaderboard) ? 2 : 0)
-      : LEADERBOARD_TOP_N + 2;
-    const panelBottom = PANEL_TOP + (reservedRows * ROW_H + 8);
+    // Enlarged rows (first 5) are taller; account for this in the panel height.
+    const reservedTopRows = this._mockLeaderboard ? this._mockLeaderboard.top.length : LEADERBOARD_TOP_N;
+    const reservedExtra   = (this._mockLeaderboard
+      ? (this._mockLeaderboard.player && !this.playerInTop(this._mockLeaderboard) ? 2 : 0)
+      : 2);  // for live: always reserve worst case (gap + player row)
+    const { totalH: reservedTopH } = leaderboardRowSlots(reservedTopRows, ROW_H, 5);
+    const panelBottom = PANEL_TOP + reservedTopH + reservedExtra * ROW_H + 8;
 
     // Mock data path — renders immediately, no API call.
     if (this._mockLeaderboard) {
@@ -1030,8 +1033,9 @@ export class ScoreScene extends Phaser.Scene {
     lb.push(highScoresLabel);
 
     // Panel background
-    const totalRows = ctx.top.length + (ctx.player && !this.playerInTop(ctx) ? 2 : 0); // +1 for gap, +1 for player
-    const panelH    = totalRows * rowH + 8;
+    const { slots, totalH } = leaderboardRowSlots(ctx.top.length, rowH, 5);
+    const extraRows = ctx.player && !this.playerInTop(ctx) ? 2 : 0;
+    const panelH    = totalH + extraRows * rowH + 8;
     const bg = this.add.graphics();
     bg.fillStyle(0x002244, 0.5);
     bg.lineStyle(1, 0x336699, 0.3);
@@ -1039,20 +1043,21 @@ export class ScoreScene extends Phaser.Scene {
     bg.strokeRoundedRect(logicalWidth(this) / 2 - panelW / 2, panelTop, panelW, panelH, 6);
     lb.push(bg);
 
-    let y = panelTop + 4;
+    const bodyTop = panelTop + 4;
 
     // Top N rows
     for (let i = 0; i < ctx.top.length; i++) {
       const entry    = ctx.top[i];
+      const slot     = slots[i];
       const isPlayer = entry.playerId === (ctx.player?.playerId ?? '');
       const nameCol  = isPlayer && this.isNewHighScore ? '#ffdd44' : '#aaccee';
       const rankCol  = isPlayer && this.isNewHighScore ? '#ffdd44' : '#668899';
-      const mid      = y + rowH / 2;
+      const mid      = bodyTop + slot.y + slot.h / 2;
 
       // Alternating row stripe
       const stripe = this.add.graphics();
       stripe.fillStyle(i % 2 === 0 ? 0x0d3155 : 0x071d33, 0.5);
-      stripe.fillRect(logicalWidth(this) / 2 - panelW / 2, y, panelW, rowH);
+      stripe.fillRect(logicalWidth(this) / 2 - panelW / 2, bodyTop + slot.y, panelW, slot.h);
       lb.push(stripe);
 
       const rankTxt = this.add.text(left, mid, `#${entry.rank}`, {
@@ -1060,7 +1065,17 @@ export class ScoreScene extends Phaser.Scene {
       }).setOrigin(0, 0.5);
       lb.push(rankTxt);
 
-      const nameTxt = this.add.text(left + 36, mid, entry.name, {
+      let nameX = left + 36;
+      if (slot.enlarged) {
+        // Mini avatar showcasing the player's cosmetics (~23px tall at 0.5).
+        const avatar = composeAvatar(this, entry.loadout ?? {}, {
+          x: left + 44, y: mid, scale: 0.5,
+        });
+        lb.push(avatar);
+        nameX = left + 62;
+      }
+
+      const nameTxt = this.add.text(nameX, mid, entry.name, {
         fontSize: '11px', fontFamily: 'monospace', color: nameCol,
       }).setOrigin(0, 0.5);
       lb.push(nameTxt);
@@ -1069,12 +1084,12 @@ export class ScoreScene extends Phaser.Scene {
         fontSize: '11px', fontFamily: 'monospace', color: nameCol,
       }).setOrigin(1, 0.5);
       lb.push(scoreTxt);
-
-      y += rowH;
     }
 
     // Gap + player row if player is not already in top N
     if (ctx.player && !this.playerInTop(ctx)) {
+      let y = bodyTop + totalH;
+
       const gapDots = this.add.text(logicalWidth(this) / 2, y + rowH / 2, '·  ·  ·', {
         fontSize: '10px', fontFamily: 'monospace', color: '#335566',
       }).setOrigin(0.5, 0.5);

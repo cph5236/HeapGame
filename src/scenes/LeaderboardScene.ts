@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { ScoreClient } from '../systems/ScoreClient';
 import type { LeaderboardEntry } from '../../shared/scoreTypes';
+import { composeAvatar } from '../ui/avatar';
 
 const PAGE_LIMIT = 50;
 const ROW_H      = 28;
@@ -205,10 +206,18 @@ export class LeaderboardScene extends Phaser.Scene {
       const rankColor = isMe ? '#ffcc88' : '#7799bb';
       const nameColor = isMe ? '#ffffff' : '#ccddee';
 
+      const showAvatar = entry.rank <= 5;
+
       const rankText = this.add.text(this.bodyLeft + 12, rowY,
         `#${entry.rank}`, { fontSize: '13px', color: rankColor },
       ).setOrigin(0, 0.5);
-      const nameText = this.add.text(this.bodyLeft + 70, rowY,
+      if (showAvatar && this.textures.exists('trashbag-nostrings')) {
+        const avatar = composeAvatar(this, entry.loadout ?? {}, {
+          x: this.bodyLeft + 44, y: rowY, scale: 0.5,
+        });
+        this.bodyContainer.add(avatar);
+      }
+      const nameText = this.add.text(this.bodyLeft + (showAvatar ? 62 : 70), rowY,
         entry.name, { fontSize: '13px', color: nameColor },
       ).setOrigin(0, 0.5);
       const scoreText = this.add.text(this.bodyLeft + this.bodyWidth - 12, rowY,

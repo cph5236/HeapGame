@@ -50,3 +50,32 @@ export function bottomButtonRowY(opts: {
   if (opts.leaderboardBottom == null) return fallback;
   return Math.min(opts.leaderboardBottom + GAP, maxY);
 }
+
+/** Height multiplier for the showcase (avatar) rows at the top of a leaderboard. */
+export const LB_ROW_SCALE = 1.4;
+
+export interface LeaderboardRowSlot {
+  y: number;         // top offset within the panel body
+  h: number;         // row height
+  enlarged: boolean; // true for the avatar-showcase rows
+}
+
+/**
+ * Row layout for a leaderboard panel whose first `enlargeCount` rows are
+ * enlarged to fit a mini player avatar (the "show off your cosmetics" rows).
+ */
+export function leaderboardRowSlots(
+  rowCount: number,
+  rowH: number,
+  enlargeCount: number,
+): { slots: LeaderboardRowSlot[]; totalH: number } {
+  const slots: LeaderboardRowSlot[] = [];
+  let y = 0;
+  for (let i = 0; i < rowCount; i++) {
+    const enlarged = i < enlargeCount;
+    const h = enlarged ? rowH * LB_ROW_SCALE : rowH;
+    slots.push({ y, h, enlarged });
+    y += h;
+  }
+  return { slots, totalH: y };
+}
