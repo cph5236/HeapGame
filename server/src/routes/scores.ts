@@ -16,6 +16,8 @@ import type {
 import { buildRunScore } from '../../../shared/buildRunScore';
 import { ENEMY_DEFS } from '../../../shared/enemyDefs';
 import { computeSalvageBonus, maxSalvageItems, isRarity, SalvageItem } from '../../../shared/pickupScores';
+import { validateLoadout } from '../../../shared/cosmeticCatalog';
+import type { EquippedLoadout } from '../../../shared/cosmeticCatalog';
 
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT     = 50;
@@ -26,6 +28,16 @@ const MAX_NAME_LEN  = 32;
 const MAX_CLIMB_RATE_Y_PER_S = 400;
 const MAX_KILLS_PER_S        = 1;
 const HEIGHT_GRACE_PX        = 200;
+
+/** Parse + re-validate a stored loadout blob; null on anything suspect. */
+function parseLoadout(raw: string | null | undefined): EquippedLoadout | null {
+  if (!raw) return null;
+  try {
+    return validateLoadout(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
 
 async function buildContext(
   scoreDb:  ScoreDB,
@@ -42,6 +54,7 @@ async function buildContext(
     playerId: row.player_id,
     name:     row.name,
     score:    row.score,
+    loadout:  parseLoadout(row.loadout),
   }));
   if (!playerRow) return { top, player: null };
 
@@ -314,6 +327,7 @@ export function scoreRoutes(
       playerId: row.player_id,
       name:     row.name,
       score:    row.score,
+      loadout:  parseLoadout(row.loadout),
     }));
 
     return c.json({ entries, total, page } satisfies PaginatedLeaderboardResponse);

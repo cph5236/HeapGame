@@ -7,6 +7,9 @@ export interface ScoreRow {
   score:      number;
   created_at: string;
   updated_at: string;
+  /** Serialized loadout from LEFT JOIN player_customization; only populated by
+   *  getTopScores / getScoresPaginated. */
+  loadout?: string | null;
 }
 
 /**
@@ -89,7 +92,14 @@ export class D1ScoreDB implements ScoreDB {
 
   async getTopScores(heapId: string, limit: number): Promise<ScoreRow[]> {
     const result = await this.d1
-      .prepare('SELECT * FROM score WHERE heap_id=?1 ORDER BY score DESC LIMIT ?2')
+      .prepare(`
+        SELECT s.*, pc.loadout AS loadout
+          FROM score s
+          LEFT JOIN player_customization pc ON pc.player_id = s.player_id
+         WHERE s.heap_id=?1
+         ORDER BY s.score DESC
+         LIMIT ?2
+      `)
       .bind(heapId, limit)
       .all<ScoreRow>();
     return result.results;
@@ -131,7 +141,14 @@ export class D1ScoreDB implements ScoreDB {
 
   async getScoresPaginated(heapId: string, offset: number, limit: number): Promise<ScoreRow[]> {
     const result = await this.d1
-      .prepare('SELECT * FROM score WHERE heap_id=?1 ORDER BY score DESC LIMIT ?2 OFFSET ?3')
+      .prepare(`
+        SELECT s.*, pc.loadout AS loadout
+          FROM score s
+          LEFT JOIN player_customization pc ON pc.player_id = s.player_id
+         WHERE s.heap_id=?1
+         ORDER BY s.score DESC
+         LIMIT ?2 OFFSET ?3
+      `)
       .bind(heapId, limit, offset)
       .all<ScoreRow>();
     return result.results;

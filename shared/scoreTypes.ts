@@ -1,12 +1,15 @@
 // shared/scoreTypes.ts
 
 import type { SalvageItem } from './pickupScores';
+import type { EquippedLoadout } from './cosmeticCatalog';
 
 export interface LeaderboardEntry {
   rank:     number;
   playerId: string;
   name:     string;
   score:    number;
+  /** Equipped cosmetic loadout for avatar display; null when none/invalid. */
+  loadout?: EquippedLoadout | null;
 }
 
 export interface LeaderboardContext {
