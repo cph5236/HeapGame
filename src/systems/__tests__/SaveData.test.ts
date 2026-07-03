@@ -417,7 +417,7 @@ describe('SaveData v1→v2 migration', () => {
 
     expect(getPlaced('any-heap')).toEqual([]);                 // fresh key is empty
     expect(getLegacyPlacedForTests()).toEqual([{ id: 'ibeam', x: 10, y: 20 }]);
-    expect(getSchemaVersionForTests()).toBe(4);
+    expect(getSchemaVersionForTests()).toBe(5);
   });
 
   it('finalizeLegacyPlaced moves items onto a heap id', () => {
@@ -535,6 +535,8 @@ describe('mergeCloudSave', () => {
     playerGuid:     'local-guid',
     playerName:     'LocalPlayer',
     highScores:     { 'heap-1': 500 },
+    cosmeticsOwned: [],
+    cosmeticsEquipped: {},
   });
 
   it('takes the higher balance', () => {
@@ -642,7 +644,7 @@ describe('soundSettings – schema v4 migration', () => {
     expect(settings.playerSfx).toBe(1.0);
     expect(settings.enemySfx).toBe(0.8);
     expect(settings.envSfx).toBe(0.9);
-    expect(getSchemaVersionForTests()).toBe(4);
+    expect(getSchemaVersionForTests()).toBe(5);
   });
 
   it('preserves existing soundSettings when loading a v4 save', () => {
