@@ -4,6 +4,7 @@ import { D1ScoreDB } from './scoreDb';
 import { D1RewardCodeDB } from './codeDb';
 import { D1FeedbackDB } from './feedbackDb';
 import { D1ConfigDB } from './configDb';
+import { D1CustomizationDB } from './customizationDb';
 import { CachedHeapDB } from './cache/CachedHeapDB';
 import { CachedScoreDB } from './cache/CachedScoreDB';
 import { CachedConfigDB } from './cache/CachedConfigDB';
@@ -50,6 +51,7 @@ export default {
       codeDb:         new D1RewardCodeDB(env.DB_REWARDS),
       feedbackDb:     new D1FeedbackDB(env.DB_TELEMETRY),
       configDb,
+      customizationDb: new D1CustomizationDB(env.DB_SCORES),
       limiters: {
         scores: env.RL_SCORES,
         place:  env.RL_PLACE,

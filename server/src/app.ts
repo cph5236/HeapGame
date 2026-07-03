@@ -8,12 +8,14 @@ import { logRoutes } from './routes/log';
 import { codeRoutes } from './routes/codes';
 import { feedbackRoutes } from './routes/feedback';
 import { configRoutes } from './routes/config';
+import { customizationRoutes } from './routes/customization';
 import { requireAdminSecret } from './middleware/adminAuth';
 import { rateLimit, type RateLimiter, setRateLimitSink } from './middleware/rateLimit';
 import type { Sink } from './logging/Sink';
 import type { RewardCodeDB } from './codeDb';
 import type { FeedbackDB } from './feedbackDb';
 import type { ConfigDB } from './configDb';
+import type { CustomizationDB } from './customizationDb';
 
 export interface AppOptions {
   /** Comma-separated origin list, or '*' to allow all (dev only). */
@@ -35,6 +37,8 @@ export interface AppOptions {
   feedbackDb?: FeedbackDB;
   /** Config D1 access. If unset, /config is not mounted. */
   configDb?: ConfigDB;
+  /** Player-customization D1 access. If unset, /customization is not mounted. */
+  customizationDb?: CustomizationDB;
   /** Sink for incoming /log entries. If unset, /log is not mounted. */
   logSink?: Sink;
 }
@@ -112,6 +116,12 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
     app.put('/config/:key', adminGate);
     app.delete('/config/:key', adminGate);
     app.route('/config', configRoutes(opts.configDb));
+  }
+
+  if (opts.customizationDb) {
+    // Player loadout writes share the scores rate-limit bucket — they're debounced client-side.
+    app.put('/customization/:playerId', rateLimit(lim.scores, 'customization-put'));
+    app.route('/customization', customizationRoutes(opts.customizationDb));
   }
 
   if (opts.logSink) {
