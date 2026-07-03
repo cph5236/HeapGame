@@ -6,6 +6,7 @@ import { AudioManager } from '../systems/AudioManager';
 import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode } from '../systems/SaveData';
 import { redeemCode, type RedeemResult } from '../systems/CodeClient';
 import { syncSaveToCloud } from '../systems/cloudSave';
+import { retryPendingLoadoutSync } from '../systems/cosmeticsSync';
 import { TILT_WATCHDOG_MS } from '../constants';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
@@ -61,6 +62,7 @@ export class MenuScene extends Phaser.Scene {
 
   create(): void {
     setupUiCamera(this);
+    retryPendingLoadoutSync();
     this.twinkleStars = [];
     this.resetConfirmed = false;
 
