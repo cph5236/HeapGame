@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { PLAYER_WIDTH, PLAYER_HEIGHT } from '../constants';
 import type { PlayerAnimState } from './Player';
+import { rainbowColorAt } from '../systems/cosmeticsLogic';
 
 // ── Tuning constants ────────────────────────────────────────────────────────
 const LERP_SPEED         = 12;    // lerp factor per second
@@ -68,6 +69,10 @@ export class PlayerAnimator {
   private apexTime:     number = 0;
   private wallSlideGrace: number = 0; // ms remaining of WALL_SLIDE hysteresis
 
+  private tieColor:   number  = 0xFF0000;
+  private tieRainbow: boolean = false;
+  private tieTimeMs:  number  = 0;
+
   // Interpolated string control/end points (offsets from attach point in local gfx space)
   private cpLx  = -9;  private cpLy  =  16;
   private endLx = -12; private endLy =  30;
@@ -91,8 +96,16 @@ export class PlayerAnimator {
     scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.syncGfxToSprite, this);
   }
 
+  /** Set the tie-string color from the equipped cosmetic (rainbow = hue cycle). */
+  setTieStyle(style: { color: number; rainbow: boolean }): void {
+    this.tieColor   = style.color;
+    this.tieRainbow = style.rainbow;
+  }
+
   update(delta: number, state: PlayerAnimState): void {
     if (this.dormant) return;
+
+    this.tieTimeMs += delta;
 
     // ── Interrupts (checked before anything else) ──────────────────────────
     if (state.justDied || state.justPlaced) {
@@ -332,7 +345,8 @@ export class PlayerAnimator {
 
   private drawStrings(): void {
     this.gfx.clear();
-    this.gfx.lineStyle(STRING_STROKE_W, 0xFF0000, 1);
+    const color = this.tieRainbow ? rainbowColorAt(this.tieTimeMs) : this.tieColor;
+    this.gfx.lineStyle(STRING_STROKE_W, color, 1);
     this.drawQuadraticBezier(0, 0, this.cpLx, this.cpLy, this.endLx, this.endLy);
     this.drawQuadraticBezier(0, 0, this.cpRx, this.cpRy, this.endRx, this.endRy);
   }
