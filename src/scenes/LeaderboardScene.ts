@@ -206,18 +206,18 @@ export class LeaderboardScene extends Phaser.Scene {
       const rankColor = isMe ? '#ffcc88' : '#7799bb';
       const nameColor = isMe ? '#ffffff' : '#ccddee';
 
-      const showAvatar = entry.rank <= 5;
+      const shouldShowAvatar = entry.rank <= 5 && this.textures.exists('trashbag-nostrings');
 
       const rankText = this.add.text(this.bodyLeft + 12, rowY,
         `#${entry.rank}`, { fontSize: '13px', color: rankColor },
       ).setOrigin(0, 0.5);
-      if (showAvatar && this.textures.exists('trashbag-nostrings')) {
+      if (shouldShowAvatar) {
         const avatar = composeAvatar(this, entry.loadout ?? {}, {
           x: this.bodyLeft + 44, y: rowY, scale: 0.5,
         });
         this.bodyContainer.add(avatar);
       }
-      const nameText = this.add.text(this.bodyLeft + (showAvatar ? 62 : 70), rowY,
+      const nameText = this.add.text(this.bodyLeft + (shouldShowAvatar ? 62 : 70), rowY,
         entry.name, { fontSize: '13px', color: nameColor },
       ).setOrigin(0, 0.5);
       const scoreText = this.add.text(this.bodyLeft + this.bodyWidth - 12, rowY,

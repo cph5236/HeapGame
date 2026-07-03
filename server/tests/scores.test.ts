@@ -592,4 +592,18 @@ describe('leaderboard loadout enrichment', () => {
     const body = await res.json() as { entries: Array<{ loadout: unknown }> };
     expect(body.entries[0].loadout).toEqual({ tie: 'tie_gold' });
   });
+
+  it('player object intentionally omits loadout (top-5 display only)', async () => {
+    const db = new MockScoreDB();
+    db.seed(HEAP_ID, PLAYER_A, 'Me', 1800);
+    db.seed(HEAP_ID, 'p1', 'Alpha', 500);
+    db.seedLoadout(PLAYER_A, JSON.stringify({ hat: 'hat_cone' }));
+
+    const app = makeApp(db);
+    const res = await app.request(`/scores/${HEAP_ID}/context?playerId=${PLAYER_A}&limit=5`);
+    const ctx = await res.json() as { top: Array<{ loadout: unknown }>; player: unknown };
+
+    expect(ctx.top[0].loadout).toEqual({ hat: 'hat_cone' });
+    expect(ctx.player).not.toHaveProperty('loadout');
+  });
 });
