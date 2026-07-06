@@ -4,8 +4,8 @@ import {
 } from '../cosmeticCatalog';
 
 describe('COSMETIC_CATALOG integrity', () => {
-  it('has 52 entries with unique ids', () => {
-    expect(COSMETIC_CATALOG.length).toBe(52);
+  it('has 89 entries with unique ids', () => {
+    expect(COSMETIC_CATALOG.length).toBe(89);
     const ids = COSMETIC_CATALOG.map(e => e.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -20,7 +20,7 @@ describe('COSMETIC_CATALOG integrity', () => {
     const count = (slot: string) => COSMETIC_CATALOG.filter(e => e.slot === slot).length;
     expect(count('tie')).toBe(12);
     expect(count('skin')).toBe(8);
-    expect(count('hat')).toBe(14);
+    expect(count('hat')).toBe(51);
     expect(count('face')).toBe(10);
     expect(count('trail')).toBe(8);
   });
@@ -53,7 +53,7 @@ describe('validateLoadout', () => {
   });
 
   it('rejects unknown item ids', () => {
-    expect(validateLoadout({ hat: 'hat_fedora' })).toBeNull();
+    expect(validateLoadout({ hat: 'hat_nonexistent' })).toBeNull();
   });
 
   it('rejects an id equipped in the wrong slot', () => {

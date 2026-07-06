@@ -58,7 +58,7 @@ describe('PUT /customization/:playerId', () => {
   it('rejects unknown slots, unknown ids, and wrong-slot ids with 400', async () => {
     const { app } = makeApp();
     expect((await put(app, PLAYER, { loadout: { pants: 'hat_cone' } })).status).toBe(400);
-    expect((await put(app, PLAYER, { loadout: { hat: 'hat_fedora' } })).status).toBe(400);
+    expect((await put(app, PLAYER, { loadout: { hat: 'hat_nonexistent' } })).status).toBe(400);
     expect((await put(app, PLAYER, { loadout: { face: 'hat_cone' } })).status).toBe(400);
     expect((await put(app, PLAYER, { loadout: ['hat_cone'] })).status).toBe(400);
   });

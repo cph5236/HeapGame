@@ -7,7 +7,14 @@ import type { CosmeticSlot } from '../../shared/cosmeticCatalog';
 
 export interface TieRender   { kind: 'tie';   color: number; rainbow?: boolean }
 export interface SkinRender  { kind: 'skin';  tint: number }
-export interface HatRender   { kind: 'hat';   textureKey: string; offsetX: number; offsetY: number }
+export interface HatRender   {
+  kind: 'hat';
+  textureKey: string;
+  offsetX: number;
+  offsetY: number;
+  angle:  number;   // default worn angle, degrees (designer-tuned)
+  scale:  number;   // default size multiplier on ART_SCALE (designer-tuned)
+}
 export interface FaceRender  { kind: 'face';  textureKey: string; offsetX: number; offsetY: number }
 export interface TrailRender {
   kind: 'trail';
@@ -31,8 +38,9 @@ export interface CosmeticDef {
 
 export const DEFAULT_TIE_COLOR = 0xff0000;
 
-const hat  = (id: string, name: string, price: number, offsetX: number, offsetY: number): CosmeticDef =>
-  ({ id, slot: 'hat', name, price, render: { kind: 'hat', textureKey: `cos-${id}`, offsetX, offsetY } });
+const hat  = (id: string, name: string, price: number, offsetX: number, offsetY: number,
+              angle = 0, scale = 1): CosmeticDef =>
+  ({ id, slot: 'hat', name, price, render: { kind: 'hat', textureKey: `cos-${id}`, offsetX, offsetY, angle, scale } });
 const face = (id: string, name: string, price: number, offsetX: number, offsetY: number): CosmeticDef =>
   ({ id, slot: 'face', name, price, render: { kind: 'face', textureKey: `cos-${id}`, offsetX, offsetY } });
 const tie  = (id: string, name: string, price: number, color: number, rainbow = false): CosmeticDef =>
@@ -64,20 +72,57 @@ export const COSMETIC_DEFS: readonly CosmeticDef[] = [
   skin('skin_bubblegum', 'Bubblegum', 500, 0xff99cc),
   skin('skin_ghostly',   'Ghostly',   500, 0xaaffdd),
   // ── Hats (PNG; offsets from bag center, bag top edge at y=-23) ──
-  hat('hat_cone',      'Traffic Cone',  800,  0, -26),
-  hat('hat_bottlecap', 'Bottle Cap',    500,  0, -24),
-  hat('hat_tincan',    'Tin Can',       500,  0, -25),
-  hat('hat_banana',    'Banana Peel',   600,  0, -24),
-  hat('hat_party',     'Party Hat',     750,  2, -27),
-  hat('hat_crown',     'Crown',         2500, 0, -25),
-  hat('hat_tophat',    'Top Hat',       1200, 0, -27),
-  hat('hat_hardhat',   'Hard Hat',      800,  0, -25),
-  hat('hat_propeller', 'Propeller Cap', 1000, 0, -26),
-  hat('hat_wizard',    'Wizard Hat',    1500, 0, -28),
-  hat('hat_cowboy',    'Cowboy Hat',    1000, 0, -25),
-  hat('hat_boat',      'Paper Boat',    600,  0, -25),
-  hat('hat_beanie',    'Beanie',        500,  0, -24),
-  hat('hat_fishbone',  'Fish Skeleton', 900,  0, -25),
+  hat('hat_cone',      'Traffic Cone',  800,  -1, -26),
+  hat('hat_bottlecap', 'Bottle Cap',    500,  -1, -24),
+  hat('hat_tincan',    'Tin Can',       500,  -1, -25),
+  hat('hat_banana',    'Banana Peel',   600,  -1, -24),
+  hat('hat_party',     'Party Hat',     750,  -1.5, -28.0),
+  hat('hat_crown',     'Crown',         2500, -3.5, -25.0),
+  hat('hat_tophat',    'Top Hat',       1200, -1.0, -26.5),
+  hat('hat_hardhat',   'Hard Hat',      800,  3, -23.5),
+  hat('hat_propeller', 'Propeller Cap', 1000, -3.0, -26.5),
+  hat('hat_wizard',    'Wizard Hat',    1500, -1, -28),
+  hat('hat_cowboy',    'Cowboy Hat',    1000, -1, -23.5),
+  hat('hat_boat',      'Paper Boat',    600,  -1, -25),
+  hat('hat_beanie',    'Warm Hat',        500,  0.0, -25.0),
+  hat('hat_fishbone',  'Fish Skeleton', 900,  -1, -25),
+  hat('hat_viking',     'Viking Helm',   1200, -1.0, -29),
+  hat('hat_shark',      'Shark Bite',    1500, -7, -27.5),
+  hat('hat_graduation', 'Grad Cap',      800,  -3.0, -22.5),
+  hat('hat_fez',        'Fez',           600,  -3.0, -26.0),
+  hat('hat_hotdog',     'Hot Dog',       1000, -3.0, -24.5),
+  hat('hat_umbrella',   'Umbrella Hat',  900,  -4.5, -27.0),
+  hat('hat_pirate',     'Pirate Bicorn', 1200, -5.5, -23.5),
+  hat('hat_skeleton',   'Skull Cap',     1000, -3.0, -27.5),
+  hat('hat_military', 'Field Cap', 600, -1.5, -26.0),
+  hat('hat_nurse', 'Nurse Cap', 600, -4.5, -26),
+  hat('hat_antlers', 'Antlers', 900, -1.0, -40.0, 0, 1.5),
+  hat('hat_army', 'Camo Helmet', 800, -1.0, -26.0),
+  hat('hat_baseball', 'Baseball Cap', 500, 3, -22.5),
+  hat('hat_flatcap', 'Tattered Beanie', 500, -8.0, -22.5),
+  hat('hat_bowler', 'Bowler', 700, -0.5, -24),
+  hat('hat_beret', 'Beret', 600, 2.5, -29.5),
+  hat('hat_bunny', 'Bunny Ears', 800, -2.0, -30.0),
+  hat('hat_captain', "Captain's Cap", 900, 0, -25.0),
+  hat('hat_catears', 'Cat Ears', 800, 0.5, -37.5),
+  hat('hat_fedora', 'Fedora', 700, 0, -26.0),
+  hat('hat_fireman', 'Fire Helmet', 800, -3.0, -26),
+  hat('hat_pompadour', 'Pompadour', 700, -4.5, -24.0),
+  hat('hat_horsehead', 'Horse Mask', 1500, 1.5, -27.0),
+  hat('hat_leprechaun', 'Lucky Hat', 900, -3.0, -27),
+  hat('hat_lumberjack', 'Trapper Hat', 700, 0.5, -26.0),
+  hat('hat_outback', 'Outback Hat', 700, 0, -25.5),
+  hat('hat_police', 'Police Cap', 800, 0.0, -25.0),
+  hat('hat_princess', 'Princess Cone', 900, -6.0, -27.0),
+  hat('hat_bonnet', 'Bonnet', 600, -1.0, -26.5),
+  hat('hat_robinhood', 'Archer Cap', 800, -2.0, -25.0),
+  hat('hat_spartan', 'Spartan Helm', 1500, -1.0, -21.5),
+  hat('hat_sunhat', 'Sun Hat', 600, -2, -25.0),
+  hat('hat_kasa', 'Straw Kasa', 800, 0, -23.0),
+  hat('hat_tiara', 'Tiara', 1000, 2.5, -27.0),
+  hat('hat_waldo', 'Bobble Beanie', 600, -8.0, -24.5),
+  hat('hat_wig', 'Flower Wig', 800, 1.5, -30.0),
+  hat('hat_pickelhaube', 'Spiked Helmet', 1000, 1.0, -26.0),
   // ── Face (PNG; upper third of the bag) ──
   face('face_googly',       'Googly Eyes',   500, 0, -8),
   face('face_sunglasses',   'Sunglasses',    600, 0, -8),

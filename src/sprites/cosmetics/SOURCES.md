@@ -1,10 +1,59 @@
 # Cosmetic art sources
 
-CC0-only. One line per file: `<file> — <origin> (<license>) — <notes>`.
+CC0 or explicitly-licensed purchased packs only. One line per file:
+`<file> — <origin> (<license>) — <notes>`.
 Files must be named `<catalog id>.png` (e.g. `hat_cone.png`); size hats at
 ~120–170 px wide, face items ~60–120 px, transparent RGBA, matching the
 trashbag's palette (slightly desaturated) with its dark outline.
 
 | File | Origin | License | Notes |
 |------|--------|---------|-------|
-| (none yet) | | | |
+| hats/hat_party.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`birthday.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_crown.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`crown.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_tophat.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`tophat.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_hardhat.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`hardHat.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_propeller.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`pinwheel.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_cowboy.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`cowboy.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_beanie.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`beanieWithTassels.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_viking.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`viking.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_shark.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`shark.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_graduation.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`graduation.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_fez.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`fez.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_hotdog.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`hotdog.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_umbrella.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`umbrella.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_pirate.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`bicorn.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_skeleton.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`skeleton.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_military.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`50sMilitary.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_nurse.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`50sNurse.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_antlers.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`antlers.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_army.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`army.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_baseball.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`baseballCap.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_flatcap.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`beanie.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_beret.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`beret.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_bowler.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`bowlerHat.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_bunny.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`bunny.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_captain.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`captains.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_catears.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`catEars.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_fedora.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`classicFedora.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_fireman.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`fireman.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_pompadour.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`freakazoid.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_horsehead.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`horseHead.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_leprechaun.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`leprechaun.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_lumberjack.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`lumberjack.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_outback.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`outback.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_police.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`police.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_princess.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`princess.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_bonnet.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`redBonnet.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_robinhood.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`robinhood.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_spartan.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`spartan.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_sunhat.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`sunhat.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_kasa.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`takuhatsugasa.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_tiara.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`tiara.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_waldo.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`waldo.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_wig.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`wig.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_pickelhaube.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`ww1German.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+
+> **License note:** the itch page states no generative AI was used but does not
+> publish explicit license text. Pack was purchased ($2). Confirm
+> commercial-use terms with the author (discord.gg/XbKmYHZ) before a store
+> release, then update this note.
