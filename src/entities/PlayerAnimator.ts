@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { PLAYER_WIDTH, PLAYER_HEIGHT } from '../constants';
 import type { PlayerAnimState } from './Player';
 import { rainbowColorAt } from '../systems/cosmeticsLogic';
+import { drawTieBand } from '../ui/tieBand';
 
 // ── Tuning constants ────────────────────────────────────────────────────────
 const LERP_SPEED         = 12;    // lerp factor per second
@@ -346,6 +347,8 @@ export class PlayerAnimator {
   private drawStrings(): void {
     this.gfx.clear();
     const color = this.tieRainbow ? rainbowColorAt(this.tieTimeMs) : this.tieColor;
+    // Paint the collar band over the baked-in red one (gfx origin = collar).
+    drawTieBand(this.gfx, color, 0, 0, 1);
     this.gfx.lineStyle(STRING_STROKE_W, color, 1);
     this.drawQuadraticBezier(0, 0, this.cpLx, this.cpLy, this.endLx, this.endLy);
     this.drawQuadraticBezier(0, 0, this.cpRx, this.cpRy, this.endRx, this.endRy);

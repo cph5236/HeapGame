@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { AudioManager } from '../systems/AudioManager';
-import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode, getEquippedCosmetics } from '../systems/SaveData';
+import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode, getEquippedCosmetics, getHatAdjustments } from '../systems/SaveData';
 import { composeAvatar } from '../ui/avatar';
 import { redeemCode, type RedeemResult } from '../systems/CodeClient';
 import { syncSaveToCloud } from '../systems/cloudSave';
@@ -25,7 +25,8 @@ export class MenuScene extends Phaser.Scene {
   private farSilhouette!: Phaser.GameObjects.Graphics;
   private nearSilhouette!: Phaser.GameObjects.Graphics;
   private horizonGlow!: Phaser.GameObjects.Graphics;
-  private playerFigure!: Phaser.GameObjects.Image;
+  private playerFigure!: Phaser.GameObjects.Container;
+  private figureY = 388;
   private titleShadow!: Phaser.GameObjects.Text;
   private titleText!: Phaser.GameObjects.Text;
   private taglineText!: Phaser.GameObjects.Text;
@@ -44,8 +45,6 @@ export class MenuScene extends Phaser.Scene {
   private heapPickerStars!: Phaser.GameObjects.Text;
   private leaderboardBg!:   Phaser.GameObjects.Graphics;
   private leaderboardIcon!: Phaser.GameObjects.Text;
-  private wardrobeBg!:      Phaser.GameObjects.Graphics;
-  private wardrobeAvatar!:  Phaser.GameObjects.Container;
 
   private _forceSettingsOpen = false;
   private tiltPrompt?: Phaser.GameObjects.Container;
@@ -224,12 +223,48 @@ export class MenuScene extends Phaser.Scene {
 
   // ── Player figure ────────────────────────────────────────────────────────────
 
+  /** Logo bag scale: matches the old static 'trashbag' image at 0.9 (~177px tall). */
+  private static readonly LOGO_AVATAR_SCALE = 3.85;
+
   private createPlayerFigure(): void {
-    this.playerFigure = this.add.image(logicalWidth(this) / 2, 388, 'trashbag')
-      .setOrigin(0.5, 1.0)
-      .setScale(0.9)
-      .setDepth(5)
-      .setAlpha(0);
+    const cx = logicalWidth(this) / 2;
+    const s  = MenuScene.LOGO_AVATAR_SCALE;
+    // Old image was bottom-anchored at y=388; the avatar container is centred.
+    this.figureY = 388 - (46 * s) / 2;
+
+    if (this.textures.exists('trashbag-nostrings')) {
+      this.playerFigure = composeAvatar(this, getEquippedCosmetics(),
+        { x: cx, y: this.figureY, scale: s }, getHatAdjustments()).setDepth(5).setAlpha(0);
+    } else {
+      // Assets not loaded yet — placeholder container, swap when ready.
+      this.playerFigure = this.add.container(cx, this.figureY).setDepth(5).setAlpha(0);
+      this.game.events.once('gameAssetsReady', () => {
+        const oldAlpha = this.playerFigure.alpha;
+        this.playerFigure.destroy();
+        this.playerFigure = composeAvatar(this, getEquippedCosmetics(),
+          { x: cx, y: this.figureY, scale: s }, getHatAdjustments()).setDepth(5).setAlpha(oldAlpha);
+        this.startFigureBob();
+        if (oldAlpha < 0.85) {
+          this.tweens.add({ targets: this.playerFigure, alpha: 0.85, duration: 300 });
+        }
+      });
+    }
+
+    // The logo bag IS the wardrobe entry point.
+    this.add.zone(cx, this.figureY, 160, 46 * s + 16)
+      .setDepth(6).setInteractive({ useHandCursor: true })
+      .on('pointerup', () => this.scene.start('CustomizationScene'));
+  }
+
+  private startFigureBob(): void {
+    this.tweens.add({
+      targets: this.playerFigure,
+      y: this.figureY - 4,
+      duration: 1800,
+      yoyo: true,
+      loop: -1,
+      ease: 'Sine.easeInOut',
+    });
   }
 
   // ── Title ────────────────────────────────────────────────────────────────────
@@ -711,9 +746,9 @@ export class MenuScene extends Phaser.Scene {
     // Heap-picker bar \u2014 left ~65% of the 320px row (208px), 8px gap, 48px trophy, 8px gap, 48px wardrobe.
     this.heapPickerBg = this.add.graphics().setDepth(8).setAlpha(0);
     this.heapPickerBg.fillStyle(0x000000, 0.5);
-    this.heapPickerBg.fillRoundedRect(left, 480 - shift, 208, 48, 10);
+    this.heapPickerBg.fillRoundedRect(left, 480 - shift, 264, 48, 10);
     this.heapPickerBg.lineStyle(1, 0x8899bb, 0.6);
-    this.heapPickerBg.strokeRoundedRect(left, 480 - shift, 208, 48, 10);
+    this.heapPickerBg.strokeRoundedRect(left, 480 - shift, 264, 48, 10);
 
     this.heapPickerText = this.add.text(0, rowY, '', {
       fontSize: '16px', color: '#ffffff',
@@ -726,8 +761,8 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0, 0.5).setAlpha(0).setDepth(9);
 
     // Leaderboard trophy button \u2014 right 48px square of the row.
-    const trophyLeft = left + 208 + 8;   // = width/2 + 56
-    const trophyCx   = trophyLeft + 24;  // = width/2 + 80
+    const trophyLeft = left + 264 + 8;   // = width/2 + 112
+    const trophyCx   = trophyLeft + 24;  // = width/2 + 136
     this.leaderboardBg = this.add.graphics().setDepth(8).setAlpha(0);
     const drawTrophyBg = (enabled: boolean): void => {
       this.leaderboardBg.clear();
@@ -742,7 +777,7 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0).setDepth(9);
 
     // Centre of the picker bar (text centres within the 208px bar, not the row).
-    const barCx = left + 104;            // = width/2 - 56
+    const barCx = left + 132;            // = width/2 - 28
 
     // Refresh from current registry \u2014 runs once now (placeholder if catalog is
     // still loading) and again when `heapCatalogReady` fires from BootScene.
@@ -782,46 +817,6 @@ export class MenuScene extends Phaser.Scene {
       .setDepth(9).setInteractive({ useHandCursor: true })
       .on('pointerup', () => this.openLeaderboard());
 
-    // Wardrobe button \u2014 mini avatar of the current loadout, right of the trophy.
-    const wardrobeLeft = trophyLeft + 48 + 8;
-    const wardrobeCx   = wardrobeLeft + 24;
-    this.wardrobeBg = this.add.graphics().setDepth(8).setAlpha(0);
-    this.wardrobeBg.fillStyle(0x000000, 0.5);
-    this.wardrobeBg.fillRoundedRect(wardrobeLeft, 480 - shift, 48, 48, 10);
-    this.wardrobeBg.lineStyle(1, 0x8899bb, 0.6);
-    this.wardrobeBg.strokeRoundedRect(wardrobeLeft, 480 - shift, 48, 48, 10);
-
-    // Create avatar only if texture is ready; use fallback \ud83d\udc64 otherwise
-    if (this.textures.exists('trashbag-nostrings')) {
-      this.wardrobeAvatar = composeAvatar(this, getEquippedCosmetics(),
-        { x: wardrobeCx, y: rowY, scale: 0.75 }).setDepth(9).setAlpha(0);
-    } else {
-      this.wardrobeAvatar = this.add.container(wardrobeCx, rowY, [
-        this.add.text(0, 0, '\ud83d\udc64', { fontSize: '32px' }).setOrigin(0.5),
-      ]).setDepth(9).setAlpha(0);
-      // Wait for gameAssetsReady to swap in the real avatar
-      this.game.events.once('gameAssetsReady', () => {
-        // Capture the current alpha in case the entrance tween is mid-animation
-        const oldAlpha = this.wardrobeAvatar.alpha;
-        this.wardrobeAvatar.destroy();
-        this.wardrobeAvatar = composeAvatar(this, getEquippedCosmetics(),
-          { x: wardrobeCx, y: rowY, scale: 0.75 }).setDepth(9).setAlpha(oldAlpha);
-
-        // If old alpha < 1, the entrance tween hasn't finished yet,
-        // so tween the new avatar to 1 over a short duration
-        if (oldAlpha < 1) {
-          this.tweens.add({
-            targets: this.wardrobeAvatar,
-            alpha: 1,
-            duration: 200,
-          });
-        }
-      });
-    }
-
-    this.add.zone(wardrobeCx, rowY, 48, 48)
-      .setDepth(9).setInteractive({ useHandCursor: true })
-      .on('pointerup', () => this.scene.start('CustomizationScene'));
   }
 
   /** Launch the leaderboard modal for the active heap, over a paused menu. */
@@ -1184,7 +1179,7 @@ export class MenuScene extends Phaser.Scene {
     this.tweens.add({ targets: this.titleText,      alpha: 1,    duration: 500 * s, delay: 1000 * s   });
     this.tweens.add({ targets: this.taglineText,    alpha: 1,    duration: 400 * s, delay: 1300 * s   });
     this.tweens.add({ targets: [this.balanceText, this.playerNameText], alpha: 1, duration: 300 * s, delay: 1500 * s });
-    this.tweens.add({ targets: [this.heapPickerBg, this.heapPickerText, this.heapPickerStars, this.leaderboardBg, this.leaderboardIcon, this.wardrobeBg, this.wardrobeAvatar], alpha: 1, duration: 300 * s, delay: 1600 * s });
+    this.tweens.add({ targets: [this.heapPickerBg, this.heapPickerText, this.heapPickerStars, this.leaderboardBg, this.leaderboardIcon], alpha: 1, duration: 300 * s, delay: 1600 * s });
     this.tweens.add({ targets: this.startBg,   alpha: 1, duration: 400 * s, delay: 1700 * s });
     this.tweens.add({
       targets: this.startText,
@@ -1201,14 +1196,7 @@ export class MenuScene extends Phaser.Scene {
     this.time.delayedCall(2100 * s, () => this.startTwinkle());
 
     // Player idle bob (start immediately — subtle at 0 alpha, becomes visible with fade)
-    this.tweens.add({
-      targets: this.playerFigure,
-      y: 388 - 4,
-      duration: 1800,
-      yoyo: true,
-      loop: -1,
-      ease: 'Sine.easeInOut',
-    });
+    this.startFigureBob();
   }
 
   private startPulse(): void {
