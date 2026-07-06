@@ -3,9 +3,13 @@ import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMe
 import { ScoreClient } from '../systems/ScoreClient';
 import type { LeaderboardEntry } from '../../shared/scoreTypes';
 import { composeAvatar } from '../ui/avatar';
+import { leaderboardRowSlots, rowContentY, LB_ENLARGED_ROW_H, LB_AVATAR_SCALE, type LeaderboardRowSlot } from './scoreLayout';
 
-const PAGE_LIMIT = 50;
-const ROW_H      = 28;
+const PAGE_LIMIT     = 50;
+const ROW_H          = 28;
+/** Rows with rank <= this get an enlarged avatar showcase (page 0 only, since
+ *  ranks are sequential starting at 1). */
+const SHOWCASE_RANKS = 5;
 
 export interface LeaderboardSceneData {
   heapId:   string;
@@ -39,6 +43,8 @@ export class LeaderboardScene extends Phaser.Scene {
   private bodyWidth:  number = 0;
   private scrollY:    number = 0;
   private contentH:   number = 0;
+  private rowSlots:   LeaderboardRowSlot[] = [];
+  private rowRects:   Phaser.GameObjects.Rectangle[] = [];
 
   constructor() { super({ key: 'LeaderboardScene' }); }
 
@@ -189,31 +195,40 @@ export class LeaderboardScene extends Phaser.Scene {
     this.bodyContainer.y = 0;
     this.page  = page;
     this.total = total;
+    this.rowRects = [];
+
+    // Ranks are sequential starting at 1, so the showcase rows only ever
+    // land on page 0 — later pages get no enlarged rows.
+    const enlargeCount = page === 0 ? SHOWCASE_RANKS : 0;
+    const { slots, totalH } = leaderboardRowSlots(entries.length, ROW_H, enlargeCount, LB_ENLARGED_ROW_H);
+    this.rowSlots = slots;
 
     entries.forEach((entry, i) => {
-      const rowY    = this.bodyTop + i * ROW_H + ROW_H / 2;
+      const slot    = slots[i];
+      const rowY    = this.bodyTop + rowContentY(slot, LB_AVATAR_SCALE);
       const isMe    = entry.playerId === this.playerId;
       const stripe  = isMe ? 0x3a2a14 : (i % 2 === 0 ? 0x141629 : 0x0f1020);
       const stroke  = isMe ? 0xff9922 : 0x1e2a44;
 
       const bg = this.add.rectangle(
         this.bodyLeft + this.bodyWidth / 2, rowY,
-        this.bodyWidth, ROW_H - 2,
+        this.bodyWidth, slot.h - 2,
         stripe,
       ).setStrokeStyle(isMe ? 2 : 1, stroke);
       this.bodyContainer.add(bg);
+      this.rowRects.push(bg);
 
       const rankColor = isMe ? '#ffcc88' : '#7799bb';
       const nameColor = isMe ? '#ffffff' : '#ccddee';
 
-      const shouldShowAvatar = entry.rank <= 5 && this.textures.exists('trashbag-nostrings');
+      const shouldShowAvatar = slot.enlarged && this.textures.exists('trashbag-nostrings');
 
       const rankText = this.add.text(this.bodyLeft + 12, rowY,
         `#${entry.rank}`, { fontSize: '13px', color: rankColor },
       ).setOrigin(0, 0.5);
       if (shouldShowAvatar) {
         const avatar = composeAvatar(this, entry.loadout ?? {}, {
-          x: this.bodyLeft + 44, y: rowY, scale: 0.5,
+          x: this.bodyLeft + 44, y: rowY, scale: LB_AVATAR_SCALE,
         });
         this.bodyContainer.add(avatar);
       }
@@ -229,7 +244,7 @@ export class LeaderboardScene extends Phaser.Scene {
       this.bodyContainer.add([rankText, nameText, scoreText]);
     });
 
-    this.contentH = entries.length * ROW_H;
+    this.contentH = totalH;
     this.updateFooter();
   }
 
@@ -249,7 +264,8 @@ export class LeaderboardScene extends Phaser.Scene {
     }
     // Scroll the player's row into view
     const indexOnPage = (this.playerRank - 1) - targetPage * PAGE_LIMIT;
-    const rowCenterY  = this.bodyTop + indexOnPage * ROW_H + ROW_H / 2;
+    const slot        = this.rowSlots[indexOnPage];
+    const rowCenterY  = this.bodyTop + slot.y + slot.h / 2;
     const viewportH   = this.bodyBottom - this.bodyTop;
     const desiredScroll = Math.max(0, Math.min(
       this.contentH - viewportH,
@@ -261,12 +277,10 @@ export class LeaderboardScene extends Phaser.Scene {
   }
 
   private flashPlayerRow(indexOnPage: number): void {
-    // Locate the rectangle for that row (first child of the trio per index).
-    // Each row contributed 1 rect + 3 texts = 4 children. Rect is at index*4.
-    const child = this.bodyContainer.list[indexOnPage * 4];
-    if (!(child instanceof Phaser.GameObjects.Rectangle)) return;
+    const rect = this.rowRects[indexOnPage];
+    if (!rect) return;
     this.tweens.add({
-      targets:  child,
+      targets:  rect,
       alpha:    { from: 1, to: 0.3 },
       duration: 180,
       yoyo:     true,

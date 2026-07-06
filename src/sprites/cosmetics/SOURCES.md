@@ -58,6 +58,19 @@ trashbag's palette (slightly desaturated) with its dark outline.
 | hats/hat_tincan.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 247×395 |
 | hats/hat_banana.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 1146×1338 |
 | hats/hat_boat.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 233×109 |
+| face/face_googly.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 800×300 (Eyes1.png) |
+| face/face_3dglasses.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 533×196 (3d_glasses.png) |
+| face/face_wonkyeyes.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 800×300 (Eyes2.png) |
+| face/face_lazyeye.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 800×300 (Eyes3.png) |
+| face/face_walleyes.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 800×300 (Eyes4.png) |
+| face/face_3dstripes.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 533×196 (3d_glasseslines.png) |
+| face/face_clearglasses.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 533×196 (glasses_clear.png) |
+| face/face_shutter.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 533×196 (glasseslines_white.png) |
+| face/face_shutterred.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 533×196 (glasseslines_red.png) |
+| face/face_shutterblue.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 533×196 (glasseslines_blue.png) |
+| face/face_shuttergreen.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 533×196 (glasseslines_green.png) |
+| face/face_shutterorange.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 533×196 (glasseslines_orange.png) |
+| face/face_shutterpink.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 533×196 (glasseslines_pink.png) |
 
 > **License note:** the itch page states no generative AI was used but does not
 > publish explicit license text. Pack was purchased ($2). Confirm

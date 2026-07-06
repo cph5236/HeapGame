@@ -5,7 +5,7 @@ import {
 
 describe('COSMETIC_CATALOG integrity', () => {
   it('has 88 entries with unique ids', () => {
-    expect(COSMETIC_CATALOG.length).toBe(88);
+    expect(COSMETIC_CATALOG.length).toBe(91);
     const ids = COSMETIC_CATALOG.map(e => e.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -21,7 +21,7 @@ describe('COSMETIC_CATALOG integrity', () => {
     expect(count('tie')).toBe(12);
     expect(count('skin')).toBe(8);
     expect(count('hat')).toBe(50);
-    expect(count('face')).toBe(10);
+    expect(count('face')).toBe(13);
     expect(count('trail')).toBe(8);
   });
 

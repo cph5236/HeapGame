@@ -29,10 +29,13 @@ import type { HeapParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
-import { bottomButtonLayout, bottomButtonRowY, leaderboardRowSlots } from './scoreLayout';
+import { bottomButtonLayout, bottomButtonRowY, leaderboardRowSlots, rowContentY, LB_ENLARGED_ROW_H, LB_AVATAR_SCALE } from './scoreLayout';
 import { composeAvatar } from '../ui/avatar';
 import { getPlayConsoleId, LEADERBOARD_HIGH_SCORE_ID } from '../data/achievementDefs';
 
+
+/** Top-N high-score rows that get an enlarged avatar showcase. */
+const SHOWCASE_COUNT = 3;
 
 export class ScoreScene extends Phaser.Scene {
   private score:               number  = 0;
@@ -941,12 +944,12 @@ export class ScoreScene extends Phaser.Scene {
     // player isn't in the top N. The mock path knows the data; the live path resolves
     // async (after this synchronous return), so it must reserve the worst case — else
     // the buttons anchor too high and overlap a taller-than-expected live panel.
-    // Enlarged rows (first 5) are taller; account for this in the panel height.
+    // Enlarged rows (first SHOWCASE_COUNT) are taller; account for this in the panel height.
     const reservedTopRows = this._mockLeaderboard ? this._mockLeaderboard.top.length : LEADERBOARD_TOP_N;
     const reservedExtra   = (this._mockLeaderboard
       ? (this._mockLeaderboard.player && !this.playerInTop(this._mockLeaderboard) ? 2 : 0)
       : 2);  // for live: always reserve worst case (gap + player row)
-    const { totalH: reservedTopH } = leaderboardRowSlots(reservedTopRows, ROW_H, 5);
+    const { totalH: reservedTopH } = leaderboardRowSlots(reservedTopRows, ROW_H, SHOWCASE_COUNT, LB_ENLARGED_ROW_H);
     const panelBottom = PANEL_TOP + reservedTopH + reservedExtra * ROW_H + 8;
 
     // Mock data path — renders immediately, no API call.
@@ -1033,7 +1036,7 @@ export class ScoreScene extends Phaser.Scene {
     lb.push(highScoresLabel);
 
     // Panel background
-    const { slots, totalH } = leaderboardRowSlots(ctx.top.length, rowH, 5);
+    const { slots, totalH } = leaderboardRowSlots(ctx.top.length, rowH, SHOWCASE_COUNT, LB_ENLARGED_ROW_H);
     const extraRows = ctx.player && !this.playerInTop(ctx) ? 2 : 0;
     const panelH    = totalH + extraRows * rowH + 8;
     const bg = this.add.graphics();
@@ -1052,7 +1055,7 @@ export class ScoreScene extends Phaser.Scene {
       const isPlayer = entry.playerId === (ctx.player?.playerId ?? '');
       const nameCol  = isPlayer && this.isNewHighScore ? '#ffdd44' : '#aaccee';
       const rankCol  = isPlayer && this.isNewHighScore ? '#ffdd44' : '#668899';
-      const mid      = bodyTop + slot.y + slot.h / 2;
+      const mid      = bodyTop + rowContentY(slot, LB_AVATAR_SCALE);
 
       // Alternating row stripe
       const stripe = this.add.graphics();
@@ -1067,9 +1070,9 @@ export class ScoreScene extends Phaser.Scene {
 
       let nameX = left + 36;
       if (slot.enlarged) {
-        // Mini avatar showcasing the player's cosmetics (~23px tall at 0.5).
+        // Mini avatar showcasing the player's cosmetics.
         const avatar = composeAvatar(this, entry.loadout ?? {}, {
-          x: left + 44, y: mid, scale: 0.5,
+          x: left + 44, y: mid, scale: LB_AVATAR_SCALE,
         });
         lb.push(avatar);
         nameX = left + 62;
