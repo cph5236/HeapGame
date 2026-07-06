@@ -8,16 +8,40 @@ import {
   type HatRender, type FaceRender, type TrailRender,
 } from '../data/cosmeticDefs';
 
+/** Resolved hat also carries the def's un-adjusted scale, so the renderer can
+ *  keep the hat's bottom edge anchored in place as the player's dScale tweak
+ *  grows/shrinks it (scaling should expand upward, not from the center). */
+export interface ResolvedHatRender extends HatRender { defScale: number }
+
 export interface ResolvedCosmetics {
   tieColor:   number;
   tieRainbow: boolean;
   skinTint:   number | null;   // null = no tint
-  hat:        HatRender  | null;
+  hat:        ResolvedHatRender | null;
   face:       FaceRender | null;
   trail:      TrailRender | null;
 }
 
-export function resolveCosmetics(equipped: EquippedLoadout): ResolvedCosmetics {
+/** Player's per-hat fit tweak, relative to the def's designer defaults.
+ *  dAngle in degrees, dScale a multiplier on the def's scale. */
+export interface HatAdjustment { dAngle: number; dScale: number }
+export type HatAdjustments = Record<string, HatAdjustment>;
+
+export const HAT_ANGLE_LIMIT = 15;    // degrees either way from the default
+export const HAT_SCALE_MIN   = 0.8;   // ×0.8 .. ×1.2 of the default size
+export const HAT_SCALE_MAX   = 1.2;
+
+export function clampHatAdjustment(adj: HatAdjustment): HatAdjustment {
+  return {
+    dAngle: Math.max(-HAT_ANGLE_LIMIT, Math.min(HAT_ANGLE_LIMIT, adj.dAngle)),
+    dScale: Math.max(HAT_SCALE_MIN, Math.min(HAT_SCALE_MAX, adj.dScale)),
+  };
+}
+
+export function resolveCosmetics(
+  equipped:    EquippedLoadout,
+  adjustments: HatAdjustments = {},
+): ResolvedCosmetics {
   const out: ResolvedCosmetics = {
     tieColor: DEFAULT_TIE_COLOR, tieRainbow: false,
     skinTint: null, hat: null, face: null, trail: null,
@@ -35,7 +59,20 @@ export function resolveCosmetics(equipped: EquippedLoadout): ResolvedCosmetics {
   }
 
   const hatDef = equipped.hat ? getCosmeticDef(equipped.hat) : undefined;
-  if (hatDef?.render.kind === 'hat') out.hat = hatDef.render;
+  if (hatDef?.render.kind === 'hat') {
+    const raw = equipped.hat !== undefined ? adjustments[equipped.hat] : undefined;
+    if (raw) {
+      const adj = clampHatAdjustment(raw);
+      out.hat = {
+        ...hatDef.render,
+        angle: hatDef.render.angle + adj.dAngle,
+        scale: hatDef.render.scale * adj.dScale,
+        defScale: hatDef.render.scale,
+      };
+    } else {
+      out.hat = { ...hatDef.render, defScale: hatDef.render.scale };
+    }
+  }
 
   const faceDef = equipped.face ? getCosmeticDef(equipped.face) : undefined;
   if (faceDef?.render.kind === 'face') out.face = faceDef.render;

@@ -10,6 +10,7 @@ Call the Integrity API at important moments in your app to check that it's your 
 - The claw elevator.
 
 - Cosmetics system — implemented on feature/cosmetics-system (spec: docs/superpowers/specs/2026-07-02-cosmetics-system-design.md). Remaining: PNG art batch (see plan Task 11 workflow), remote migration heap_scores/0002 at merge. 
+- Cosmetics hat art rework — these hat sprites need manual art edits to sit right on the bag's knot (repositioning alone isn't enough): `hat_bunny`, `hat_antlers`, `hat_lumberjack`, `hat_beanie`. Source art in `Possible Cosmetics/Hats`; drop fixed PNGs into `src/sprites/cosmetics/hats/` (same filenames).
 
 Language detection?
 

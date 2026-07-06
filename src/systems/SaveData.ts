@@ -1,6 +1,7 @@
 import { UPGRADE_DEFS } from '../data/upgradeDefs';
 import { ITEM_DEFS } from '../data/itemDefs';
 import { getCosmeticDef } from '../data/cosmeticDefs';
+import { clampHatAdjustment, type HatAdjustment, type HatAdjustments } from './cosmeticsLogic';
 import type { EquippedLoadout, CosmeticSlot } from '../../shared/cosmeticCatalog';
 import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL } from '../constants';
 
@@ -50,6 +51,7 @@ interface RawSave {
   cosmeticsOwned:      string[];
   cosmeticsEquipped:   EquippedLoadout;
   loadoutSyncPending?: boolean;
+  hatAdjustments?:     HatAdjustments;   // per-hat-id fit tweaks (dAngle/dScale)
   verboseLogging?: boolean;
   tutorialDone?:   boolean;
   _legacyPlaced?: PlacedItemSave[];
@@ -121,6 +123,7 @@ function migrate(parsed: any): RawSave {
       cosmeticsOwned: parsed.cosmeticsOwned ?? [],
       cosmeticsEquipped: parsed.cosmeticsEquipped ?? {},
       loadoutSyncPending: parsed.loadoutSyncPending,
+      hatAdjustments: parsed.hatAdjustments,
       tutorialDone:   parsed.tutorialDone   ?? true,
       verboseLogging: parsed.verboseLogging,
       _legacyPlaced:  parsed._legacyPlaced,
@@ -504,6 +507,28 @@ export function setLoadoutSyncPending(v: boolean): void {
   persist(data);
 }
 
+/** All per-hat fit tweaks (clamped at write time). */
+export function getHatAdjustments(): HatAdjustments {
+  return { ...(load().hatAdjustments ?? {}) };
+}
+
+export function getHatAdjustment(id: string): HatAdjustment {
+  return load().hatAdjustments?.[id] ?? { dAngle: 0, dScale: 1 };
+}
+
+/** Set (clamped) or clear (null) the fit tweak for one hat id. */
+export function setHatAdjustment(id: string, adj: HatAdjustment | null): void {
+  const data = load();
+  const map = data.hatAdjustments ?? {};
+  if (adj === null || (adj.dAngle === 0 && adj.dScale === 1)) {
+    delete map[id];
+  } else {
+    map[id] = clampHatAdjustment(adj);
+  }
+  data.hatAdjustments = map;
+  persist(data);
+}
+
 // ── Cloud save merge ──────────────────────────────────────────────────────────
 
 export function mergeCloudSave(local: RawSave, cloud: RawSave): RawSave {
@@ -565,6 +590,7 @@ export function mergeCloudSave(local: RawSave, cloud: RawSave): RawSave {
     highScores,
     cosmeticsOwned,
     cosmeticsEquipped:  { ...(primary.cosmeticsEquipped ?? {}) },
+    hatAdjustments:     { ...(secondary.hatAdjustments ?? {}), ...(primary.hatAdjustments ?? {}) },
     loadoutSyncPending: local.loadoutSyncPending,
     verboseLogging: local.verboseLogging,
     adRunsSinceLast: local.adRunsSinceLast,

@@ -36,6 +36,32 @@ describe('resolveCosmetics', () => {
   });
 });
 
+describe('hat adjustments', () => {
+  it('applies dAngle/dScale on top of the def defaults', () => {
+    const r = resolveCosmetics({ hat: 'hat_fedora' }, { hat_fedora: { dAngle: 5, dScale: 1.1 } });
+    expect(r.hat?.angle).toBe(5);
+    expect(r.hat?.scale).toBeCloseTo(1.1);
+  });
+
+  it('clamps out-of-range adjustments (±15°, ×0.8–1.2)', () => {
+    const r = resolveCosmetics({ hat: 'hat_fedora' }, { hat_fedora: { dAngle: 40, dScale: 3 } });
+    expect(r.hat?.angle).toBe(15);
+    expect(r.hat?.scale).toBeCloseTo(1.2);
+  });
+
+  it('no adjustment → def defaults untouched', () => {
+    const r = resolveCosmetics({ hat: 'hat_fedora' });
+    expect(r.hat?.angle).toBe(0);
+    expect(r.hat?.scale).toBe(1);
+  });
+
+  it('adjustments for other hats are ignored', () => {
+    const r = resolveCosmetics({ hat: 'hat_fedora' }, { hat_crown: { dAngle: 10, dScale: 0.9 } });
+    expect(r.hat?.angle).toBe(0);
+    expect(r.hat?.scale).toBe(1);
+  });
+});
+
 describe('rainbowColorAt', () => {
   it('cycles: t=0 red, t=1000 ~green-ish, full period returns to start', () => {
     expect(rainbowColorAt(0)).toBe(rainbowColorAt(3000));

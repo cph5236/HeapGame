@@ -13,6 +13,8 @@ import type { ResolvedCosmetics } from '../systems/cosmeticsLogic';
 const ART_SCALE = 40 / 174;
 /** Trail emits only while actually moving. */
 const TRAIL_MIN_SPEED = 60;
+/** Skin glaze strength — how strongly the flat skin color washes the bag. */
+const SKIN_GLAZE_ALPHA = 0.26;
 
 export class PlayerCosmetics {
   private readonly sprite: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
@@ -22,7 +24,10 @@ export class PlayerCosmetics {
 
   private hatImg:  Phaser.GameObjects.Image | null = null;
   private faceImg: Phaser.GameObjects.Image | null = null;
+  private skinGlaze: Phaser.GameObjects.Image | null = null;
   private hatOffset  = { x: 0, y: 0 };
+  private hatAngle   = 0;
+  private hatScale   = 1;
   private faceOffset = { x: 0, y: 0 };
   private emitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private hidden = false;
@@ -37,12 +42,24 @@ export class PlayerCosmetics {
     this.baseScaleX = sprite.scaleX;
     this.baseScaleY = sprite.scaleY;
 
-    if (resolved.skinTint !== null) sprite.setTint(resolved.skinTint);
+    if (resolved.skinTint !== null) {
+      // Multiply-tint alone is invisible on the near-black bag art, so lay a
+      // translucent flat-color copy of the sprite over it (tintFill glaze).
+      sprite.setTint(resolved.skinTint);
+      this.skinGlaze = scene.add.image(sprite.x, sprite.y, sprite.texture.key)
+        .setTintFill(resolved.skinTint).setAlpha(SKIN_GLAZE_ALPHA)
+        .setDepth(sprite.depth + 0.1);
+    }
 
     if (resolved.hat && scene.textures.exists(resolved.hat.textureKey)) {
       this.hatImg = scene.add.image(sprite.x, sprite.y, resolved.hat.textureKey)
-        .setScale(ART_SCALE).setDepth(12);
-      this.hatOffset = { x: resolved.hat.offsetX, y: resolved.hat.offsetY };
+        .setScale(ART_SCALE * resolved.hat.scale).setDepth(12);
+      // Keep the hat's bottom edge (contact point) anchored as dScale grows
+      // or shrinks it from the def's baseline, instead of scaling from center.
+      const bottomAnchor = (this.hatImg.height / 2) * ART_SCALE * (resolved.hat.defScale - resolved.hat.scale);
+      this.hatOffset = { x: resolved.hat.offsetX, y: resolved.hat.offsetY + bottomAnchor };
+      this.hatAngle  = resolved.hat.angle;
+      this.hatScale  = resolved.hat.scale;
     }
     if (resolved.face && scene.textures.exists(resolved.face.textureKey)) {
       this.faceImg = scene.add.image(sprite.x, sprite.y, resolved.face.textureKey)
@@ -73,6 +90,7 @@ export class PlayerCosmetics {
     this.hidden = true;
     this.hatImg?.setVisible(false);
     this.faceImg?.setVisible(false);
+    this.skinGlaze?.setVisible(false);
     if (this.emitter) { this.emitter.stop(); this.emitter.setVisible(false); }
   }
 
@@ -80,6 +98,7 @@ export class PlayerCosmetics {
     this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.sync, this);
     this.hatImg?.destroy();
     this.faceImg?.destroy();
+    this.skinGlaze?.destroy();
     this.emitter?.destroy();
   }
 
@@ -96,8 +115,8 @@ export class PlayerCosmetics {
         this.sprite.x + this.hatOffset.x * fx,
         this.sprite.y + this.hatOffset.y * fy,
       );
-      this.hatImg.setScale(ART_SCALE * fx, ART_SCALE * fy);
-      this.hatImg.setAngle(angle);
+      this.hatImg.setScale(ART_SCALE * this.hatScale * fx, ART_SCALE * this.hatScale * fy);
+      this.hatImg.setAngle(angle + this.hatAngle);
     }
     if (this.faceImg) {
       this.faceImg.setPosition(
@@ -106,6 +125,13 @@ export class PlayerCosmetics {
       );
       this.faceImg.setScale(ART_SCALE * fx, ART_SCALE * fy);
       this.faceImg.setAngle(angle);
+    }
+    if (this.skinGlaze) {
+      this.skinGlaze.setPosition(this.sprite.x, this.sprite.y);
+      this.skinGlaze.setScale(this.sprite.scaleX, this.sprite.scaleY);
+      this.skinGlaze.setAngle(angle);
+      this.skinGlaze.setFlip(this.sprite.flipX, this.sprite.flipY);
+      this.skinGlaze.setVisible(this.sprite.visible);
     }
     if (this.emitter) {
       const body = this.sprite.body;

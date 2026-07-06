@@ -19,7 +19,7 @@ import {
 } from '../systems/HeapPolygonLoader';
 import { setupGameplayUiCamera, addToGameplayUi } from '../systems/GameplayUiCamera';
 import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
-import { getPlayerConfig, setTutorialDone, getJoystickSide, getEffectiveControlMode, getEquippedCosmetics } from '../systems/SaveData';
+import { getPlayerConfig, setTutorialDone, getJoystickSide, getEffectiveControlMode, getEquippedCosmetics, getHatAdjustments } from '../systems/SaveData';
 import { resolveCosmetics } from '../systems/cosmeticsLogic';
 import { TutorialDirector, type TutorialStep } from '../systems/TutorialDirector';
 import { TutorialOverlay } from '../ui/TutorialOverlay';
@@ -172,7 +172,7 @@ export class TutorialScene extends Phaser.Scene {
 
     // Player animator
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
-    const cosmetics = resolveCosmetics(getEquippedCosmetics());
+    const cosmetics = resolveCosmetics(getEquippedCosmetics(), getHatAdjustments());
     this.playerAnimator.setTieStyle({ color: cosmetics.tieColor, rainbow: cosmetics.tieRainbow });
     this.playerCosmetics = new PlayerCosmetics(this.player.sprite, this, cosmetics);
 

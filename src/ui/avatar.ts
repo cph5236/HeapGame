@@ -6,40 +6,61 @@
 
 import Phaser from 'phaser';
 import type { EquippedLoadout } from '../../shared/cosmeticCatalog';
-import { resolveCosmetics } from '../systems/cosmeticsLogic';
+import { resolveCosmetics, type HatAdjustments } from '../systems/cosmeticsLogic';
+import { drawTieBand } from './tieBand';
 import { PLAYER_WIDTH, PLAYER_HEIGHT } from '../constants';
 
 /** Same ratio the in-game bag renders at (174px art → 40 logical px). */
 const ART_SCALE = PLAYER_WIDTH / 174;
 /** Collar attach point for the strings, matching PlayerAnimator's offset. */
 const COLLAR_Y = PLAYER_HEIGHT * -1.2 * (PLAYER_HEIGHT / 197);
-/** Idle-pose string control points from PlayerAnimator's IDLE state. */
-const IDLE_STRINGS = { cpLx: -9, cpLy: 16, endLx: -12, endLy: 30, cpRx: 9, cpRy: 16, endRx: 12, endRy: 30 };
+/** Shortened idle-pose strings — the portrait reads better with a gentler
+ *  drape than the in-game animator's full-length dangle. Anchored at the
+ *  band edges (±4) so the two tails don't cross at the neck. */
+const IDLE_STRINGS = { x0: 4, cpX: 8, cpY: 7, endX: 12, endY: 14 };
+const STRING_W = 1.35;
 
 export function composeAvatar(
   scene:   Phaser.Scene,
   loadout: EquippedLoadout,
   opts:    { x: number; y: number; scale: number },
+  adjustments: HatAdjustments = {},   // own avatar: pass SaveData's tweaks
 ): Phaser.GameObjects.Container {
-  const r = resolveCosmetics(loadout);
+  const r = resolveCosmetics(loadout, adjustments);
   const s = opts.scale;
   const container = scene.add.container(opts.x, opts.y);
-
-  // Tie strings behind the bag top but above nothing else — draw first.
-  const strings = scene.add.graphics();
-  strings.lineStyle(2.5 * s, r.tieColor, 1);
-  drawBezier(strings, 0, COLLAR_Y * s, IDLE_STRINGS.cpLx * s, IDLE_STRINGS.cpLy * s, IDLE_STRINGS.endLx * s, IDLE_STRINGS.endLy * s);
-  drawBezier(strings, 0, COLLAR_Y * s, IDLE_STRINGS.cpRx * s, IDLE_STRINGS.cpRy * s, IDLE_STRINGS.endRx * s, IDLE_STRINGS.endRy * s);
-  container.add(strings);
 
   const bag = scene.add.image(0, 0, 'trashbag-nostrings')
     .setDisplaySize(PLAYER_WIDTH * s, PLAYER_HEIGHT * s);
   if (r.skinTint !== null) bag.setTint(r.skinTint);
   container.add(bag);
+  if (r.skinTint !== null) {
+    // Flat-color glaze — multiply tint alone is invisible on near-black art.
+    const glaze = scene.add.image(0, 0, 'trashbag-nostrings')
+      .setDisplaySize(PLAYER_WIDTH * s, PLAYER_HEIGHT * s)
+      .setTintFill(r.skinTint).setAlpha(0.26);
+    container.add(glaze);
+  }
+
+  // Tie: paint the collar band over the baked-in red one, then hang the
+  // strings in front of the bag (same as the in-game animator's gfx layer).
+  const strings = scene.add.graphics();
+  drawTieBand(strings, r.tieColor, 0, COLLAR_Y * s, s);
+  strings.lineStyle(STRING_W * s, r.tieColor, 1);
+  const st = IDLE_STRINGS;
+  drawBezier(strings, -st.x0 * s, COLLAR_Y * s, -st.cpX * s, st.cpY * s, -st.endX * s, st.endY * s);
+  drawBezier(strings,  st.x0 * s, COLLAR_Y * s,  st.cpX * s, st.cpY * s,  st.endX * s, st.endY * s);
+  container.add(strings);
 
   if (r.hat && scene.textures.exists(r.hat.textureKey)) {
-    container.add(scene.add.image(r.hat.offsetX * s, r.hat.offsetY * s, r.hat.textureKey)
-      .setScale(ART_SCALE * s));
+    const hatImg = scene.add.image(0, 0, r.hat.textureKey);
+    // Scaling pivots on the image center by default, which would slide the
+    // hat's bottom edge (its contact point) up or down. Shift the position by
+    // half the height delta so the bottom edge stays put and it grows upward.
+    const bottomAnchor = (hatImg.height / 2) * ART_SCALE * (r.hat.defScale - r.hat.scale);
+    hatImg.setPosition(r.hat.offsetX * s, (r.hat.offsetY + bottomAnchor) * s)
+      .setScale(ART_SCALE * s * r.hat.scale).setAngle(r.hat.angle);
+    container.add(hatImg);
   }
   if (r.face && scene.textures.exists(r.face.textureKey)) {
     container.add(scene.add.image(r.face.offsetX * s, r.face.offsetY * s, r.face.textureKey)

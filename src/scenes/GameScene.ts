@@ -14,7 +14,7 @@ import {
   applyPolygonToGenerator,
   polygonTopY,
 } from '../systems/HeapPolygonLoader';
-import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode, getJoystickSide, getUpgradeLevel, getEquippedCosmetics } from '../systems/SaveData';
+import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode, getJoystickSide, getUpgradeLevel, getEquippedCosmetics, getHatAdjustments } from '../systems/SaveData';
 import { HUD } from '../ui/HUD';
 import { EnemyRadar } from '../ui/EnemyRadar';
 import { showDashIndicator, controlClusterLayout } from '../ui/hudLogic';
@@ -208,7 +208,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
-    const cosmetics = resolveCosmetics(getEquippedCosmetics());
+    const cosmetics = resolveCosmetics(getEquippedCosmetics(), getHatAdjustments());
     this.playerAnimator.setTieStyle({ color: cosmetics.tieColor, rainbow: cosmetics.tieRainbow });
     this.playerCosmetics = new PlayerCosmetics(this.player.sprite, this, cosmetics);
     this.playerOutro    = new PlayerOutro(this, this.player.sprite);

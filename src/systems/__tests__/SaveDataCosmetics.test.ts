@@ -4,6 +4,7 @@ import {
   isCosmeticOwned, purchaseCosmetic, getOwnedCosmetics,
   getEquippedCosmetics, equipCosmetic,
   getLoadoutSyncPending, setLoadoutSyncPending,
+  getHatAdjustment, getHatAdjustments, setHatAdjustment,
   mergeCloudSave, getRawSaveForCloudSync, getSchemaVersionForTests,
 } from '../SaveData';
 
@@ -110,5 +111,41 @@ describe('cloud merge', () => {
     const merged = mergeCloudSave(local as any, cloud as any);
     expect(merged.cosmeticsOwned.sort()).toEqual(['hat_cone', 'tie_gold']);
     expect(merged.cosmeticsEquipped).toEqual({ tie: 'tie_gold' }); // local is primary (higher balance)
+  });
+});
+
+describe('hat adjustments', () => {
+  it('defaults to identity when unset', () => {
+    expect(getHatAdjustment('hat_fedora')).toEqual({ dAngle: 0, dScale: 1 });
+  });
+
+  it('stores, clamps, and clears per hat id', () => {
+    setHatAdjustment('hat_fedora', { dAngle: -40, dScale: 1.1 });
+    expect(getHatAdjustment('hat_fedora')).toEqual({ dAngle: -15, dScale: 1.1 });
+
+    setHatAdjustment('hat_crown', { dAngle: 5, dScale: 0.5 });
+    expect(getHatAdjustment('hat_crown').dScale).toBe(0.8);
+    expect(Object.keys(getHatAdjustments())).toHaveLength(2);
+
+    setHatAdjustment('hat_fedora', null);
+    expect(getHatAdjustment('hat_fedora')).toEqual({ dAngle: 0, dScale: 1 });
+  });
+
+  it('identity values delete the entry instead of storing it', () => {
+    setHatAdjustment('hat_fedora', { dAngle: 0, dScale: 1 });
+    expect(getHatAdjustments()).toEqual({});
+  });
+
+  it('cloud merge prefers the primary save per hat, keeps secondary-only tweaks', () => {
+    setHatAdjustment('hat_fedora', { dAngle: 5, dScale: 1 });
+    addBalance(100); // local is primary
+    const local = getRawSaveForCloudSync();
+    const cloud = {
+      ...local, balance: 0,
+      hatAdjustments: { hat_fedora: { dAngle: -5, dScale: 1 }, hat_crown: { dAngle: 2.5, dScale: 1 } },
+    };
+    const merged = mergeCloudSave(local, cloud);
+    expect(merged.hatAdjustments?.hat_fedora).toEqual({ dAngle: 5, dScale: 1 });
+    expect(merged.hatAdjustments?.hat_crown).toEqual({ dAngle: 2.5, dScale: 1 });
   });
 });

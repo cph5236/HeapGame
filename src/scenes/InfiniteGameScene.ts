@@ -27,7 +27,7 @@ import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { LayerGenerator } from '../systems/LayerGenerator';
 import { computeBandPolygon, simplifyPolygon, type Vertex } from '../systems/HeapPolygon';
 import { buildRunScore } from '../systems/buildRunScore';
-import { getPlayerConfig, addBalance, getUpgrades, getEffectiveControlMode, getUpgradeLevel, getEquippedCosmetics } from '../systems/SaveData';
+import { getPlayerConfig, addBalance, getUpgrades, getEffectiveControlMode, getUpgradeLevel, getEquippedCosmetics, getHatAdjustments } from '../systems/SaveData';
 import { resolveCosmetics } from '../systems/cosmeticsLogic';
 import { showDashIndicator } from '../ui/hudLogic';
 import { ENEMY_DEFS, DEFAULT_ENEMY_PARAMS } from '../data/enemyDefs';
@@ -204,7 +204,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     // of the wide infinite world (which would push the wrap point ~945px off-edge).
     this.player.wrapPadX = INFINITE_EDGE_PAD;
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
-    const cosmetics = resolveCosmetics(getEquippedCosmetics());
+    const cosmetics = resolveCosmetics(getEquippedCosmetics(), getHatAdjustments());
     this.playerAnimator.setTieStyle({ color: cosmetics.tieColor, rainbow: cosmetics.tieRainbow });
     this.playerCosmetics = new PlayerCosmetics(this.player.sprite, this, cosmetics);
     this.playerOutro = new PlayerOutro(this, this.player.sprite);
