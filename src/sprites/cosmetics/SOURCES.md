@@ -52,6 +52,12 @@ trashbag's palette (slightly desaturated) with its dark outline.
 | hats/hat_waldo.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`waldo.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
 | hats/hat_wig.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`wig.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
 | hats/hat_pickelhaube.png | Hat Pack by gamertose — <https://gamertose.itch.io/hat-pack> (`ww1German.png`) | purchased ($2, name-your-price) | trimmed + rescaled from 128×128 |
+| hats/hat_wizard.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 256×256 |
+| hats/hat_cone.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 125×197 |
+| hats/hat_bottlecap.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 184×56 |
+| hats/hat_tincan.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 247×395 |
+| hats/hat_banana.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 1146×1338 |
+| hats/hat_boat.png | **TODO: source/license unconfirmed** | **TODO** | trimmed + premultiplied-alpha rescaled from 233×109 |
 
 > **License note:** the itch page states no generative AI was used but does not
 > publish explicit license text. Pack was purchased ($2). Confirm

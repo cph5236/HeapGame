@@ -54,7 +54,6 @@ export const COSMETIC_CATALOG: readonly CatalogEntry[] = [
   { id: 'hat_cowboy',    slot: 'hat' },
   { id: 'hat_boat',      slot: 'hat' },
   { id: 'hat_beanie',    slot: 'hat' },
-  { id: 'hat_fishbone',  slot: 'hat' },
   { id: 'hat_viking',     slot: 'hat' },
   { id: 'hat_shark',      slot: 'hat' },
   { id: 'hat_graduation', slot: 'hat' },
