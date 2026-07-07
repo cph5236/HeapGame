@@ -19,3 +19,9 @@ CREATE TABLE IF NOT EXISTS player_customization (
   loadout    TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS player_auth (
+  player_id   TEXT NOT NULL PRIMARY KEY,
+  secret_hash TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
