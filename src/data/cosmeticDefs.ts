@@ -73,7 +73,7 @@ export const COSMETIC_DEFS: readonly CosmeticDef[] = [
   skin('skin_ghostly',   'Ghostly',   500, 0xaaffdd),
   // ── Hats (PNG; offsets from bag center, bag top edge at y=-23) ──
   hat('hat_cone',      'Traffic Cone',  800,  0, -40.23, 0, 1.24),
-  hat('hat_wizard',    'Tattered Wizard', 300, -1.41, -28.87),
+  hat('hat_wizard',    'Tattered Wizard', 300, -1.41, -32.0),
   hat('hat_bottlecap', 'Bottle Cap',    500,  -1.23, -23.77, 0, 1.61),
   hat('hat_tincan',    'Tin Can',       500,  -7.41, -24.14, 0, 0.63),
   hat('hat_banana',    'Banana Peel',   600,  -0.02, -34.78, 0, 1.28),
