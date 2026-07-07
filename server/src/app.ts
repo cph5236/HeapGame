@@ -102,7 +102,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
     // Admin mint + list — behind the admin gate.
     app.post('/codes', adminGate);
     app.get ('/codes', adminGate);
-    app.route('/codes', codeRoutes(opts.codeDb, () => opts.logSink));
+    app.route('/codes', codeRoutes(opts.codeDb, () => opts.logSink, opts.playerAuthDb));
   }
 
   if (opts.feedbackDb) {

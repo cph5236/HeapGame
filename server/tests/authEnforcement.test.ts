@@ -6,6 +6,7 @@ import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockPlayerAuthDB } from './helpers/mockPlayerAuthDb';
 import { MockSink } from './helpers/mockSink';
 import { MockCustomizationDB } from './helpers/mockCustomizationDb';
+import { MockCodeDB } from './helpers/mockCodeDb';
 import { hashSecret } from '../src/playerAuth';
 
 const HEAP_ID = 'heap-test-001';
@@ -135,5 +136,56 @@ describe('PUT /customization/:playerId auth', () => {
   it('no token + unclaimed: accepts (legacy client)', async () => {
     const { app } = makeCustomizationApp();
     expect((await putLoadout(app)).status).toBe(200);
+  });
+});
+
+async function makeCodesApp(authDb = new MockPlayerAuthDB(), sink = new MockSink()) {
+  const codeDb = new MockCodeDB();
+  await codeDb.createCode(
+    { code: 'WELCOME', rewardType: 'coins', rewardId: null, rewardAmount: 100, maxRedemptions: 0, expiresAt: null },
+    '2026-07-07T00:00:00.000Z',
+  );
+  const app = createApp(new MockHeapDB(), new MockScoreDB(), {
+    codeDb,
+    playerAuthDb: authDb,
+    logSink: sink,
+  });
+  return { app, authDb, sink };
+}
+
+async function redeem(app: Awaited<ReturnType<typeof makeCodesApp>>['app'], token?: string) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token !== undefined) headers['X-Player-Token'] = token;
+  return app.request('/codes/redeem', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ code: 'WELCOME', playerGuid: PLAYER }),
+  });
+}
+
+describe('POST /codes/redeem auth', () => {
+  it('token + unclaimed: claims and redeems', async () => {
+    const { app, authDb } = await makeCodesApp();
+    expect((await redeem(app, SECRET)).status).toBe(200);
+    expect(authDb.rows.has(PLAYER)).toBe(true);
+  });
+
+  it('token mismatch: 403 and the code is not consumed', async () => {
+    const { app } = await makeCodesApp();
+    await redeem(app, SECRET); // claims + consumes for PLAYER
+    const res = await redeem(app, 'wrong-secret');
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'forbidden' });
+  });
+
+  it('no token + claimed: 403', async () => {
+    const { app } = await makeCodesApp();
+    await redeem(app, SECRET);
+    expect((await redeem(app)).status).toBe(403);
+  });
+
+  it('no token + unclaimed: redeems (legacy client)', async () => {
+    const { app } = await makeCodesApp();
+    expect((await redeem(app)).status).toBe(200);
   });
 });
