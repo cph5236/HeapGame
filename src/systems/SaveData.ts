@@ -54,6 +54,7 @@ interface RawSave {
   hatAdjustments?:     HatAdjustments;   // per-hat-id fit tweaks (dAngle/dScale)
   verboseLogging?: boolean;
   tutorialDone?:   boolean;
+  customizeHintSeen?: boolean;  // has the player opened the customizer at least once?
   _legacyPlaced?: PlacedItemSave[];
   soundSettings?: SoundSettings;
   adRunsSinceLast?: number;
@@ -125,6 +126,7 @@ function migrate(parsed: any): RawSave {
       loadoutSyncPending: parsed.loadoutSyncPending,
       hatAdjustments: parsed.hatAdjustments,
       tutorialDone:   parsed.tutorialDone   ?? true,
+      customizeHintSeen: parsed.customizeHintSeen,
       verboseLogging: parsed.verboseLogging,
       _legacyPlaced:  parsed._legacyPlaced,
       soundSettings:  parsed.soundSettings  ?? { ...DEFAULT_SOUND_SETTINGS },
@@ -434,6 +436,14 @@ export function getTutorialDone(): boolean { return load().tutorialDone ?? false
 export function setTutorialDone(value: boolean): void {
   const data = load();
   persist({ ...data, tutorialDone: value });
+}
+
+// ── Customizer hint seen flag ───────────────────────────────────────────────────
+
+export function getCustomizeHintSeen(): boolean { return load().customizeHintSeen ?? false; }
+export function setCustomizeHintSeen(value: boolean): void {
+  const data = load();
+  persist({ ...data, customizeHintSeen: value });
 }
 
 // ── Selected heap ────────────────────────────────────────────────────────────

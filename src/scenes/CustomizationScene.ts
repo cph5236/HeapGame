@@ -7,6 +7,7 @@ import {
   getBalance, isCosmeticOwned, purchaseCosmetic,
   getEquippedCosmetics, equipCosmetic,
   getHatAdjustment, getHatAdjustments, setHatAdjustment,
+  setCustomizeHintSeen,
 } from '../systems/SaveData';
 import {
   HAT_ANGLE_LIMIT, HAT_SCALE_MIN, HAT_SCALE_MAX,
@@ -51,6 +52,7 @@ export class CustomizationScene extends Phaser.Scene {
   create(): void {
     setupUiCamera(this);
     this.activeSlot = 'hat';
+    setCustomizeHintSeen(true);
 
     this.createBackground();
 
