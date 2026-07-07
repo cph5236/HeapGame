@@ -16,6 +16,7 @@ import type { RewardCodeDB } from './codeDb';
 import type { FeedbackDB } from './feedbackDb';
 import type { ConfigDB } from './configDb';
 import type { CustomizationDB } from './customizationDb';
+import type { PlayerAuthDB } from './playerAuthDb';
 
 export interface AppOptions {
   /** Comma-separated origin list, or '*' to allow all (dev only). */
@@ -39,6 +40,8 @@ export interface AppOptions {
   configDb?: ConfigDB;
   /** Player-customization D1 access. If unset, /customization is not mounted. */
   customizationDb?: CustomizationDB;
+  /** Player write-auth (player_auth table in heap_scores). If unset, writes are not enforced. */
+  playerAuthDb?: PlayerAuthDB;
   /** Sink for incoming /log entries. If unset, /log is not mounted. */
   logSink?: Sink;
 }
@@ -91,7 +94,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   app.delete('/heaps/:id',              adminGate);
 
   app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink));
-  app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink));
+  app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink, opts.playerAuthDb));
 
   if (opts.codeDb) {
     // Player redeem endpoint — rate-limited, no admin gate.
