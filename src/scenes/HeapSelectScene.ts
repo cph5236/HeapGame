@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
-import { setSelectedHeapId, finalizeLegacyPlaced, getPlayerGuid } from '../systems/SaveData';
+import { setSelectedHeapId, finalizeLegacyPlaced, getEffectivePlayerId } from '../systems/SaveData';
 import { HeapClient } from '../systems/HeapClient';
 import { drawDifficulty } from '../ui/DifficultyStars';
 import { InputManager } from '../systems/InputManager';
@@ -289,7 +289,7 @@ export class HeapSelectScene extends Phaser.Scene {
   }
 
   private async fetchPlayerScores(): Promise<void> {
-    const playerId = getPlayerGuid();
+    const playerId = getEffectivePlayerId();
     const map = await ScoreClient.getPlayerScores(playerId);
     if (!map) return;  // network failure — leave placeholders
     this.playerScores = map;
@@ -316,7 +316,7 @@ export class HeapSelectScene extends Phaser.Scene {
     this.scene.launch('LeaderboardScene', {
       heapId:   heap.id,
       heapName: heap.params.name,
-      playerId: getPlayerGuid(),
+      playerId: getEffectivePlayerId(),
     });
     this.scene.pause();
   }

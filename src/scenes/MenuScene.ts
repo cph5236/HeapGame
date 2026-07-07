@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { AudioManager } from '../systems/AudioManager';
-import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode, getEquippedCosmetics, getHatAdjustments, getCustomizeHintSeen } from '../systems/SaveData';
+import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getEffectivePlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode, getEquippedCosmetics, getHatAdjustments, getCustomizeHintSeen } from '../systems/SaveData';
 import { composeAvatar } from '../ui/avatar';
 import { redeemCode, type RedeemResult } from '../systems/CodeClient';
 import { syncSaveToCloud } from '../systems/cloudSave';
@@ -842,7 +842,7 @@ export class MenuScene extends Phaser.Scene {
     this.scene.launch('LeaderboardScene', {
       heapId,
       heapName: params.name,
-      playerId: getPlayerGuid(),
+      playerId: getEffectivePlayerId(),
       returnScene: 'MenuScene',
     });
     this.scene.pause();
