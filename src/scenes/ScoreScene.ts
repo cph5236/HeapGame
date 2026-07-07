@@ -276,7 +276,7 @@ export class ScoreScene extends Phaser.Scene {
     const colors = [0xffdd44, 0x44ff88, 0xff88cc, 0x44ddff, 0xcc44ff, 0xff8844];
     for (let i = 0; i < 20; i++) {
       const x     = logicalWidth(this) / 2 + Phaser.Math.Between(-60, 60);
-      const y     = logicalHeight(this) * 0.22;
+      const y     = logicalHeight(this) * 0.19;
       const color = colors[i % colors.length];
       const size  = Phaser.Math.Between(3, 6);
       const g = this.add.graphics();
@@ -306,7 +306,7 @@ export class ScoreScene extends Phaser.Scene {
     const color        = this.isFailure ? '#ff5555' : '#44ffaa';
     const fontSize     = logicalWidth(this) < 420 ? '30px' : '36px';
     const letterSpacing = logicalWidth(this) < 420 ? 2 : 4;
-    this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.13, text, {
+    this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.10, text, {
       fontSize,
       fontFamily:      'monospace',
       color,
@@ -315,7 +315,7 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   private createScoreDisplay(): void {
-    const scoreText = this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.22, '0', {
+    const scoreText = this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.19, '0', {
       fontSize:   '52px',
       fontFamily: 'monospace',
       color:      '#ffdd44',
@@ -328,10 +328,10 @@ export class ScoreScene extends Phaser.Scene {
     // Glow ellipse behind score
     const glow = this.add.graphics();
     glow.fillStyle(0xffdd44, 0.08);
-    glow.fillEllipse(logicalWidth(this) / 2, logicalHeight(this) * 0.22, 160, 60);
+    glow.fillEllipse(logicalWidth(this) / 2, logicalHeight(this) * 0.19, 160, 60);
     this.children.moveBelow(glow as Phaser.GameObjects.GameObject, scoreText as Phaser.GameObjects.GameObject);
 
-    this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.22 + 34, 'SCORE', {
+    this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.19 + 34, 'SCORE', {
       fontSize:      '9px',
       fontFamily:    'monospace',
       color:         '#ffdd44',
@@ -359,7 +359,7 @@ export class ScoreScene extends Phaser.Scene {
 
   private createHighScoreBadge(): void {
     const color = '#ffdd44';
-    this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.275, 'NEW HIGH SCORE!', {
+    this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.245, 'NEW HIGH SCORE!', {
       fontSize:      '18px',
       fontFamily:    'monospace',
       color,
@@ -532,7 +532,7 @@ export class ScoreScene extends Phaser.Scene {
     this._coinsPanelObjects = [];
 
     const PANEL_X    = logicalWidth(this) / 2;
-    const PANEL_TOP  = logicalHeight(this) * 0.31;
+    const PANEL_TOP  = logicalHeight(this) * 0.28;
     const PANEL_W    = logicalWidth(this) * 0.88;
     const ROW_H      = 26;
     const PAD_X      = 16;
@@ -947,8 +947,8 @@ export class ScoreScene extends Phaser.Scene {
     // Enlarged rows (first SHOWCASE_COUNT) are taller; account for this in the panel height.
     const reservedTopRows = this._mockLeaderboard ? this._mockLeaderboard.top.length : LEADERBOARD_TOP_N;
     const reservedExtra   = (this._mockLeaderboard
-      ? (this._mockLeaderboard.player && !this.playerInTop(this._mockLeaderboard) ? 2 : 0)
-      : 2);  // for live: always reserve worst case (gap + player row)
+      ? (this._mockLeaderboard.player && !this.playerInTop(this._mockLeaderboard) ? 1 : 0)
+      : 1);  // for live: always reserve worst case (one compact "your rank" row)
     const { totalH: reservedTopH } = leaderboardRowSlots(reservedTopRows, ROW_H, SHOWCASE_COUNT, LB_ENLARGED_ROW_H);
     const panelBottom = PANEL_TOP + reservedTopH + reservedExtra * ROW_H + 8;
 
@@ -1037,7 +1037,7 @@ export class ScoreScene extends Phaser.Scene {
 
     // Panel background
     const { slots, totalH } = leaderboardRowSlots(ctx.top.length, rowH, SHOWCASE_COUNT, LB_ENLARGED_ROW_H);
-    const extraRows = ctx.player && !this.playerInTop(ctx) ? 2 : 0;
+    const extraRows = ctx.player && !this.playerInTop(ctx) ? 1 : 0;
     const panelH    = totalH + extraRows * rowH + 8;
     const bg = this.add.graphics();
     bg.fillStyle(0x002244, 0.5);
@@ -1089,15 +1089,16 @@ export class ScoreScene extends Phaser.Scene {
       lb.push(scoreTxt);
     }
 
-    // Gap + player row if player is not already in top N
+    // Compact "your rank" row if the player isn't already in the top N —
+    // a thin divider (not a full row) plus a single row, instead of a
+    // dots-gap row + a separate player row, to save vertical space.
     if (ctx.player && !this.playerInTop(ctx)) {
-      let y = bodyTop + totalH;
+      const y = bodyTop + totalH;
 
-      const gapDots = this.add.text(logicalWidth(this) / 2, y + rowH / 2, '·  ·  ·', {
-        fontSize: '10px', fontFamily: 'monospace', color: '#335566',
-      }).setOrigin(0.5, 0.5);
-      lb.push(gapDots);
-      y += rowH;
+      const divider = this.add.graphics();
+      divider.lineStyle(1, 0x335566, 0.6);
+      divider.lineBetween(left - 4, y, right + 4, y);
+      lb.push(divider);
 
       const p      = ctx.player;
       const pColor = this.isNewHighScore ? '#ffdd44' : '#aaccee';
@@ -1130,7 +1131,7 @@ export class ScoreScene extends Phaser.Scene {
   private createMenuPrompt(): void {
     const im    = InputManager.getInstance();
     const label = im.isMobile ? 'TAP ANYWHERE FOR MENU' : 'PRESS ANY KEY FOR MENU';
-    const promptY = logicalHeight(this) * 0.95;
+    const promptY = logicalHeight(this) * 0.97;
 
     this.add.text(logicalWidth(this) / 2, promptY, label, {
       fontSize:      '16px',

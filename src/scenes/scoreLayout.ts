@@ -47,8 +47,8 @@ export function bottomButtonRowY(opts: {
   screenHeight: number;              // logical viewport height
 }): number {
   const GAP      = 34;                       // panel bottom → button center
-  const maxY     = opts.screenHeight * 0.89; // keep clear of the menu prompt at 0.95·H
-  const fallback = opts.screenHeight * 0.87;
+  const maxY     = opts.screenHeight * 0.91; // keep clear of the menu prompt at 0.97·H
+  const fallback = opts.screenHeight * 0.89;
   if (opts.leaderboardBottom == null) return fallback;
   return Math.min(opts.leaderboardBottom + GAP, maxY);
 }
