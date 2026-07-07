@@ -6,6 +6,7 @@ import type { ScoreDB, ScoreRow } from '../../src/scoreDb';
 export class MockScoreDB implements ScoreDB {
   // key: `${heapId}::${playerId}`
   private rows = new Map<string, ScoreRow>();
+  private loadouts = new Map<string, string>();
 
   private key(heapId: string, playerId: string): string {
     return `${heapId}::${playerId}`;
@@ -30,11 +31,16 @@ export class MockScoreDB implements ScoreDB {
     return true;
   }
 
+  private withLoadout(r: ScoreRow): ScoreRow {
+    return { ...r, loadout: this.loadouts.get(r.player_id) ?? null };
+  }
+
   async getTopScores(heapId: string, limit: number): Promise<ScoreRow[]> {
     return Array.from(this.rows.values())
       .filter(r => r.heap_id === heapId)
       .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+      .slice(0, limit)
+      .map(r => this.withLoadout(r));
   }
 
   async getRank(heapId: string, score: number): Promise<number> {
@@ -62,7 +68,8 @@ export class MockScoreDB implements ScoreDB {
     return Array.from(this.rows.values())
       .filter(r => r.heap_id === heapId)
       .sort((a, b) => b.score - a.score)
-      .slice(offset, offset + limit);
+      .slice(offset, offset + limit)
+      .map(r => this.withLoadout(r));
   }
 
   async getPlayerScores(playerId: string): Promise<Array<{
@@ -88,5 +95,10 @@ export class MockScoreDB implements ScoreDB {
       created_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-01T00:00:00.000Z',
     });
+  }
+
+  /** Test helper — seed a player_customization row (raw JSON string). */
+  seedLoadout(playerId: string, loadoutJson: string): void {
+    this.loadouts.set(playerId, loadoutJson);
   }
 }

@@ -6,6 +6,7 @@ export function generateAllTextures(scene: Phaser.Scene): void {
   generateWallJumpTexture(scene);
   generateEnemyPercherTexture(scene);
   generateEnemyGhostTexture(scene);
+  generateCosmeticParticleTextures(scene);
 }
 
 function generatePlatformTexture(scene: Phaser.Scene): void {
@@ -120,5 +121,58 @@ function generateEnemyGhostTexture(scene: Phaser.Scene): void {
   g.fillRect(15, 10, 1, 1);
 
   g.generateTexture('enemy-ghost', 36, 36);
+  g.destroy();
+}
+
+function generateCosmeticParticleTextures(scene: Phaser.Scene): void {
+  // cos-dot — 6px filled circle
+  let g = scene.add.graphics();
+  g.fillStyle(0xffffff, 1);
+  g.fillCircle(3, 3, 3);
+  g.generateTexture('cos-dot', 6, 6);
+  g.destroy();
+
+  // cos-fly — small body + wing nubs
+  g = scene.add.graphics();
+  g.fillStyle(0xffffff, 1);
+  g.fillCircle(3, 4, 2);
+  g.fillCircle(1.5, 2, 1.2);
+  g.fillCircle(4.5, 2, 1.2);
+  g.generateTexture('cos-fly', 7, 7);
+  g.destroy();
+
+  // cos-bubble — ring
+  g = scene.add.graphics();
+  g.lineStyle(1.5, 0xffffff, 1);
+  g.strokeCircle(5, 5, 3.5);
+  g.generateTexture('cos-bubble', 10, 10);
+  g.destroy();
+
+  // cos-star — 4-point sparkle (two thin diamonds)
+  g = scene.add.graphics();
+  g.fillStyle(0xffffff, 1);
+  g.fillTriangle(4, 0, 5.5, 4, 2.5, 4);
+  g.fillTriangle(4, 8, 5.5, 4, 2.5, 4);
+  g.fillTriangle(0, 4, 4, 5.5, 4, 2.5);
+  g.fillTriangle(8, 4, 4, 5.5, 4, 2.5);
+  g.generateTexture('cos-star', 8, 8);
+  g.destroy();
+
+  // cos-coin — filled circle with rim
+  g = scene.add.graphics();
+  g.fillStyle(0xffffff, 1);
+  g.fillCircle(4, 4, 3.5);
+  g.lineStyle(1, 0xcccccc, 1);
+  g.strokeCircle(4, 4, 3.5);
+  g.generateTexture('cos-coin', 8, 8);
+  g.destroy();
+
+  // cos-puff — soft blob (three overlapping circles)
+  g = scene.add.graphics();
+  g.fillStyle(0xffffff, 0.8);
+  g.fillCircle(4, 5, 3);
+  g.fillCircle(7, 4, 2.5);
+  g.fillCircle(6, 7, 2);
+  g.generateTexture('cos-puff', 11, 10);
   g.destroy();
 }

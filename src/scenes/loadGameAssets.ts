@@ -6,6 +6,7 @@ import { HEAP_TILE_URLS, HEAP_TILE_COUNT } from '../data/heapTileUrls';
 import { PORTAL_DEF } from '../data/portalDefs';
 import { pickTrashWallPool } from '../systems/trashWallPool';
 import { SOUND_DEFS } from '../data/soundDefs';
+import { COSMETIC_ART } from '../data/cosmeticArt';
 import ibeamUrl       from '../sprites/Placeables/IBeam.png?url';
 import ladderUrl      from '../sprites/Placeables/Ladder.png?url';
 import tombstone1Url  from '../sprites/Placeables/TombStone (1).png?url';
@@ -63,6 +64,11 @@ export function loadGameAssets(scene: Phaser.Scene): void {
   scene.load.image('bridge',              bridgeUrl);
   scene.load.image('trashbag-nostrings', trashbagNoStringsUrl);
   scene.load.image('outro-death',        outroDeathUrl);
+
+  // ── Cosmetic PNGs (auto-manifest; empty until art lands) ─────────────────
+  for (const [key, url] of Object.entries(COSMETIC_ART)) {
+    scene.load.image(key, url);
+  }
 
   // ── Enemy spritesheets ───────────────────────────────────────────────────
   scene.load.spritesheet('vulture-fly-left',  vultureFlyLeftUrl,  { frameWidth: 64, frameHeight: 43 });

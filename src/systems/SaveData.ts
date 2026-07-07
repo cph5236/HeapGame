@@ -1,9 +1,12 @@
 import { UPGRADE_DEFS } from '../data/upgradeDefs';
 import { ITEM_DEFS } from '../data/itemDefs';
+import { getCosmeticDef } from '../data/cosmeticDefs';
+import { clampHatAdjustment, type HatAdjustment, type HatAdjustments } from './cosmeticsLogic';
+import type { EquippedLoadout, CosmeticSlot } from '../../shared/cosmeticCatalog';
 import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL } from '../constants';
 
 const SAVE_KEY = 'heap_save';
-const CURRENT_SCHEMA = 4;
+const CURRENT_SCHEMA = 5;
 
 // World height at each schema version — used to remap placed item Y values.
 const WORLD_HEIGHT_V2 = 50_000;
@@ -45,8 +48,13 @@ interface RawSave {
   playerName:     string;
   gpgsPlayerId?:  string;
   highScores:     Record<string, number>;
+  cosmeticsOwned:      string[];
+  cosmeticsEquipped:   EquippedLoadout;
+  loadoutSyncPending?: boolean;
+  hatAdjustments?:     HatAdjustments;   // per-hat-id fit tweaks (dAngle/dScale)
   verboseLogging?: boolean;
   tutorialDone?:   boolean;
+  customizeHintSeen?: boolean;  // has the player opened the customizer at least once?
   _legacyPlaced?: PlacedItemSave[];
   soundSettings?: SoundSettings;
   adRunsSinceLast?: number;
@@ -80,6 +88,8 @@ function freshSave(): RawSave {
     playerGuid:     generateGuid(),
     playerName:     generateDefaultName(),
     highScores:     {},
+    cosmeticsOwned: [],
+    cosmeticsEquipped: {},
     tutorialDone:   false,
     soundSettings:  { ...DEFAULT_SOUND_SETTINGS },
   };
@@ -111,7 +121,12 @@ function migrate(parsed: any): RawSave {
       playerName:     parsed.playerName     ?? generateDefaultName(),
       gpgsPlayerId:   parsed.gpgsPlayerId,
       highScores:     parsed.highScores     ?? {},
+      cosmeticsOwned: parsed.cosmeticsOwned ?? [],
+      cosmeticsEquipped: parsed.cosmeticsEquipped ?? {},
+      loadoutSyncPending: parsed.loadoutSyncPending,
+      hatAdjustments: parsed.hatAdjustments,
       tutorialDone:   parsed.tutorialDone   ?? true,
+      customizeHintSeen: parsed.customizeHintSeen,
       verboseLogging: parsed.verboseLogging,
       _legacyPlaced:  parsed._legacyPlaced,
       soundSettings:  parsed.soundSettings  ?? { ...DEFAULT_SOUND_SETTINGS },
@@ -135,11 +150,40 @@ function migrate(parsed: any): RawSave {
       playerGuid:     parsed.playerGuid ?? generateGuid(),
       playerName:     parsed.playerName ?? generateDefaultName(),
       highScores:     parsed.highScores ?? {},
+      cosmeticsOwned: [],
+      cosmeticsEquipped: {},
       tutorialDone:   parsed.tutorialDone ?? true,
       verboseLogging: parsed.verboseLogging,
       soundSettings:  { ...DEFAULT_SOUND_SETTINGS },
       // v1 items have no world-height context — leave Y as-is; can't safely remap
       _legacyPlaced:  legacyArray.length > 0 ? legacyArray : undefined,
+    };
+  }
+
+  // v4 → v5: identical layout, just add the cosmetics fields. Must NOT fall
+  // through to the v2→v3 branch below, which remaps placed-item Y values.
+  if (version === 4) {
+    return {
+      schemaVersion:  CURRENT_SCHEMA,
+      balance:        parsed.balance        ?? 0,
+      upgrades:       parsed.upgrades       ?? {},
+      inventory:      parsed.inventory      ?? {},
+      placed:         parsed.placed         ?? {},
+      selectedHeapId: parsed.selectedHeapId ?? '',
+      playerGuid:     parsed.playerGuid     ?? generateGuid(),
+      playerName:     parsed.playerName     ?? generateDefaultName(),
+      gpgsPlayerId:   parsed.gpgsPlayerId,
+      highScores:     parsed.highScores     ?? {},
+      cosmeticsOwned:    [],
+      cosmeticsEquipped: {},
+      tutorialDone:   parsed.tutorialDone   ?? true,
+      verboseLogging: parsed.verboseLogging,
+      _legacyPlaced:  parsed._legacyPlaced,
+      soundSettings:  parsed.soundSettings  ?? { ...DEFAULT_SOUND_SETTINGS },
+      adRunsSinceLast: parsed.adRunsSinceLast,
+      adRunTarget:     parsed.adRunTarget,
+      controlMode:    parsed.controlMode,
+      joystickSide:   parsed.joystickSide,
     };
   }
 
@@ -156,6 +200,8 @@ function migrate(parsed: any): RawSave {
     playerName:     parsed.playerName     ?? generateDefaultName(),
     gpgsPlayerId:   parsed.gpgsPlayerId,
     highScores:     parsed.highScores     ?? {},
+    cosmeticsOwned: [],
+    cosmeticsEquipped: {},
     tutorialDone:   parsed.tutorialDone   ?? true,
     verboseLogging: parsed.verboseLogging,
     soundSettings:  { ...DEFAULT_SOUND_SETTINGS },
@@ -392,6 +438,14 @@ export function setTutorialDone(value: boolean): void {
   persist({ ...data, tutorialDone: value });
 }
 
+// ── Customizer hint seen flag ───────────────────────────────────────────────────
+
+export function getCustomizeHintSeen(): boolean { return load().customizeHintSeen ?? false; }
+export function setCustomizeHintSeen(value: boolean): void {
+  const data = load();
+  persist({ ...data, customizeHintSeen: value });
+}
+
 // ── Selected heap ────────────────────────────────────────────────────────────
 
 export function getSelectedHeapId(): string { return load().selectedHeapId; }
@@ -411,6 +465,77 @@ export function getLocalHighScore(heapId: string): number {
 export function setLocalHighScore(heapId: string, score: number): void {
   const data = load();
   data.highScores[heapId] = score;
+  persist(data);
+}
+
+// ── Cosmetics ─────────────────────────────────────────────────────────────────
+
+export function getOwnedCosmetics(): string[] { return [...load().cosmeticsOwned]; }
+
+export function isCosmeticOwned(id: string): boolean {
+  const def = getCosmeticDef(id);
+  if (!def) return false;
+  if (def.price === 0) return true;
+  return load().cosmeticsOwned.includes(id);
+}
+
+export function purchaseCosmetic(id: string): boolean {
+  const def = getCosmeticDef(id);
+  if (!def || def.price === 0) return false;
+  if (isCosmeticOwned(id)) return false;
+  const data = load();
+  if (data.balance < def.price) return false;
+  data.balance -= def.price;
+  data.cosmeticsOwned.push(id);
+  persist(data);
+  return true;
+}
+
+export function getEquippedCosmetics(): EquippedLoadout {
+  return { ...load().cosmeticsEquipped };
+}
+
+/** Equip an owned item into its slot, or clear the slot with null. */
+export function equipCosmetic(slot: CosmeticSlot, id: string | null): boolean {
+  const data = load();
+  if (id === null) {
+    delete data.cosmeticsEquipped[slot];
+    persist(data);
+    return true;
+  }
+  const def = getCosmeticDef(id);
+  if (!def || def.slot !== slot || !isCosmeticOwned(id)) return false;
+  data.cosmeticsEquipped[slot] = id;
+  persist(data);
+  return true;
+}
+
+export function getLoadoutSyncPending(): boolean { return load().loadoutSyncPending ?? false; }
+export function setLoadoutSyncPending(v: boolean): void {
+  const data = load();
+  data.loadoutSyncPending = v;
+  persist(data);
+}
+
+/** All per-hat fit tweaks (clamped at write time). */
+export function getHatAdjustments(): HatAdjustments {
+  return { ...(load().hatAdjustments ?? {}) };
+}
+
+export function getHatAdjustment(id: string): HatAdjustment {
+  return load().hatAdjustments?.[id] ?? { dAngle: 0, dScale: 1 };
+}
+
+/** Set (clamped) or clear (null) the fit tweak for one hat id. */
+export function setHatAdjustment(id: string, adj: HatAdjustment | null): void {
+  const data = load();
+  const map = data.hatAdjustments ?? {};
+  if (adj === null || (adj.dAngle === 0 && adj.dScale === 1)) {
+    delete map[id];
+  } else {
+    map[id] = clampHatAdjustment(adj);
+  }
+  data.hatAdjustments = map;
   persist(data);
 }
 
@@ -457,6 +582,11 @@ export function mergeCloudSave(local: RawSave, cloud: RawSave): RawSave {
     highScores[k] = Math.max(highScores[k] ?? 0, v);
   }
 
+  // Union owned cosmetics; equipped follows the primary save.
+  const cosmeticsOwned = [...new Set([
+    ...(local.cosmeticsOwned ?? []), ...(cloud.cosmeticsOwned ?? []),
+  ])];
+
   return {
     schemaVersion: CURRENT_SCHEMA,
     balance:        Math.max(local.balance, cloud.balance),
@@ -468,6 +598,10 @@ export function mergeCloudSave(local: RawSave, cloud: RawSave): RawSave {
     playerName:     primary.playerName,
     gpgsPlayerId:   local.gpgsPlayerId ?? cloud.gpgsPlayerId,
     highScores,
+    cosmeticsOwned,
+    cosmeticsEquipped:  { ...(primary.cosmeticsEquipped ?? {}) },
+    hatAdjustments:     { ...(secondary.hatAdjustments ?? {}), ...(primary.hatAdjustments ?? {}) },
+    loadoutSyncPending: local.loadoutSyncPending,
     verboseLogging: local.verboseLogging,
     adRunsSinceLast: local.adRunsSinceLast,
     adRunTarget:     local.adRunTarget,

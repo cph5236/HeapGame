@@ -13,3 +13,9 @@ CREATE TABLE IF NOT EXISTS score (
 );
 
 CREATE INDEX IF NOT EXISTS idx_score_heap_score ON score (heap_id, score DESC);
+
+CREATE TABLE IF NOT EXISTS player_customization (
+  player_id  TEXT NOT NULL PRIMARY KEY,
+  loadout    TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);

@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { PlayerAnimator } from '../entities/PlayerAnimator';
+import { PlayerCosmetics } from '../entities/PlayerCosmetics';
 import { PlayerOutro } from '../entities/PlayerOutro';
 import { AudioManager } from '../systems/AudioManager';
 import { CameraController } from '../systems/CameraController';
+import { resolveCosmetics } from '../systems/cosmeticsLogic';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import type { Vertex } from '../systems/HeapPolygon';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
@@ -12,7 +14,7 @@ import {
   applyPolygonToGenerator,
   polygonTopY,
 } from '../systems/HeapPolygonLoader';
-import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode, getJoystickSide, getUpgradeLevel } from '../systems/SaveData';
+import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode, getJoystickSide, getUpgradeLevel, getEquippedCosmetics, getHatAdjustments } from '../systems/SaveData';
 import { HUD } from '../ui/HUD';
 import { EnemyRadar } from '../ui/EnemyRadar';
 import { showDashIndicator, controlClusterLayout } from '../ui/hudLogic';
@@ -69,6 +71,7 @@ import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 export class GameScene extends Phaser.Scene {
   private player!: Player;
   private playerAnimator!: PlayerAnimator;
+  private playerCosmetics!: PlayerCosmetics;
   private playerOutro!: PlayerOutro;
   private hud!: HUD;
   private enemyRadar!: EnemyRadar;
@@ -205,6 +208,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
+    const cosmetics = resolveCosmetics(getEquippedCosmetics(), getHatAdjustments());
+    this.playerAnimator.setTieStyle({ color: cosmetics.tieColor, rainbow: cosmetics.tieRainbow });
+    this.playerCosmetics = new PlayerCosmetics(this.player.sprite, this, cosmetics);
     this.playerOutro    = new PlayerOutro(this, this.player.sprite);
 
     // If restarted via checkpoint respawn, reposition player and consume one spawn
@@ -236,6 +242,7 @@ export class GameScene extends Phaser.Scene {
       AudioManager.onPlayerDeath();
       this.player.freeze();
       this.playerAnimator.update(0.016, { ...this.player.animState, justDied: true });
+      this.playerCosmetics.hide();
       this.player.sprite.setDepth(4); // visually swallowed — below wall body (depth 5)
 
       this.playerOutro.play('death', () => {
@@ -446,6 +453,7 @@ export class GameScene extends Phaser.Scene {
           ...this.player.animState,
           ...(kind === 'death' ? { justDied: true } : { justPlaced: true }),
         });
+        this.playerCosmetics.hide();
         this.playerOutro.play(kind, () => {
           // dev preview: do not launch ScoreScene
         });
@@ -695,6 +703,7 @@ export class GameScene extends Phaser.Scene {
     );
     this.player.freeze();
     this.playerAnimator.update(0.016, { ...this.player.animState, justPlaced: true });
+    this.playerCosmetics.hide();
 
     this.time.delayedCall(500, () => {
       this.playerOutro.play('success', () => {
@@ -813,6 +822,7 @@ export class GameScene extends Phaser.Scene {
     AudioManager.onPlayerDeath();
     this.player.freeze();
     this.playerAnimator.update(0.016, { ...this.player.animState, justDied: true });
+    this.playerCosmetics.hide();
 
     this.time.delayedCall(500, () => {
       this.playerOutro.play('death', () => {
@@ -901,6 +911,7 @@ export class GameScene extends Phaser.Scene {
 
   shutdown(): void {
     this.playerAnimator.destroy();
+    this.playerCosmetics.destroy();
     this.playerOutro.destroy();
     AudioManager.stopAll();
     // InputManager is a singleton — drop our PLACE suppression zone so it can't

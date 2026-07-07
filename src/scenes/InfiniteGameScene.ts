@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { PlayerAnimator } from '../entities/PlayerAnimator';
+import { PlayerCosmetics } from '../entities/PlayerCosmetics';
 import { PlayerOutro } from '../entities/PlayerOutro';
 import { AudioManager } from '../systems/AudioManager';
 import { HeapGenerator } from '../systems/HeapGenerator';
@@ -26,7 +27,8 @@ import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { LayerGenerator } from '../systems/LayerGenerator';
 import { computeBandPolygon, simplifyPolygon, type Vertex } from '../systems/HeapPolygon';
 import { buildRunScore } from '../systems/buildRunScore';
-import { getPlayerConfig, addBalance, getUpgrades, getEffectiveControlMode, getUpgradeLevel } from '../systems/SaveData';
+import { getPlayerConfig, addBalance, getUpgrades, getEffectiveControlMode, getUpgradeLevel, getEquippedCosmetics, getHatAdjustments } from '../systems/SaveData';
+import { resolveCosmetics } from '../systems/cosmeticsLogic';
 import { showDashIndicator } from '../ui/hudLogic';
 import { ENEMY_DEFS, DEFAULT_ENEMY_PARAMS } from '../data/enemyDefs';
 import { getLogger } from '../logging';
@@ -78,6 +80,7 @@ function makeColBounds(): [number, number][] {
 export class InfiniteGameScene extends Phaser.Scene {
   private player!: Player;
   private playerAnimator!: PlayerAnimator;
+  private playerCosmetics!: PlayerCosmetics;
   private playerOutro!: PlayerOutro;
   private hud!: HUD;
   private im!: InputManager;
@@ -201,6 +204,9 @@ export class InfiniteGameScene extends Phaser.Scene {
     // of the wide infinite world (which would push the wrap point ~945px off-edge).
     this.player.wrapPadX = INFINITE_EDGE_PAD;
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
+    const cosmetics = resolveCosmetics(getEquippedCosmetics(), getHatAdjustments());
+    this.playerAnimator.setTieStyle({ color: cosmetics.tieColor, rainbow: cosmetics.tieRainbow });
+    this.playerCosmetics = new PlayerCosmetics(this.player.sprite, this, cosmetics);
     this.playerOutro = new PlayerOutro(this, this.player.sprite);
 
     // ── Colliders ───────────────────────────────────────────────────────────────
@@ -579,6 +585,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     AudioManager.onPlayerDeath();
     this.player.freeze();
     this.playerAnimator.update(0, { ...this.player.animState, justDied: true });
+    this.playerCosmetics.hide();
     const score      = Math.max(0, Math.floor(this.spawnY - this.player.sprite.y));
     const elapsedMs  = this._runStartTime !== null ? this.time.now - this._runStartTime : 0;
     const runResult  = buildRunScore(
@@ -694,6 +701,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.joystick?.destroy();
     this.joystick = null;
     this.playerAnimator.destroy();
+    this.playerCosmetics.destroy();
     this.playerOutro.destroy();
     AudioManager.stopAll();
   }

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { PlayerAnimator } from '../entities/PlayerAnimator';
+import { PlayerCosmetics } from '../entities/PlayerCosmetics';
 import { Enemy } from '../entities/Enemy';
 import { EnemyManager } from '../systems/EnemyManager';
 import { PickupManager } from '../systems/PickupManager';
@@ -18,7 +19,8 @@ import {
 } from '../systems/HeapPolygonLoader';
 import { setupGameplayUiCamera, addToGameplayUi } from '../systems/GameplayUiCamera';
 import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
-import { getPlayerConfig, setTutorialDone, getJoystickSide, getEffectiveControlMode } from '../systems/SaveData';
+import { getPlayerConfig, setTutorialDone, getJoystickSide, getEffectiveControlMode, getEquippedCosmetics, getHatAdjustments } from '../systems/SaveData';
+import { resolveCosmetics } from '../systems/cosmeticsLogic';
 import { TutorialDirector, type TutorialStep } from '../systems/TutorialDirector';
 import { TutorialOverlay } from '../ui/TutorialOverlay';
 import { loadGameAssets } from './loadGameAssets';
@@ -51,6 +53,7 @@ import { controlClusterLayout } from '../ui/hudLogic';
 export class TutorialScene extends Phaser.Scene {
   private player!: Player;
   private playerAnimator!: PlayerAnimator;
+  private playerCosmetics!: PlayerCosmetics;
   private enemyManager!: EnemyManager;
   private pickupManager!: PickupManager;
   private heapGenerator!: HeapGenerator;
@@ -169,6 +172,9 @@ export class TutorialScene extends Phaser.Scene {
 
     // Player animator
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
+    const cosmetics = resolveCosmetics(getEquippedCosmetics(), getHatAdjustments());
+    this.playerAnimator.setTieStyle({ color: cosmetics.tieColor, rainbow: cosmetics.tieRainbow });
+    this.playerCosmetics = new PlayerCosmetics(this.player.sprite, this, cosmetics);
 
     // Camera setup
     CameraController.setup(
@@ -475,6 +481,7 @@ export class TutorialScene extends Phaser.Scene {
 
   shutdown(): void {
     this.playerAnimator.destroy();
+    this.playerCosmetics.destroy();
     InputManager.getInstance().setSuppressionRect('tutorial', null);
     this.joystick?.destroy();
     this.joystick = null;
