@@ -15,8 +15,9 @@ import type { ScoreDB, ScoreRow } from '../scoreDb';
 
 /** Cache the top this-many rows per heap; matches MAX_LIMIT in routes/scores.ts. */
 const CACHE_TOP_N = 50;
-/** Leaderboards tolerate brief staleness; write-invalidation is the primary path. */
-const SCORES_TTL = 30;
+/** Leaderboards tolerate brief staleness; write-invalidation is the primary path.
+ *  60 is the floor Workers KV allows for expirationTtl. */
+const SCORES_TTL = 60;
 
 export class CachedScoreDB implements ScoreDB {
   constructor(
