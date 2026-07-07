@@ -23,9 +23,12 @@ const PREVIEW_Y     = 190;
 const PREVIEW_SCALE = 3;
 const TABS_Y        = 330;
 const GRID_TOP      = 372;
-const GRID_COLS     = 4;
+const GRID_COLS_MAX = 4;    // column count on screens wide enough to fit it
 const CELL          = 96;   // cell pitch
 const CELL_SIZE     = 84;   // visible cell square
+/** Minimum breathing room kept clear on each side of the tab row / item grid,
+ *  so neither ever renders partly off-screen on narrower phones. */
+const H_MARGIN      = 8;
 
 export class CustomizationScene extends Phaser.Scene {
   private activeSlot: CosmeticSlot = 'hat';
@@ -59,11 +62,11 @@ export class CustomizationScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(11);
     backHit.on('pointerup', () => this.scene.start('MenuScene'));
 
-    this.add.text(logicalWidth(this) / 2 + 3, 53, 'WARDROBE', {
+    this.add.text(logicalWidth(this) / 2 + 3, 53, 'TRASH STASH', {
       fontSize: '38px', fontStyle: 'bold', color: '#000000',
       stroke: '#000000', strokeThickness: 6,
     }).setOrigin(0.5).setAlpha(0.55).setDepth(9);
-    this.add.text(logicalWidth(this) / 2, 50, 'WARDROBE', {
+    this.add.text(logicalWidth(this) / 2, 50, 'TRASH STASH', {
       fontSize: '38px', fontStyle: 'bold', color: '#ff9922',
       stroke: '#1a0800', strokeThickness: 6,
     }).setOrigin(0.5).setDepth(10);
@@ -187,7 +190,11 @@ export class CustomizationScene extends Phaser.Scene {
   private createTabs(): void {
     this.tabObjects.forEach(o => o.destroy());
     this.tabObjects = [];
-    const tabW = 80, tabH = 34, gap = 5;
+    const tabH = 34, gap = 5;
+    // Shrink tabs to fit narrower phones instead of overflowing off-screen —
+    // 80px is the ideal width, but never wider than what actually fits.
+    const available = logicalWidth(this) - H_MARGIN * 2;
+    const tabW = Math.min(80, (available - (COSMETIC_SLOTS.length - 1) * gap) / COSMETIC_SLOTS.length);
     const totalW = COSMETIC_SLOTS.length * tabW + (COSMETIC_SLOTS.length - 1) * gap;
     const startX = logicalWidth(this) / 2 - totalW / 2 + tabW / 2;
 
@@ -261,7 +268,10 @@ export class CustomizationScene extends Phaser.Scene {
 
     const defs = getAvailableCosmeticDefs().filter(d => d.slot === this.activeSlot);
     const equipped = getEquippedCosmetics()[this.activeSlot];
-    const gridW = GRID_COLS * CELL;
+    // Drop a column on narrower phones instead of letting the grid overflow
+    // off-screen — cards keep their normal size, there are just fewer per row.
+    const cols  = Math.max(3, Math.min(GRID_COLS_MAX, Math.floor((logicalWidth(this) - H_MARGIN * 2) / CELL)));
+    const gridW = cols * CELL;
     const left  = logicalWidth(this) / 2 - gridW / 2 + CELL / 2;
 
     // Tie and skin have a free default item that IS the baseline — no "None"
@@ -276,8 +286,8 @@ export class CustomizationScene extends Phaser.Scene {
 
     defs.forEach((def, i) => {
       const idx = i + (hasNoneCell ? 1 : 0);
-      const cx = left + (idx % GRID_COLS) * CELL;
-      const cy = GRID_TOP + CELL / 2 + Math.floor(idx / GRID_COLS) * CELL;
+      const cx = left + (idx % cols) * CELL;
+      const cy = GRID_TOP + CELL / 2 + Math.floor(idx / cols) * CELL;
       const isEquipped = equipped === def.id || (equipped === undefined && def.id === defaultId);
       this.buildCell(cx, cy, def, isEquipped);
     });
@@ -286,7 +296,7 @@ export class CustomizationScene extends Phaser.Scene {
     this.gridContainer.add(this.gridObjects as Phaser.GameObjects.GameObject[]);
 
     const cellCount = defs.length + (hasNoneCell ? 1 : 0);
-    const rows = Math.ceil(cellCount / GRID_COLS);
+    const rows = Math.ceil(cellCount / cols);
     const contentBottom = GRID_TOP + rows * CELL + 8;
     this.gridScrollMin = Math.min(0, logicalHeight(this) - contentBottom);
   }

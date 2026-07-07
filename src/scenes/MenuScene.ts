@@ -841,7 +841,7 @@ export class MenuScene extends Phaser.Scene {
       { key: 'U',     label: 'Upgrades'  },
       { key: 'S',     label: 'Store'     },
       { key: 'H',     label: 'Heap'      },
-      { key: 'W',     label: 'Wardrobe'  },
+      { key: 'W',     label: 'Trash Stash' },
       { key: 'L',     label: 'Leaderboard' },
     ];
     const parts = keys.map(k => `${k.key}: ${k.label}`).join('   ');
