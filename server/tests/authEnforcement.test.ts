@@ -189,3 +189,48 @@ describe('POST /codes/redeem auth', () => {
     expect((await redeem(app)).status).toBe(200);
   });
 });
+
+describe('admin unclaim + CORS', () => {
+  it('preflight allows the X-Player-Token header', async () => {
+    const { app } = makeApp();
+    const res = await app.request('/scores', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://example.com',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Content-Type, X-Player-Token',
+      },
+    });
+    expect(res.headers.get('Access-Control-Allow-Headers') ?? '').toContain('X-Player-Token');
+  });
+
+  it('DELETE /auth/:playerId requires the admin secret', async () => {
+    const authDb = new MockPlayerAuthDB();
+    const app = createApp(new MockHeapDB(), new MockScoreDB(), {
+      playerAuthDb: authDb,
+      adminSecret: 's3cret',
+    });
+    expect((await app.request(`/auth/${PLAYER}`, { method: 'DELETE' })).status).toBe(401);
+  });
+
+  it('admin unclaim deletes the row and the player can re-claim', async () => {
+    const { app: scoreApp, authDb } = makeApp();
+    await submit(scoreApp, SECRET);
+    expect(authDb.rows.has(PLAYER)).toBe(true);
+
+    const adminApp = createApp(new MockHeapDB(), new MockScoreDB(), {
+      playerAuthDb: authDb,
+      adminSecret: 's3cret',
+    });
+    const res = await adminApp.request(`/auth/${PLAYER}`, {
+      method: 'DELETE',
+      headers: { 'X-Admin-Secret': 's3cret' },
+    });
+    expect(res.status).toBe(200);
+    expect(authDb.rows.has(PLAYER)).toBe(false);
+
+    // Player re-claims with a NEW secret after rescue.
+    expect((await submit(scoreApp, 'new-secret')).status).toBe(200);
+    expect(authDb.rows.has(PLAYER)).toBe(true);
+  });
+});
