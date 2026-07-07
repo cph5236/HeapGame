@@ -5,6 +5,7 @@ import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockPlayerAuthDB } from './helpers/mockPlayerAuthDb';
 import { MockSink } from './helpers/mockSink';
+import { MockCustomizationDB } from './helpers/mockCustomizationDb';
 import { hashSecret } from '../src/playerAuth';
 
 const HEAP_ID = 'heap-test-001';
@@ -86,5 +87,53 @@ describe('POST /scores auth', () => {
     const data = (await res.json()) as { entries: { name: string }[] };
     expect(data.entries).toHaveLength(1);
     expect(data.entries[0].name).toBe('Trashbag#00001');
+  });
+});
+
+function makeCustomizationApp(authDb = new MockPlayerAuthDB(), sink = new MockSink()) {
+  const heapDb = new MockHeapDB();
+  const app = createApp(heapDb, new MockScoreDB(), {
+    customizationDb: new MockCustomizationDB(),
+    playerAuthDb: authDb,
+    logSink: sink,
+  });
+  return { app, authDb, sink };
+}
+
+async function putLoadout(app: ReturnType<typeof makeCustomizationApp>['app'], token?: string) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token !== undefined) headers['X-Player-Token'] = token;
+  return app.request(`/customization/${PLAYER}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ loadout: { hat: 'hat_cone' } }),
+  });
+}
+
+describe('PUT /customization/:playerId auth', () => {
+  it('token + unclaimed: claims and accepts', async () => {
+    const { app, authDb } = makeCustomizationApp();
+    expect((await putLoadout(app, SECRET)).status).toBe(200);
+    expect(authDb.rows.has(PLAYER)).toBe(true);
+  });
+
+  it('token mismatch: 403 and loadout unchanged', async () => {
+    const { app } = makeCustomizationApp();
+    await putLoadout(app, SECRET);
+    const res = await putLoadout(app, 'wrong-secret');
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'forbidden' });
+  });
+
+  it('no token + claimed: 403, logs auth:rejected', async () => {
+    const { app, sink } = makeCustomizationApp();
+    await putLoadout(app, SECRET);
+    expect((await putLoadout(app)).status).toBe(403);
+    expect(sink.written.some((e) => e.message === 'auth:rejected')).toBe(true);
+  });
+
+  it('no token + unclaimed: accepts (legacy client)', async () => {
+    const { app } = makeCustomizationApp();
+    expect((await putLoadout(app)).status).toBe(200);
   });
 });

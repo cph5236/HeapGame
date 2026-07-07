@@ -124,7 +124,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   if (opts.customizationDb) {
     // Player loadout writes share the scores rate-limit bucket — they're debounced client-side.
     app.put('/customization/:playerId', rateLimit(lim.scores, 'customization-put'));
-    app.route('/customization', customizationRoutes(opts.customizationDb));
+    app.route('/customization', customizationRoutes(opts.customizationDb, () => opts.logSink, opts.playerAuthDb));
   }
 
   if (opts.logSink) {
