@@ -1,6 +1,6 @@
 // src/systems/CodeClient.ts
 
-import { getPlayerGuid, addBalance, addItem } from './SaveData';
+import { getEffectivePlayerId, addBalance, addItem } from './SaveData';
 import { fetchWithLog } from '../logging/fetchWithLog';
 import { ITEM_DEFS } from '../data/itemDefs';
 import type { RewardPayload, RedeemCodeRequest } from '../../shared/codeTypes';
@@ -23,7 +23,7 @@ export async function redeemCode(rawCode: string): Promise<RedeemResult> {
   const code = rawCode.trim().toUpperCase();
   if (!code) return { status: 'error', message: 'Enter a code' };
 
-  const req: RedeemCodeRequest = { code, playerGuid: getPlayerGuid() };
+  const req: RedeemCodeRequest = { code, playerGuid: getEffectivePlayerId() };
   let res: Response;
   try {
     res = await fetchWithLog(`${SERVER_URL}/codes/redeem`, {

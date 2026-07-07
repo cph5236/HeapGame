@@ -15,6 +15,8 @@ import {
   getBalance,
   addBalance,
   getPlayerGuid,
+  getEffectivePlayerId,
+  setGpgsPlayerId,
   getPlayerName,
   setPlayerName,
   getLocalHighScore,
@@ -323,6 +325,18 @@ describe('getPlayerGuid', () => {
     expect(after.length).toBeGreaterThan(0);
     // Statistically certain to differ; document the intent
     expect(before).not.toBe(after);
+  });
+});
+
+describe('getEffectivePlayerId', () => {
+  it('returns the local GUID when no GPGS id is set', () => {
+    expect(getEffectivePlayerId()).toBe(getPlayerGuid());
+  });
+
+  it('returns the GPGS player id once set', () => {
+    setGpgsPlayerId('gpgs-12345');
+    expect(getEffectivePlayerId()).toBe('gpgs-12345');
+    expect(getEffectivePlayerId()).not.toBe(getPlayerGuid());
   });
 });
 

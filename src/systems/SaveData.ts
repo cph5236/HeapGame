@@ -415,6 +415,11 @@ export function setPlayerName(name: string): void {
 
 export function getGpgsPlayerId(): string | null { return load().gpgsPlayerId ?? null; }
 
+/** The identity all server writes must key on: GPGS id when signed in, else the
+ *  local GUID. Scores and cosmetics join on player_id server-side, so every
+ *  per-player endpoint must use this — never getPlayerGuid directly. */
+export function getEffectivePlayerId(): string { return getGpgsPlayerId() ?? getPlayerGuid(); }
+
 export function setGpgsPlayerId(id: string): void {
   const data = load();
   data.gpgsPlayerId = id;

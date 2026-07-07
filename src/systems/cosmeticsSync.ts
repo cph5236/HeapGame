@@ -6,7 +6,7 @@
 import type Phaser from 'phaser';
 import { CustomizationClient } from './CustomizationClient';
 import {
-  getEquippedCosmetics, getPlayerGuid,
+  getEquippedCosmetics, getEffectivePlayerId,
   getLoadoutSyncPending, setLoadoutSyncPending,
 } from './SaveData';
 
@@ -16,7 +16,7 @@ let pendingTimer: Phaser.Time.TimerEvent | null = null;
 
 /** PUT the current loadout now. Manages the pending flag. */
 export async function syncLoadoutNow(): Promise<boolean> {
-  const ok = await CustomizationClient.putLoadout(getPlayerGuid(), getEquippedCosmetics());
+  const ok = await CustomizationClient.putLoadout(getEffectivePlayerId(), getEquippedCosmetics());
   setLoadoutSyncPending(!ok);
   return ok;
 }

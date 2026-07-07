@@ -5,6 +5,7 @@ const addBalance = vi.fn();
 const addItem = vi.fn();
 vi.mock('../SaveData', () => ({
   getPlayerGuid: () => 'guid-test',
+  getEffectivePlayerId: () => 'gpgs-effective',
   addBalance: (n: number) => addBalance(n),
   addItem: (id: string, qty: number) => addItem(id, qty),
 }));
@@ -28,6 +29,13 @@ describe('redeemCode', () => {
     expect(result.status).toBe('success');
     expect(addBalance).toHaveBeenCalledWith(500);
     expect(result.message).toContain('500');
+  });
+
+  it('redeems under the effective player id (GPGS id when signed in), not the local GUID', async () => {
+    fetchWithLog.mockResolvedValue(jsonResponse(200, { rewardType: 'coins', rewardAmount: 100 }));
+    await redeemCode('welcome');
+    const init = fetchWithLog.mock.calls[0][1] as { body: string };
+    expect(JSON.parse(init.body).playerGuid).toBe('gpgs-effective');
   });
 
   it('applies a known item and reports success', async () => {
