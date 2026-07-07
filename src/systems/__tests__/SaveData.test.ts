@@ -35,6 +35,7 @@ import {
   setSoundVolume,
   getAdRunState,
   setAdRunState,
+  getPlayerSecret,
 } from '../SaveData';
 
 // Stub localStorage — vitest runs in node environment
@@ -748,5 +749,21 @@ describe('control prefs (device-local)', () => {
     setSessionControlMode('joystick');
     resetCacheForTests();
     expect(getEffectiveControlMode()).toBe('tilt');
+  });
+});
+
+// ── Player secret (write-auth token) ──────────────────────────────────────
+
+describe('getPlayerSecret', () => {
+  it('generates once, persists, and survives a cache reset', () => {
+    const first = getPlayerSecret();
+    expect(first.length).toBeGreaterThanOrEqual(16);
+    expect(getPlayerSecret()).toBe(first);
+    resetCacheForTests();
+    expect(getPlayerSecret()).toBe(first); // reloaded from storage, not regenerated
+  });
+
+  it('is distinct from the public playerGuid', () => {
+    expect(getPlayerSecret()).not.toBe(getPlayerGuid());
   });
 });
