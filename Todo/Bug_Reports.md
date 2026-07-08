@@ -57,5 +57,5 @@
   every jump (lag).
 - **fix:** [PR #98](https://github.com/cph5236/HeapGame/pull/98) — per-frame chunk
   culling + grounded-gated canvas bake.
-- **status:** fix pushed, **awaiting device playtest + merge** (temp `[chunk-cull]`
-  diagnostic logging retained for verification, stripped before merge).
+- **status:** fixed on branch `fix/infinite-chunk-culling`, ready to merge (device
+  playtest confirmed; temp diagnostic logging stripped).

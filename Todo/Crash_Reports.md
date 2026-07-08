@@ -57,7 +57,8 @@ Each entry lists its source session(s) + event time (UTC) as the audit trail.
 - **fix:** [PR #98](https://github.com/cph5236/HeapGame/pull/98) — per-frame chunk
   culling in Infinite mode (+ grounded-gated bake for the associated lag). Verified
   live: culling drove `liveChunks` from an unbounded climb to a ~51 plateau.
-- **status:** fix pushed, **awaiting device playtest + merge**.
+- **status:** fixed on branch `fix/infinite-chunk-culling`, ready to merge (device
+  playtest confirmed; temp diagnostic logging stripped).
 
 ### Discarded as noise this run
 - **`fetch failed` — NetworkError when attempting to fetch resource** (4 occ, 1

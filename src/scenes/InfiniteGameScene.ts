@@ -91,9 +91,6 @@ export class InfiniteGameScene extends Phaser.Scene {
   private wallGroups:     Phaser.Physics.Arcade.StaticGroup[] = [];
   private edgeColliders:  HeapEdgeCollider[]                  = [];
   private chunkRenderers: HeapChunkRenderer[]                = [];
-  // TEMP diagnostic (remove before merge): chunk-cull logging throttle + peak.
-  private _chunkLogAccum = 0;
-  private _chunkLogPeak = 0;
   private generators:     HeapGenerator[]  = [];
   private layerGenerators: LayerGenerator[] = [];
   private enemyManagers:  EnemyManager[]   = [];
@@ -529,20 +526,6 @@ export class InfiniteGameScene extends Phaser.Scene {
     for (let i = 0; i < this.chunkRenderers.length; i++) {
       this.chunkRenderers[i].cullChunks(camBot);
       this.edgeColliders[i].cullBands(camBot, 2000);
-    }
-
-    // TEMP diagnostic (remove before merge). Culling: `liveChunks` should
-    // PLATEAU, not grow. Pacing: `pending` is bands dispatched-but-not-yet-baked
-    // — it should sit at ~0 while grounded and briefly rise during a jump, then
-    // drain on landing (bakes deferred off the jump). `ground` = grounded.
-    this._chunkLogAccum = (this._chunkLogAccum ?? 0) + delta;
-    if (this._chunkLogAccum >= 2000) {
-      this._chunkLogAccum = 0;
-      const live = this.chunkRenderers.reduce((n, r) => n + (r as unknown as { chunkObjects: Map<number, unknown> }).chunkObjects.size, 0);
-      const pending = this.generators.reduce((n, g) => n + (g.hasPendingResults ? 1 : 0), 0);
-      this._chunkLogPeak = Math.max(this._chunkLogPeak ?? 0, live);
-      // eslint-disable-next-line no-console
-      console.log(`[chunk-cull] liveChunks=${live} peak=${this._chunkLogPeak} pending=${pending} ground=${onGround} ft=${Math.floor(score / SCORE_DISPLAY_DIVISOR)}`);
     }
 
     // ── Difficulty ramp ───────────────────────────────────────────────────────────
