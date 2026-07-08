@@ -119,10 +119,6 @@ export class HeapChunkRenderer {
   }
 
   /**
-   * Destroy rendered objects for chunks that have scrolled far below the camera.
-   * Call from GameScene.update() every frame.
-   */
-  /**
    * Highest baked band top (smallest world Y) currently rendered, or +Infinity
    * when nothing is baked. Used by Infinite mode's generation pacing to know how
    * much baked runway sits above the player.
@@ -135,6 +131,10 @@ export class HeapChunkRenderer {
     return min;
   }
 
+  /**
+   * Destroy rendered objects for chunks that have scrolled far below the camera.
+   * Call from GameScene.update() every frame.
+   */
   cullChunks(camBottom: number): void {
     for (const bandTop of selectChunksToCull(this.chunkObjects.keys(), camBottom)) {
       const objs = this.chunkObjects.get(bandTop)!;
