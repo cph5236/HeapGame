@@ -1,4 +1,54 @@
 # Bug Reports — from player feedback
-**Last updated:** 2026-06-19
+**Last updated:** 2026-07-07
 
-No actionable bug reports yet. (id 1 was a pipeline smoke test, discarded.)
+## [P2] Can't land on top of Hoarders heap — teleported to the side
+
+- **ids:** 5  ·  **players affected:** 1
+- **platform:** android  ·  **app version:** 0.2.10
+- **what they said:** "Can't land on top of horders heap, immediately get teleported to the side"
+- **assessment:** Landing on the summit of the "Hoarders" heap immediately
+  depenetrates/teleports the player sideways instead of letting them stand. Smells
+  like the flat-top / summit collision family (exposed-summit classification +
+  overhang depenetration). Blocks reaching the top of a specific heap → progress
+  blocker on that heap. P2; needs repro on Hoarders' top band.
+
+## [P2] Infinite heap mode is laggy and crashes
+
+- **ids:** 6  ·  **players affected:** 1
+- **platform:** android  ·  **app version:** 0.2.10
+- **what they said:** "Infinite heap laggy and vrashes" [sic]
+- **assessment:** Performance degradation plus hard crashes in Infinite mode on
+  Android. Likely the same surface as the crash-log **[P2] `drawImage`-of-null in
+  `updateUVs`** (canvas-texture source going null under memory pressure / context
+  loss) — cross-check `Todo/Crash_Reports.md`. Crash + progress loss → P2.
+
+## [P2] Collision "gravity drag" degrades movement feel
+
+- **ids:** 7  ·  **players affected:** 1
+- **platform:** android  ·  **app version:** 0.2.12  ·  *(reclassified from suggestion)*
+- **what they said:** "that gravity drag caused by collision is working against the
+  gameplay. If that gets fixed it would be a smooth experience I think."
+- **assessment:** Reports collision-induced drag that fights player movement —
+  behavior contradicting the intended "smooth" climb, so filed as a bug not a
+  suggestion. Likely the wall/slope sliding + depenetration friction path. One
+  qualitative report but names a core-feel defect; P2 pending repro of the drag.
+
+## [P3] Launch lag — a few seconds of stutter on startup
+
+- **ids:** 8  ·  **players affected:** 1
+- **platform:** android  ·  **app version:** 0.2.12
+- **what they said:** "Upon launching there's a subtle few seconds lag. I suspect
+  the package loading in background might causing it"
+- **assessment:** Startup performance — a few seconds of jank right after launch,
+  player guesses background asset/package loading. Annoyance, not a blocker → P3.
+  Worth profiling boot / deferring non-critical asset loads off the first frames.
+
+## [P3] "Jump height 4 error" (vague)
+
+- **ids:** 2  ·  **players affected:** 1
+- **platform:** android  ·  **app version:** 0.2.9
+- **what they said:** "Jump height 4 error"
+- **assessment:** Cryptic — most likely refers to a jump-height salvage/upgrade at
+  level 4 producing an error, but the message is too terse to act on directly.
+  Kept as a low-priority breadcrumb; needs the reporter's session or a repeat report
+  to promote. P3.
