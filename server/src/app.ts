@@ -9,6 +9,7 @@ import { codeRoutes } from './routes/codes';
 import { feedbackRoutes } from './routes/feedback';
 import { configRoutes } from './routes/config';
 import { customizationRoutes } from './routes/customization';
+import { authAdminRoutes } from './routes/auth';
 import { requireAdminSecret } from './middleware/adminAuth';
 import { rateLimit, type RateLimiter, setRateLimitSink } from './middleware/rateLimit';
 import type { Sink } from './logging/Sink';
@@ -16,6 +17,7 @@ import type { RewardCodeDB } from './codeDb';
 import type { FeedbackDB } from './feedbackDb';
 import type { ConfigDB } from './configDb';
 import type { CustomizationDB } from './customizationDb';
+import type { PlayerAuthDB } from './playerAuthDb';
 
 export interface AppOptions {
   /** Comma-separated origin list, or '*' to allow all (dev only). */
@@ -39,6 +41,8 @@ export interface AppOptions {
   configDb?: ConfigDB;
   /** Player-customization D1 access. If unset, /customization is not mounted. */
   customizationDb?: CustomizationDB;
+  /** Player write-auth (player_auth table in heap_scores). If unset, writes are not enforced. */
+  playerAuthDb?: PlayerAuthDB;
   /** Sink for incoming /log entries. If unset, /log is not mounted. */
   logSink?: Sink;
 }
@@ -64,7 +68,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
       return list.includes(origin) ? origin : null;
     },
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'X-Admin-Secret'],
+    allowHeaders: ['Content-Type', 'X-Admin-Secret', 'X-Player-Token'],
   }));
 
   // Rate limiting — global circuit breaker on all heap/score traffic
@@ -91,7 +95,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   app.delete('/heaps/:id',              adminGate);
 
   app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink));
-  app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink));
+  app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink, opts.playerAuthDb));
 
   if (opts.codeDb) {
     // Player redeem endpoint — rate-limited, no admin gate.
@@ -99,7 +103,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
     // Admin mint + list — behind the admin gate.
     app.post('/codes', adminGate);
     app.get ('/codes', adminGate);
-    app.route('/codes', codeRoutes(opts.codeDb, () => opts.logSink));
+    app.route('/codes', codeRoutes(opts.codeDb, () => opts.logSink, opts.playerAuthDb));
   }
 
   if (opts.feedbackDb) {
@@ -121,7 +125,13 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   if (opts.customizationDb) {
     // Player loadout writes share the scores rate-limit bucket — they're debounced client-side.
     app.put('/customization/:playerId', rateLimit(lim.scores, 'customization-put'));
-    app.route('/customization', customizationRoutes(opts.customizationDb));
+    app.route('/customization', customizationRoutes(opts.customizationDb, () => opts.logSink, opts.playerAuthDb));
+  }
+
+  if (opts.playerAuthDb) {
+    // Admin rescue: unclaim a player_auth row.
+    app.delete('/auth/:playerId', adminGate);
+    app.route('/auth', authAdminRoutes(opts.playerAuthDb));
   }
 
   if (opts.logSink) {

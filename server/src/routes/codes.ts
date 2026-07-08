@@ -6,6 +6,8 @@ import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 import { isItemId } from '../../../shared/itemIds';
 import type { CreateCodeRequest, RedeemCodeRequest } from '../../../shared/codeTypes';
+import type { PlayerAuthDB } from '../playerAuthDb';
+import { enforcePlayerAuth } from '../playerAuth';
 
 const MAX_CODE_LEN = 32;
 const MAX_GUID_LEN = 64;
@@ -14,7 +16,11 @@ function normalizeCode(s: string): string {
   return s.trim().toUpperCase();
 }
 
-export function codeRoutes(codeDb: RewardCodeDB, getSink: () => Sink | undefined): Hono {
+export function codeRoutes(
+  codeDb: RewardCodeDB,
+  getSink: () => Sink | undefined,
+  authDb?: PlayerAuthDB,
+): Hono {
   const app = new Hono();
 
   // ── Player: redeem a code ────────────────────────────────────────────────
@@ -30,6 +36,9 @@ export function codeRoutes(codeDb: RewardCodeDB, getSink: () => Sink | undefined
     if (!code || code.length > MAX_CODE_LEN || !guid || guid.length > MAX_GUID_LEN) {
       return c.json({ error: 'invalid request' }, 400);
     }
+
+    const authRes = await enforcePlayerAuth(c, authDb, guid, getSink, 'codes:redeem');
+    if (authRes) return authRes;
 
     const now = new Date().toISOString();
     const outcome = await codeDb.redeem(code, guid, now);

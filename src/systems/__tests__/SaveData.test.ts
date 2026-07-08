@@ -35,6 +35,7 @@ import {
   setSoundVolume,
   getAdRunState,
   setAdRunState,
+  getPlayerSecret,
 } from '../SaveData';
 
 // Stub localStorage — vitest runs in node environment
@@ -636,6 +637,18 @@ describe('mergeCloudSave', () => {
     const cloud = { ...base(), playerGuid: 'cloud-guid' };
     expect(mergeCloudSave(local, cloud).playerGuid).toBe('local-guid');
   });
+
+  it('preserves playerSecret from local (matches the hash the server already stored)', () => {
+    const local = { ...base(), playerSecret: 'local-secret' };
+    const cloud = { ...base(), playerSecret: 'cloud-secret' };
+    expect(mergeCloudSave(local, cloud).playerSecret).toBe('local-secret');
+  });
+
+  it('falls back to the cloud playerSecret when local has none (fresh-install identity recovery)', () => {
+    const local = { ...base() };                              // no playerSecret yet
+    const cloud = { ...base(), playerSecret: 'cloud-secret' };
+    expect(mergeCloudSave(local, cloud).playerSecret).toBe('cloud-secret');
+  });
 });
 
 describe('soundSettings – schema v4 migration', () => {
@@ -748,5 +761,21 @@ describe('control prefs (device-local)', () => {
     setSessionControlMode('joystick');
     resetCacheForTests();
     expect(getEffectiveControlMode()).toBe('tilt');
+  });
+});
+
+// ── Player secret (write-auth token) ──────────────────────────────────────
+
+describe('getPlayerSecret', () => {
+  it('generates once, persists, and survives a cache reset', () => {
+    const first = getPlayerSecret();
+    expect(first.length).toBeGreaterThanOrEqual(16);
+    expect(getPlayerSecret()).toBe(first);
+    resetCacheForTests();
+    expect(getPlayerSecret()).toBe(first); // reloaded from storage, not regenerated
+  });
+
+  it('is distinct from the public playerGuid', () => {
+    expect(getPlayerSecret()).not.toBe(getPlayerGuid());
   });
 });

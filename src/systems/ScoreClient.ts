@@ -1,5 +1,6 @@
 import type { LeaderboardContext, SubmitScoreInputs, SubmitScoreResponse, PlayerScoreEntry, PlayerScoresResponse, PaginatedLeaderboardResponse } from '../../shared/scoreTypes';
 import { fetchWithLog } from '../logging/fetchWithLog';
+import { authHeaders, logIfAuthRejected } from './authToken';
 
 const SERVER_URL: string =
   (import.meta as unknown as { env: Record<string, string> }).env.VITE_HEAP_SERVER_URL ??
@@ -24,7 +25,7 @@ export class ScoreClient {
 
       const res = await fetchWithLog(url, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body:    JSON.stringify({
           heapId:     params.heapId,
           playerId:   params.playerId,
@@ -33,7 +34,10 @@ export class ScoreClient {
         }),
       });
 
-      if (!res.ok) return null;
+      if (!res.ok) {
+        logIfAuthRejected('scores:submit', res.status);
+        return null;
+      }
       const data = (await res.json()) as SubmitScoreResponse;
       return data.context;
     } catch {

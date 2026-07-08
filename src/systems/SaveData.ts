@@ -45,6 +45,7 @@ interface RawSave {
   placed:         Record<string, PlacedItemSave[]>;
   selectedHeapId: string;
   playerGuid:     string;
+  playerSecret?:  string;   // private write-auth token — never displayed, never logged
   playerName:     string;
   gpgsPlayerId?:  string;
   highScores:     Record<string, number>;
@@ -118,6 +119,7 @@ function migrate(parsed: any): RawSave {
       placed:         parsed.placed         ?? {},
       selectedHeapId: parsed.selectedHeapId ?? '',
       playerGuid:     parsed.playerGuid     ?? generateGuid(),
+      playerSecret:   parsed.playerSecret,
       playerName:     parsed.playerName     ?? generateDefaultName(),
       gpgsPlayerId:   parsed.gpgsPlayerId,
       highScores:     parsed.highScores     ?? {},
@@ -426,6 +428,17 @@ export function setGpgsPlayerId(id: string): void {
   persist(data);
 }
 
+/** Private write-auth secret, sent as X-Player-Token on server writes.
+ *  Lazily backfilled for saves that predate it; rides in cloud saves. */
+export function getPlayerSecret(): string {
+  const s = load();
+  if (!s.playerSecret) {
+    s.playerSecret = generateGuid();
+    persist(s);
+  }
+  return s.playerSecret;
+}
+
 // ── Verbose logging ───────────────────────────────────────────────────────────
 
 export function getVerboseLogging(): boolean { return load().verboseLogging ?? false; }
@@ -602,6 +615,11 @@ export function mergeCloudSave(local: RawSave, cloud: RawSave): RawSave {
     playerGuid:     local.playerGuid,    // always keep local GUID
     playerName:     primary.playerName,
     gpgsPlayerId:   local.gpgsPlayerId ?? cloud.gpgsPlayerId,
+    // Write-auth secret must ride through the merge: prefer local (it matches the
+    // hash the server already stored for this device); fall back to cloud so a
+    // fresh install recovers the claiming identity. Dropping it here regenerates
+    // the secret on next getPlayerSecret() → permanent 403 mismatch.
+    playerSecret:   local.playerSecret ?? cloud.playerSecret,
     highScores,
     cosmeticsOwned,
     cosmeticsEquipped:  { ...(primary.cosmeticsEquipped ?? {}) },

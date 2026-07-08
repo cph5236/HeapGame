@@ -4,6 +4,7 @@ import { getEffectivePlayerId, addBalance, addItem } from './SaveData';
 import { fetchWithLog } from '../logging/fetchWithLog';
 import { ITEM_DEFS } from '../data/itemDefs';
 import type { RewardPayload, RedeemCodeRequest } from '../../shared/codeTypes';
+import { authHeaders, logIfAuthRejected } from './authToken';
 
 const SERVER_URL: string =
   (import.meta as unknown as { env: Record<string, string> }).env.VITE_HEAP_SERVER_URL ??
@@ -28,7 +29,7 @@ export async function redeemCode(rawCode: string): Promise<RedeemResult> {
   try {
     res = await fetchWithLog(`${SERVER_URL}/codes/redeem`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(req),
     });
   } catch {
@@ -39,6 +40,8 @@ export async function redeemCode(rawCode: string): Promise<RedeemResult> {
     const reward = (await res.json()) as RewardPayload;
     return applyReward(reward);
   }
+
+  logIfAuthRejected('codes:redeem', res.status);
 
   switch (res.status) {
     case 404: return { status: 'notFound', message: 'Code not found' };

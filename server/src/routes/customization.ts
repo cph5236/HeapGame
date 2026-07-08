@@ -1,10 +1,17 @@
 import { Hono } from 'hono';
 import type { CustomizationDB } from '../customizationDb';
+import type { PlayerAuthDB } from '../playerAuthDb';
+import type { Sink } from '../logging/Sink';
+import { enforcePlayerAuth } from '../playerAuth';
 import { validateLoadout, MAX_LOADOUT_JSON_LEN } from '../../../shared/cosmeticCatalog';
 
 const MAX_ID_LEN = 64;
 
-export function customizationRoutes(db: CustomizationDB): Hono {
+export function customizationRoutes(
+  db: CustomizationDB,
+  getSink: () => Sink | undefined = () => undefined,
+  authDb?: PlayerAuthDB,
+): Hono {
   const app = new Hono();
 
   // PUT /customization/:playerId — upsert the equipped loadout (display data only).
@@ -25,6 +32,9 @@ export function customizationRoutes(db: CustomizationDB): Hono {
     // Store our own serialization of the validated object — never raw input.
     const json = JSON.stringify(loadout);
     if (json.length > MAX_LOADOUT_JSON_LEN) return c.json({ error: 'invalid loadout' }, 400);
+
+    const authRes = await enforcePlayerAuth(c, authDb, playerId, getSink, 'customization:put');
+    if (authRes) return authRes;
 
     await db.upsertLoadout(playerId, json, new Date().toISOString());
     return c.json({ ok: true });

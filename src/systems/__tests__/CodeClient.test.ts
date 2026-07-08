@@ -13,6 +13,10 @@ const fetchWithLog = vi.fn();
 vi.mock('../../logging/fetchWithLog', () => ({
   fetchWithLog: (...args: unknown[]) => fetchWithLog(...args),
 }));
+vi.mock('../authToken', () => ({
+  authHeaders: () => ({ 'X-Player-Token': 'secret-test' }),
+  logIfAuthRejected: vi.fn(),
+}));
 
 import { redeemCode } from '../CodeClient';
 
@@ -80,5 +84,18 @@ describe('redeemCode', () => {
   it('rejects an empty code without calling the network', async () => {
     expect((await redeemCode('   ')).status).toBe('error');
     expect(fetchWithLog).not.toHaveBeenCalled();
+  });
+
+  it('sends the X-Player-Token header', async () => {
+    fetchWithLog.mockResolvedValue(jsonResponse(200, { rewardType: 'coins', rewardAmount: 100 }));
+    await redeemCode('welcome');
+    const init = fetchWithLog.mock.calls[0][1] as { headers: Record<string, string> };
+    expect(init.headers['X-Player-Token']).toBe('secret-test');
+  });
+
+  it('returns error status on 403 (claimed by another secret)', async () => {
+    fetchWithLog.mockResolvedValue(jsonResponse(403, { error: 'forbidden' }));
+    const result = await redeemCode('welcome');
+    expect(result.status).toBe('error');
   });
 });

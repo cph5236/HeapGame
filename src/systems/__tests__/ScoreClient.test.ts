@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { SubmitScoreInputs, SubmitScoreResponse, LeaderboardContext, PlayerScoresResponse, PaginatedLeaderboardResponse } from '../../../shared/scoreTypes';
 
+vi.mock('../authToken', () => ({
+  authHeaders: () => ({ 'X-Player-Token': 'secret-test' }),
+  logIfAuthRejected: vi.fn(),
+}));
+
 beforeEach(() => {
   vi.stubGlobal('localStorage', {
     getItem:    () => null,
@@ -15,6 +20,7 @@ afterEach(() => {
 });
 
 const { ScoreClient } = await import('../ScoreClient');
+import { logIfAuthRejected } from '../authToken';
 
 const MOCK_CONTEXT: LeaderboardContext = {
   top:    [{ rank: 1, playerId: 'p1', name: 'Alpha', score: 5000 }],
@@ -82,6 +88,31 @@ describe('ScoreClient.submitScore', () => {
     });
     const calledUrl = (fetchMock.mock.calls[0] as [string])[0];
     expect(calledUrl).toContain('limit=10');
+  });
+
+  it('sends the X-Player-Token header', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ submitted: true, context: MOCK_CONTEXT }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await ScoreClient.submitScore({
+      heapId: 'heap-1', playerId: 'p1', playerName: 'Alpha', inputs: MOCK_INPUTS,
+    });
+    const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
+    expect(init.headers['X-Player-Token']).toBe('secret-test');
+  });
+
+  it('reports a 403 rejection to the remote logger', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
+      ok: false, status: 403,
+      clone: () => ({ text: async () => '' }),
+    }));
+    const result = await ScoreClient.submitScore({
+      heapId: 'heap-1', playerId: 'p1', playerName: 'Alpha', inputs: MOCK_INPUTS,
+    });
+    expect(result).toBeNull();
+    expect(vi.mocked(logIfAuthRejected)).toHaveBeenCalledWith('scores:submit', 403);
   });
 });
 

@@ -5,6 +5,8 @@ import type { ScoreDB } from '../scoreDb';
 import type { HeapDB } from '../db';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
+import type { PlayerAuthDB } from '../playerAuthDb';
+import { enforcePlayerAuth } from '../playerAuth';
 import type {
   SubmitScoreRequest,
   SubmitScoreResponse,
@@ -72,6 +74,7 @@ export function scoreRoutes(
   scoreDb: ScoreDB,
   heapDb: HeapDB,
   getSink: () => Sink | undefined,
+  authDb?: PlayerAuthDB,
 ): Hono {
   const app = new Hono();
 
@@ -267,6 +270,10 @@ export function scoreRoutes(
       }
       return c.json({ error: 'invalid score submission' }, 400);
     }
+
+    // Write-auth: verify-or-claim before any state change.
+    const authRes = await enforcePlayerAuth(c, authDb, playerId, getSink, 'scores:submit');
+    if (authRes) return authRes;
 
     const limit = Math.min(
       parseInt(c.req.query('limit') ?? String(DEFAULT_LIMIT)) || DEFAULT_LIMIT,
