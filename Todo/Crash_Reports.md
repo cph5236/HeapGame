@@ -4,22 +4,6 @@
 Triaged from the `heap_logs` Analytics Engine dataset via the `fetch-logs` Action.
 Each entry lists its source session(s) + event time (UTC) as the audit trail.
 
-## [P2] TypeError: Cannot read properties of null (reading 'drawImage') — Phaser updateUVs / canvas texture
-
-- **occurrences:** 8  ·  **players affected:** 1  ·  **sessions:** 3
-- **first seen:** 2026-07-02 17:12:28  ·  **last seen:** 2026-07-03 22:26:25
-- **platform:** android (8)  ·  **app version:** 0.2.14 (8)
-- **message:** `Cannot read properties of null (reading 'drawImage')`
-- **top frame:** `initialize.updateUVs (phaser-*.js:5337)` → `setCutPosition` → `drawImage`
-- **sample:** session `f72cefa8-7b8a-47f7-b8ac-b21fcda125fe` @ 2026-07-03 22:26:25
-- **assessment:** Phaser is drawing a frame whose backing canvas/texture source is
-  `null`. The game leans heavily on canvas2d `CanvasTexture` sources
-  (`HeapChunkRenderer`), so this is most likely a canvas texture that was destroyed
-  or failed to allocate (WebGL/canvas context loss on this Android device) while a
-  sprite still references it. Single player but persistent — recurs 8× across 3
-  sessions → hard, reproducible on that device. Guard canvas-texture source before
-  draw / handle context-loss re-creation. P2 (single-player reach caps it below P1).
-
 ## [P3] ReferenceError: getCustomizeHintSeen is not defined — deploy-boundary stale chunk
 
 - **occurrences:** 1  ·  **players affected:** 1  ·  **sessions:** 1
@@ -54,6 +38,26 @@ Each entry lists its source session(s) + event time (UTC) as the audit trail.
   worker deploy history for 2026-07-03; no action if that window is explained.
 
 ---
+
+## Resolved
+
+### [P2] TypeError: Cannot read properties of null (reading 'drawImage') — Phaser updateUVs / canvas texture → fix in PR #98
+
+- **occurrences:** 8  ·  **players affected:** 1  ·  **sessions:** 3
+- **first seen:** 2026-07-02 17:12:28  ·  **last seen:** 2026-07-03 22:26:25
+- **platform:** android (8)  ·  **app version:** 0.2.14 (8)
+- **message:** `Cannot read properties of null (reading 'drawImage')`
+- **top frame:** `initialize.updateUVs (phaser-*.js:5337)` → `setCutPosition` → `drawImage`
+- **sample:** session `f72cefa8-7b8a-47f7-b8ac-b21fcda125fe` @ 2026-07-03 22:26:25
+- **root cause:** `InfiniteGameScene` never called `cullChunks` (the finite
+  `GameScene` does), so every baked 500px band's canvas texture stayed resident.
+  Over a long climb they accumulated until memory exhaustion GC'd a texture source
+  out from under a still-referenced `Image` → Phaser drew a `null` source. Not a
+  device context-loss issue as originally guessed — a missing-cull leak.
+- **fix:** [PR #98](https://github.com/cph5236/HeapGame/pull/98) — per-frame chunk
+  culling in Infinite mode (+ grounded-gated bake for the associated lag). Verified
+  live: culling drove `liveChunks` from an unbounded climb to a ~51 plateau.
+- **status:** fix pushed, **awaiting device playtest + merge**.
 
 ### Discarded as noise this run
 - **`fetch failed` — NetworkError when attempting to fetch resource** (4 occ, 1
