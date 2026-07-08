@@ -12,16 +12,6 @@
   overhang depenetration). Blocks reaching the top of a specific heap → progress
   blocker on that heap. P2; needs repro on Hoarders' top band.
 
-## [P2] Infinite heap mode is laggy and crashes
-
-- **ids:** 6  ·  **players affected:** 1
-- **platform:** android  ·  **app version:** 0.2.10
-- **what they said:** "Infinite heap laggy and vrashes" [sic]
-- **assessment:** Performance degradation plus hard crashes in Infinite mode on
-  Android. Likely the same surface as the crash-log **[P2] `drawImage`-of-null in
-  `updateUVs`** (canvas-texture source going null under memory pressure / context
-  loss) — cross-check `Todo/Crash_Reports.md`. Crash + progress loss → P2.
-
 ## [P2] Collision "gravity drag" degrades movement feel
 
 - **ids:** 7  ·  **players affected:** 1
@@ -52,3 +42,20 @@
   level 4 producing an error, but the message is too terse to act on directly.
   Kept as a low-priority breadcrumb; needs the reporter's session or a repeat report
   to promote. P3.
+
+## Resolved
+
+### [P2] Infinite heap mode is laggy and crashes → fix in PR #98
+
+- **ids:** 6  ·  **players affected:** 1
+- **platform:** android  ·  **app version:** 0.2.10
+- **what they said:** "Infinite heap laggy and vrashes" [sic]
+- **root cause:** Same surface as the crash-log **[P2] `drawImage`-of-null in
+  `updateUVs`** (see `Todo/Crash_Reports.md`). `InfiniteGameScene` never culled its
+  baked canvas-texture chunks, so they accumulated until memory exhaustion nulled a
+  live texture source (crash); the synchronous per-band canvas bake also hitched on
+  every jump (lag).
+- **fix:** [PR #98](https://github.com/cph5236/HeapGame/pull/98) — per-frame chunk
+  culling + grounded-gated canvas bake.
+- **status:** fixed on branch `fix/infinite-chunk-culling`, ready to merge (device
+  playtest confirmed; temp diagnostic logging stripped).

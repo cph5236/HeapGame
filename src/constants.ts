@@ -106,6 +106,13 @@ export const STACK_GAP_MAX     = 16;
 export const GEN_LOOKAHEAD     = 1200; // px above camera top to keep generated
 export const HEAP_TOP_ZONE_PX  = 300;  // px above topmost block that activates placement zone
 export const CHUNK_BAND_HEIGHT = 500;  // px per visual silhouette band
+// Infinite mode defers the (synchronous) band bake until the player is grounded
+// so the hitch never lands mid-jump. This is the airborne safety buffer: if the
+// baked heap ceiling gets within this distance of the player while airborne, we
+// force a bake anyway so a long dash/wall-jump chain can't reach un-baked heap.
+// 5 bands — a single jump only rises ~1–2, so it rarely fires; well under the
+// 10-band dispatch lookahead so there's always dispatched heap ready to bake.
+export const GENERATION_BAKE_SAFETY_PX = 5 * CHUNK_BAND_HEIGHT; // 2500px
 export const LAYER_STEP        = 4;    // px between layer lines — matches SCAN_STEP
 export const LEDGE_STEP        = 60;   // px per staircase step — controls ledge height and wall frequency
 export const LEDGE_BLEND       = 0.60; // 0 = fully smooth curves, 1 = fully blocky staircases

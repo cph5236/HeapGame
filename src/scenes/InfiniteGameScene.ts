@@ -6,6 +6,7 @@ import { PlayerOutro } from '../entities/PlayerOutro';
 import { AudioManager } from '../systems/AudioManager';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
+import { shouldBakeBands } from '../systems/generationPacing';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
 import { EnemyManager } from '../systems/EnemyManager';
 import { TrashWallManager } from '../systems/TrashWallManager';
@@ -89,6 +90,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   private walkableGroups: Phaser.Physics.Arcade.StaticGroup[] = [];
   private wallGroups:     Phaser.Physics.Arcade.StaticGroup[] = [];
   private edgeColliders:  HeapEdgeCollider[]                  = [];
+  private chunkRenderers: HeapChunkRenderer[]                = [];
   private generators:     HeapGenerator[]  = [];
   private layerGenerators: LayerGenerator[] = [];
   private enemyManagers:  EnemyManager[]   = [];
@@ -143,6 +145,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.walkableGroups = [];
     this.wallGroups     = [];
     this.edgeColliders  = [];
+    this.chunkRenderers = [];
     this.spawnedBands      = [new Set(), new Set(), new Set()];
     this.colBandPolygons   = [new Map(), new Map(), new Map()];
 
@@ -191,6 +194,7 @@ export class InfiniteGameScene extends Phaser.Scene {
       this.walkableGroups.push(walkable);
       this.wallGroups.push(wall);
       this.edgeColliders.push(edge);
+      this.chunkRenderers.push(renderer);
       this.generators.push(gen);
       this.enemyManagers.push(em);
     }
@@ -477,15 +481,22 @@ export class InfiniteGameScene extends Phaser.Scene {
     // ── Heap generation ───────────────────────────────────────────────────────────
     // Use scrollY (+ logical viewport height) rather than cam.worldView, which is
     // only refreshed in preRender (AFTER update) and is therefore stale (≈0) on the
-    // first update frame — matching the workaround in GameScene. Less critical here
-    // (Infinite regenerates every frame so nothing is permanently culled), but it
-    // keeps frame-1 enemy visibility + lookahead generation from using y≈0.
+    // first update frame — matching the workaround in GameScene. It keeps frame-1
+    // enemy visibility + lookahead generation from using y≈0, and feeds cullChunks
+    // below so far-scrolled chunks are disposed rather than accumulating forever.
     const cam    = this.cameras.main;
     const camTop = cam.scrollY;
     const camBot = cam.scrollY + cam.height / cam.zoom;
 
-    // Layer generation — drive each column ahead of the player
+    // Layer generation — dispatch bands to the worker ahead of the player every
+    // frame (cheap/async), but defer the *synchronous* bake (flushWorkerResults:
+    // canvas draw + collider build) until the player is grounded, so its frame
+    // hitch never lands mid-jump / while moving fast. A per-column safety valve
+    // force-bakes if the baked ceiling gets within GENERATION_BAKE_SAFETY_PX of
+    // the player while airborne, so a long air chain can't reach un-baked heap.
     const targetY = this.player.sprite.y - INFINITE_LOOKAHEAD_CHUNKS * CHUNK_BAND_HEIGHT;
+    const onGround = this.player.animState.onGround;
+    const playerY  = this.player.sprite.y;
     for (let i = 0; i < 3; i++) {
       const gen      = this.generators[i];
       const layerGen = this.layerGenerators[i];
@@ -493,7 +504,28 @@ export class InfiniteGameScene extends Phaser.Scene {
         const { bandTop, rows } = layerGen.nextChunk();
         gen.sendLayerBatch(bandTop, rows);
       }
-      gen.flushWorkerResults();
+      if (shouldBakeBands({
+        onGround,
+        hasPending: gen.hasPendingResults,
+        playerY,
+        bakedTopY: this.chunkRenderers[i].bakedTopY,
+      })) {
+        gen.flushWorkerResults();
+      }
+    }
+
+    // Dispose heap chunks that have scrolled far below the camera. Without this
+    // the 5,000,000px climb accumulates a canvas texture + Image per band per
+    // column without bound → memory pressure (lag) → eventual canvas/GL
+    // allocation failure → Phaser drawing an Image whose texture source went
+    // null → "Cannot read properties of null (reading 'drawImage')" crash.
+    // (GameScene culls the same way every frame; Infinite must too.) Cull the
+    // per-column HeapEdgeColliders alongside the renderers — their static
+    // physics bodies (bandBodies backing the walkable/wall groups) leak the same
+    // way otherwise, mirroring GameScene's paired cullChunks + cullBands.
+    for (let i = 0; i < this.chunkRenderers.length; i++) {
+      this.chunkRenderers[i].cullChunks(camBot);
+      this.edgeColliders[i].cullBands(camBot, 2000);
     }
 
     // ── Difficulty ramp ───────────────────────────────────────────────────────────

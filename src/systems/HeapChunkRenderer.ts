@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import { HeapEntry } from '../data/heapTypes';
 import { OBJECT_DEFS } from '../data/heapObjectDefs'; // used by addEntry for bounding box calc
-import { CHUNK_BAND_HEIGHT, HEAP_FILL_TEXTURE, ENEMY_CULL_DISTANCE, WORLD_WIDTH } from '../constants';
+import { CHUNK_BAND_HEIGHT, HEAP_FILL_TEXTURE, WORLD_WIDTH } from '../constants';
 import { computeBandScanlines, computeBandPolygon, Vertex } from './HeapPolygon';
 import { HEAP_TILE_COUNT } from '../data/heapTileUrls';
 import { createGrimeTile, applyColourGrade } from './heapGrime';
+import { selectChunksToCull } from './chunkCulling';
 
 /** Composite texture tile height in px — must match the generated PNG height. */
 const TEX_H = 1024;
@@ -118,16 +119,27 @@ export class HeapChunkRenderer {
   }
 
   /**
+   * Highest baked band top (smallest world Y) currently rendered, or +Infinity
+   * when nothing is baked. Used by Infinite mode's generation pacing to know how
+   * much baked runway sits above the player.
+   */
+  get bakedTopY(): number {
+    let min = Infinity;
+    for (const bandTop of this.chunkObjects.keys()) {
+      if (bandTop < min) min = bandTop;
+    }
+    return min;
+  }
+
+  /**
    * Destroy rendered objects for chunks that have scrolled far below the camera.
    * Call from GameScene.update() every frame.
    */
   cullChunks(camBottom: number): void {
-    const cullThreshold = camBottom + ENEMY_CULL_DISTANCE;
-    for (const [bandTop, objs] of this.chunkObjects) {
-      if (bandTop > cullThreshold) {
-        this.disposeChunk(objs);
-        this.chunkObjects.delete(bandTop);
-      }
+    for (const bandTop of selectChunksToCull(this.chunkObjects.keys(), camBottom)) {
+      const objs = this.chunkObjects.get(bandTop)!;
+      this.disposeChunk(objs);
+      this.chunkObjects.delete(bandTop);
     }
   }
 
