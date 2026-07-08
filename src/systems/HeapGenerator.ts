@@ -151,6 +151,11 @@ export class HeapGenerator {
    * Apply pending worker results to Phaser objects.
    * Call this once per frame from GameScene.update(), after generateUpTo().
    */
+  /** True when worker results are waiting to be applied/baked to Phaser. */
+  get hasPendingResults(): boolean {
+    return this.pendingBandResults.length > 0;
+  }
+
   flushWorkerResults(): void {
     if (this.pendingBandResults.length === 0) return;
 
