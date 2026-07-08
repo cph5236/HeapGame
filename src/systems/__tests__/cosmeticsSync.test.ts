@@ -17,6 +17,8 @@ vi.mock('../SaveData', () => ({
   setLoadoutSyncPending: (v: boolean) => setLoadoutSyncPending(v),
   resetAllData: () => resetAllData(),
   resetCacheForTests: () => resetCacheForTests(),
+  // putLoadout now attaches X-Player-Token via authHeaders() → getPlayerSecret().
+  getPlayerSecret: () => 'test-secret',
 }));
 
 const fetchWithLog = vi.fn();
