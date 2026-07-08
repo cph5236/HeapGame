@@ -522,9 +522,13 @@ export class InfiniteGameScene extends Phaser.Scene {
     // column without bound → memory pressure (lag) → eventual canvas/GL
     // allocation failure → Phaser drawing an Image whose texture source went
     // null → "Cannot read properties of null (reading 'drawImage')" crash.
-    // (GameScene culls the same way every frame; Infinite must too.)
-    for (const renderer of this.chunkRenderers) {
-      renderer.cullChunks(camBot);
+    // (GameScene culls the same way every frame; Infinite must too.) Cull the
+    // per-column HeapEdgeColliders alongside the renderers — their static
+    // physics bodies (bandBodies backing the walkable/wall groups) leak the same
+    // way otherwise, mirroring GameScene's paired cullChunks + cullBands.
+    for (let i = 0; i < this.chunkRenderers.length; i++) {
+      this.chunkRenderers[i].cullChunks(camBot);
+      this.edgeColliders[i].cullBands(camBot, 2000);
     }
 
     // TEMP diagnostic (remove before merge). Culling: `liveChunks` should
