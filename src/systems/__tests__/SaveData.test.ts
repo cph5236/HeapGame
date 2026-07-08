@@ -637,6 +637,18 @@ describe('mergeCloudSave', () => {
     const cloud = { ...base(), playerGuid: 'cloud-guid' };
     expect(mergeCloudSave(local, cloud).playerGuid).toBe('local-guid');
   });
+
+  it('preserves playerSecret from local (matches the hash the server already stored)', () => {
+    const local = { ...base(), playerSecret: 'local-secret' };
+    const cloud = { ...base(), playerSecret: 'cloud-secret' };
+    expect(mergeCloudSave(local, cloud).playerSecret).toBe('local-secret');
+  });
+
+  it('falls back to the cloud playerSecret when local has none (fresh-install identity recovery)', () => {
+    const local = { ...base() };                              // no playerSecret yet
+    const cloud = { ...base(), playerSecret: 'cloud-secret' };
+    expect(mergeCloudSave(local, cloud).playerSecret).toBe('cloud-secret');
+  });
 });
 
 describe('soundSettings – schema v4 migration', () => {

@@ -615,6 +615,11 @@ export function mergeCloudSave(local: RawSave, cloud: RawSave): RawSave {
     playerGuid:     local.playerGuid,    // always keep local GUID
     playerName:     primary.playerName,
     gpgsPlayerId:   local.gpgsPlayerId ?? cloud.gpgsPlayerId,
+    // Write-auth secret must ride through the merge: prefer local (it matches the
+    // hash the server already stored for this device); fall back to cloud so a
+    // fresh install recovers the claiming identity. Dropping it here regenerates
+    // the secret on next getPlayerSecret() → permanent 403 mismatch.
+    playerSecret:   local.playerSecret ?? cloud.playerSecret,
     highScores,
     cosmeticsOwned,
     cosmeticsEquipped:  { ...(primary.cosmeticsEquipped ?? {}) },

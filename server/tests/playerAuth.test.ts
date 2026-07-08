@@ -53,4 +53,23 @@ describe('verifyOrClaim', () => {
     const db = new MockPlayerAuthDB();
     expect(await verifyOrClaim(db, 'p1', '', NOW)).toBe('legacy');
   });
+
+  it('concurrent first-write that loses the claim race is rejected, not falsely claimed', async () => {
+    // Simulate a competitor claiming between our read (which sees null) and our
+    // INSERT OR IGNORE: the row exists by insert time, so our token is discarded.
+    class RacingAuthDB extends MockPlayerAuthDB {
+      private raced = false;
+      async getSecretHash(id: string): Promise<string | null> {
+        const v = await super.getSecretHash(id);
+        if (v === null && !this.raced) {
+          this.raced = true;
+          this.rows.set(id, 'competitor-hash');
+        }
+        return v;
+      }
+    }
+    const db = new RacingAuthDB();
+    expect(await verifyOrClaim(db, 'p1', 'my-secret', NOW)).toBe('rejected-mismatch');
+    expect(db.rows.get('p1')).toBe('competitor-hash'); // the winner's claim stands
+  });
 });

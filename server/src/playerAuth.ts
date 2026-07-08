@@ -34,7 +34,12 @@ export async function verifyOrClaim(
   const hash = await hashSecret(token);
   if (stored === null) {
     await db.insert(playerId, hash, now);
-    return 'claimed';
+    // A concurrent first-write for the same unclaimed id may have landed between
+    // the read above and this INSERT OR IGNORE. Re-read: if the stored hash is
+    // not ours, the other token won the claim — reject rather than falsely
+    // reporting success to a client whose secret was never actually stored.
+    const after = await db.getSecretHash(playerId);
+    return after === hash ? 'claimed' : 'rejected-mismatch';
   }
   return stored === hash ? 'verified' : 'rejected-mismatch';
 }
