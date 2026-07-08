@@ -6,41 +6,40 @@ Capacitor 8.2. Backend is a Cloudflare Worker (Hono + D1) exposing GUID-based CR
 at `/heaps`. Tests run via Vitest.
 
 ## Layout
-- `src/` game client · `server/` worker · `shared/` shared types
-- Tests live in `__tests__/` dirs across `src/` and `shared/`, and in `server/tests/`
-- Plans live in `docs/superpowers/plans/`
+- `src/` game client — `scenes/` (Menu, Game, InfiniteGame, Score, …), `systems/`
+  (SaveData, clients, physics helpers), `entities/` (Player, Enemy), `ui/`
+- `server/` worker — `routes/` (Hono), `*Db.ts` repos (each has D1 + Mock + Cached
+  variants), `cache/` KV decorators
+- `shared/` types + pure logic used by both sides
+- Tests in `__tests__/` dirs across `src/` and `shared/`, and in `server/tests/`
+- Specs/plans/runbooks in `docs/superpowers/`
 
 ## Commands
-- `npm run dev` — Vite on port 3000
+- `npm run dev` — Vite on port 3000. **The user runs their own dev server — never
+  start or kill one**; just use localhost:3000 if it responds
 - `npm test` — Vitest
 - `npm run build` — **always run before claiming work is done**; catches TS errors tests miss
 - `npm run seed` — seed local D1
-- `npm run scene-preview -- <Scene> '<json>' <device>` — screenshot a scene at phone size
+- `npm run scene-preview -- <Scene> '<json>' <device>` — scene screenshot (see skill)
+- `npm run bump [patch|minor|major]` — version bump, package.json + Android gradle (see skill)
 
 ## Conventions
-- Branch off `main` for all work (incl. tooling/CI); PR before merge, never push direct to main
-- **No git worktrees** — use regular feature branches in the main working dir
+- Branch off `main` for all work (incl. tooling/CI); PR before merge, never push
+  direct to main (sole exception: the user's own `V0.x.y` release commits)
+- **No git worktrees** — regular feature branches in the main working dir
 - Don't commit `.wrangler/state/` (local D1 state)
+- Per-player server calls key on `getEffectivePlayerId()` from `SaveData` (GPGS id
+  if signed in, else GUID) — never bare `getPlayerGuid()`
+- Player writes are auth-gated (TOFU `playerSecret` + `X-Player-Token`); any code
+  path that migrates/merges SaveData **must carry `playerSecret`** or players get
+  403-locked out of their own data
 
-## D1 migrations
-The backend is split into four domain D1 databases (see the sharding plan/runbook
-in `docs/superpowers/`): `heap_core` (binding `DB_HEAP`), `heap_scores` (`DB_SCORES`),
-`heap_rewards` (`DB_REWARDS`), `heap_telemetry` (`DB_TELEMETRY`) — all declared in
-`server/wrangler.toml`, plus a `CACHE` KV namespace. Read-heavy repos are wrapped by
-the cache decorators in `server/src/cache/`. Pick the DB a table lives in before
-adding a migration.
-
-Schema changes require a migration file — never edit the per-DB schema alone.
-1. Add `server/migrations/<db>/NNNN_description.sql` with only the incremental SQL
-   (`<db>` is the database, e.g. `heap_core`)
-2. Update `server/schema/<db>.sql` to the final intended state (for fresh installs).
-   `server/schema.sql` is now just an index pointing at those per-DB files.
-Apply: `cd server && npx wrangler d1 migrations apply <db> --local` (or `--remote`).
-Remote applies are also driven by `.github/workflows/migrate-d1.yml` (loops all four).
-Never edit an applied migration — write a new one. One migration per change.
-
-## Scene preview devices
-`pixel7` 448×970 (default) · `browser` 480×1042 · `iphone14` 390×844 · `desktop` 1280×800
+## Project skills (invoke via Skill tool — don't re-derive these workflows)
+- `adding-d1-migrations` — any schema change (4 domain DBs, two-file rule, remote apply)
+- `releasing-heap` — version bump + what pushing main triggers (Play/itch.io/Pages/D1)
+- `smoke-testing-heap` — live browser verification of gameplay/runtime changes
+- `heap-scene-preview` — static scene screenshots at phone sizes (device table inside)
+- `triaging-crash-logs` / `triaging-player-feedback` — pull + file production reports
 
 ## Tooling (auto-loaded each session — these are just reminders)
 - **TheBrain** — run `/hello` at session start, `/wrapup` before closing; recall via brain before grepping files
