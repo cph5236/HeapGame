@@ -1,25 +1,8 @@
 # Crash Reports — from production logs
-**Last updated:** 2026-07-07
+**Last updated:** 2026-07-10
 
 Triaged from the `heap_logs` Analytics Engine dataset via the `fetch-logs` Action.
 Each entry lists its source session(s) + event time (UTC) as the audit trail.
-
-## [P3] ReferenceError: getCustomizeHintSeen is not defined — deploy-boundary stale chunk
-
-- **occurrences:** 1  ·  **players affected:** 1  ·  **sessions:** 1
-- **first seen:** 2026-07-07 01:19:19  ·  **last seen:** 2026-07-07 01:19:19
-- **platform:** web (1)  ·  **app version:** 0.2.14 (1)
-- **message:** `ReferenceError: getCustomizeHintSeen is not defined`
-- **sample:** session `539be2ed-6cbf-48f3-9ca0-633e453d016f` @ 2026-07-07 01:19:19
-- **assessment:** `getCustomizeHintSeen` was introduced in commit `d423f91` ("Add
-  hint text to main menu"), which shipped in **0.2.15** — it does not exist in
-  0.2.14. The crash came from a client reporting **0.2.14** ~4h after that commit
-  landed (committed 2026-07-06 21:35), so this is a **PWA stale-chunk split-brain**:
-  a new `MenuScene` chunk that calls the function was served against a cached
-  `SaveData` chunk that never exported it. The symbol is present in current code
-  (0.2.16) so this exact instance is resolved, but the underlying cache-versioning
-  gap **recurs on every release** and can brick the menu for players mid-update.
-  P3 — worth confirming the service-worker / chunk-hash cache-busting strategy.
 
 ## [P3] HTTP 500 burst across multiple worker endpoints — 2026-07-03 backend incident
 
@@ -64,3 +47,17 @@ Each entry lists its source session(s) + event time (UTC) as the audit trail.
 - **`fetch failed` — NetworkError when attempting to fetch resource** (4 occ, 1
   player, web, 0.2.11/0.2.15). Client-side `NetworkError` on `/heaps` — transient
   connectivity for a single user; not actionable.
+
+### Closed, no action — 2026-07-10 follow-up
+- **`ReferenceError: getCustomizeHintSeen is not defined`** (1 occ, 1 player, web,
+  0.2.14, first/last seen 2026-07-07 01:19:19, session
+  `539be2ed-6cbf-48f3-9ca0-633e453d016f`). Original assessment guessed a PWA
+  service-worker chunk-hash split-brain between `MenuScene` and `SaveData`.
+  Investigated further: **the project has no service worker/PWA plugin at all**,
+  and `vite.config.ts` only splits `phaser` into its own chunk — `MenuScene` and
+  `SaveData` are always compiled into the same JS file, so the two modules can't
+  desync from each other within one build. The site deploys to **GitHub Pages**
+  (Fastly CDN), which offers no custom cache-control headers to tune. The
+  remaining plausible cause is a brief edge-cache propagation race at the exact
+  deploy boundary — outside app-code control, not reproducible, single
+  occurrence. Decision: no fix, no action. Re-open if this signature recurs.
