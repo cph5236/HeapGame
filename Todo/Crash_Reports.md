@@ -17,8 +17,22 @@ Each entry lists its source session(s) + event time (UTC) as the audit trail.
   endpoints simultaneously in two short windows on one day (16:47 and 18:13). A
   single buggy handler wouldn't take down `/config`, `/heaps`, and `/enemy-params`
   at once — this reads as a **transient worker/D1 incident** (bad deploy or DB
-  hiccup) rather than a code path. Filed as low so it can be cross-checked against
-  worker deploy history for 2026-07-03; no action if that window is explained.
+  hiccup) rather than a code path.
+- **2026-07-10 follow-up:** raw logs confirm both sessions are real player
+  traffic, not test/dev noise — initially suspected the android session's
+  `enemy-params` call against `FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF` was a dev
+  poking at the API, but that GUID is the standard client-side sentinel every
+  real player's client sends for Infinite mode (`BootScene.ts` /
+  `infiniteDefs.ts`, shipped 2026-06-24), and the event timestamps (2026-07-03)
+  postdate both that feature and the `V0.2.14` release commit (2026-06-29) by
+  days — a live, in-window client, not a stale/pre-release build. The android
+  session's call order (`/heaps` 500 first, then `enemy-params` 500 ~1s later)
+  and the web session's simultaneous `/config` + `/heaps` 500s both point to a
+  genuine D1/worker-side fault, not anything sentinel- or client-specific.
+  Could not confirm against worker deploy history — worker deploys are manual
+  (`wrangler deploy`, no CI record) and no deploy was confirmed for that window.
+  **Status: keep as open P3, watch-only.** No code action identified; re-triage
+  if this signature recurs or expands to more players.
 
 ---
 
