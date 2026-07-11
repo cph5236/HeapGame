@@ -1,16 +1,5 @@
 # Bug Reports — from player feedback
-**Last updated:** 2026-07-07
-
-## [P2] Can't land on top of Hoarders heap — teleported to the side
-
-- **ids:** 5  ·  **players affected:** 1
-- **platform:** android  ·  **app version:** 0.2.10
-- **what they said:** "Can't land on top of horders heap, immediately get teleported to the side"
-- **assessment:** Landing on the summit of the "Hoarders" heap immediately
-  depenetrates/teleports the player sideways instead of letting them stand. Smells
-  like the flat-top / summit collision family (exposed-summit classification +
-  overhang depenetration). Blocks reaching the top of a specific heap → progress
-  blocker on that heap. P2; needs repro on Hoarders' top band.
+**Last updated:** 2026-07-11
 
 ## [P2] Collision "gravity drag" degrades movement feel
 
@@ -44,6 +33,30 @@
   to promote. P3.
 
 ## Resolved
+
+### [P2] Can't land on top of Hoarders heap — teleported to the side → predates fix in PR #80
+
+- **ids:** 5  ·  **players affected:** 1
+- **platform:** android  ·  **app version:** 0.2.10
+- **what they said:** "Can't land on top of horders heap, immediately get teleported
+  to the side"
+- **root cause:** Summit/flat-top of the heap was classified as a vertical wall
+  (tops disabled → the depenetration overlap ejected the player sideways instead of
+  letting them stand). Same exposed-summit collision family described in
+  `HeapEdgeCollider.classifyRow`.
+- **fix:** [PR #80](https://github.com/cph5236/HeapGame/pull/80) — "Fix flat plateau
+  top misclassified as a vertical wall" (commit `5698350`): the topmost row of a band
+  whose Y sits strictly below `bandTop` is treated as a standable exposed summit. The
+  only collision/polygon change since v0.2.10.
+- **status:** fixed. The report is app version **0.2.10**; the fix first shipped in
+  **V0.2.13** (2026-06-29), so the report predates it. Re-verified live on the current
+  build — player stands on the Hoarders spire top without being ejected (device
+  screenshot). Not reopening: no repro on ≥0.2.13, and the collision classifier is
+  high-risk to edit without cause.
+  - *Note:* PR #80 only rescues the single topmost scanline / flat-top case; a heap
+    with steep exposed flanks just under a narrow peak could still expose a thin-cap
+    ejection band (reproducible against the pipeline). Left as a latent edge case —
+    file a fresh report if it resurfaces on a specific heap.
 
 ### [P2] Infinite heap mode is laggy and crashes → fix in PR #98
 
