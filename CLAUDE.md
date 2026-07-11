@@ -15,8 +15,9 @@ at `/heaps`. Tests run via Vitest.
 - Specs/plans/runbooks in `docs/superpowers/`
 
 ## Commands
-- `npm run dev` — Vite on port 3000. **The user runs their own dev server — never
-  start or kill one**; just use localhost:3000 if it responds
+- `npm run dev` — Vite on port 3000. **Prefer the user's own dev server: if
+  localhost:3000 already responds, use it — never kill it.** If nothing is on :3000,
+  you may start one yourself when you need it (e.g. for scene-preview / smoke tests)
 - `npm test` — Vitest
 - `npm run build` — **always run before claiming work is done**; catches TS errors tests miss
 - `npm run seed` — seed local D1
