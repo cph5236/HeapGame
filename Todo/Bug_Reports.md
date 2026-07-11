@@ -1,17 +1,6 @@
 # Bug Reports — from player feedback
 **Last updated:** 2026-07-11
 
-## [P2] Collision "gravity drag" degrades movement feel
-
-- **ids:** 7  ·  **players affected:** 1
-- **platform:** android  ·  **app version:** 0.2.12  ·  *(reclassified from suggestion)*
-- **what they said:** "that gravity drag caused by collision is working against the
-  gameplay. If that gets fixed it would be a smooth experience I think."
-- **assessment:** Reports collision-induced drag that fights player movement —
-  behavior contradicting the intended "smooth" climb, so filed as a bug not a
-  suggestion. Likely the wall/slope sliding + depenetration friction path. One
-  qualitative report but names a core-feel defect; P2 pending repro of the drag.
-
 ## [P3] Launch lag — a few seconds of stutter on startup
 
 - **ids:** 8  ·  **players affected:** 1
@@ -33,6 +22,23 @@
   to promote. P3.
 
 ## Resolved
+
+### [P2] Collision "gravity drag" degrades movement feel → won't fix (working as designed)
+
+- **ids:** 7  ·  **players affected:** 1
+- **platform:** android  ·  **app version:** 0.2.12  ·  *(reclassified from suggestion)*
+- **what they said:** "that gravity drag caused by collision is working against the
+  gameplay. If that gets fixed it would be a smooth experience I think."
+- **root cause:** Not jump gravity — jumping while touching a wall is not slowed. The
+  only collision-contact slowdown is the **wall-slide cap** (`Player.ts:545`,
+  `WALL_SLIDE_SPEED = 80`): a *falling* player touching a wall has downward speed
+  clamped to 80 px/s. That's what the player felt as "drag." (The floaty apex jump,
+  `APEX_GRAVITY_FACTOR`, is unrelated and predates this report — shipped V0.2.6.)
+- **resolution:** Won't fix. Wall-slide is a deliberate core-movement component —
+  it's what makes wall-jumping and controlled descents work; removing/loosening it
+  would break more than it helps. One qualitative report, no repro of an actual
+  defect. Reopen only if multiple players report the slide feeling broken (not just
+  unfamiliar).
 
 ### [P2] Can't land on top of Hoarders heap — teleported to the side → predates fix in PR #80
 
