@@ -23,11 +23,12 @@
   `InfiniteLoadingOverlay` (earthy dirt + gold): the heap piles up as loading
   progresses with the trash-bag hero riding the crest. Reuses the tested
   `preloadProgress`/`preloadComplete` helpers.
-- **status:** implemented on branch `claude/next-bug-report-k48fka`. `npm run build`
-  clean; full client test suite passes (906). Live visual verification still pending —
-  no dev server was running in the session to screenshot the transient scene (a
-  dev-only `?dev=LoadingScene&params={"freeze":0.6}` hook was added so it can be posed
-  for scene-preview).
+- **status:** implemented on branch `claude/next-bug-report-k48fka` ([PR #100](https://github.com/cph5236/HeapGame/pull/100)).
+  `npm run build` clean; full client test suite passes (906). Verified live in the
+  browser via the dev server at 15% / 50% / 85% (heap grows from the bottom, bar
+  readable in front). A dev-only `?dev=LoadingScene&params={"freeze":0.6}` hook was
+  added to pose the transient scene for scene-preview. On-device smoke test still
+  pending before merge.
 
 ### [P3] "Jump height 4 error" → fixed in commit `7fe0453` (level-4 upgrade freeze)
 
