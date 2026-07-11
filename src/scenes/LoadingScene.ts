@@ -13,15 +13,23 @@ import { MENU_LOADING_MIN_MS } from '../constants';
 // Palette matches InfiniteLoadingOverlay (earthy dirt + gold) so the two loaders
 // read as one system. Authored in logical (CSS-pixel) coords via setupUiCamera.
 
-const BACKDROP_TOP    = 0x140f0a;
-const BACKDROP_BOTTOM = 0x0b0806;
-const MOUND_BACK      = 0x2a1d13;
-const MOUND_FRONT     = 0x3d2b1b;
-const MOUND_RIM       = 0x5a4026;
-const BAR_BG_COLOR    = 0x2a2018;
-const BAR_FILL_COLOR  = 0xc9a24b;
-const GOLD            = '#c9a24b';
-const CREAM           = '#f0e2c8';
+// Night-sky → sunset gradient stops sampled from MenuScene.createSkyGradient, so
+// the loader and the menu it precedes share one sky. [position 0..1, 0xRRGGBB].
+const SKY_STOPS: [number, number][] = [
+  [0.00, 0x0a0818], [0.16, 0x161c3a], [0.33, 0x222d55], [0.50, 0x37415e],
+  [0.60, 0x5c4840], [0.70, 0x7d5228], [0.78, 0x8a5520], [0.86, 0x7a4a1a],
+  [0.93, 0x5e3a14], [1.00, 0x3e280e],
+];
+
+const MOUND_BACK     = 0x1c130c; // dark heap silhouetted against the warm horizon
+const MOUND_FRONT    = 0x281b10;
+const MOUND_RIM      = 0x6e4e30; // warm rim catching the sunset light
+const BAR_BG_COLOR   = 0x241a12;
+const BAR_FILL_COLOR = 0xffb03a; // warm gold, keyed to the menu title orange
+const GOLD           = '#ffca6a';
+const TITLE_COLOR    = '#ff9922'; // matches MenuScene title
+const TITLE_STROKE   = '#1a0800';
+const TAGLINE_COLOR  = '#cc9966'; // matches MenuScene tagline
 
 const CAPTIONS = [
   'Building the heap',
@@ -29,6 +37,27 @@ const CAPTIONS = [
   'Stacking the pile',
   'Digging through the junk',
 ];
+
+/** Colour of the sky gradient at normalized vertical position p (0=top, 1=bottom). */
+function skyColorAt(p: number): number {
+  const t = Math.max(0, Math.min(1, p));
+  for (let i = 1; i < SKY_STOPS.length; i++) {
+    const [p0, c0] = SKY_STOPS[i - 1];
+    const [p1, c1] = SKY_STOPS[i];
+    if (t <= p1) return mix(c0, c1, (t - p0) / (p1 - p0));
+  }
+  return SKY_STOPS[SKY_STOPS.length - 1][1];
+}
+
+/** Linear blend of two 0xRRGGBB colours; k=0 → a, k=1 → b. */
+function mix(a: number, b: number, k: number): number {
+  const t = Math.max(0, Math.min(1, k));
+  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+  return (Math.round(ar + (br - ar) * t) << 16)
+       | (Math.round(ag + (bg - ag) * t) << 8)
+       |  Math.round(ab + (bb - ab) * t);
+}
 
 /** Points along a smooth sine-bump hill, left→crest→right, at height H. */
 function hillPoints(cx: number, baseY: number, halfW: number, height: number, steps = 24): Phaser.Types.Math.Vector2Like[] {
@@ -83,13 +112,20 @@ export class LoadingScene extends Phaser.Scene {
     const h = logicalHeight(this);
     this.cx = w / 2;
 
-    // ── Backdrop: dirt-toned vertical gradient ────────────────────────────────
+    // ── Backdrop: the game's night-sky → sunset gradient ──────────────────────
     const bg = this.add.graphics();
-    const steps = 24;
+    const steps = 48;
     for (let i = 0; i < steps; i++) {
-      const t = i / (steps - 1);
-      bg.fillStyle(this.mixColor(BACKDROP_TOP, BACKDROP_BOTTOM, t), 1);
+      bg.fillStyle(skyColorAt(i / (steps - 1)), 1);
       bg.fillRect(0, Math.floor((h * i) / steps), w, Math.ceil(h / steps) + 1);
+    }
+
+    // Faint stars in the upper night portion, echoing the menu sky.
+    const starG = this.add.graphics();
+    for (let i = 0; i < 40; i++) {
+      const roll = Phaser.Math.Between(0, 9);
+      starG.fillStyle(0xffffff, roll < 6 ? 0.8 : roll < 9 ? 0.45 : 0.2);
+      starG.fillCircle(Phaser.Math.Between(0, w), Phaser.Math.Between(0, h * 0.5), roll < 6 ? 0.7 : roll < 9 ? 1.2 : 1.8);
     }
 
     this.baseY      = h * 0.82;
@@ -114,16 +150,20 @@ export class LoadingScene extends Phaser.Scene {
       duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     });
 
-    // ── Title + animated caption ─────────────────────────────────────────────
-    this.add.text(this.cx, h * 0.16, 'HEAP', {
-      fontFamily: 'sans-serif', fontSize: '52px', fontStyle: 'bold',
-      color: GOLD, stroke: '#000000', strokeThickness: 6,
-    }).setOrigin(0.5).setLetterSpacing(6);
+    // ── Title + animated caption (same font/styling as the menu) ─────────────
+    const titleY = h * 0.18;
+    // Offset drop shadow, mirroring MenuScene.createTitle.
+    this.add.text(this.cx + 4, titleY + 6, 'HEAP', {
+      fontSize: '84px', fontStyle: 'bold', color: '#000000', stroke: '#000000', strokeThickness: 12,
+    }).setOrigin(0.5);
+    this.add.text(this.cx, titleY, 'HEAP', {
+      fontSize: '84px', fontStyle: 'bold', color: TITLE_COLOR, stroke: TITLE_STROKE, strokeThickness: 8,
+    }).setOrigin(0.5);
 
     const caption = CAPTIONS[Math.floor(Math.random() * CAPTIONS.length)];
-    const captionText = this.add.text(this.cx, h * 0.16 + 46, caption, {
-      fontFamily: 'sans-serif', fontSize: '16px', color: CREAM,
-    }).setOrigin(0.5).setAlpha(0.85);
+    const captionText = this.add.text(this.cx, titleY + 60, caption, {
+      fontSize: '18px', fontStyle: 'italic', color: TAGLINE_COLOR, stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5);
     let dots = 0;
     this.time.addEvent({
       delay: 350, loop: true,
@@ -238,15 +278,5 @@ export class LoadingScene extends Phaser.Scene {
       };
       this.time.delayedCall(Phaser.Math.Between(0, 2500), drift);
     }
-  }
-
-  /** Linear blend of two 0xRRGGBB colours; t=0 → a, t=1 → b. */
-  private mixColor(a: number, b: number, t: number): number {
-    const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
-    const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
-    const r  = Math.round(ar + (br - ar) * t);
-    const g  = Math.round(ag + (bg - ag) * t);
-    const bl = Math.round(ab + (bb - ab) * t);
-    return (r << 16) | (g << 8) | bl;
   }
 }
