@@ -26,7 +26,6 @@ const MOUND_FRONT    = 0x281b10;
 const MOUND_RIM      = 0x6e4e30; // warm rim catching the sunset light
 const BAR_BG_COLOR   = 0x241a12;
 const BAR_FILL_COLOR = 0xffb03a; // warm gold, keyed to the menu title orange
-const GOLD           = '#ffca6a';
 const TITLE_COLOR    = '#ff9922'; // matches MenuScene title
 const TITLE_STROKE   = '#1a0800';
 const TAGLINE_COLOR  = '#cc9966'; // matches MenuScene tagline
@@ -82,6 +81,7 @@ export class LoadingScene extends Phaser.Scene {
   private mounds!: Phaser.GameObjects.Graphics;
   private hero!: Phaser.GameObjects.Image;
   private fillBar!: Phaser.GameObjects.Rectangle;
+  private glowBar!: Phaser.GameObjects.Rectangle;
   private percentText!: Phaser.GameObjects.Text;
 
   private cx = 0;
@@ -128,12 +128,9 @@ export class LoadingScene extends Phaser.Scene {
       starG.fillCircle(Phaser.Math.Between(0, w), Phaser.Math.Between(0, h * 0.5), roll < 6 ? 0.7 : roll < 9 ? 1.2 : 1.8);
     }
 
-    this.baseY      = h * 0.82;
-    this.moundMaxH  = Math.min(h * 0.34, w * 0.4);
-    this.moundHalfW = Math.min(w * 0.44, this.moundMaxH * 1.4);
-
-    // Ground line the heap rests on.
-    this.add.rectangle(this.cx, this.baseY, w, 3, MOUND_RIM, 0.6);
+    this.baseY      = h;               // heap grows up from the very bottom of the screen
+    this.moundMaxH  = Math.min(h * 0.5, w * 0.7);
+    this.moundHalfW = w * 0.62;         // wide enough to fill the bottom edge-to-edge
 
     // Drifting dust motes rising off the pile.
     this.spawnDustFlecks(w);
@@ -170,15 +167,23 @@ export class LoadingScene extends Phaser.Scene {
       callback: () => { dots = (dots + 1) % 4; captionText.setText(caption + '.'.repeat(dots)); },
     });
 
-    // ── Progress bar + percent ───────────────────────────────────────────────
-    const barW = Math.round(w * 0.6);
+    // ── Progress bar + percent (in front of the heap, glowing for readability) ─
+    const barW = Math.round(w * 0.62);
+    const barH = 14;
     const barY = h * 0.9;
-    this.add.rectangle(this.cx, barY, barW, 10, BAR_BG_COLOR, 1);
-    this.fillBar = this.add.rectangle(this.cx - barW / 2, barY, barW, 10, BAR_FILL_COLOR, 1)
-      .setOrigin(0, 0.5).setScale(0, 1);
-    this.percentText = this.add.text(this.cx, barY + 22, '0%', {
-      fontFamily: 'sans-serif', fontSize: '13px', color: GOLD,
-    }).setOrigin(0.5);
+    // Dark contrast backing so the bar reads over the dark heap silhouette.
+    this.add.rectangle(this.cx, barY, barW + 20, barH + 22, 0x000000, 0.4).setDepth(9);
+    // Soft gold halo behind the fill — a renderer-agnostic "glow".
+    this.glowBar = this.add.rectangle(this.cx - barW / 2, barY, barW, barH + 14, BAR_FILL_COLOR, 0.25)
+      .setOrigin(0, 0.5).setDepth(9).setScale(0, 1);
+    // Track with a white outline so the empty portion stays visible too.
+    this.add.rectangle(this.cx, barY, barW, barH, BAR_BG_COLOR, 1)
+      .setStrokeStyle(2, 0xffffff, 0.9).setDepth(10);
+    this.fillBar = this.add.rectangle(this.cx - barW / 2, barY, barW, barH, BAR_FILL_COLOR, 1)
+      .setOrigin(0, 0.5).setDepth(11).setScale(0, 1);
+    this.percentText = this.add.text(this.cx, barY + 26, '0%', {
+      fontFamily: 'sans-serif', fontSize: '14px', color: '#fff2d0', stroke: '#000000', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(11);
 
     // ── Kick off the real asset load ─────────────────────────────────────────
     if (this.freeze !== null) {
@@ -218,6 +223,7 @@ export class LoadingScene extends Phaser.Scene {
     this.hero.y = this.baseY - this.moundMaxH * f + Math.sin(this.heroBob) * 4;
 
     this.fillBar.setScale(f, 1);
+    this.glowBar.setScale(f, 1);
     this.percentText.setText(`${Math.round(f * 100)}%`);
 
     if (this.freeze !== null) return; // dev preview holds; never transitions
