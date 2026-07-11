@@ -1,26 +1,33 @@
 # Bug Reports — from player feedback
 **Last updated:** 2026-07-11
 
-## [P3] Launch lag — a few seconds of stutter on startup
+## Resolved
+
+### [P3] Launch lag — few seconds of stutter on startup → added a blocking loading screen
 
 - **ids:** 8  ·  **players affected:** 1
 - **platform:** android  ·  **app version:** 0.2.12
 - **what they said:** "Upon launching there's a subtle few seconds lag. I suspect
   the package loading in background might causing it"
-- **assessment:** Startup performance — a few seconds of jank right after launch,
-  player guesses background asset/package loading. Annoyance, not a blocker → P3.
-- **confirmed root cause:** Real issue. There is no blocking loading screen gating
-  `MenuScene`. `BootScene.create()` runs `generateAllTextures()` **synchronously** on
-  the main thread, then `MenuScene` lazy-loads its own assets while already on-screen
-  (`this.load.*` in MenuScene) and paints against empty default registry state until
-  the async heap-catalog fetch resolves. Net: the first seconds show a partially-built
-  menu that hitches as textures generate and assets stream in — exactly the reported
-  "subtle few seconds lag."
-- **fix direction:** Add a real loading/preload gate that blocks the menu until core
-  textures + first assets are ready (progress bar), and/or move `generateAllTextures`
-  off the first frames. Needs care — this is the boot path.
-
-## Resolved
+- **root cause:** No blocking loading screen gated `MenuScene`. `BootScene` started
+  the menu immediately, and `MenuScene` lazy-loaded its own assets while already
+  on-screen, painting against empty registry defaults until loads + the async
+  heap-catalog fetch resolved — so the first seconds showed a partially-built menu
+  hitching as assets streamed in.
+- **fix:** New themed `LoadingScene` inserted between `BootScene` and
+  `MenuScene`/`TutorialScene` (`src/scenes/LoadingScene.ts`). It runs `loadGameAssets`
+  and blocks the menu until `gameAssetsReady`, so the menu now paints fully-built. The
+  network heap-catalog fetch still resolves in the background (offline-safe; the menu
+  already refreshes on `heapCatalogReady`), keeping the loader fast (min
+  `MENU_LOADING_MIN_MS = 500` so the bar doesn't just flash). Themed to match
+  `InfiniteLoadingOverlay` (earthy dirt + gold): the heap piles up as loading
+  progresses with the trash-bag hero riding the crest. Reuses the tested
+  `preloadProgress`/`preloadComplete` helpers.
+- **status:** implemented on branch `claude/next-bug-report-k48fka`. `npm run build`
+  clean; full client test suite passes (906). Live visual verification still pending —
+  no dev server was running in the session to screenshot the transient scene (a
+  dev-only `?dev=LoadingScene&params={"freeze":0.6}` hook was added so it can be posed
+  for scene-preview).
 
 ### [P3] "Jump height 4 error" → fixed in commit `7fe0453` (level-4 upgrade freeze)
 

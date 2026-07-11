@@ -127,8 +127,11 @@ export class BootScene extends Phaser.Scene {
         this.game.events.emit('heapCatalogReady');
       });
 
-    // Start MenuScene immediately — does not wait on the network call.
-    this.scene.start(getTutorialDone() ? 'MenuScene' : 'TutorialScene');
+    // Hand off to the themed loading screen, which blocks the menu until game
+    // assets finish loading (so the menu paints fully-built, not mid-stream). The
+    // network catalog fetch above keeps resolving in the background — MenuScene
+    // already renders against defaults and refreshes on `heapCatalogReady`.
+    this.scene.start('LoadingScene', { next: getTutorialDone() ? 'MenuScene' : 'TutorialScene' });
   }
 
   /**
