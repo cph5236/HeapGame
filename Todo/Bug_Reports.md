@@ -9,19 +9,35 @@
   the package loading in background might causing it"
 - **assessment:** Startup performance — a few seconds of jank right after launch,
   player guesses background asset/package loading. Annoyance, not a blocker → P3.
-  Worth profiling boot / deferring non-critical asset loads off the first frames.
+- **confirmed root cause:** Real issue. There is no blocking loading screen gating
+  `MenuScene`. `BootScene.create()` runs `generateAllTextures()` **synchronously** on
+  the main thread, then `MenuScene` lazy-loads its own assets while already on-screen
+  (`this.load.*` in MenuScene) and paints against empty default registry state until
+  the async heap-catalog fetch resolves. Net: the first seconds show a partially-built
+  menu that hitches as textures generate and assets stream in — exactly the reported
+  "subtle few seconds lag."
+- **fix direction:** Add a real loading/preload gate that blocks the menu until core
+  textures + first assets are ready (progress bar), and/or move `generateAllTextures`
+  off the first frames. Needs care — this is the boot path.
 
-## [P3] "Jump height 4 error" (vague)
+## Resolved
+
+### [P3] "Jump height 4 error" → fixed in commit `7fe0453` (level-4 upgrade freeze)
 
 - **ids:** 2  ·  **players affected:** 1
 - **platform:** android  ·  **app version:** 0.2.9
 - **what they said:** "Jump height 4 error"
-- **assessment:** Cryptic — most likely refers to a jump-height salvage/upgrade at
-  level 4 producing an error, but the message is too terse to act on directly.
-  Kept as a low-priority breadcrumb; needs the reporter's session or a repeat report
-  to promote. P3.
-
-## Resolved
+- **root cause:** The `jumpBoost` per-level lookup in `SaveData` was
+  `[0, 70, 150, 240][jl]` — only 4 entries (indices 0–3). At Jump Height upgrade
+  **level 4** the lookup returned `undefined`, which poisoned the jump-velocity math
+  (`PLAYER_JUMP_VELOCITY - (undefined + …)` → NaN) and froze heap loading. Matches
+  the report's "jump height 4" exactly.
+- **fix:** commit [`7fe0453`](https://github.com/cph5236/HeapGame/commit/7fe0453)
+  "Fix heap loading freeze when jump power upgrade reaches level 4+" — extended the
+  array to all 9 levels (later re-tuned to `[0,25,35,45,55,60,65,70,75]`).
+- **status:** fixed. v0.2.8 did not have the fix; it landed 2026-06-20 and shipped in
+  **V0.2.10**. The 0.2.9 report falls right in that window; fixed in all current
+  builds.
 
 ### [P2] Collision "gravity drag" degrades movement feel → won't fix (working as designed)
 
