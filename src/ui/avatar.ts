@@ -9,6 +9,7 @@ import type { EquippedLoadout } from '../../shared/cosmeticCatalog';
 import { resolveCosmetics, type HatAdjustments, type ResolvedCosmetics } from '../systems/cosmeticsLogic';
 import { drawTieBand } from './tieBand';
 import { PLAYER_WIDTH, PLAYER_HEIGHT } from '../constants';
+import { PART_EYE_WHITE, PART_PUPIL } from '../data/cosmeticArt';
 
 /** Same ratio the in-game bag renders at (174px art → 40 logical px). */
 const ART_SCALE = PLAYER_WIDTH / 174;
@@ -72,7 +73,23 @@ export function composeAvatar(
       .setScale(ART_SCALE * s * r.hat.scale).setAngle(r.hat.angle);
     container.add(hatImg);
   }
-  if (r.face && scene.textures.exists(r.face.textureKey)) {
+  if (r.face?.kind === 'eyes') {
+    const e = r.face;
+    if (scene.textures.exists(PART_EYE_WHITE) && scene.textures.exists(PART_PUPIL)) {
+      // Whites + pupils frozen at rest pose — matches the in-game rig look.
+      for (const eye of e.eyes) {
+        const cx = (e.offsetX + eye.x) * s, cy = (e.offsetY + eye.y) * s;
+        container.add(scene.add.image(cx, cy, PART_EYE_WHITE)
+          .setScale(ART_SCALE * s * eye.whiteScale));
+        container.add(scene.add.image(cx + eye.restX * s, cy + eye.restY * s, PART_PUPIL)
+          .setScale(ART_SCALE * s * eye.pupilScale));
+      }
+    } else if (scene.textures.exists(e.textureKey)) {
+      // Parts art not landed — flat store PNG, same as the rig fallback.
+      container.add(scene.add.image(e.offsetX * s, e.offsetY * s, e.textureKey)
+        .setScale(ART_SCALE * s));
+    }
+  } else if (r.face && scene.textures.exists(r.face.textureKey)) {
     container.add(scene.add.image(r.face.offsetX * s, r.face.offsetY * s, r.face.textureKey)
       .setScale(ART_SCALE * s));
   }
