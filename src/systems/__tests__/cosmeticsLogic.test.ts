@@ -49,9 +49,12 @@ describe('resolveCosmetics', () => {
     expect(r.face?.kind).toBe('face');
   });
 
-  it('passes a hat anim through resolution', () => {
+  it('leaves the propeller cap static — whole-cap spin was rejected at smoke test', () => {
+    // No shipping cosmetic declares an anim; the MotionRig/SheetRig path stays
+    // exercised by cosmeticMotion.test.ts and activates when an animated item
+    // (spin/bob/pulse/sheet) lands. This guards the propeller staying static.
     const r = resolveCosmetics({ hat: 'hat_propeller' });
-    expect(r.hat?.anim?.type).toBe('spin');
+    expect(r.hat?.anim).toBeUndefined();
   });
 });
 

@@ -114,7 +114,7 @@ export const COSMETIC_DEFS: readonly CosmeticDef[] = [
   hat('hat_crown',     'Crown',         2500, -3.5, -25.0),
   hat('hat_tophat',    'Top Hat',       1200, -1.0, -26.5),
   hat('hat_hardhat',   'Hard Hat',      800,  3, -23.5),
-  hat('hat_propeller', 'Propeller Cap', 1000, -3.0, -26.5, 0, 1, { type: 'spin', rpm: 40 }),
+  hat('hat_propeller', 'Propeller Cap', 1000, -3.0, -26.5),
   hat('hat_cowboy',    'Cowboy Hat',    1000, -1, -23.5),
   hat('hat_boat',      'Paper Boat',    600,  0.18, -28.92, 0, 1.31),
   hat('hat_beanie',    'Warm Hat',        500,  0.0, -25.0),
