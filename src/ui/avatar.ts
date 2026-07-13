@@ -6,7 +6,7 @@
 
 import Phaser from 'phaser';
 import type { EquippedLoadout } from '../../shared/cosmeticCatalog';
-import { resolveCosmetics, type HatAdjustments } from '../systems/cosmeticsLogic';
+import { resolveCosmetics, type HatAdjustments, type ResolvedCosmetics } from '../systems/cosmeticsLogic';
 import { drawTieBand } from './tieBand';
 import { PLAYER_WIDTH, PLAYER_HEIGHT } from '../constants';
 
@@ -20,16 +20,14 @@ const COLLAR_Y = PLAYER_HEIGHT * -1.2 * (PLAYER_HEIGHT / 197);
 const IDLE_STRINGS = { x0: 4, cpX: 8, cpY: 7, endX: 12, endY: 14 };
 const STRING_W = 1.35;
 
-export function composeAvatar(
-  scene:   Phaser.Scene,
-  loadout: EquippedLoadout,
-  opts:    { x: number; y: number; scale: number },
-  adjustments: HatAdjustments = {},   // own avatar: pass SaveData's tweaks
-): Phaser.GameObjects.Container {
-  const r = resolveCosmetics(loadout, adjustments);
-  const s = opts.scale;
-  const container = scene.add.container(opts.x, opts.y);
-
+/** Bag + skin glaze + tie band/strings into `container`. Shared by the
+ *  static compositor and the animated editor preview. */
+export function composeAvatarBase(
+  scene: Phaser.Scene,
+  container: Phaser.GameObjects.Container,
+  r: ResolvedCosmetics,
+  s: number,
+): void {
   const bag = scene.add.image(0, 0, 'trashbag-nostrings')
     .setDisplaySize(PLAYER_WIDTH * s, PLAYER_HEIGHT * s);
   if (r.skinTint !== null) bag.setTint(r.skinTint);
@@ -51,6 +49,18 @@ export function composeAvatar(
   drawBezier(strings, -st.x0 * s, COLLAR_Y * s, -st.cpX * s, st.cpY * s, -st.endX * s, st.endY * s);
   drawBezier(strings,  st.x0 * s, COLLAR_Y * s,  st.cpX * s, st.cpY * s,  st.endX * s, st.endY * s);
   container.add(strings);
+}
+
+export function composeAvatar(
+  scene:   Phaser.Scene,
+  loadout: EquippedLoadout,
+  opts:    { x: number; y: number; scale: number },
+  adjustments: HatAdjustments = {},   // own avatar: pass SaveData's tweaks
+): Phaser.GameObjects.Container {
+  const r = resolveCosmetics(loadout, adjustments);
+  const s = opts.scale;
+  const container = scene.add.container(opts.x, opts.y);
+  composeAvatarBase(scene, container, r, s);
 
   if (r.hat && scene.textures.exists(r.hat.textureKey)) {
     const hatImg = scene.add.image(0, 0, r.hat.textureKey);

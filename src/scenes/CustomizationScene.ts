@@ -14,7 +14,7 @@ import {
 } from '../systems/cosmeticsLogic';
 import { syncSaveToCloud } from '../systems/cloudSave';
 import { scheduleLoadoutSync, flushLoadoutSync } from '../systems/cosmeticsSync';
-import { composeAvatar } from '../ui/avatar';
+import { createAnimatedAvatar, type AnimatedAvatarHandle } from '../ui/animatedAvatar';
 
 const SLOT_LABELS: Record<CosmeticSlot, string> = {
   hat: 'Hat', face: 'Face', tie: 'Tie', skin: 'Skin', trail: 'Trail',
@@ -34,7 +34,7 @@ const H_MARGIN      = 8;
 export class CustomizationScene extends Phaser.Scene {
   private activeSlot: CosmeticSlot = 'hat';
   private balanceText!: Phaser.GameObjects.Text;
-  private preview: Phaser.GameObjects.Container | null = null;
+  private preview: AnimatedAvatarHandle | null = null;
   private tabObjects:  Phaser.GameObjects.GameObject[] = [];
   private gridObjects: Phaser.GameObjects.GameObject[] = [];
   private confirmObjects: Phaser.GameObjects.GameObject[] = [];
@@ -169,12 +169,12 @@ export class CustomizationScene extends Phaser.Scene {
 
   private rebuildPreview(): void {
     this.preview?.destroy();
-    this.preview = composeAvatar(this, getEquippedCosmetics(),
+    this.preview = createAnimatedAvatar(this, getEquippedCosmetics(),
       { x: logicalWidth(this) / 2, y: PREVIEW_Y, scale: PREVIEW_SCALE }, getHatAdjustments());
-    this.preview.setDepth(5);
+    this.preview.container.setDepth(5);
     // Idle breathing
     this.tweens.add({
-      targets: this.preview, scaleX: 1.025, scaleY: 0.975,
+      targets: this.preview.container, scaleX: 1.025, scaleY: 0.975,
       duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.InOut',
     });
   }
@@ -182,7 +182,7 @@ export class CustomizationScene extends Phaser.Scene {
   private hopPreview(): void {
     if (!this.preview) return;
     this.tweens.add({
-      targets: this.preview, y: PREVIEW_Y - 34,
+      targets: this.preview.container, y: PREVIEW_Y - 34,
       duration: 220, yoyo: true, ease: 'Quad.Out',
     });
   }
