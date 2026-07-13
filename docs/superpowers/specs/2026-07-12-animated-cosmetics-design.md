@@ -144,7 +144,8 @@ loadout sync. The catalog integrity test continues to pass unchanged.
 ### 4. Asset pipeline
 
 - New folder `src/sprites/cosmetics/parts/` for shared part art
-  (`eye_white.png`, `pupil.png`), globbed by `cosmeticArt.ts` into texture
+  (`Eye_White.png`, `Eye_Pupil.png` — 128×128 discs, in repo), globbed by
+  `cosmeticArt.ts` into texture
   keys `cos-part-<stem>` — same drop-in workflow as hats/face.
 - Sprite sheets need no new folder or filename convention: the file stays
   `<id>.png` in `hats/`/`face/`. `loadGameAssets` consults the item's def —

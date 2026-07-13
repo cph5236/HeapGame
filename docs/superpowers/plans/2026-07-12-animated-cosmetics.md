@@ -170,20 +170,20 @@ const eyes = (id: string, name: string, price: number, offsetX: number, offsetY:
 ```ts
   // ── Eye family (physics-driven pupil rigs; rest pose = item personality) ──
   eyes('face_googly', 'Googly Eyes', 500, 0, -8, [
-    { x: -4.5, y: 0, radius: 2.2, whiteScale: 1, pupilScale: 1, restX: 0, restY: 1.4 },
-    { x:  4.5, y: 0, radius: 2.2, whiteScale: 1, pupilScale: 1, restX: 0, restY: 1.4 },
+    { x: -4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: 0, restY: 1.4 },
+    { x:  4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: 0, restY: 1.4 },
   ], { stiffness: 30, damping: 3.5, accelScale: 0.02 }),   // loose + floppy
   eyes('face_wonkyeyes', 'Lazy Eye', 500, 0, -8, [
-    { x: -4.5, y: 0, radius: 2.2, whiteScale: 1, pupilScale: 1, restX: 0, restY:  1.8 },
-    { x:  4.5, y: 0, radius: 2.2, whiteScale: 1, pupilScale: 1, restX: 0, restY: -0.6 },
+    { x: -4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: 0, restY:  1.8 },
+    { x:  4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: 0, restY: -0.6 },
   ]),
   eyes('face_lazyeye', 'Crazy Eyes', 500, 0, -8, [
-    { x: -4.5, y: 0, radius: 2.2, whiteScale: 1, pupilScale: 1, restX: -1.4, restY: -1.2 },
-    { x:  4.5, y: 0, radius: 2.2, whiteScale: 1, pupilScale: 1, restX:  1.4, restY:  1.2 },
+    { x: -4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: -1.4, restY: -1.2 },
+    { x:  4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX:  1.4, restY:  1.2 },
   ]),
   eyes('face_walleyes', 'Cross-Eyes', 500, 0, -8, [
-    { x: -4.5, y: 0, radius: 2.2, whiteScale: 1, pupilScale: 1, restX:  1.4, restY: 0.6 },
-    { x:  4.5, y: 0, radius: 2.2, whiteScale: 1, pupilScale: 1, restX: -1.4, restY: 0.6 },
+    { x: -4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX:  1.4, restY: 0.6 },
+    { x:  4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: -1.4, restY: 0.6 },
   ]),
 ```
 
@@ -1055,9 +1055,9 @@ git commit -m "feat(cosmetics): MotionRig + SheetRig + spritesheet-aware cosmeti
 **Interfaces:**
 - Consumes: `stepPupil`/`DEFAULT_EYE_PHYSICS`/`PupilState` (Task 3), `EyesRender` (Task 1), `StaticRig` fallback (Task 5).
 - Produces:
-  - `const PART_EYE_WHITE = 'cos-part_eyewhite'`, `const PART_PUPIL = 'cos-part_pupil'` (exported from `src/data/cosmeticArt.ts`)
+  - `const PART_EYE_WHITE = 'cos-Eye_White'`, `const PART_PUPIL = 'cos-Eye_Pupil'` (exported from `src/data/cosmeticArt.ts`)
   - `class EyeRig implements AttachmentRig` — constructor `(scene, spec: EyesRender, artScale: number, depth: number, whiteKey: string, pupilKey: string)`
-  - Art contract: drop `part_eyewhite.png` and `part_pupil.png` into `src/sprites/cosmetics/parts/`, authored in the same 174-px-bag art space as hats/faces (rendered at ART_SCALE × per-eye whiteScale/pupilScale).
+  - Part art **already exists and is staged on the branch**: `src/sprites/cosmetics/parts/Eye_White.png` and `Eye_Pupil.png`, 128×128 discs filling the frame. At ART_SCALE a 128px disc renders ~29.4 logical px, which is why the Task 1 defs use `whiteScale: 0.27` (≈8 px eye) and `pupilScale: 0.12` (≈3.5 px pupil) — travel `(8 − 3.5)/2 ≈ 2.2` matches the defs' `radius: 2.2`. All designer-tunable at smoke test.
 
 - [ ] **Step 1: Parts glob in `src/data/cosmeticArt.ts`**
 
@@ -1074,11 +1074,11 @@ const files: Record<string, string> = {
 ```ts
 /** Shared part textures for the physics-driven eye rig. Both must exist for
  *  the live rig; otherwise eye items fall back to their flat PNG. */
-export const PART_EYE_WHITE = 'cos-part_eyewhite';
-export const PART_PUPIL     = 'cos-part_pupil';
+export const PART_EYE_WHITE = 'cos-Eye_White';
+export const PART_PUPIL     = 'cos-Eye_Pupil';
 ```
 
-(Files named `part_eyewhite.png` / `part_pupil.png` map to those keys through the existing `cos-<stem>` rule — no loader change needed; `sheetAnimFor` returns undefined for them so they load as plain images.)
+(The existing `Eye_White.png` / `Eye_Pupil.png` files map to those keys through the existing `cos-<stem>` rule — no loader change needed; `sheetAnimFor` returns undefined for them so they load as plain images.)
 
 - [ ] **Step 2: Create `src/entities/cosmeticRigs/EyeRig.ts`**
 
@@ -1177,17 +1177,17 @@ Append:
 
 ```md
 ## parts/ — shared rig pieces
-- `part_eyewhite.png`, `part_pupil.png`: white disc + pupil disc for the
-  physics-driven eye items (face_googly & co). Author in the same art space
-  as hats/faces (174 px bag width ↔ 40 logical px): the white disc should be
-  ~2× an eye's track radius + pupil radius; per-item sizing is tuned via
-  whiteScale/pupilScale in cosmeticDefs. Until both files exist, eye items
-  render their flat face_*.png.
+- `Eye_White.png`, `Eye_Pupil.png` (128×128 discs): white disc + pupil disc
+  for the physics-driven eye items (face_googly & co). At ART_SCALE a 128px
+  disc renders ~29 logical px; per-item sizing is tuned via
+  whiteScale/pupilScale in cosmeticDefs (0.27 / 0.12 defaults ≈ 8px eye,
+  3.5px pupil). If either file is missing, eye items render their flat
+  face_*.png.
 ```
 
 - [ ] **Step 5: Build + full suite**
 
-Run: `npm run build` && `npm test` → green. (Parts PNGs don't exist yet, so the fallback branch is live — that's expected and correct.)
+Run: `npm run build` && `npm test` → green. (The parts PNGs are already on the branch, so the live EyeRig path activates in-game from this task onward.)
 
 - [ ] **Step 6: Commit**
 
@@ -1453,8 +1453,8 @@ Invoke the `smoke-testing-heap` skill. Use the user's dev server on localhost:30
 
 1. **Regression:** equip a static hat + shades + skin + trail → all attachments track the player through jumps/squash exactly as pre-refactor; death hides them.
 2. **MotionRig:** equip `hat_propeller` → the cap visibly rotates in-game and in the editor preview. Judge the whole-cap spin look: if it reads wrong, tune `rpm` down or remove the anim from the def (designer call — flag to the user).
-3. **Eye fallback:** equip Googly Eyes with no parts art present → flat PNG renders, no console errors.
-4. **Eye rig (only if the user has provided `part_eyewhite.png`/`part_pupil.png`):** pupils rest per item personality; running slams them backward; landing slams them down; a hard direction flip sends them around the rim; editor preview sloshes on the periodic impulse. Tune def `radius`/rest poses and `EyesPhysics` per item with the user.
+3. **Eye fallback:** exercised mid-plan — between Tasks 5 and 7, equipped eye items render their flat PNG in-game with no console errors (verify during Task 5's quick smoke). The parts art ships on the branch, so the final build runs the live rig.
+4. **Eye rig:** pupils rest per item personality; running slams them backward; landing slams them down; a hard direction flip sends them around the rim; editor preview sloshes on the periodic impulse. Check the eye/pupil sizing on the bag (whiteScale 0.27 / pupilScale 0.12 are starting guesses for the 128px part art) and tune def `radius`/rest poses and `EyesPhysics` per item with the user.
 5. **Editor preview:** open Customization → preview animates; switching items rebuilds cleanly (no orphaned parts, no listener leak errors); breathing + hop tweens still work; leaderboard and menu avatar still render statically.
 
 - [ ] **Step 3: Update memory + report**
