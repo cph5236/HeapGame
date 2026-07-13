@@ -18,7 +18,7 @@ export interface PupilParams {
 }
 
 /** Tight default character; Googly overrides these to be loose and floppy. */
-export const DEFAULT_EYE_PHYSICS = { stiffness: 90, damping: 9, accelScale: 0.008 };
+export const DEFAULT_EYE_PHYSICS = { stiffness: 60, damping: 9, accelScale: 0.008 };
 
 /** Sub-step ceiling keeps the explicit integration stable on slow frames. */
 const MAX_STEP_MS   = 32;
