@@ -6,9 +6,10 @@
 
 import Phaser from 'phaser';
 import type { EquippedLoadout } from '../../shared/cosmeticCatalog';
-import { resolveCosmetics, type HatAdjustments } from '../systems/cosmeticsLogic';
+import { resolveCosmetics, type HatAdjustments, type ResolvedCosmetics } from '../systems/cosmeticsLogic';
 import { drawTieBand } from './tieBand';
 import { PLAYER_WIDTH, PLAYER_HEIGHT } from '../constants';
+import { PART_EYE_WHITE, PART_PUPIL } from '../data/cosmeticArt';
 
 /** Same ratio the in-game bag renders at (174px art → 40 logical px). */
 const ART_SCALE = PLAYER_WIDTH / 174;
@@ -20,16 +21,14 @@ const COLLAR_Y = PLAYER_HEIGHT * -1.2 * (PLAYER_HEIGHT / 197);
 const IDLE_STRINGS = { x0: 4, cpX: 8, cpY: 7, endX: 12, endY: 14 };
 const STRING_W = 1.35;
 
-export function composeAvatar(
-  scene:   Phaser.Scene,
-  loadout: EquippedLoadout,
-  opts:    { x: number; y: number; scale: number },
-  adjustments: HatAdjustments = {},   // own avatar: pass SaveData's tweaks
-): Phaser.GameObjects.Container {
-  const r = resolveCosmetics(loadout, adjustments);
-  const s = opts.scale;
-  const container = scene.add.container(opts.x, opts.y);
-
+/** Bag + skin glaze + tie band/strings into `container`. Shared by the
+ *  static compositor and the animated editor preview. */
+export function composeAvatarBase(
+  scene: Phaser.Scene,
+  container: Phaser.GameObjects.Container,
+  r: ResolvedCosmetics,
+  s: number,
+): void {
   const bag = scene.add.image(0, 0, 'trashbag-nostrings')
     .setDisplaySize(PLAYER_WIDTH * s, PLAYER_HEIGHT * s);
   if (r.skinTint !== null) bag.setTint(r.skinTint);
@@ -51,6 +50,18 @@ export function composeAvatar(
   drawBezier(strings, -st.x0 * s, COLLAR_Y * s, -st.cpX * s, st.cpY * s, -st.endX * s, st.endY * s);
   drawBezier(strings,  st.x0 * s, COLLAR_Y * s,  st.cpX * s, st.cpY * s,  st.endX * s, st.endY * s);
   container.add(strings);
+}
+
+export function composeAvatar(
+  scene:   Phaser.Scene,
+  loadout: EquippedLoadout,
+  opts:    { x: number; y: number; scale: number },
+  adjustments: HatAdjustments = {},   // own avatar: pass SaveData's tweaks
+): Phaser.GameObjects.Container {
+  const r = resolveCosmetics(loadout, adjustments);
+  const s = opts.scale;
+  const container = scene.add.container(opts.x, opts.y);
+  composeAvatarBase(scene, container, r, s);
 
   if (r.hat && scene.textures.exists(r.hat.textureKey)) {
     const hatImg = scene.add.image(0, 0, r.hat.textureKey);
@@ -62,7 +73,23 @@ export function composeAvatar(
       .setScale(ART_SCALE * s * r.hat.scale).setAngle(r.hat.angle);
     container.add(hatImg);
   }
-  if (r.face && scene.textures.exists(r.face.textureKey)) {
+  if (r.face?.kind === 'eyes') {
+    const e = r.face;
+    if (scene.textures.exists(PART_EYE_WHITE) && scene.textures.exists(PART_PUPIL)) {
+      // Whites + pupils frozen at rest pose — matches the in-game rig look.
+      for (const eye of e.eyes) {
+        const cx = (e.offsetX + eye.x) * s, cy = (e.offsetY + eye.y) * s;
+        container.add(scene.add.image(cx, cy, PART_EYE_WHITE)
+          .setScale(ART_SCALE * s * eye.whiteScale));
+        container.add(scene.add.image(cx + eye.restX * s, cy + eye.restY * s, PART_PUPIL)
+          .setScale(ART_SCALE * s * eye.pupilScale));
+      }
+    } else if (scene.textures.exists(e.textureKey)) {
+      // Parts art not landed — flat store PNG, same as the rig fallback.
+      container.add(scene.add.image(e.offsetX * s, e.offsetY * s, e.textureKey)
+        .setScale(ART_SCALE * s));
+    }
+  } else if (r.face && scene.textures.exists(r.face.textureKey)) {
     container.add(scene.add.image(r.face.offsetX * s, r.face.offsetY * s, r.face.textureKey)
       .setScale(ART_SCALE * s));
   }

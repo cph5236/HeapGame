@@ -1,16 +1,15 @@
 // src/entities/PlayerCosmetics.ts
 //
-// Visual cosmetic attachments for the in-game player: hat/face Images that
+// Visual cosmetic attachments for the in-game player: hat/face rigs that
 // follow the bag through squash/stretch, skin tint, and a movement trail
 // emitter. Mirrors PlayerAnimator's POST_UPDATE sync so attachments never lag
 // the physics-synced sprite by a frame. Tie color is PlayerAnimator's job.
 
 import Phaser from 'phaser';
 import type { ResolvedCosmetics } from '../systems/cosmeticsLogic';
+import type { AttachmentRig } from './cosmeticRigs/types';
+import { createAttachmentRig } from './cosmeticRigs/createAttachmentRig';
 
-/** Bag PNG is 174px wide displayed at 40 logical px — attachment art authored
- *  at the same ratio renders at matching scale. */
-const ART_SCALE = 40 / 174;
 /** Trail emits only while actually moving. */
 const TRAIL_MIN_SPEED = 60;
 /** Skin glaze strength — how strongly the flat skin color washes the bag. */
@@ -22,15 +21,13 @@ export class PlayerCosmetics {
   private readonly baseScaleX: number;
   private readonly baseScaleY: number;
 
-  private hatImg:  Phaser.GameObjects.Image | null = null;
-  private faceImg: Phaser.GameObjects.Image | null = null;
+  private hatRig:  AttachmentRig | null = null;
+  private faceRig: AttachmentRig | null = null;
   private skinGlaze: Phaser.GameObjects.Image | null = null;
-  private hatOffset  = { x: 0, y: 0 };
-  private hatAngle   = 0;
-  private hatScale   = 1;
-  private faceOffset = { x: 0, y: 0 };
   private emitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private hidden = false;
+  private prevVx = 0;
+  private prevVy = 0;
 
   constructor(
     sprite:   Phaser.Types.Physics.Arcade.SpriteWithDynamicBody,
@@ -51,21 +48,8 @@ export class PlayerCosmetics {
         .setDepth(sprite.depth + 0.1);
     }
 
-    if (resolved.hat && scene.textures.exists(resolved.hat.textureKey)) {
-      this.hatImg = scene.add.image(sprite.x, sprite.y, resolved.hat.textureKey)
-        .setScale(ART_SCALE * resolved.hat.scale).setDepth(12);
-      // Keep the hat's bottom edge (contact point) anchored as dScale grows
-      // or shrinks it from the def's baseline, instead of scaling from center.
-      const bottomAnchor = (this.hatImg.height / 2) * ART_SCALE * (resolved.hat.defScale - resolved.hat.scale);
-      this.hatOffset = { x: resolved.hat.offsetX, y: resolved.hat.offsetY + bottomAnchor };
-      this.hatAngle  = resolved.hat.angle;
-      this.hatScale  = resolved.hat.scale;
-    }
-    if (resolved.face && scene.textures.exists(resolved.face.textureKey)) {
-      this.faceImg = scene.add.image(sprite.x, sprite.y, resolved.face.textureKey)
-        .setScale(ART_SCALE).setDepth(12);
-      this.faceOffset = { x: resolved.face.offsetX, y: resolved.face.offsetY };
-    }
+    if (resolved.hat)  this.hatRig  = createAttachmentRig(scene, resolved.hat);
+    if (resolved.face) this.faceRig = createAttachmentRig(scene, resolved.face);
 
     if (resolved.trail) {
       const t = resolved.trail;
@@ -88,53 +72,52 @@ export class PlayerCosmetics {
   /** Hide everything (death / successful placement) — mirrors the animator's dormant path. */
   hide(): void {
     this.hidden = true;
-    this.hatImg?.setVisible(false);
-    this.faceImg?.setVisible(false);
+    this.hatRig?.setVisible(false);
+    this.faceRig?.setVisible(false);
     this.skinGlaze?.setVisible(false);
     if (this.emitter) { this.emitter.stop(); this.emitter.setVisible(false); }
   }
 
   destroy(): void {
     this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.sync, this);
-    this.hatImg?.destroy();
-    this.faceImg?.destroy();
+    this.hatRig?.destroy();
+    this.faceRig?.destroy();
     this.skinGlaze?.destroy();
     this.emitter?.destroy();
   }
 
-  private sync(): void {
+  private sync(_time: number, delta: number): void {
     if (this.hidden) return;
     // Squash factors relative to the base display scale, so attachments
     // stretch with the bag through the animator's keyframes.
     const fx = this.sprite.scaleX / this.baseScaleX;
     const fy = this.sprite.scaleY / this.baseScaleY;
-    const angle = this.sprite.angle;
+    const body = this.sprite.body;
+    const dt = Math.max(delta, 1);
+    const motion = {
+      vx: body.velocity.x,
+      vy: body.velocity.y,
+      ax: (body.velocity.x - this.prevVx) * 1000 / dt,
+      ay: (body.velocity.y - this.prevVy) * 1000 / dt,
+      grounded: body.blocked.down || body.touching.down,
+    };
+    this.prevVx = body.velocity.x;
+    this.prevVy = body.velocity.y;
+    const anchor = {
+      x: this.sprite.x, y: this.sprite.y, fx, fy, angle: this.sprite.angle,
+    };
 
-    if (this.hatImg) {
-      this.hatImg.setPosition(
-        this.sprite.x + this.hatOffset.x * fx,
-        this.sprite.y + this.hatOffset.y * fy,
-      );
-      this.hatImg.setScale(ART_SCALE * this.hatScale * fx, ART_SCALE * this.hatScale * fy);
-      this.hatImg.setAngle(angle + this.hatAngle);
-    }
-    if (this.faceImg) {
-      this.faceImg.setPosition(
-        this.sprite.x + this.faceOffset.x * fx,
-        this.sprite.y + this.faceOffset.y * fy,
-      );
-      this.faceImg.setScale(ART_SCALE * fx, ART_SCALE * fy);
-      this.faceImg.setAngle(angle);
-    }
+    this.hatRig?.update(delta, anchor, motion);
+    this.faceRig?.update(delta, anchor, motion);
+
     if (this.skinGlaze) {
       this.skinGlaze.setPosition(this.sprite.x, this.sprite.y);
       this.skinGlaze.setScale(this.sprite.scaleX, this.sprite.scaleY);
-      this.skinGlaze.setAngle(angle);
+      this.skinGlaze.setAngle(this.sprite.angle);
       this.skinGlaze.setFlip(this.sprite.flipX, this.sprite.flipY);
       this.skinGlaze.setVisible(this.sprite.visible);
     }
     if (this.emitter) {
-      const body = this.sprite.body;
       const speed = Math.hypot(body.velocity.x, body.velocity.y);
       if (speed > TRAIL_MIN_SPEED && !this.emitter.emitting) this.emitter.start();
       else if (speed <= TRAIL_MIN_SPEED && this.emitter.emitting) this.emitter.stop();
