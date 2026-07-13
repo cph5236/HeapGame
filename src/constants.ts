@@ -37,6 +37,11 @@ export const INFINITE_CENTER_DRIFT_MAX = 200;         // max px center shifts fr
 export const INFINITE_NOISE_SCALE      = 300;         // Y pixels per noise wave (at start)
 export const INFINITE_DIFFICULTY_RANGE = 4_000_000;   // Y pixels for easy→hard ramp
 
+// ── Boot / menu loading screen ──────────────────────────────────────────────────
+/** Min duration (ms) of the menu loading screen so the bar never just flashes.
+ *  Kept short — the screen exists to hide asset load jank, not to stall the player. */
+export const MENU_LOADING_MIN_MS       = 500;
+
 // ── Player ─────────────────────────────────────────────────────────────────────
 export const PLAYER_WIDTH  = 40;
 export const PLAYER_HEIGHT = 46;
