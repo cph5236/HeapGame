@@ -76,3 +76,11 @@ trashbag's palette (slightly desaturated) with its dark outline.
 > publish explicit license text. Pack was purchased ($2). Confirm
 > commercial-use terms with the author (discord.gg/XbKmYHZ) before a store
 > release, then update this note.
+
+## parts/ — shared rig pieces
+- `Eye_White.png`, `Eye_Pupil.png` (128×128 discs): white disc + pupil disc
+  for the physics-driven eye items (face_googly & co). At ART_SCALE a 128px
+  disc renders ~29 logical px; per-item sizing is tuned via
+  whiteScale/pupilScale in cosmeticDefs (0.27 / 0.12 defaults ≈ 8px eye,
+  3.5px pupil). If either file is missing, eye items render their flat
+  face_*.png.

@@ -7,8 +7,9 @@
 import { COSMETIC_DEFS, type CosmeticDef } from './cosmeticDefs';
 
 const files: Record<string, string> = {
-  ...(import.meta.glob('../sprites/cosmetics/hats/*.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>),
-  ...(import.meta.glob('../sprites/cosmetics/face/*.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>),
+  ...(import.meta.glob('../sprites/cosmetics/hats/*.png',  { eager: true, query: '?url', import: 'default' }) as Record<string, string>),
+  ...(import.meta.glob('../sprites/cosmetics/face/*.png',  { eager: true, query: '?url', import: 'default' }) as Record<string, string>),
+  ...(import.meta.glob('../sprites/cosmetics/parts/*.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>),
 };
 
 /** textureKey (`cos-<id>`) → asset URL */
@@ -17,6 +18,11 @@ for (const [path, url] of Object.entries(files)) {
   const stem = path.split('/').pop()!.replace(/\.png$/, '');
   COSMETIC_ART[`cos-${stem}`] = url;
 }
+
+/** Shared part textures for the physics-driven eye rig. Both must exist for
+ *  the live rig; otherwise eye items fall back to their flat PNG. */
+export const PART_EYE_WHITE = 'cos-Eye_White';
+export const PART_PUPIL     = 'cos-Eye_Pupil';
 
 export function isCosmeticArtAvailable(def: CosmeticDef): boolean {
   if (def.render.kind === 'hat' || def.render.kind === 'face' || def.render.kind === 'eyes') {
