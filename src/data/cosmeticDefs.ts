@@ -5,6 +5,12 @@
 
 import type { CosmeticSlot } from '../../shared/cosmeticCatalog';
 
+export type AttachmentAnim =
+  | { type: 'spin';  rpm: number }
+  | { type: 'bob';   periodMs: number; amplitudePx: number }
+  | { type: 'pulse'; periodMs: number; scaleAmp: number; alphaAmp?: number }
+  | { type: 'sheet'; frameW: number; frameH: number; frameRate: number };
+
 export interface TieRender   { kind: 'tie';   color: number; rainbow?: boolean }
 export interface SkinRender  { kind: 'skin';  tint: number }
 export interface HatRender   {
@@ -14,8 +20,32 @@ export interface HatRender   {
   offsetY: number;
   angle:  number;   // default worn angle, degrees (designer-tuned)
   scale:  number;   // default size multiplier on ART_SCALE (designer-tuned)
+  anim?:  AttachmentAnim;
 }
-export interface FaceRender  { kind: 'face';  textureKey: string; offsetX: number; offsetY: number }
+export interface FaceRender  { kind: 'face';  textureKey: string; offsetX: number; offsetY: number; anim?: AttachmentAnim }
+
+/** One eye of an `eyes` item. Positions in logical px relative to the
+ *  attachment origin (player center + offsetX/Y); rest pose relative to the
+ *  eye center. `radius` is how far the pupil may travel from the center. */
+export interface EyeSpec {
+  x: number; y: number;
+  radius: number;
+  whiteScale: number;   // multiplier on ART_SCALE for the shared white disc
+  pupilScale: number;   // multiplier on ART_SCALE for the shared pupil disc
+  restX: number; restY: number;
+}
+/** Per-item overrides for eyePhysics defaults (see DEFAULT_EYE_PHYSICS). */
+export interface EyesPhysics { stiffness?: number; damping?: number; accelScale?: number }
+/** Physics-driven eye family. `textureKey` stays the flat store PNG — the
+ *  store grid renders it and the rig falls back to it when parts art is
+ *  missing. */
+export interface EyesRender {
+  kind: 'eyes';
+  textureKey: string;
+  offsetX: number; offsetY: number;
+  eyes: EyeSpec[];
+  physics?: EyesPhysics;
+}
 export interface TrailRender {
   kind: 'trail';
   textureKey: string;          // procedural particle texture (see TextureGenerators)
@@ -26,7 +56,7 @@ export interface TrailRender {
   scale:      [number, number]; // start → end
   alpha:      number;
 }
-export type CosmeticRender = TieRender | SkinRender | HatRender | FaceRender | TrailRender;
+export type CosmeticRender = TieRender | SkinRender | HatRender | FaceRender | EyesRender | TrailRender;
 
 export interface CosmeticDef {
   id:     string;
@@ -39,10 +69,13 @@ export interface CosmeticDef {
 export const DEFAULT_TIE_COLOR = 0xff0000;
 
 const hat  = (id: string, name: string, price: number, offsetX: number, offsetY: number,
-              angle = 0, scale = 1): CosmeticDef =>
-  ({ id, slot: 'hat', name, price, render: { kind: 'hat', textureKey: `cos-${id}`, offsetX, offsetY, angle, scale } });
+              angle = 0, scale = 1, anim?: AttachmentAnim): CosmeticDef =>
+  ({ id, slot: 'hat', name, price, render: { kind: 'hat', textureKey: `cos-${id}`, offsetX, offsetY, angle, scale, anim } });
 const face = (id: string, name: string, price: number, offsetX: number, offsetY: number): CosmeticDef =>
   ({ id, slot: 'face', name, price, render: { kind: 'face', textureKey: `cos-${id}`, offsetX, offsetY } });
+const eyes = (id: string, name: string, price: number, offsetX: number, offsetY: number,
+              eyeSpecs: EyeSpec[], physics?: EyesPhysics): CosmeticDef =>
+  ({ id, slot: 'face', name, price, render: { kind: 'eyes', textureKey: `cos-${id}`, offsetX, offsetY, eyes: eyeSpecs, physics } });
 const tie  = (id: string, name: string, price: number, color: number, rainbow = false): CosmeticDef =>
   ({ id, slot: 'tie', name, price, render: { kind: 'tie', color, rainbow } });
 const skin = (id: string, name: string, price: number, tint: number): CosmeticDef =>
@@ -81,7 +114,7 @@ export const COSMETIC_DEFS: readonly CosmeticDef[] = [
   hat('hat_crown',     'Crown',         2500, -3.5, -25.0),
   hat('hat_tophat',    'Top Hat',       1200, -1.0, -26.5),
   hat('hat_hardhat',   'Hard Hat',      800,  3, -23.5),
-  hat('hat_propeller', 'Propeller Cap', 1000, -3.0, -26.5),
+  hat('hat_propeller', 'Propeller Cap', 1000, -3.0, -26.5, 0, 1, { type: 'spin', rpm: 40 }),
   hat('hat_cowboy',    'Cowboy Hat',    1000, -1, -23.5),
   hat('hat_boat',      'Paper Boat',    600,  0.18, -28.92, 0, 1.31),
   hat('hat_beanie',    'Warm Hat',        500,  0.0, -25.0),
@@ -123,11 +156,24 @@ export const COSMETIC_DEFS: readonly CosmeticDef[] = [
   hat('hat_wig', 'Flower Wig', 800, 1.5, -30.0),
   hat('hat_pickelhaube', 'Spiked Helmet', 1000, 1.0, -26.0),
   // ── Face (PNG; upper third of the bag) ──
-  face('face_googly',       'Googly Eyes',   500, 0, -8),
+  // ── Eye family (physics-driven pupil rigs; rest pose = item personality) ──
+  eyes('face_googly', 'Googly Eyes', 500, 0, -8, [
+    { x: -4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: 0, restY: 1.4 },
+    { x:  4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: 0, restY: 1.4 },
+  ], { stiffness: 30, damping: 3.5, accelScale: 0.02 }),   // loose + floppy
+  eyes('face_wonkyeyes', 'Lazy Eye', 500, 0, -8, [
+    { x: -4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: 0, restY:  1.8 },
+    { x:  4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: 0, restY: -0.6 },
+  ]),
+  eyes('face_lazyeye', 'Crazy Eyes', 500, 0, -8, [
+    { x: -4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: -1.4, restY: -1.2 },
+    { x:  4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX:  1.4, restY:  1.2 },
+  ]),
+  eyes('face_walleyes', 'Cross-Eyes', 500, 0, -8, [
+    { x: -4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX:  1.4, restY: 0.6 },
+    { x:  4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: -1.4, restY: 0.6 },
+  ]),
   face('face_3dglasses',    '3D Glasses',    600, 0, -8),
-  face('face_wonkyeyes',    'Lazy Eye',     500, 0, -8),
-  face('face_lazyeye',      'Crazy Eyes',       500, 0, -8),
-  face('face_walleyes',     'Cross-Eyes',      500, 0, -8),
   face('face_3dstripes',    'Retro 3D Shades',650, 0, -8),
   face('face_clearglasses', 'Clear Glasses',  400, 0, -8),
   face('face_shutter',      'Shutter Shades', 600, 0, -8),

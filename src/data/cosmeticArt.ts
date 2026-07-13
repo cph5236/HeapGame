@@ -19,7 +19,7 @@ for (const [path, url] of Object.entries(files)) {
 }
 
 export function isCosmeticArtAvailable(def: CosmeticDef): boolean {
-  if (def.render.kind === 'hat' || def.render.kind === 'face') {
+  if (def.render.kind === 'hat' || def.render.kind === 'face' || def.render.kind === 'eyes') {
     return def.render.textureKey in COSMETIC_ART;
   }
   return true;
