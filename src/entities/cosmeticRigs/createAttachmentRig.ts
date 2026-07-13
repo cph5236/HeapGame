@@ -8,6 +8,8 @@ import type { FaceRender, EyesRender } from '../../data/cosmeticDefs';
 import type { ResolvedHatRender } from '../../systems/cosmeticsLogic';
 import type { AttachmentRig } from './types';
 import { StaticRig } from './StaticRig';
+import { MotionRig } from './MotionRig';
+import { SheetRig } from './SheetRig';
 
 /** Bag PNG is 174px wide displayed at 40 logical px — attachment art authored
  *  at the same ratio renders at matching scale. */
@@ -18,16 +20,30 @@ export function createAttachmentRig(
   scene: Phaser.Scene,
   spec: ResolvedHatRender | FaceRender | EyesRender,
 ): AttachmentRig | null {
-  if (!scene.textures.exists(spec.textureKey)) return null;
   switch (spec.kind) {
-    case 'hat':
-      return new StaticRig(scene, {
+    case 'hat': {
+      if (!scene.textures.exists(spec.textureKey)) return null;
+      const rigSpec = {
         textureKey: spec.textureKey, offsetX: spec.offsetX, offsetY: spec.offsetY,
         baseAngle: spec.angle, scale: spec.scale, defScale: spec.defScale,
         artScale: ART_SCALE, depth: ATTACHMENT_DEPTH,
-      });
-    case 'face':
+      };
+      if (spec.anim?.type === 'sheet') return new SheetRig(scene, rigSpec, `anim-${spec.textureKey}`);
+      if (spec.anim)                   return new MotionRig(scene, rigSpec, spec.anim);
+      return new StaticRig(scene, rigSpec);
+    }
+    case 'face': {
+      if (!scene.textures.exists(spec.textureKey)) return null;
+      const rigSpec = {
+        textureKey: spec.textureKey, offsetX: spec.offsetX, offsetY: spec.offsetY,
+        baseAngle: 0, scale: 1, artScale: ART_SCALE, depth: ATTACHMENT_DEPTH,
+      };
+      if (spec.anim?.type === 'sheet') return new SheetRig(scene, rigSpec, `anim-${spec.textureKey}`);
+      if (spec.anim)                   return new MotionRig(scene, rigSpec, spec.anim);
+      return new StaticRig(scene, rigSpec);
+    }
     case 'eyes':   // EyeRig lands in Task 7; until then eyes render their flat PNG
+      if (!scene.textures.exists(spec.textureKey)) return null;
       return new StaticRig(scene, {
         textureKey: spec.textureKey, offsetX: spec.offsetX, offsetY: spec.offsetY,
         baseAngle: 0, scale: 1, artScale: ART_SCALE, depth: ATTACHMENT_DEPTH,

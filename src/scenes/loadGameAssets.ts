@@ -7,6 +7,7 @@ import { PORTAL_DEF } from '../data/portalDefs';
 import { pickTrashWallPool } from '../systems/trashWallPool';
 import { SOUND_DEFS } from '../data/soundDefs';
 import { COSMETIC_ART } from '../data/cosmeticArt';
+import { getCosmeticDef, type AttachmentAnim } from '../data/cosmeticDefs';
 import ibeamUrl       from '../sprites/Placeables/IBeam.png?url';
 import ladderUrl      from '../sprites/Placeables/Ladder.png?url';
 import tombstone1Url  from '../sprites/Placeables/TombStone (1).png?url';
@@ -20,6 +21,14 @@ import outroDeathUrl        from '../sprites/outro/trashbag-Death.png';
 
 /** Default size of the per-session trash-wall sprite pool. */
 const TRASH_WALL_POOL_SIZE = 50;
+
+/** Sheet anim spec for a `cos-<id>` texture key, if that def declares one. */
+function sheetAnimFor(textureKey: string): Extract<AttachmentAnim, { type: 'sheet' }> | undefined {
+  const def = getCosmeticDef(textureKey.slice('cos-'.length));
+  const render = def?.render;
+  if (!render || (render.kind !== 'hat' && render.kind !== 'face')) return undefined;
+  return render.anim?.type === 'sheet' ? render.anim : undefined;
+}
 
 /**
  * Schedules every non-boot asset load on the given scene's LoaderPlugin and
@@ -66,8 +75,12 @@ export function loadGameAssets(scene: Phaser.Scene): void {
   scene.load.image('outro-death',        outroDeathUrl);
 
   // ── Cosmetic PNGs (auto-manifest; empty until art lands) ─────────────────
+  // Defs that declare a sheet anim load as spritesheets; everything else
+  // (static art, shared cos-part-* pieces) loads as a plain image.
   for (const [key, url] of Object.entries(COSMETIC_ART)) {
-    scene.load.image(key, url);
+    const sheet = sheetAnimFor(key);
+    if (sheet) scene.load.spritesheet(key, url, { frameWidth: sheet.frameW, frameHeight: sheet.frameH });
+    else scene.load.image(key, url);
   }
 
   // ── Enemy spritesheets ───────────────────────────────────────────────────
@@ -103,6 +116,18 @@ export function loadGameAssets(scene: Phaser.Scene): void {
     scene.anims.create({ key: 'rat-walk-left',  frames: scene.anims.generateFrameNumbers('rat', { start: 9,  end: 11 }), frameRate: 10, repeat: -1 });
     scene.anims.create({ key: 'vulture-fly-left',  frames: scene.anims.generateFrameNumbers('vulture-fly-left',  { start: 0, end: 3 }), frameRate: 10, repeat: -1 });
     scene.anims.create({ key: 'vulture-fly-right', frames: scene.anims.generateFrameNumbers('vulture-fly-right', { start: 0, end: 3 }), frameRate: 10, repeat: -1 });
+
+    // Register flipbook anims for sheet-based cosmetics.
+    for (const key of Object.keys(COSMETIC_ART)) {
+      const sheet = sheetAnimFor(key);
+      if (!sheet || !scene.textures.exists(key) || scene.anims.exists(`anim-${key}`)) continue;
+      scene.anims.create({
+        key: `anim-${key}`,
+        frames: scene.anims.generateFrameNumbers(key, {}),
+        frameRate: sheet.frameRate,
+        repeat: -1,
+      });
+    }
 
     scene.registry.set('gameAssetsLoading', false);
     scene.registry.set('gameAssetsReady',   true);
