@@ -5,7 +5,7 @@
 import type { EquippedLoadout } from '../../shared/cosmeticCatalog';
 import {
   getCosmeticDef, DEFAULT_TIE_COLOR,
-  type HatRender, type FaceRender, type TrailRender,
+  type HatRender, type FaceRender, type EyesRender, type TrailRender,
 } from '../data/cosmeticDefs';
 
 /** Resolved hat also carries the def's un-adjusted scale, so the renderer can
@@ -18,7 +18,7 @@ export interface ResolvedCosmetics {
   tieRainbow: boolean;
   skinTint:   number | null;   // null = no tint
   hat:        ResolvedHatRender | null;
-  face:       FaceRender | null;
+  face:       FaceRender | EyesRender | null;
   trail:      TrailRender | null;
 }
 
@@ -75,7 +75,7 @@ export function resolveCosmetics(
   }
 
   const faceDef = equipped.face ? getCosmeticDef(equipped.face) : undefined;
-  if (faceDef?.render.kind === 'face') out.face = faceDef.render;
+  if (faceDef?.render.kind === 'face' || faceDef?.render.kind === 'eyes') out.face = faceDef.render;
 
   const trailDef = equipped.trail ? getCosmeticDef(equipped.trail) : undefined;
   if (trailDef?.render.kind === 'trail') out.trail = trailDef.render;

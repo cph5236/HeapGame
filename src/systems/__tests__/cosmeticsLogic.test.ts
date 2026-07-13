@@ -34,6 +34,25 @@ describe('resolveCosmetics', () => {
     expect(r.hat).toBeNull();
     expect(r.tieColor).toBe(0xff0000);
   });
+
+  it('resolves eye items to the eyes render kind with layout data', () => {
+    const r = resolveCosmetics({ face: 'face_googly' });
+    expect(r.face?.kind).toBe('eyes');
+    if (r.face?.kind === 'eyes') {
+      expect(r.face.eyes).toHaveLength(2);
+      expect(r.face.textureKey).toBe('cos-face_googly');
+    }
+  });
+
+  it('still resolves glasses to the flat face kind', () => {
+    const r = resolveCosmetics({ face: 'face_3dglasses' });
+    expect(r.face?.kind).toBe('face');
+  });
+
+  it('passes a hat anim through resolution', () => {
+    const r = resolveCosmetics({ hat: 'hat_propeller' });
+    expect(r.hat?.anim?.type).toBe('spin');
+  });
 });
 
 describe('hat adjustments', () => {
