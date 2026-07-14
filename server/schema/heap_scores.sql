@@ -5,7 +5,7 @@
 CREATE TABLE IF NOT EXISTS score (
   heap_id    TEXT    NOT NULL,
   player_id  TEXT    NOT NULL,
-  name       TEXT    NOT NULL,
+  name       TEXT    NOT NULL, -- legacy/unread: names resolve via player_name join; '' on new inserts, dropped in a later cleanup migration
   score      INTEGER NOT NULL,
   created_at TEXT    NOT NULL,
   updated_at TEXT    NOT NULL,
@@ -32,4 +32,10 @@ CREATE TABLE IF NOT EXISTS player_contribution (
   count      INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT    NOT NULL,
   PRIMARY KEY (heap_id, player_id)
+);
+
+CREATE TABLE IF NOT EXISTS player_name (
+  player_id  TEXT NOT NULL PRIMARY KEY,
+  name       TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
