@@ -18,6 +18,7 @@ import type {
   PlayerScoresResponse,
 } from '../../../shared/scoreTypes';
 import { buildRunScore } from '../../../shared/buildRunScore';
+import { MAX_ID_LEN } from '../constants';
 import { ENEMY_DEFS } from '../../../shared/enemyDefs';
 import { computeSalvageBonus, maxSalvageItems, isRarity, SalvageItem } from '../../../shared/pickupScores';
 import { validateLoadout } from '../../../shared/cosmeticCatalog';
@@ -25,7 +26,6 @@ import type { EquippedLoadout } from '../../../shared/cosmeticCatalog';
 
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT     = 50;
-const MAX_ID_LEN    = 64;
 
 // Plausibility caps (per second of run)
 const MAX_CLIMB_RATE_Y_PER_S = 400;

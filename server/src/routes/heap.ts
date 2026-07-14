@@ -5,6 +5,7 @@ import type { HeapDB } from '../db';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 import { isPointInside, checkFreeze, hashVertices } from '../polygon';
+import { MAX_ID_LEN } from '../constants';
 import type { PlayerAuthDB } from '../playerAuthDb';
 import { enforcePlayerAuth, PLAYER_TOKEN_HEADER } from '../playerAuth';
 import type { ContributionDB } from '../contributionDb';
@@ -46,7 +47,6 @@ const OFF_PEAK_THRESHOLD_PX = 100; // px below top_y that earns off-peak bonus
 const OFF_PEAK_BONUS_COINS  = 10;  // flat coins awarded for off-peak placement
 const GHOST_JITTER_RADIUS_PX = 80;  // max px offset from anchor when placing ghost points
 
-const MAX_ID_LEN = 64; // mirrors scores route
 
 function validateDifficulty(d: number): string | null {
   if (!Number.isFinite(d)) return 'difficulty must be a finite number';
@@ -376,8 +376,6 @@ export function heapRoutes(
         }
         return c.json({ error: 'invalid placement' }, 400);
       }
-      const authRes = await enforcePlayerAuth(c, authDb, playerGuid, getSink, 'heaps:place');
-      if (authRes) return authRes;
     }
 
     // Read-modify-write under compare-and-swap. The heap is the shared,
@@ -386,6 +384,7 @@ export function heapRoutes(
     // version is still what we read; on a lost-update conflict we re-read and
     // retry instead of silently clobbering the other placement.
     const PLACE_MAX_ATTEMPTS = 5;
+    let authDone = false;
     for (let attempt = 0; attempt < PLACE_MAX_ATTEMPTS; attempt++) {
       const row = await db.getHeapFresh(id);
       if (!row) return c.json({ error: 'Heap not found' }, 404);
@@ -429,6 +428,16 @@ export function heapRoutes(
           await captureServer(sink, 'warn', 'place:rejected', { reason: 'y below active zone', heapId: id, y, liveZoneBottomY });
         }
         return c.json({ error: 'invalid placement' }, 400);
+      }
+
+      // Write-auth: verify-or-claim only after the heap exists and the placement
+      // passed every bounds check, mirroring the /scores ordering — a request
+      // that is going to be rejected must never claim a playerGuid as a side
+      // effect. Runs once; CAS retries must not re-claim.
+      if (playerGuid !== undefined && !authDone) {
+        const authRes = await enforcePlayerAuth(c, authDb, playerGuid, getSink, 'heaps:place');
+        if (authRes) return authRes;
+        authDone = true;
       }
 
       const baseVertices: Vertex[] = (await db.getBaseVerticesById(row.base_id)) ?? [];
@@ -485,17 +494,19 @@ export function heapRoutes(
 
       await db.updateTopY(id, y);
 
-      // Contribution tick: only for authenticated placements (guid + token both
-      // present — the auth gate above already rejected mismatches). Never fails
+      // Contribution tick: only for authenticated placements — guid + token
+      // both present AND the auth gate actually ran (authDb wired) so the
+      // token is proven verified/claimed, not merely present. Never fails
       // the placement.
-      if (contributionDb && playerGuid && c.req.header(PLAYER_TOKEN_HEADER)) {
+      if (contributionDb && authDb && playerGuid && c.req.header(PLAYER_TOKEN_HEADER)) {
         try {
           await contributionDb.increment(id, playerGuid, new Date().toISOString());
         } catch (err) {
-          console.warn(`[place] contribution increment failed heapId=${id}`);
+          const detail = err instanceof Error ? err.message : String(err);
+          console.warn(`[place] contribution increment failed heapId=${id}: ${detail}`);
           const sink = getSink();
           if (sink) {
-            await captureServer(sink, 'warn', 'place:contribution-failed', { heapId: id, playerId: playerGuid });
+            await captureServer(sink, 'warn', 'place:contribution-failed', { heapId: id, playerId: playerGuid, error: detail });
           }
         }
       }
