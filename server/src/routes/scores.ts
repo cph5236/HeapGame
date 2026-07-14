@@ -281,7 +281,7 @@ export function scoreRoutes(
     );
 
     const now       = new Date().toISOString();
-    const submitted = await scoreDb.upsertScore(heapId, playerId, playerName.trim().slice(0, MAX_NAME_LEN), finalScore, now);
+    const submitted = await scoreDb.upsertScore(heapId, playerId, finalScore, now);
     if (submitted) await scoreDb.pruneScores(heapId);
 
     const context = await buildContext(scoreDb, heapId, playerId, limit);

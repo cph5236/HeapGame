@@ -81,12 +81,12 @@ describe('POST /scores — submission', () => {
     expect(body.context.player?.score).toBe(7000);
   });
 
-  it('updates player name alongside score', async () => {
+  it('never updates the player name on submit — names live in player_name now', async () => {
     const db = new MockScoreDB();
     db.seed(HEAP_ID, PLAYER_A, 'OldName#11111', 5000);
     await submitScore(makeApp(db), validBody({ playerName: 'NewName#22222', inputs: { baseHeightPx: 7000, elapsedMs: 17_500 } }));
     const row = await db.getScore(HEAP_ID, PLAYER_A);
-    expect(row?.name).toBe('NewName#22222');
+    expect(row?.name).toBe('OldName#11111');
   });
 });
 
