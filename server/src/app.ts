@@ -9,6 +9,7 @@ import { codeRoutes } from './routes/codes';
 import { feedbackRoutes } from './routes/feedback';
 import { configRoutes } from './routes/config';
 import { customizationRoutes } from './routes/customization';
+import { playerRoutes } from './routes/players';
 import { authAdminRoutes } from './routes/auth';
 import { requireAdminSecret } from './middleware/adminAuth';
 import { rateLimit, type RateLimiter, setRateLimitSink } from './middleware/rateLimit';
@@ -138,6 +139,12 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
     // Admin rescue: unclaim a player_auth row.
     app.delete('/auth/:playerId', adminGate);
     app.route('/auth', authAdminRoutes(opts.playerAuthDb));
+  }
+
+  if (opts.playerNameDb) {
+    // Player rename writes share the scores rate-limit bucket — same pattern as customization.
+    app.put('/players/:playerId/name', rateLimit(lim.scores, 'players-rename'));
+    app.route('/players', playerRoutes(opts.playerNameDb, () => opts.logSink, opts.playerAuthDb));
   }
 
   if (opts.logSink) {
