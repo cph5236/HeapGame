@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { bottomButtonLayout, bottomButtonRowY, leaderboardRowSlots, LB_ROW_SCALE } from '../scoreLayout';
+import {
+  bottomButtonLayout, bottomButtonRowY, leaderboardRowSlots, LB_ROW_SCALE,
+  podiumSlots, PODIUM_CENTER_H, PODIUM_SIDE_H, PODIUM_GAP,
+} from '../scoreLayout';
 
 const W = 400;
 
@@ -85,6 +88,48 @@ describe('leaderboardRowSlots', () => {
 
   it('handles zero rows', () => {
     const { slots, totalH } = leaderboardRowSlots(0, 20, 5);
+    expect(slots).toEqual([]);
+    expect(totalH).toBe(0);
+  });
+});
+
+describe('podiumSlots', () => {
+  const BODY_W = 360;
+  const BOX_W  = (BODY_W - 2 * PODIUM_GAP) / 3;
+
+  it('lays out three boxes in 2-1-3 order, left to right', () => {
+    const { slots } = podiumSlots(3, BODY_W);
+    expect(slots.map(s => s.rank)).toEqual([2, 1, 3]);
+    expect(slots[0].x).toBe(0);
+    expect(slots[1].x).toBe(BOX_W + PODIUM_GAP);
+    expect(slots[2].x).toBe(2 * (BOX_W + PODIUM_GAP));
+    expect(slots.every(s => s.w === BOX_W)).toBe(true);
+  });
+
+  it('makes the center (#1) box taller and bottom-aligns the sides', () => {
+    const { slots, totalH } = podiumSlots(3, BODY_W);
+    const byRank = (r: number) => slots.find(s => s.rank === r)!;
+    expect(byRank(1).h).toBe(PODIUM_CENTER_H);
+    expect(byRank(2).h).toBe(PODIUM_SIDE_H);
+    expect(byRank(3).h).toBe(PODIUM_SIDE_H);
+    expect(totalH).toBe(PODIUM_CENTER_H);
+    // Bottoms align: y + h === totalH for every box.
+    for (const s of slots) expect(s.y + s.h).toBe(totalH);
+  });
+
+  it('keeps #1 in the center slot when there are fewer entries', () => {
+    const two = podiumSlots(2, BODY_W);
+    expect(two.slots.map(s => s.rank)).toEqual([2, 1]);
+    expect(two.slots.find(s => s.rank === 1)!.x).toBe(BOX_W + PODIUM_GAP);
+    expect(two.totalH).toBe(PODIUM_CENTER_H);
+
+    const one = podiumSlots(1, BODY_W);
+    expect(one.slots.map(s => s.rank)).toEqual([1]);
+    expect(one.slots[0].x).toBe(BOX_W + PODIUM_GAP);
+  });
+
+  it('returns nothing for zero entries', () => {
+    const { slots, totalH } = podiumSlots(0, BODY_W);
     expect(slots).toEqual([]);
     expect(totalH).toBe(0);
   });
