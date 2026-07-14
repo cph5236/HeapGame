@@ -61,7 +61,10 @@ describe('POST /heaps/:id/place auth', () => {
   it('guid + token, claimed mismatch: 403 forbidden', async () => {
     const { app } = makeApp();
     await place(app, placeBody({ playerGuid: PLAYER, x: 400, y: 100 }), SECRET);
-    const res = await place(app, placeBody({ playerGuid: PLAYER, x: 420, y: 110 }), 'secret-2');
+    // y must stay above the shrunken active zone (see 'claimed match' note):
+    // auth now runs after placement validation, so an out-of-zone coordinate
+    // would 400 before the mismatch could 403.
+    const res = await place(app, placeBody({ playerGuid: PLAYER, x: 420, y: 90 }), 'secret-2');
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: 'forbidden' });
   });
@@ -75,7 +78,7 @@ describe('POST /heaps/:id/place auth', () => {
   it('guid, no token, claimed: 403', async () => {
     const { app } = makeApp();
     await place(app, placeBody({ playerGuid: PLAYER, x: 400, y: 100 }), SECRET);
-    const res = await place(app, placeBody({ playerGuid: PLAYER, x: 420, y: 110 }));
+    const res = await place(app, placeBody({ playerGuid: PLAYER, x: 420, y: 90 }));
     expect(res.status).toBe(403);
   });
 
@@ -108,5 +111,33 @@ describe('POST /heaps/:id/place auth', () => {
     const { app } = makeApp(undefined);
     const res = await place(app, placeBody({ playerGuid: PLAYER }), SECRET);
     expect(res.status).toBe(200);
+  });
+
+  // Claim ordering: a request that fails placement validation must never claim
+  // the playerGuid as a side effect (mirrors the /scores "verify-or-claim
+  // before any state change" ordering).
+  it('nonexistent heap + fresh guid+token: 404 and NO claim', async () => {
+    const { app, authDb } = makeApp();
+    const res = await app.request('/heaps/no-such-heap/place', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Player-Token': SECRET },
+      body:    JSON.stringify(placeBody({ playerGuid: PLAYER })),
+    });
+    expect(res.status).toBe(404);
+    expect(authDb!.rows.size).toBe(0);
+  });
+
+  it('x out of center zone + fresh guid+token: 400 and NO claim', async () => {
+    const { app, authDb } = makeApp();
+    const res = await place(app, placeBody({ playerGuid: PLAYER, x: 10 }), SECRET);
+    expect(res.status).toBe(400);
+    expect(authDb!.rows.size).toBe(0);
+  });
+
+  it('y below active zone + fresh guid+token: 400 and NO claim', async () => {
+    const { app, authDb } = makeApp();
+    const res = await place(app, placeBody({ playerGuid: PLAYER, y: 9000 }), SECRET);
+    expect(res.status).toBe(400);
+    expect(authDb!.rows.size).toBe(0);
   });
 });
