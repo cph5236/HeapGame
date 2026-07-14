@@ -8,7 +8,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "hono": "^4.2.0"
+    "hono": "^4.2.0",
+    "obscenity": "^0.4.6"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240208.0",
