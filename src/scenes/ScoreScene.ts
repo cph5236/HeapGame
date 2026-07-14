@@ -3,7 +3,7 @@ import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMe
 import { AudioManager } from '../systems/AudioManager';
 import { AdClient } from '../systems/ads/AdClient';
 import * as AdCadence from '../systems/ads/AdCadence';
-import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N, PLAYER_HEIGHT } from '../constants';
+import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N, PLAYER_HEIGHT, PLAYER_WIDTH } from '../constants';
 import {
   addBalance,
   getBalance,
@@ -28,7 +28,7 @@ import type { HeapParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
-import { bottomButtonLayout, bottomButtonRowY, podiumSlots, LB_AVATAR_SCALE, PODIUM_CENTER_AVATAR_SCALE } from './scoreLayout';
+import { bottomButtonLayout, bottomButtonRowY, podiumSlots, PODIUM_CENTER_AVATAR_SCALE, PODIUM_SIDE_AVATAR_SCALE } from './scoreLayout';
 import { composeAvatar } from '../ui/avatar';
 import { getPlayConsoleId, LEADERBOARD_HIGH_SCORE_ID } from '../data/achievementDefs';
 
@@ -44,8 +44,9 @@ const MEDAL_STYLE: Record<number, { tint: number; fillA: number; lineA: number; 
   3: { tint: 0xd98d4a, fillA: 0.28, lineA: 0.85, text: '#d98d4a' },
 };
 
-/** Podium panel paddings / gaps (logical px). */
-const PODIUM_PAD_Y  = 6;  // panel top + bottom padding
+/** Podium paddings / gaps (logical px). Top padding is 0 — with no outer box
+ *  the podium tucks directly under the HIGH SCORES label. */
+const PODIUM_PAD_Y  = 0;
 const PODIUM_ROW_GAP = 6; // podium block → "your rank" row
 
 /** Ellipsis-truncate a text object in place until it fits maxW. */
@@ -754,8 +755,8 @@ export class ScoreScene extends Phaser.Scene {
     });
 
     // Gap below the coins panel. The leaderboard's "HIGH SCORES" label sits just
-    // above the leaderboard panel (which starts here), so this gap must clear the
-    // label's height to keep it from crowding the coins panel.
+    // above the podium (which starts here), so this gap must clear the label's
+    // height to keep it from crowding the coins panel.
     this._coinsPanelBottom = PANEL_TOP + panelHeight(collapsed) + 68;
     return this._coinsPanelBottom;
   }
@@ -1066,16 +1067,10 @@ export class ScoreScene extends Phaser.Scene {
     const bodyW      = panelW - 2 * PAD_X;
     const { slots, totalH } = podiumSlots(topEntries.length, bodyW);
 
-    // Panel background
+    // No outer panel box — the medal boxes and the gold-tinted "your rank" row
+    // carry their own chrome, and a wrapper read as a redundant double frame
+    // whenever the player row was absent.
     const showPlayerRow = !!ctx.player && !this.playerInPodium(ctx);
-    const panelH = PODIUM_PAD_Y + totalH
-      + (showPlayerRow ? PODIUM_ROW_GAP + rowH : 0) + PODIUM_PAD_Y;
-    const bg = this.add.graphics();
-    bg.fillStyle(0x002244, 0.5);
-    bg.lineStyle(1, 0x336699, 0.3);
-    bg.fillRoundedRect(logicalWidth(this) / 2 - panelW / 2, panelTop, panelW, panelH, 6);
-    bg.strokeRoundedRect(logicalWidth(this) / 2 - panelW / 2, panelTop, panelW, panelH, 6);
-    lb.push(bg);
 
     const bodyTop = panelTop + PODIUM_PAD_Y;
 
@@ -1097,8 +1092,9 @@ export class ScoreScene extends Phaser.Scene {
       box.strokeRoundedRect(bx, by, slot.w, slot.h, 6);
       lb.push(box);
 
-      // Content stacks up from the box bottom: score, name, rank, then the
-      // avatar — hats grow upward, so all spare height becomes hat headroom.
+      // Content stacks up from the box bottom: score, name, then the avatar
+      // with its big rank number beside it — hats grow upward, so all spare
+      // height becomes hat headroom.
       const isPlayer = entry.playerId === (ctx.player?.playerId ?? '');
       const nameCol  = isPlayer && this.isNewHighScore ? '#ffdd44' : '#aaccee';
 
@@ -1113,16 +1109,21 @@ export class ScoreScene extends Phaser.Scene {
       truncateToWidth(nameTxt, slot.w - 8);
       lb.push(nameTxt);
 
-      const rankTxt = this.add.text(cx, boxBottom - 33, `#${entry.rank}`, {
-        fontSize: '11px', fontFamily: 'monospace', fontStyle: 'bold', color: medal.text,
-      }).setOrigin(0.5, 1);
-      lb.push(rankTxt);
-
-      const avScale = rank === 1 ? PODIUM_CENTER_AVATAR_SCALE : LB_AVATAR_SCALE;
-      const avatar  = composeAvatar(this, entry.loadout ?? {}, {
-        x: cx, y: boxBottom - 46 - (PLAYER_HEIGHT / 2) * avScale, scale: avScale,
+      // Avatar + rank side by side, the pair roughly centered in the box.
+      const avScale  = rank === 1 ? PODIUM_CENTER_AVATAR_SCALE : PODIUM_SIDE_AVATAR_SCALE;
+      const rankSize = rank === 1 ? 18 : 15;
+      const avHalfW  = (PLAYER_WIDTH / 2) * avScale;
+      const avX      = cx - 10;
+      const avY      = boxBottom - 33 - (PLAYER_HEIGHT / 2) * avScale;
+      const avatar   = composeAvatar(this, entry.loadout ?? {}, {
+        x: avX, y: avY, scale: avScale,
       });
       lb.push(avatar);
+
+      const rankTxt = this.add.text(avX + avHalfW + 5, avY, `#${entry.rank}`, {
+        fontSize: `${rankSize}px`, fontFamily: 'monospace', fontStyle: 'bold', color: medal.text,
+      }).setOrigin(0, 0.5);
+      lb.push(rankTxt);
     }
 
     // Compact "your rank" row below the podium when the player isn't on it —

@@ -111,8 +111,11 @@ export const PODIUM_CENTER_H = 118;
 export const PODIUM_SIDE_H = 96;
 /** Horizontal gap between podium boxes. */
 export const PODIUM_GAP = 6;
-/** Avatar scale inside the #1 box (sides use LB_AVATAR_SCALE). */
-export const PODIUM_CENTER_AVATAR_SCALE = 0.66;
+/** Avatar scale inside the #1 box. With the rank rendered beside the avatar
+ *  (not stacked under it), the freed row lets the avatars run much larger. */
+export const PODIUM_CENTER_AVATAR_SCALE = 0.95;
+/** Avatar scale inside the #2 / #3 boxes. */
+export const PODIUM_SIDE_AVATAR_SCALE = 0.72;
 
 export interface PodiumSlot {
   rank: number; // 1..3
