@@ -9,14 +9,20 @@ import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockPlayerAuthDB } from './helpers/mockPlayerAuthDb';
 import { MockSink } from './helpers/mockSink';
 import { hashSecret } from '../src/playerAuth';
+import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 
 const HEAP_ID = 'h1';
 const PLAYER = 'player-aaa';
 const SECRET = 'secret-1';
 
+// ghostPointCount: 0 keeps placements deterministic — the route jitters in a
+// random extra point per accepted placement otherwise, which can shift the
+// live zone bounds and make a second hardcoded placement flakily rejected.
+const NO_GHOST_PARAMS = { ...DEFAULT_HEAP_PARAMS, ghostPointCount: 0 };
+
 function makeApp(authDb: MockPlayerAuthDB | undefined = new MockPlayerAuthDB(), sink = new MockSink()) {
   const heapDb = new MockHeapDB();
-  heapDb.seedHeap(HEAP_ID, 1, [], 'base-1');
+  heapDb.seedHeap(HEAP_ID, 1, [], 'base-1', 0, NO_GHOST_PARAMS);
   heapDb.seedBase('base-1', HEAP_ID, []);
   const app = createApp(heapDb, new MockScoreDB(), {
     playerAuthDb: authDb,
@@ -46,7 +52,9 @@ describe('POST /heaps/:id/place auth', () => {
   it('guid + token, claimed match: accepts', async () => {
     const { app } = makeApp();
     await place(app, placeBody({ playerGuid: PLAYER, x: 400, y: 100 }), SECRET);
-    const res = await place(app, placeBody({ playerGuid: PLAYER, x: 420, y: 110 }), SECRET);
+    // The active zone's bottom bound shrinks to the first placement's y (its
+    // only live-zone vertex so far), so the second placement must sit above it.
+    const res = await place(app, placeBody({ playerGuid: PLAYER, x: 420, y: 90 }), SECRET);
     expect(res.status).toBe(200);
   });
 
