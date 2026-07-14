@@ -35,16 +35,25 @@ same as scores/customization/codes.
 
 - `heapRoutes()` gains an optional `authDb?: PlayerAuthDB` parameter (same
   pattern as `scoreRoutes`); `app.ts` passes `opts.playerAuthDb` through.
-- In the `/place` handler, after JSON/coord validation and **before** the CAS
-  loop:
+- In the `/place` handler:
   - If `playerGuid` is present but not a string, or is empty, or exceeds 64
-    chars (`MAX_ID_LEN` convention from scores route) → 400 `invalid placement`
-    with a `place:rejected` capture (`reason: 'bad playerGuid'`).
+    chars (shared `MAX_ID_LEN` from `server/src/constants.ts`) → 400
+    `invalid placement` with a `place:rejected` capture
+    (`reason: 'bad playerGuid'`). Checked up front, before the CAS loop.
   - If `playerGuid` is present and valid → run the existing
     `enforcePlayerAuth(c, authDb, playerGuid, getSink, 'heaps:place')`. A
     non-null return (403) is returned as-is. This gives the full
     verifyOrClaim matrix: claim on first tokened write, verify, reject
     mismatch, reject tokenless-claimed.
+  - **Ordering (revised in review):** the `enforcePlayerAuth` call runs
+    *inside* the CAS loop, after heap-existence and every bounds check, and
+    only on the first attempt (an `authDone` flag keeps CAS retries from
+    re-claiming). A request that is going to be rejected as an invalid
+    placement (404 heap, out-of-bounds coords) must never claim a
+    `playerGuid` as a side effect — mirrors the `/scores` "verify-or-claim
+    before any state change" ordering. The duplicate-point `accepted: false`
+    response is a *valid* authenticated write attempt, so it does claim
+    (pinned by test).
   - If `playerGuid` is absent → **legacy path, no auth at all**, behavior
     byte-identical to today. Old clients keep working forever.
 

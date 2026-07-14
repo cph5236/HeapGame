@@ -140,4 +140,24 @@ describe('POST /heaps/:id/place auth', () => {
     expect(res.status).toBe(400);
     expect(authDb!.rows.size).toBe(0);
   });
+
+  it('accepted:false (point inside polygon) + fresh guid+token: still claims (valid write attempt)', async () => {
+    // Intentional ordering: the duplicate-point check is a benign outcome of a
+    // fully valid, authenticated placement — not a validation failure — so the
+    // claim goes through even though nothing is placed.
+    const authDb = new MockPlayerAuthDB();
+    const heapDb = new MockHeapDB();
+    const square = [
+      { x: 200, y: 0 }, { x: 400, y: 0 },
+      { x: 400, y: 100 }, { x: 200, y: 100 },
+    ];
+    heapDb.seedHeap(HEAP_ID, 1, square, 'base-1', 0, NO_GHOST_PARAMS);
+    heapDb.seedBase('base-1', HEAP_ID, []);
+    const app = createApp(heapDb, new MockScoreDB(), { playerAuthDb: authDb });
+
+    const res = await place(app, { x: 300, y: 50, playerGuid: PLAYER }, SECRET);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { accepted: boolean }).accepted).toBe(false);
+    expect(authDb.rows.get(PLAYER)).toBe(await hashSecret(SECRET));
+  });
 });
