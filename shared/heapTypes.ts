@@ -89,6 +89,8 @@ export type GetHeapResponse =
 export interface PlaceRequest {
   x: number;
   y: number;
+  /** Optional player identity for attribution; auth token rides X-Player-Token. */
+  playerGuid?: string;
 }
 
 export interface PlaceResponse {

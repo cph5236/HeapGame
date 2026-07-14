@@ -5,6 +5,8 @@ import type { HeapDB } from '../db';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 import { isPointInside, checkFreeze, hashVertices } from '../polygon';
+import type { PlayerAuthDB } from '../playerAuthDb';
+import { enforcePlayerAuth } from '../playerAuth';
 import type {
   CreateHeapRequest,
   CreateHeapResponse,
@@ -42,6 +44,8 @@ const HEAP_TOP_ZONE_PX = 300;
 const OFF_PEAK_THRESHOLD_PX = 100; // px below top_y that earns off-peak bonus
 const OFF_PEAK_BONUS_COINS  = 10;  // flat coins awarded for off-peak placement
 const GHOST_JITTER_RADIUS_PX = 80;  // max px offset from anchor when placing ghost points
+
+const MAX_ID_LEN = 64; // mirrors scores route
 
 function validateDifficulty(d: number): string | null {
   if (!Number.isFinite(d)) return 'difficulty must be a finite number';
@@ -95,6 +99,7 @@ function resolveParams(input: Partial<HeapParams> | undefined): HeapParams | { e
 export function heapRoutes(
   db: HeapDB,
   getSink: () => Sink | undefined,
+  authDb?: PlayerAuthDB,
 ): Hono {
   const app = new Hono();
 
@@ -357,6 +362,20 @@ export function heapRoutes(
         await captureServer(sink, 'warn', 'place:rejected', { reason: 'bad coords', heapId: id, x, y });
       }
       return c.json({ error: 'invalid placement' }, 400);
+    }
+
+    const { playerGuid } = body;
+    if (playerGuid !== undefined) {
+      if (typeof playerGuid !== 'string' || playerGuid.length === 0 || playerGuid.length > MAX_ID_LEN) {
+        console.warn(`[place] reject: bad playerGuid heapId=${id}`);
+        const sink = getSink();
+        if (sink) {
+          await captureServer(sink, 'warn', 'place:rejected', { reason: 'bad playerGuid', heapId: id });
+        }
+        return c.json({ error: 'invalid placement' }, 400);
+      }
+      const authRes = await enforcePlayerAuth(c, authDb, playerGuid, getSink, 'heaps:place');
+      if (authRes) return authRes;
     }
 
     // Read-modify-write under compare-and-swap. The heap is the shared,
