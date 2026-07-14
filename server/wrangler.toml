@@ -92,3 +92,9 @@ namespace_id = "1006"
   [ratelimits.simple]
   limit = 5
   period = 60
+
+# obscenity is imported by shared/playerName.ts; module resolution from shared/
+# climbs to the repo root, never into server/node_modules. The Workers CI build
+# installs only server/ deps, so alias the import to the local install.
+[alias]
+obscenity = "./node_modules/obscenity"
