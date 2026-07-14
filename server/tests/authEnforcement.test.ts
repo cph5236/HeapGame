@@ -4,6 +4,7 @@ import { createApp } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockPlayerAuthDB } from './helpers/mockPlayerAuthDb';
+import { MockPlayerNameDB } from './helpers/mockPlayerNameDb';
 import { MockSink } from './helpers/mockSink';
 import { MockCustomizationDB } from './helpers/mockCustomizationDb';
 import { MockCodeDB } from './helpers/mockCodeDb';
@@ -16,8 +17,12 @@ const SECRET = 'secret-aaa';
 function makeApp(authDb = new MockPlayerAuthDB(), sink = new MockSink()) {
   const heapDb = new MockHeapDB();
   heapDb.seedHeap(HEAP_ID, 1, []);
-  const app = createApp(heapDb, new MockScoreDB(), {
+  const scoreDb = new MockScoreDB();
+  const nameDb  = new MockPlayerNameDB();
+  scoreDb.attachNameDb(nameDb);
+  const app = createApp(heapDb, scoreDb, {
     playerAuthDb: authDb,
+    playerNameDb: nameDb,
     logSink: sink,
   });
   return { app, authDb, sink };
