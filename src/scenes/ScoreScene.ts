@@ -3,7 +3,7 @@ import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMe
 import { AudioManager } from '../systems/AudioManager';
 import { AdClient } from '../systems/ads/AdClient';
 import * as AdCadence from '../systems/ads/AdCadence';
-import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N } from '../constants';
+import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N, PLAYER_HEIGHT } from '../constants';
 import {
   addBalance,
   getBalance,
@@ -28,13 +28,35 @@ import type { HeapParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
-import { bottomButtonLayout, bottomButtonRowY, leaderboardRowSlots, rowContentY, LB_ENLARGED_ROW_H, LB_AVATAR_SCALE } from './scoreLayout';
+import { bottomButtonLayout, bottomButtonRowY, podiumSlots, LB_AVATAR_SCALE, PODIUM_CENTER_AVATAR_SCALE } from './scoreLayout';
 import { composeAvatar } from '../ui/avatar';
 import { getPlayConsoleId, LEADERBOARD_HIGH_SCORE_ID } from '../data/achievementDefs';
 
 
-/** Top-N high-score rows that get an enlarged avatar showcase. */
-const SHOWCASE_COUNT = 3;
+/** Top-N entries shown as podium boxes (the avatar-showcase spots). */
+const PODIUM_COUNT = 3;
+
+/** Per-rank medal styling for the podium boxes. Fill alphas are deliberately
+ *  strong (~0.26–0.30) so the gold/silver/bronze reads at a glance. */
+const MEDAL_STYLE: Record<number, { tint: number; fillA: number; lineA: number; text: string }> = {
+  1: { tint: 0xffd54a, fillA: 0.30, lineA: 0.90, text: '#ffd54a' },
+  2: { tint: 0xc4cede, fillA: 0.26, lineA: 0.80, text: '#c4cede' },
+  3: { tint: 0xd98d4a, fillA: 0.28, lineA: 0.85, text: '#d98d4a' },
+};
+
+/** Podium panel paddings / gaps (logical px). */
+const PODIUM_PAD_Y  = 6;  // panel top + bottom padding
+const PODIUM_ROW_GAP = 6; // podium block → "your rank" row
+
+/** Ellipsis-truncate a text object in place until it fits maxW. */
+function truncateToWidth(txt: Phaser.GameObjects.Text, maxW: number): void {
+  if (txt.width <= maxW) return;
+  let s = txt.text;
+  while (s.length > 1 && txt.width > maxW) {
+    s = s.slice(0, -1);
+    txt.setText(s.trimEnd() + '…');
+  }
+}
 
 export class ScoreScene extends Phaser.Scene {
   private score:               number  = 0;
@@ -938,18 +960,21 @@ export class ScoreScene extends Phaser.Scene {
 
     // Panel bottom is computed up-front (the entries themselves render async) so the
     // bottom buttons can be anchored below it. For mock data the row count is known
-    // exactly; for the live call we reserve the top-N rows it will request.
-    // renderLeaderboardEntries adds 2 rows (gap + the player's own row) when the
-    // player isn't in the top N. The mock path knows the data; the live path resolves
-    // async (after this synchronous return), so it must reserve the worst case — else
+    // exactly; for the live call we reserve the podium the top-N request will fill.
+    // renderLeaderboardEntries adds a compact "your rank" row when the player isn't
+    // on the podium. The mock path knows the data; the live path resolves async
+    // (after this synchronous return), so it must reserve the worst case — else
     // the buttons anchor too high and overlap a taller-than-expected live panel.
-    // Enlarged rows (first SHOWCASE_COUNT) are taller; account for this in the panel height.
-    const reservedTopRows = this._mockLeaderboard ? this._mockLeaderboard.top.length : LEADERBOARD_TOP_N;
-    const reservedExtra   = (this._mockLeaderboard
-      ? (this._mockLeaderboard.player && !this.playerInTop(this._mockLeaderboard) ? 1 : 0)
+    const reservedBoxes = Math.min(
+      this._mockLeaderboard ? this._mockLeaderboard.top.length : LEADERBOARD_TOP_N,
+      PODIUM_COUNT,
+    );
+    const reservedExtra = (this._mockLeaderboard
+      ? (this._mockLeaderboard.player && !this.playerInPodium(this._mockLeaderboard) ? 1 : 0)
       : 1);  // for live: always reserve worst case (one compact "your rank" row)
-    const { totalH: reservedTopH } = leaderboardRowSlots(reservedTopRows, ROW_H, SHOWCASE_COUNT, LB_ENLARGED_ROW_H);
-    const panelBottom = PANEL_TOP + reservedTopH + reservedExtra * ROW_H + 8;
+    const { totalH: reservedTopH } = podiumSlots(reservedBoxes, PANEL_W - 2 * 14);
+    const panelBottom = PANEL_TOP + PODIUM_PAD_Y + reservedTopH
+      + reservedExtra * (PODIUM_ROW_GAP + ROW_H) + PODIUM_PAD_Y;
 
     // Mock data path — renders immediately, no API call.
     if (this._mockLeaderboard) {
@@ -1034,10 +1059,17 @@ export class ScoreScene extends Phaser.Scene {
     }).setOrigin(0, 1);
     lb.push(highScoresLabel);
 
+    // Podium: top ≤3 entries as side-by-side medal boxes (2-1-3, winner center).
+    // Ranks 4-5 are no longer rendered on the score screen — three stacked
+    // showcase rows pushed the bottom buttons into the menu prompt.
+    const topEntries = ctx.top.slice(0, PODIUM_COUNT);
+    const bodyW      = panelW - 2 * PAD_X;
+    const { slots, totalH } = podiumSlots(topEntries.length, bodyW);
+
     // Panel background
-    const { slots, totalH } = leaderboardRowSlots(ctx.top.length, rowH, SHOWCASE_COUNT, LB_ENLARGED_ROW_H);
-    const extraRows = ctx.player && !this.playerInTop(ctx) ? 1 : 0;
-    const panelH    = totalH + extraRows * rowH + 8;
+    const showPlayerRow = !!ctx.player && !this.playerInPodium(ctx);
+    const panelH = PODIUM_PAD_Y + totalH
+      + (showPlayerRow ? PODIUM_ROW_GAP + rowH : 0) + PODIUM_PAD_Y;
     const bg = this.add.graphics();
     bg.fillStyle(0x002244, 0.5);
     bg.lineStyle(1, 0x336699, 0.3);
@@ -1045,63 +1077,68 @@ export class ScoreScene extends Phaser.Scene {
     bg.strokeRoundedRect(logicalWidth(this) / 2 - panelW / 2, panelTop, panelW, panelH, 6);
     lb.push(bg);
 
-    const bodyTop = panelTop + 4;
+    const bodyTop = panelTop + PODIUM_PAD_Y;
 
-    // Top N rows
-    for (let i = 0; i < ctx.top.length; i++) {
-      const entry    = ctx.top[i];
-      const slot     = slots[i];
+    for (let i = 0; i < topEntries.length; i++) {
+      const entry = topEntries[i];
+      const rank  = i + 1;              // podium position, not server rank field
+      const slot  = slots.find(s => s.rank === rank)!;
+      const medal = MEDAL_STYLE[rank];
+
+      const bx = left + slot.x;
+      const by = bodyTop + slot.y;
+      const cx = bx + slot.w / 2;
+      const boxBottom = by + slot.h;
+
+      const box = this.add.graphics();
+      box.fillStyle(medal.tint, medal.fillA);
+      box.lineStyle(1, medal.tint, medal.lineA);
+      box.fillRoundedRect(bx, by, slot.w, slot.h, 6);
+      box.strokeRoundedRect(bx, by, slot.w, slot.h, 6);
+      lb.push(box);
+
+      // Content stacks up from the box bottom: score, name, rank, then the
+      // avatar — hats grow upward, so all spare height becomes hat headroom.
       const isPlayer = entry.playerId === (ctx.player?.playerId ?? '');
       const nameCol  = isPlayer && this.isNewHighScore ? '#ffdd44' : '#aaccee';
-      const rankCol  = isPlayer && this.isNewHighScore ? '#ffdd44' : '#668899';
-      const mid      = bodyTop + rowContentY(slot, LB_AVATAR_SCALE);
 
-      // Alternating row stripe
-      const stripe = this.add.graphics();
-      stripe.fillStyle(i % 2 === 0 ? 0x0d3155 : 0x071d33, 0.5);
-      stripe.fillRect(logicalWidth(this) / 2 - panelW / 2, bodyTop + slot.y, panelW, slot.h);
-      lb.push(stripe);
+      const scoreTxt = this.add.text(cx, boxBottom - 6, String(entry.score), {
+        fontSize: '12px', fontFamily: 'monospace', fontStyle: 'bold', color: medal.text,
+      }).setOrigin(0.5, 1);
+      lb.push(scoreTxt);
 
-      const rankTxt = this.add.text(left, mid, `#${entry.rank}`, {
-        fontSize: '11px', fontFamily: 'monospace', color: rankCol,
-      }).setOrigin(0, 0.5);
-      lb.push(rankTxt);
-
-      let nameX = left + 36;
-      if (slot.enlarged) {
-        // Mini avatar showcasing the player's cosmetics.
-        const avatar = composeAvatar(this, entry.loadout ?? {}, {
-          x: left + 44, y: mid, scale: LB_AVATAR_SCALE,
-        });
-        lb.push(avatar);
-        nameX = left + 62;
-      }
-
-      const nameTxt = this.add.text(nameX, mid, entry.name, {
-        fontSize: '11px', fontFamily: 'monospace', color: nameCol,
-      }).setOrigin(0, 0.5);
+      const nameTxt = this.add.text(cx, boxBottom - 21, entry.name, {
+        fontSize: '9px', fontFamily: 'monospace', color: nameCol,
+      }).setOrigin(0.5, 1);
+      truncateToWidth(nameTxt, slot.w - 8);
       lb.push(nameTxt);
 
-      const scoreTxt = this.add.text(right, mid, String(entry.score), {
-        fontSize: '11px', fontFamily: 'monospace', color: nameCol,
-      }).setOrigin(1, 0.5);
-      lb.push(scoreTxt);
+      const rankTxt = this.add.text(cx, boxBottom - 33, `#${entry.rank}`, {
+        fontSize: '11px', fontFamily: 'monospace', fontStyle: 'bold', color: medal.text,
+      }).setOrigin(0.5, 1);
+      lb.push(rankTxt);
+
+      const avScale = rank === 1 ? PODIUM_CENTER_AVATAR_SCALE : LB_AVATAR_SCALE;
+      const avatar  = composeAvatar(this, entry.loadout ?? {}, {
+        x: cx, y: boxBottom - 46 - (PLAYER_HEIGHT / 2) * avScale, scale: avScale,
+      });
+      lb.push(avatar);
     }
 
-    // Compact "your rank" row if the player isn't already in the top N —
-    // a thin divider (not a full row) plus a single row, instead of a
-    // dots-gap row + a separate player row, to save vertical space.
-    if (ctx.player && !this.playerInTop(ctx)) {
-      const y = bodyTop + totalH;
-
-      const divider = this.add.graphics();
-      divider.lineStyle(1, 0x335566, 0.6);
-      divider.lineBetween(left - 4, y, right + 4, y);
-      lb.push(divider);
-
-      const p      = ctx.player;
+    // Compact "your rank" row below the podium when the player isn't on it —
+    // gold-tinted so your own result still stands out among the medals.
+    if (showPlayerRow) {
+      const p   = ctx.player!;
+      const y   = bodyTop + totalH + PODIUM_ROW_GAP;
+      const mid = y + rowH / 2;
       const pColor = this.isNewHighScore ? '#ffdd44' : '#aaccee';
-      const mid    = y + rowH / 2;
+
+      const rowBg = this.add.graphics();
+      rowBg.fillStyle(0xffd54a, 0.10);
+      rowBg.lineStyle(1, 0xffd54a, 0.35);
+      rowBg.fillRoundedRect(left - 6, y, bodyW + 12, rowH, 4);
+      rowBg.strokeRoundedRect(left - 6, y, bodyW + 12, rowH, 4);
+      lb.push(rowBg);
 
       const pRankTxt = this.add.text(left, mid, `#${p.rank}`, {
         fontSize: '11px', fontFamily: 'monospace', color: pColor,
@@ -1120,9 +1157,10 @@ export class ScoreScene extends Phaser.Scene {
     }
   }
 
-  private playerInTop(ctx: LeaderboardContext): boolean {
+  /** True when the player's own entry is one of the rendered podium spots. */
+  private playerInPodium(ctx: LeaderboardContext): boolean {
     if (!ctx.player) return false;
-    return ctx.top.some(e => e.playerId === ctx.player!.playerId);
+    return ctx.top.slice(0, PODIUM_COUNT).some(e => e.playerId === ctx.player!.playerId);
   }
 
   // ── Menu Prompt ───────────────────────────────────────────────────────────────

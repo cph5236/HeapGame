@@ -98,6 +98,60 @@ export function leaderboardRowSlots(
   return { slots, totalH: y };
 }
 
+// ── Podium (score-screen top-3) ────────────────────────────────────────────────
+//
+// The ScoreScene renders its top 3 as side-by-side medal boxes in classic podium
+// order (2-1-3, winner center and taller) instead of stacked showcase rows — three
+// 50px rows cost ~150px of vertical space and pushed the bottom buttons into the
+// menu prompt. LeaderboardScene (the full-screen list) keeps the stacked rows.
+
+/** Height of the center (#1) podium box. */
+export const PODIUM_CENTER_H = 118;
+/** Height of the side (#2 / #3) podium boxes. */
+export const PODIUM_SIDE_H = 96;
+/** Horizontal gap between podium boxes. */
+export const PODIUM_GAP = 6;
+/** Avatar scale inside the #1 box (sides use LB_AVATAR_SCALE). */
+export const PODIUM_CENTER_AVATAR_SCALE = 0.66;
+
+export interface PodiumSlot {
+  rank: number; // 1..3
+  x: number;    // left edge within the panel body
+  y: number;    // top offset within the podium block (boxes are bottom-aligned)
+  w: number;
+  h: number;
+}
+
+/**
+ * Box layout for the top-3 podium. Slots are ordered left→right (2, 1, 3) and
+ * bottom-aligned; positions are fixed thirds of the body width so the podium
+ * never re-flows when a heap has fewer than 3 scores — #1 always holds the
+ * center slot.
+ */
+export function podiumSlots(
+  count: number,
+  bodyW: number,
+  gap: number = PODIUM_GAP,
+): { slots: PodiumSlot[]; totalH: number } {
+  if (count <= 0) return { slots: [], totalH: 0 };
+
+  const boxW = (bodyW - 2 * gap) / 3;
+  const col  = (i: number) => i * (boxW + gap); // left edge of column 0|1|2
+
+  const defs: Array<{ rank: number; colIdx: number; h: number }> = [
+    { rank: 2, colIdx: 0, h: PODIUM_SIDE_H },
+    { rank: 1, colIdx: 1, h: PODIUM_CENTER_H },
+    { rank: 3, colIdx: 2, h: PODIUM_SIDE_H },
+  ];
+
+  const present = defs.filter(d => d.rank <= count);
+  const totalH  = Math.max(...present.map(d => d.h));
+  const slots   = present.map(d => ({
+    rank: d.rank, x: col(d.colIdx), y: totalH - d.h, w: boxW, h: d.h,
+  }));
+  return { slots, totalH };
+}
+
 /** Gap between the avatar's feet and the row's bottom edge, in enlarged rows. */
 const AVATAR_BOTTOM_PAD = 3;
 
