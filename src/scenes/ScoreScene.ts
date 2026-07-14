@@ -974,8 +974,10 @@ export class ScoreScene extends Phaser.Scene {
       ? (this._mockLeaderboard.player && !this.playerInPodium(this._mockLeaderboard) ? 1 : 0)
       : 1);  // for live: always reserve worst case (one compact "your rank" row)
     const { totalH: reservedTopH } = podiumSlots(reservedBoxes, PANEL_W - 2 * 14);
+    // Mirrors renderLeaderboardEntries exactly: one top pad, no bottom pad
+    // (the outer panel box is gone, so nothing renders below the last row).
     const panelBottom = PANEL_TOP + PODIUM_PAD_Y + reservedTopH
-      + reservedExtra * (PODIUM_ROW_GAP + ROW_H) + PODIUM_PAD_Y;
+      + reservedExtra * (PODIUM_ROW_GAP + ROW_H);
 
     // Mock data path — renders immediately, no API call.
     if (this._mockLeaderboard) {
