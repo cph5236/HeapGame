@@ -47,7 +47,6 @@ const OFF_PEAK_THRESHOLD_PX = 100; // px below top_y that earns off-peak bonus
 const OFF_PEAK_BONUS_COINS  = 10;  // flat coins awarded for off-peak placement
 const GHOST_JITTER_RADIUS_PX = 80;  // max px offset from anchor when placing ghost points
 
-
 function validateDifficulty(d: number): string | null {
   if (!Number.isFinite(d)) return 'difficulty must be a finite number';
   if (d < 1 || d > 5) return 'difficulty must be between 1 and 5';
