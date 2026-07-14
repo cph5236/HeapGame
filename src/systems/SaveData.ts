@@ -3,6 +3,7 @@ import { ITEM_DEFS } from '../data/itemDefs';
 import { getCosmeticDef } from '../data/cosmeticDefs';
 import { clampHatAdjustment, type HatAdjustment, type HatAdjustments } from './cosmeticsLogic';
 import type { EquippedLoadout, CosmeticSlot } from '../../shared/cosmeticCatalog';
+import { generateDefaultPlayerName } from '../../shared/playerName';
 import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL } from '../constants';
 
 const SAVE_KEY = 'heap_save';
@@ -73,11 +74,6 @@ function generateGuid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function generateDefaultName(): string {
-  const n = Array.from({ length: 5 }, () => Math.floor(Math.random() * 10)).join('');
-  return `Trashbag#${n}`;
-}
-
 function freshSave(): RawSave {
   return {
     schemaVersion: CURRENT_SCHEMA,
@@ -87,7 +83,7 @@ function freshSave(): RawSave {
     placed:         {},
     selectedHeapId: '',
     playerGuid:     generateGuid(),
-    playerName:     generateDefaultName(),
+    playerName:     generateDefaultPlayerName(),
     highScores:     {},
     cosmeticsOwned: [],
     cosmeticsEquipped: {},
@@ -120,7 +116,7 @@ function migrate(parsed: any): RawSave {
       selectedHeapId: parsed.selectedHeapId ?? '',
       playerGuid:     parsed.playerGuid     ?? generateGuid(),
       playerSecret:   parsed.playerSecret,
-      playerName:     parsed.playerName     ?? generateDefaultName(),
+      playerName:     parsed.playerName     ?? generateDefaultPlayerName(),
       gpgsPlayerId:   parsed.gpgsPlayerId,
       highScores:     parsed.highScores     ?? {},
       cosmeticsOwned: parsed.cosmeticsOwned ?? [],
@@ -150,7 +146,7 @@ function migrate(parsed: any): RawSave {
       placed:         {},
       selectedHeapId: '',
       playerGuid:     parsed.playerGuid ?? generateGuid(),
-      playerName:     parsed.playerName ?? generateDefaultName(),
+      playerName:     parsed.playerName ?? generateDefaultPlayerName(),
       highScores:     parsed.highScores ?? {},
       cosmeticsOwned: [],
       cosmeticsEquipped: {},
@@ -173,7 +169,7 @@ function migrate(parsed: any): RawSave {
       placed:         parsed.placed         ?? {},
       selectedHeapId: parsed.selectedHeapId ?? '',
       playerGuid:     parsed.playerGuid     ?? generateGuid(),
-      playerName:     parsed.playerName     ?? generateDefaultName(),
+      playerName:     parsed.playerName     ?? generateDefaultPlayerName(),
       gpgsPlayerId:   parsed.gpgsPlayerId,
       highScores:     parsed.highScores     ?? {},
       cosmeticsOwned:    [],
@@ -199,7 +195,7 @@ function migrate(parsed: any): RawSave {
     placed:         remapPlacedY(placed, WORLD_HEIGHT_V2, WORLD_HEIGHT_V3),
     selectedHeapId: parsed.selectedHeapId ?? '',
     playerGuid:     parsed.playerGuid     ?? generateGuid(),
-    playerName:     parsed.playerName     ?? generateDefaultName(),
+    playerName:     parsed.playerName     ?? generateDefaultPlayerName(),
     gpgsPlayerId:   parsed.gpgsPlayerId,
     highScores:     parsed.highScores     ?? {},
     cosmeticsOwned: [],
