@@ -494,17 +494,19 @@ export function heapRoutes(
 
       await db.updateTopY(id, y);
 
-      // Contribution tick: only for authenticated placements (guid + token both
-      // present — the auth gate above already rejected mismatches). Never fails
+      // Contribution tick: only for authenticated placements — guid + token
+      // both present AND the auth gate actually ran (authDb wired) so the
+      // token is proven verified/claimed, not merely present. Never fails
       // the placement.
-      if (contributionDb && playerGuid && c.req.header(PLAYER_TOKEN_HEADER)) {
+      if (contributionDb && authDb && playerGuid && c.req.header(PLAYER_TOKEN_HEADER)) {
         try {
           await contributionDb.increment(id, playerGuid, new Date().toISOString());
         } catch (err) {
-          console.warn(`[place] contribution increment failed heapId=${id}`);
+          const detail = err instanceof Error ? err.message : String(err);
+          console.warn(`[place] contribution increment failed heapId=${id}: ${detail}`);
           const sink = getSink();
           if (sink) {
-            await captureServer(sink, 'warn', 'place:contribution-failed', { heapId: id, playerId: playerGuid });
+            await captureServer(sink, 'warn', 'place:contribution-failed', { heapId: id, playerId: playerGuid, error: detail });
           }
         }
       }

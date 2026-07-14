@@ -106,6 +106,13 @@ describe('POST /heaps/:id/place contribution tick', () => {
     expect(await contributionDb.getCount(HEAP_ID, PLAYER)).toBe(0);
   });
 
+  it('app built WITHOUT authDb → guid+token place accepted but count stays 0 (unverified token must not tick)', async () => {
+    const { app, contributionDb } = makeApp({ authDb: undefined });
+    const res = await place(app, placeBody({ playerGuid: PLAYER }), SECRET);
+    expect(res.status).toBe(200);
+    expect(await contributionDb!.getCount(HEAP_ID, PLAYER)).toBe(0);
+  });
+
   it('app built WITHOUT contributionDb → guid+token place still 200 accepted', async () => {
     const { app } = makeApp({ contributionDb: undefined });
     const res = await place(app, placeBody({ playerGuid: PLAYER }), SECRET);
