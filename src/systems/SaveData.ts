@@ -3,7 +3,7 @@ import { ITEM_DEFS } from '../data/itemDefs';
 import { getCosmeticDef } from '../data/cosmeticDefs';
 import { clampHatAdjustment, type HatAdjustment, type HatAdjustments } from './cosmeticsLogic';
 import type { EquippedLoadout, CosmeticSlot } from '../../shared/cosmeticCatalog';
-import { generateDefaultPlayerName } from '../../shared/playerName';
+import { generateDefaultPlayerName, MAX_PLAYER_NAME_LEN } from '../../shared/playerName';
 import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL } from '../constants';
 
 const SAVE_KEY = 'heap_save';
@@ -404,7 +404,7 @@ export function getPlayerGuid(): string { return load().playerGuid; }
 export function getPlayerName(): string { return load().playerName; }
 
 export function setPlayerName(name: string): void {
-  const trimmed = name.trim().slice(0, 20);
+  const trimmed = name.trim().slice(0, MAX_PLAYER_NAME_LEN);
   if (!trimmed) return;
   const data = load();
   data.playerName = trimmed;

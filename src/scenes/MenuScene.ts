@@ -12,7 +12,7 @@ import { TILT_WATCHDOG_MS } from '../constants';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
-import { validatePlayerName } from '../../shared/playerName';
+import { validatePlayerName, MAX_PLAYER_NAME_LEN } from '../../shared/playerName';
 import { PlayerNameClient } from '../systems/PlayerNameClient';
 import { formatDifficulty } from '../ui/DifficultyStars';
 import { createVolumeSlider } from '../ui/buildVolumePanel';
@@ -443,7 +443,7 @@ export class MenuScene extends Phaser.Scene {
     subtitle.textContent = 'What do they call you?';
 
     const input = document.createElement('input');
-    input.maxLength = 20;
+    input.maxLength = MAX_PLAYER_NAME_LEN;
     input.value = current;
     input.style.cssText = [
       'width:100%', 'box-sizing:border-box', 'background:transparent', 'border:none',
@@ -456,7 +456,7 @@ export class MenuScene extends Phaser.Scene {
     counterRow.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:6px';
     const counter = document.createElement('span');
     counter.style.cssText = 'color:#556677;font-size:10px';
-    counter.textContent = `${current.length} / 20`;
+    counter.textContent = `${current.length} / ${MAX_PLAYER_NAME_LEN}`;
     counterRow.appendChild(counter);
 
     const errorMsg = document.createElement('div');
@@ -505,7 +505,7 @@ export class MenuScene extends Phaser.Scene {
 
     input.addEventListener('input', () => {
       const len = input.value.length;
-      counter.textContent = `${len} / 20`;
+      counter.textContent = `${len} / ${MAX_PLAYER_NAME_LEN}`;
       counter.style.color = len >= 19 ? '#ff4444' : '#556677';
       errorMsg.style.visibility = 'hidden';
     });

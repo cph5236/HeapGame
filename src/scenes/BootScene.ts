@@ -5,7 +5,8 @@ import type { Vertex } from '../systems/HeapPolygon';
 import { generateAllTextures } from '../entities/TextureGenerators';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
-import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, setGpgsPlayerId, setPlayerName, getRawSaveForCloudSync, applyMergedSave, mergeCloudSave, getTutorialDone } from '../systems/SaveData';
+import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, setGpgsPlayerId, setPlayerName, getEffectivePlayerId, getRawSaveForCloudSync, applyMergedSave, mergeCloudSave, getTutorialDone } from '../systems/SaveData';
+import { PlayerNameClient } from '../systems/PlayerNameClient';
 import type { RawSave } from '../systems/SaveData';
 import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
 import { buildInfiniteEntry } from '../data/infiniteCatalog';
@@ -49,6 +50,10 @@ export class BootScene extends Phaser.Scene {
       if (!player) return;
       setGpgsPlayerId(player.playerId);
       setPlayerName(player.displayName);
+      // Sync the GPGS display name to the server's player_name table — score
+      // submit no longer updates names, and GPGS players can't reach the
+      // rename modal, so this is their only refresh path after first seed.
+      void PlayerNameClient.updateName(getEffectivePlayerId(), player.displayName);
       this.game.events.emit('gpgs:signed-in', player.displayName);
 
       // Load cloud snapshot and merge with local SaveData.
