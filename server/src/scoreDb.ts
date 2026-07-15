@@ -89,7 +89,7 @@ export class D1ScoreDB implements ScoreDB {
         .run();
     } else {
       await this.d1
-        .prepare("INSERT INTO score (heap_id, player_id, name, score, created_at, updated_at) VALUES (?1,?2,'',?3,?4,?5)")
+        .prepare('INSERT INTO score (heap_id, player_id, score, created_at, updated_at) VALUES (?1,?2,?3,?4,?5)')
         .bind(heapId, playerId, score, now, now)
         .run();
     }
