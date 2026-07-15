@@ -155,9 +155,7 @@ export const COSMETIC_DEFS: readonly CosmeticDef[] = [
   hat('hat_waldo', 'Bobble Beanie', 600, -8.0, -24.5),
   hat('hat_wig', 'Flower Wig', 800, 1.5, -30.0),
   hat('hat_pickelhaube', 'Spiked Helmet', 1000, 1.0, -26.0),
-  // ── Face (PNG; upper third of the bag) ──
-  // ── Eye family (physics-driven pupil rigs; rest pose = item personality) ──
-  eyes('face_googly', 'Googly Eyes', 500, 0, -8, [
+ eyes('face_googly', 'Googly Eyes', 500, 0, -8, [
     { x: -4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: 0, restY: 1.4 },
     { x:  4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: 0, restY: 1.4 },
   ], { stiffness: 30, damping: 3.5, accelScale: 0.02 }),   // loose + floppy
@@ -172,7 +170,9 @@ export const COSMETIC_DEFS: readonly CosmeticDef[] = [
   eyes('face_walleyes', 'Cross-Eyes', 500, 0, -8, [
     { x: -4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX:  1.4, restY: 0.6 },
     { x:  4.5, y: 0, radius: 2.2, whiteScale: 0.27, pupilScale: 0.12, restX: -1.4, restY: 0.6 },
-  ]),
+  ]),  // ── Face (PNG; upper third of the bag) ──
+  // ── Eye family (physics-driven pupil rigs; rest pose = item personality) ──
+ 
   face('face_3dglasses',    '3D Glasses',    600, 0, -8),
   face('face_3dstripes',    'Retro 3D Shades',650, 0, -8),
   face('face_clearglasses', 'Clear Glasses',  400, 0, -8),
