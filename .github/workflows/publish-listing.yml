@@ -1,0 +1,44 @@
+name: Publish Play Listing
+
+# Manual only. Pushes the store listing — title, descriptions, and graphics
+# under android/app/src/main/play/ — to Google Play via Gradle Play Publisher.
+#
+# IMPORTANT: this OVERWRITES the live listing with the repo contents. Any edit
+# made directly in Play Console will be replaced. Run it deliberately, and from
+# the branch/ref whose listing you want to publish (defaults to the repo's
+# default branch when dispatched).
+on:
+  workflow_dispatch:
+
+jobs:
+  publish-listing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # `cap sync` (inside build:android) regenerates the Capacitor Gradle
+      # project so the :app module can configure. No AAB is built or signed —
+      # publishReleaseListing only uploads listing metadata + graphics.
+      - run: npm ci
+      - run: npm run build:android
+        env:
+          VITE_HEAP_SERVER_URL: ${{ secrets.VITE_HEAP_SERVER_URL }}
+          VITE_AD_PROVIDER: admob
+          VITE_ADMOB_INTERSTITIAL_ID: ${{ secrets.VITE_ADMOB_INTERSTITIAL_ID }}
+          VITE_ADMOB_REWARDED_ID: ${{ secrets.VITE_ADMOB_REWARDED_ID }}
+
+      - name: Publish store listing (text + graphics)
+        working-directory: android
+        env:
+          ANDROID_PUBLISHER_CREDENTIALS: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: ./gradlew publishReleaseListing

@@ -1,11 +1,25 @@
-Heap is a mobile-first 2D vertical climbing platformer where every run is shaped by the community.
+Heap is a community-built climbing platformer where the whole world builds one endless tower of trash — and you race to the top.
 
-Climb a towering heap of trash, placed piece by piece by players like you. Every item you place becomes part of the permanent landscape — bridges, ladders, checkpoints — making the climb easier (or harder) for everyone who comes after.
+Every item you place stays behind. The heap you climb was shaped by the players before you, and everything you drop shapes the climb for everyone who comes next. No two runs are ever the same.
 
-Features:
-• Vertical climbing platformer with tight, responsive controls
-• Community-built levels — the heap grows with every player
-• Place items to help future climbers
-• Enemies, upgrades, and score multipliers
-• Google Play Games integration — achievements and leaderboards
-• Cloud saves — pick up where you left off on any device
+CLIMB THE HEAP
+Pilot the character up a towering, ever-growing platformer stage. Time your jumps, scale ladders and beams, and dodge the enemies crawling the heap.
+
+BUILD THE WORLD
+Place items to grow the heap taller and forge new paths. Your contributions become permanent parts of the tower that every other player has to climb.
+
+RACE FOR THE TOP
+Chain kills, keep your pace, and climb higher to stack up your score. Every run is a fresh, arcade-style push for a new personal best.
+
+UPGRADE EVERY RUN
+Earn coins as you climb and spend them on run-based upgrades, consumables, and salvage boosts — speed, extra jumps, revives and more. Roguelite-style progression keeps every attempt feeling different.
+
+CUSTOMIZE YOUR CLIMBER
+Unlock dozens of cosmetics and make your trash item your own as you rise up the ranks.
+
+COMPETE GLOBALLY
+Climb the worldwide leaderboard and prove you belong at the top of the heap. Can you set the high score the whole community is chasing?
+
+Free to play. Easy to pick up, tough to top. Jump in and start climbing.
+
+Vertical platformer • Climbing game • Arcade high-score chaser • Community-built world

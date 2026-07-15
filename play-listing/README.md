@@ -45,6 +45,22 @@ node play-listing/render.mjs   # re-renders all assets into this folder
 Edit captions/headlines in the `jobs` array at the bottom of `render.mjs`.
 To add a screenshot: drop a capture in `raw/`, add a `jobs` entry.
 
+## Publishing to Google Play
+
+The live listing is sourced from `android/app/src/main/play/` (text in
+`listings/en-US/*.txt`, graphics in `listings/en-US/graphics/**`). The final
+assets from this folder are copied there with GPP's numeric names
+(`feature-graphic/1.png`, `phone-screenshots/1..7.png`, both tablet folders).
+
+Publish via the **manual** `Publish Play Listing` GitHub Action
+(`.github/workflows/publish-listing.yml`, `workflow_dispatch`). It runs
+`./gradlew publishReleaseListing`, which **overwrites** the live listing with the
+repo contents — so run it deliberately. The regular release (`publishReleaseBundle`)
+still only ships the AAB; it does not touch the listing.
+
+> If the job 403s, grant the Play service account the **Store presence / graphic
+> assets** permission in Play Console → Users & permissions.
+
 ## ASO text copy
 
 **App title** (30 max) — recommend extending from bare "Heap":
