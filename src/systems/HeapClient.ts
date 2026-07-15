@@ -2,11 +2,13 @@ import type {
   GetHeapResponse,
   HeapEnemyParams,
   ListHeapsResponse,
+  PlaceRequest,
   PlaceResponse,
   Vertex,
 } from '../../shared/heapTypes';
 import { reconstructPolygonFromPoints } from './HeapPolygonLoader';
 import { fetchWithLog } from '../logging/fetchWithLog';
+import { authHeaders, logIfAuthRejected } from './authToken';
 
 const SERVER_URL: string =
   (import.meta as unknown as { env: Record<string, string> }).env.VITE_HEAP_SERVER_URL ??
@@ -157,14 +159,18 @@ export class HeapClient {
    * Called after the player places a block. Never throws or blocks gameplay.
    * Returns the PlaceResponse if successful, or null on network error or non-ok response.
    */
-  static async append(heapId: string, x: number, y: number): Promise<PlaceResponse | null> {
+  static async append(heapId: string, x: number, y: number, playerGuid?: string): Promise<PlaceResponse | null> {
     try {
+      const body: PlaceRequest = playerGuid !== undefined ? { x, y, playerGuid } : { x, y };
       const res = await fetchWithLog(`${SERVER_URL}/heaps/${heapId}/place`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x, y }),
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(body),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        logIfAuthRejected('heaps:place', res.status);
+        return null;
+      }
       // Do NOT update the cache version here. The client doesn't hold the
       // server's new data yet — load() must fetch it with the current version
       // so the server responds with the real liveZone.

@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { reconstructPolygonFromPoints } from '../HeapPolygonLoader';
 
+vi.mock('../authToken', () => ({
+  authHeaders: () => ({ 'X-Player-Token': 'secret-test' }),
+  logIfAuthRejected: vi.fn(),
+}));
+
 // HeapClient reads SERVER_URL at module evaluation time from import.meta.env,
 // so we need to stub the global before importing.
 const BASE = 'http://localhost:8787';
@@ -32,6 +37,7 @@ afterEach(() => {
 
 // Import AFTER stubbing globals so module init captures the stubs
 const { HeapClient } = await import('../HeapClient');
+import { logIfAuthRejected } from '../authToken';
 
 // ── list() ────────────────────────────────────────────────────────────────────
 
@@ -238,6 +244,54 @@ describe('HeapClient.append', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('offline')));
 
     await expect(HeapClient.append(heapId, 100, 200)).resolves.toBeNull();
+  });
+
+  it('includes playerGuid in the body and X-Player-Token header when passed', async () => {
+    const heapId = 'heap-guid-008';
+
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ accepted: true, version: 1 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await HeapClient.append(heapId, 220, 380, 'player-guid-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE}/heaps/${heapId}/place`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ x: 220, y: 380, playerGuid: 'player-guid-1' }),
+      }),
+    );
+    const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
+    expect(init.headers['X-Player-Token']).toBe('secret-test');
+  });
+
+  it('omits playerGuid from the body when not passed (legacy shape preserved)', async () => {
+    const heapId = 'heap-guid-009';
+
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ accepted: true, version: 1 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await HeapClient.append(heapId, 220, 380);
+
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).not.toHaveProperty('playerGuid');
+  });
+
+  it('on 403, resolves null and fires the remote auth:rejected log', async () => {
+    const heapId = 'heap-guid-010';
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: false, status: 403 }));
+
+    const result = await HeapClient.append(heapId, 220, 380, 'player-guid-1');
+
+    expect(result).toBeNull();
+    expect(vi.mocked(logIfAuthRejected)).toHaveBeenCalledWith('heaps:place', 403);
   });
 });
 

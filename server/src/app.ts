@@ -94,7 +94,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   app.put   ('/heaps/:id/enemy-params', adminGate);
   app.delete('/heaps/:id',              adminGate);
 
-  app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink));
+  app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink, opts.playerAuthDb));
   app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink, opts.playerAuthDb));
 
   if (opts.codeDb) {

@@ -14,7 +14,7 @@ import {
   applyPolygonToGenerator,
   polygonTopY,
 } from '../systems/HeapPolygonLoader';
-import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode, getJoystickSide, getUpgradeLevel, getEquippedCosmetics, getHatAdjustments } from '../systems/SaveData';
+import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode, getJoystickSide, getUpgradeLevel, getEquippedCosmetics, getHatAdjustments, getEffectivePlayerId } from '../systems/SaveData';
 import { HUD } from '../ui/HUD';
 import { EnemyRadar } from '../ui/EnemyRadar';
 import { showDashIndicator, controlClusterLayout } from '../ui/hudLogic';
@@ -683,7 +683,7 @@ export class GameScene extends Phaser.Scene {
     const isPeak = py <= this.heapGenerator.topY + PEAK_BONUS_ZONE_PX;
 
     let bonusCoinsFromServer = 0;
-    const appendDone = HeapClient.append(this._heapId, px, py).then(placeResp => {
+    const appendDone = HeapClient.append(this._heapId, px, py, getEffectivePlayerId()).then(placeResp => {
       bonusCoinsFromServer = placeResp?.bonusCoins ?? 0;
       return HeapClient.load(this._heapId);
     }).then(freshPolygon => {

@@ -5,6 +5,9 @@ import type { HeapDB } from '../db';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 import { isPointInside, checkFreeze, hashVertices } from '../polygon';
+import { MAX_ID_LEN } from '../constants';
+import type { PlayerAuthDB } from '../playerAuthDb';
+import { enforcePlayerAuth } from '../playerAuth';
 import type {
   CreateHeapRequest,
   CreateHeapResponse,
@@ -95,6 +98,7 @@ function resolveParams(input: Partial<HeapParams> | undefined): HeapParams | { e
 export function heapRoutes(
   db: HeapDB,
   getSink: () => Sink | undefined,
+  authDb?: PlayerAuthDB,
 ): Hono {
   const app = new Hono();
 
@@ -359,12 +363,25 @@ export function heapRoutes(
       return c.json({ error: 'invalid placement' }, 400);
     }
 
+    const { playerGuid } = body;
+    if (playerGuid !== undefined) {
+      if (typeof playerGuid !== 'string' || playerGuid.length === 0 || playerGuid.length > MAX_ID_LEN) {
+        console.warn(`[place] reject: bad playerGuid heapId=${id}`);
+        const sink = getSink();
+        if (sink) {
+          await captureServer(sink, 'warn', 'place:rejected', { reason: 'bad playerGuid', heapId: id });
+        }
+        return c.json({ error: 'invalid placement' }, 400);
+      }
+    }
+
     // Read-modify-write under compare-and-swap. The heap is the shared,
     // community-grown structure, so concurrent placements are expected. Each
     // attempt re-reads the authoritative (uncached) row and only commits if the
     // version is still what we read; on a lost-update conflict we re-read and
     // retry instead of silently clobbering the other placement.
     const PLACE_MAX_ATTEMPTS = 5;
+    let authDone = false;
     for (let attempt = 0; attempt < PLACE_MAX_ATTEMPTS; attempt++) {
       const row = await db.getHeapFresh(id);
       if (!row) return c.json({ error: 'Heap not found' }, 404);
@@ -408,6 +425,16 @@ export function heapRoutes(
           await captureServer(sink, 'warn', 'place:rejected', { reason: 'y below active zone', heapId: id, y, liveZoneBottomY });
         }
         return c.json({ error: 'invalid placement' }, 400);
+      }
+
+      // Write-auth: verify-or-claim only after the heap exists and the placement
+      // passed every bounds check, mirroring the /scores ordering — a request
+      // that is going to be rejected must never claim a playerGuid as a side
+      // effect. Runs once; CAS retries must not re-claim.
+      if (playerGuid !== undefined && !authDone) {
+        const authRes = await enforcePlayerAuth(c, authDb, playerGuid, getSink, 'heaps:place');
+        if (authRes) return authRes;
+        authDone = true;
       }
 
       const baseVertices: Vertex[] = (await db.getBaseVerticesById(row.base_id)) ?? [];
