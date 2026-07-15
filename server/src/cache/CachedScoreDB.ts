@@ -45,8 +45,8 @@ export class CachedScoreDB implements ScoreDB {
 
   // ---- writes: D1 first, then synchronous invalidation of this heap's top key ----
 
-  async upsertScore(heapId: string, playerId: string, name: string, score: number, now: string): Promise<boolean> {
-    const changed = await this.inner.upsertScore(heapId, playerId, name, score, now);
+  async upsertScore(heapId: string, playerId: string, score: number, now: string): Promise<boolean> {
+    const changed = await this.inner.upsertScore(heapId, playerId, score, now);
     if (changed) await this.kv.delete(this.topKey(heapId));
     return changed;
   }

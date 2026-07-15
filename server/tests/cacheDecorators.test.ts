@@ -140,12 +140,12 @@ describe('CachedScoreDB', () => {
     expect(kv.has(`cache:scores:${HEAP_ID}:top`)).toBe(true);
 
     // Lower score → no change → no invalidation.
-    const unchanged = await cached.upsertScore(HEAP_ID, 'p1', 'P1', 100, 'now');
+    const unchanged = await cached.upsertScore(HEAP_ID, 'p1', 100, 'now');
     expect(unchanged).toBe(false);
     expect(kv.has(`cache:scores:${HEAP_ID}:top`)).toBe(true);
 
     // Higher score → changed → invalidate.
-    const changed = await cached.upsertScore(HEAP_ID, 'p1', 'P1', 900, 'now');
+    const changed = await cached.upsertScore(HEAP_ID, 'p1', 900, 'now');
     expect(changed).toBe(true);
     expect(kv.deletes).toContain(`cache:scores:${HEAP_ID}:top`);
     expect(kv.has(`cache:scores:${HEAP_ID}:top`)).toBe(false);

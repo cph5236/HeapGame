@@ -21,11 +21,11 @@ export interface ScoreDB {
   getScore(heapId: string, playerId: string): Promise<ScoreRow | null>;
 
   /**
-   * Insert or update score only if newScore > existing score.
-   * Also updates name (player may have renamed).
+   * Insert or update score only if newScore > existing score. Names are no
+   * longer written here — they live in player_name, seeded/renamed elsewhere.
    * Returns true if the row was inserted or updated, false if existing score was >= newScore.
    */
-  upsertScore(heapId: string, playerId: string, name: string, score: number, now: string): Promise<boolean>;
+  upsertScore(heapId: string, playerId: string, score: number, now: string): Promise<boolean>;
 
   /** Returns top `limit` entries for a heap, ordered by score DESC. */
   getTopScores(heapId: string, limit: number): Promise<ScoreRow[]>;
@@ -66,25 +66,31 @@ export class D1ScoreDB implements ScoreDB {
 
   async getScore(heapId: string, playerId: string): Promise<ScoreRow | null> {
     const row = await this.d1
-      .prepare('SELECT * FROM score WHERE heap_id=?1 AND player_id=?2')
+      .prepare(`
+        SELECT s.heap_id, s.player_id, s.score, s.created_at, s.updated_at,
+               COALESCE(pn.name, 'Anonymous') AS name
+          FROM score s
+          LEFT JOIN player_name pn ON pn.player_id = s.player_id
+         WHERE s.heap_id=?1 AND s.player_id=?2
+      `)
       .bind(heapId, playerId)
       .first<ScoreRow>();
     return row ?? null;
   }
 
-  async upsertScore(heapId: string, playerId: string, name: string, score: number, now: string): Promise<boolean> {
+  async upsertScore(heapId: string, playerId: string, score: number, now: string): Promise<boolean> {
     const existing = await this.getScore(heapId, playerId);
     if (existing && score <= existing.score) return false;
 
     if (existing) {
       await this.d1
-        .prepare('UPDATE score SET name=?1, score=?2, updated_at=?3 WHERE heap_id=?4 AND player_id=?5')
-        .bind(name, score, now, heapId, playerId)
+        .prepare('UPDATE score SET score=?1, updated_at=?2 WHERE heap_id=?3 AND player_id=?4')
+        .bind(score, now, heapId, playerId)
         .run();
     } else {
       await this.d1
-        .prepare('INSERT INTO score (heap_id, player_id, name, score, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6)')
-        .bind(heapId, playerId, name, score, now, now)
+        .prepare("INSERT INTO score (heap_id, player_id, name, score, created_at, updated_at) VALUES (?1,?2,'',?3,?4,?5)")
+        .bind(heapId, playerId, score, now, now)
         .run();
     }
     return true;
@@ -93,8 +99,11 @@ export class D1ScoreDB implements ScoreDB {
   async getTopScores(heapId: string, limit: number): Promise<ScoreRow[]> {
     const result = await this.d1
       .prepare(`
-        SELECT s.*, pc.loadout AS loadout
+        SELECT s.heap_id, s.player_id, s.score, s.created_at, s.updated_at,
+               COALESCE(pn.name, 'Anonymous') AS name,
+               pc.loadout AS loadout
           FROM score s
+          LEFT JOIN player_name pn          ON pn.player_id = s.player_id
           LEFT JOIN player_customization pc ON pc.player_id = s.player_id
          WHERE s.heap_id=?1
          ORDER BY s.score DESC
@@ -142,8 +151,11 @@ export class D1ScoreDB implements ScoreDB {
   async getScoresPaginated(heapId: string, offset: number, limit: number): Promise<ScoreRow[]> {
     const result = await this.d1
       .prepare(`
-        SELECT s.*, pc.loadout AS loadout
+        SELECT s.heap_id, s.player_id, s.score, s.created_at, s.updated_at,
+               COALESCE(pn.name, 'Anonymous') AS name,
+               pc.loadout AS loadout
           FROM score s
+          LEFT JOIN player_name pn          ON pn.player_id = s.player_id
           LEFT JOIN player_customization pc ON pc.player_id = s.player_id
          WHERE s.heap_id=?1
          ORDER BY s.score DESC
@@ -160,13 +172,14 @@ export class D1ScoreDB implements ScoreDB {
     const result = await this.d1
       .prepare(`
         WITH ranked AS (
-          SELECT heap_id, player_id, name, score,
+          SELECT heap_id, player_id, score,
                  RANK() OVER (PARTITION BY heap_id ORDER BY score DESC) AS rank
             FROM score
         )
-        SELECT heap_id AS heapId, name, score, rank
-          FROM ranked
-         WHERE player_id = ?1
+        SELECT r.heap_id AS heapId, COALESCE(pn.name, 'Anonymous') AS name, r.score, r.rank
+          FROM ranked r
+          LEFT JOIN player_name pn ON pn.player_id = r.player_id
+         WHERE r.player_id = ?1
       `)
       .bind(playerId)
       .all<{ heapId: string; name: string; score: number; rank: number }>();

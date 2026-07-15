@@ -9,6 +9,7 @@ import { codeRoutes } from './routes/codes';
 import { feedbackRoutes } from './routes/feedback';
 import { configRoutes } from './routes/config';
 import { customizationRoutes } from './routes/customization';
+import { playerRoutes } from './routes/players';
 import { authAdminRoutes } from './routes/auth';
 import { requireAdminSecret } from './middleware/adminAuth';
 import { rateLimit, type RateLimiter, setRateLimitSink } from './middleware/rateLimit';
@@ -19,6 +20,7 @@ import type { ConfigDB } from './configDb';
 import type { CustomizationDB } from './customizationDb';
 import type { PlayerAuthDB } from './playerAuthDb';
 import type { ContributionDB } from './contributionDb';
+import type { PlayerNameDB } from './playerNameDb';
 
 export interface AppOptions {
   /** Comma-separated origin list, or '*' to allow all (dev only). */
@@ -46,6 +48,8 @@ export interface AppOptions {
   playerAuthDb?: PlayerAuthDB;
   /** Placement contribution counters (player_contribution in heap_scores). If unset, placements don't tick. */
   contributionDb?: ContributionDB;
+  /** Player-name D1 access (player_name in heap_scores). If unset, /players/:id/name is not mounted and score submit doesn't seed names. */
+  playerNameDb?: PlayerNameDB;
   /** Sink for incoming /log entries. If unset, /log is not mounted. */
   logSink?: Sink;
 }
@@ -98,7 +102,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   app.delete('/heaps/:id',              adminGate);
 
   app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink, opts.playerAuthDb, opts.contributionDb));
-  app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink, opts.playerAuthDb));
+  app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink, opts.playerAuthDb, opts.playerNameDb));
 
   if (opts.codeDb) {
     // Player redeem endpoint — rate-limited, no admin gate.
@@ -135,6 +139,12 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
     // Admin rescue: unclaim a player_auth row.
     app.delete('/auth/:playerId', adminGate);
     app.route('/auth', authAdminRoutes(opts.playerAuthDb));
+  }
+
+  if (opts.playerNameDb) {
+    // Player rename writes share the scores rate-limit bucket — same pattern as customization.
+    app.put('/players/:playerId/name', rateLimit(lim.scores, 'players-rename'));
+    app.route('/players', playerRoutes(opts.playerNameDb, () => opts.logSink, opts.playerAuthDb));
   }
 
   if (opts.logSink) {

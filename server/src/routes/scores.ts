@@ -7,6 +7,8 @@ import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 import type { PlayerAuthDB } from '../playerAuthDb';
 import { enforcePlayerAuth } from '../playerAuth';
+import type { PlayerNameDB } from '../playerNameDb';
+import { validatePlayerName, generateDefaultPlayerName } from '../../../shared/playerName';
 import type {
   SubmitScoreRequest,
   SubmitScoreResponse,
@@ -24,7 +26,6 @@ import type { EquippedLoadout } from '../../../shared/cosmeticCatalog';
 
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT     = 50;
-const MAX_NAME_LEN  = 32;
 
 // Plausibility caps (per second of run)
 const MAX_CLIMB_RATE_Y_PER_S = 400;
@@ -75,6 +76,7 @@ export function scoreRoutes(
   heapDb: HeapDB,
   getSink: () => Sink | undefined,
   authDb?: PlayerAuthDB,
+  playerNameDb?: PlayerNameDB,
 ): Hono {
   const app = new Hono();
 
@@ -111,7 +113,7 @@ export function scoreRoutes(
       }
       return c.json({ error: 'invalid score submission' }, 400);
     }
-    if (typeof playerName !== 'string' || playerName.trim().length === 0) {
+    if (playerName !== undefined && typeof playerName !== 'string') {
       console.warn(`[scores] reject: bad playerName (${typeof playerName})`);
       const sink = getSink();
       if (sink) {
@@ -280,8 +282,22 @@ export function scoreRoutes(
       MAX_LIMIT,
     );
 
-    const now       = new Date().toISOString();
-    const submitted = await scoreDb.upsertScore(heapId, playerId, playerName.trim().slice(0, MAX_NAME_LEN), finalScore, now);
+    const now = new Date().toISOString();
+
+    // First-seen name seeding: score submit never updates an existing name.
+    // The getName→setName check-then-act is intentionally unguarded: two
+    // concurrent first submits can each seed a default, but setName is an
+    // idempotent upsert so last-write-wins and nothing corrupts.
+    if (playerNameDb) {
+      const existingName = await playerNameDb.getName(playerId);
+      if (existingName === null) {
+        const validated = playerName !== undefined ? validatePlayerName(playerName) : null;
+        const seedName = validated && validated.ok ? validated.name : generateDefaultPlayerName();
+        await playerNameDb.setName(playerId, seedName, now);
+      }
+    }
+
+    const submitted = await scoreDb.upsertScore(heapId, playerId, finalScore, now);
     if (submitted) await scoreDb.pruneScores(heapId);
 
     const context = await buildContext(scoreDb, heapId, playerId, limit);

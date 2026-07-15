@@ -5,6 +5,7 @@ import { createApp } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockSink } from './helpers/mockSink';
+import { MockPlayerNameDB } from './helpers/mockPlayerNameDb';
 import type { SubmitScoreResponse, PaginatedLeaderboardResponse, PlayerScoresResponse } from '../../shared/scoreTypes';
 import { PICKUP_BONUS } from '../../shared/pickupScores';
 
@@ -12,12 +13,13 @@ const HEAP_ID   = 'heap-test-001';
 const PLAYER_A  = 'player-aaa';
 const PLAYER_B  = 'player-bbb';
 
-function makeApp(scoreDb = new MockScoreDB(), heapDb?: MockHeapDB, sink?: MockSink) {
+function makeApp(scoreDb = new MockScoreDB(), heapDb?: MockHeapDB, sink?: MockSink, nameDb?: MockPlayerNameDB) {
   if (!heapDb) {
     heapDb = new MockHeapDB();
     heapDb.seedHeap(HEAP_ID, 1, []);
   }
-  return createApp(heapDb, scoreDb, { logSink: sink });
+  if (nameDb) scoreDb.attachNameDb(nameDb);
+  return createApp(heapDb, scoreDb, { logSink: sink, playerNameDb: nameDb });
 }
 
 async function submitScore(app: ReturnType<typeof makeApp>, body: object, limit?: number) {
@@ -81,12 +83,12 @@ describe('POST /scores — submission', () => {
     expect(body.context.player?.score).toBe(7000);
   });
 
-  it('updates player name alongside score', async () => {
+  it('never updates the player name on submit — names live in player_name now', async () => {
     const db = new MockScoreDB();
     db.seed(HEAP_ID, PLAYER_A, 'OldName#11111', 5000);
     await submitScore(makeApp(db), validBody({ playerName: 'NewName#22222', inputs: { baseHeightPx: 7000, elapsedMs: 17_500 } }));
     const row = await db.getScore(HEAP_ID, PLAYER_A);
-    expect(row?.name).toBe('NewName#22222');
+    expect(row?.name).toBe('OldName#11111');
   });
 });
 
@@ -161,8 +163,13 @@ describe('POST /scores — validation', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns 400 when playerName is missing', async () => {
+  it('accepts submission when playerName is missing (optional field)', async () => {
     const res = await submitScore(makeApp(), { heapId: HEAP_ID, playerId: PLAYER_A, inputs: VALID_INPUTS });
+    expect(res.status).toBe(200);
+  });
+
+  it('returns 400 when playerName is present but not a string', async () => {
+    const res = await submitScore(makeApp(), { heapId: HEAP_ID, playerId: PLAYER_A, playerName: 42, inputs: VALID_INPUTS });
     expect(res.status).toBe(400);
   });
 
@@ -297,9 +304,52 @@ describe('POST /scores hardening', () => {
     expect(res.status).toBe(400);
   });
 
-  it('rejects empty playerName after trim', async () => {
-    const res = await submitScore(makeApp(), validBody({ playerName: '   ' }));
-    expect(res.status).toBe(400);
+  it('accepts whitespace-only playerName (falls back to a generated name during seeding)', async () => {
+    const nameDb = new MockPlayerNameDB();
+    const res = await submitScore(makeApp(new MockScoreDB(), undefined, undefined, nameDb), validBody({ playerName: '   ' }));
+    expect(res.status).toBe(200);
+    expect(await nameDb.getName(PLAYER_A)).toMatch(/^Trashbag#\d{5}$/);
+  });
+});
+
+// ── POST /scores — first-seen name seeding ──────────────────────────────────
+
+describe('POST /scores — first-seen name seeding', () => {
+  it('seeds player_name with a valid submitted name on first submit', async () => {
+    const nameDb = new MockPlayerNameDB();
+    const db = new MockScoreDB();
+    await submitScore(makeApp(db, undefined, undefined, nameDb), validBody({ playerName: 'Alice' }));
+    expect(await nameDb.getName(PLAYER_A)).toBe('Alice');
+  });
+
+  it('seeds a generated Trashbag name when the submitted name is profane', async () => {
+    const nameDb = new MockPlayerNameDB();
+    const db = new MockScoreDB();
+    await submitScore(makeApp(db, undefined, undefined, nameDb), validBody({ playerName: 'shithead' }));
+    expect(await nameDb.getName(PLAYER_A)).toMatch(/^Trashbag#\d{5}$/);
+  });
+
+  it('seeds a generated Trashbag name when playerName is absent', async () => {
+    const nameDb = new MockPlayerNameDB();
+    const db = new MockScoreDB();
+    await submitScore(makeApp(db, undefined, undefined, nameDb), { heapId: HEAP_ID, playerId: PLAYER_A, inputs: VALID_INPUTS });
+    expect(await nameDb.getName(PLAYER_A)).toMatch(/^Trashbag#\d{5}$/);
+  });
+
+  it('never overwrites an existing player_name row on submit', async () => {
+    const nameDb = new MockPlayerNameDB();
+    await nameDb.setName(PLAYER_A, 'Bob', '2026-01-01T00:00:00.000Z');
+    const db = new MockScoreDB();
+    await submitScore(makeApp(db, undefined, undefined, nameDb), validBody({ playerName: 'Mallory' }));
+    expect(await nameDb.getName(PLAYER_A)).toBe('Bob');
+  });
+
+  it('leaderboard context in the submit response reflects the seeded name', async () => {
+    const nameDb = new MockPlayerNameDB();
+    const db = new MockScoreDB();
+    const res  = await submitScore(makeApp(db, undefined, undefined, nameDb), validBody({ playerName: 'Alice' }));
+    const body = await res.json() as SubmitScoreResponse;
+    expect(body.context.player?.name).toBe('Alice');
   });
 });
 
@@ -433,7 +483,7 @@ describe('POST /scores — remote logging', () => {
     const heapDb = new MockHeapDB();
     heapDb.seedHeap(HEAP_ID, 1, []);
     const app = createApp(heapDb, new MockScoreDB(), { logSink: sink });
-    const res = await submitScore(app, validBody({ playerName: '   ' }));
+    const res = await submitScore(app, { heapId: HEAP_ID, playerId: PLAYER_A, playerName: 42, inputs: VALID_INPUTS });
     expect(res.status).toBe(400);
     expect(sink.written).toHaveLength(1);
     expect(sink.written[0].message).toBe('score:rejected');
@@ -472,7 +522,7 @@ describe('POST /scores — remote logging', () => {
     const heapDb = new MockHeapDB();
     heapDb.seedHeap(HEAP_ID, 1, []);
     const app = createApp(heapDb, new MockScoreDB(), {});
-    const res = await submitScore(app, validBody({ playerName: '   ' }));
+    const res = await submitScore(app, { heapId: HEAP_ID, playerId: PLAYER_A, playerName: 42, inputs: VALID_INPUTS });
     expect(res.status).toBe(400);
   });
 });

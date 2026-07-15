@@ -11,6 +11,8 @@ Call the Integrity API at important moments in your app to check that it's your 
 
 - Player auth on /place + placement attribution — deferred from the player write-auth spec (docs/superpowers/specs/2026-07-07-player-write-auth-design.md). Add optional `playerGuid` to PlaceRequest + `X-Player-Token` header, run the same verifyOrClaim matrix (requests without a playerGuid stay allowed for legacy clients). Pairs with a bigger idea: count how many placements each player has contributed and surface it as a leaderboard item.
 
+- Drop legacy `score.name` column (cleanup migration in heap_scores) once the player-name-table release is deployed and confirmed — reads already moved to `player_name`.
+
 
 Language detection?
 

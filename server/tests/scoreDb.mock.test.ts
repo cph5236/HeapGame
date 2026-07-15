@@ -1,5 +1,39 @@
 import { describe, it, expect } from 'vitest';
 import { MockScoreDB } from './helpers/mockScoreDb';
+import { MockPlayerNameDB } from './helpers/mockPlayerNameDb';
+
+describe('MockScoreDB name resolution', () => {
+  it('upsertScore takes no name argument', async () => {
+    const db = new MockScoreDB();
+    const submitted = await db.upsertScore('heap-a', 'p1', 1000, '2026-01-01T00:00:00.000Z');
+    expect(submitted).toBe(true);
+    expect(await db.countScores('heap-a')).toBe(1);
+  });
+
+  it('reads resolve names through an attached PlayerNameDB', async () => {
+    const db = new MockScoreDB();
+    const nameDb = new MockPlayerNameDB();
+    db.attachNameDb(nameDb);
+    await db.upsertScore('heap-a', 'p1', 1000, '2026-01-01T00:00:00.000Z');
+    await nameDb.setName('p1', 'Alice', '2026-01-01T00:00:00.000Z');
+
+    const row = await db.getScore('heap-a', 'p1');
+    expect(row?.name).toBe('Alice');
+
+    const top = await db.getTopScores('heap-a', 5);
+    expect(top[0].name).toBe('Alice');
+  });
+
+  it('falls back to Anonymous when no player_name row exists', async () => {
+    const db = new MockScoreDB();
+    const nameDb = new MockPlayerNameDB();
+    db.attachNameDb(nameDb);
+    await db.upsertScore('heap-a', 'p1', 1000, '2026-01-01T00:00:00.000Z');
+
+    const row = await db.getScore('heap-a', 'p1');
+    expect(row?.name).toBe('Anonymous');
+  });
+});
 
 describe('MockScoreDB.getPlayerScores', () => {
   it('returns empty array for unknown player', async () => {

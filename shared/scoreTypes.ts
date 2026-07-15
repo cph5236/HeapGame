@@ -27,10 +27,11 @@ export interface SubmitScoreInputs {
 }
 
 export interface SubmitScoreRequest {
-  heapId:     string;
-  playerId:   string;
-  playerName: string;
-  inputs:     SubmitScoreInputs;
+  heapId:      string;
+  playerId:    string;
+  /** Optional — only used to seed a first-seen player's name; never updates an existing one. */
+  playerName?: string;
+  inputs:      SubmitScoreInputs;
 }
 
 export interface SubmitScoreResponse {

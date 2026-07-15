@@ -12,6 +12,8 @@ import { TILT_WATCHDOG_MS } from '../constants';
 import { InputManager } from '../systems/InputManager';
 import { drawCloudShape } from '../systems/backgroundEntities';
 import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
+import { validatePlayerName, MAX_PLAYER_NAME_LEN } from '../../shared/playerName';
+import { PlayerNameClient } from '../systems/PlayerNameClient';
 import { formatDifficulty } from '../ui/DifficultyStars';
 import { createVolumeSlider } from '../ui/buildVolumePanel';
 import { controlHelpLines } from '../ui/controlHelp';
@@ -441,7 +443,7 @@ export class MenuScene extends Phaser.Scene {
     subtitle.textContent = 'What do they call you?';
 
     const input = document.createElement('input');
-    input.maxLength = 20;
+    input.maxLength = MAX_PLAYER_NAME_LEN;
     input.value = current;
     input.style.cssText = [
       'width:100%', 'box-sizing:border-box', 'background:transparent', 'border:none',
@@ -451,11 +453,14 @@ export class MenuScene extends Phaser.Scene {
     ].join(';');
 
     const counterRow = document.createElement('div');
-    counterRow.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:24px';
+    counterRow.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:6px';
     const counter = document.createElement('span');
     counter.style.cssText = 'color:#556677;font-size:10px';
-    counter.textContent = `${current.length} / 20`;
+    counter.textContent = `${current.length} / ${MAX_PLAYER_NAME_LEN}`;
     counterRow.appendChild(counter);
+
+    const errorMsg = document.createElement('div');
+    errorMsg.style.cssText = 'min-height:16px;font-size:12px;margin-bottom:14px;color:#ff9988;visibility:hidden';
 
     const confirmBtn = document.createElement('button');
     confirmBtn.textContent = 'CONFIRM';
@@ -469,7 +474,7 @@ export class MenuScene extends Phaser.Scene {
     cancelEl.textContent = 'cancel';
     cancelEl.style.cssText = 'color:#556677;font-size:12px;cursor:pointer;letter-spacing:1px';
 
-    panel.append(heap, subtitle, input, counterRow, confirmBtn, cancelEl);
+    panel.append(heap, subtitle, input, counterRow, errorMsg, confirmBtn, cancelEl);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
     this.setMenuInputEnabled(false);
@@ -479,16 +484,30 @@ export class MenuScene extends Phaser.Scene {
       document.body.removeChild(overlay);
     };
 
+    const NAME_ERROR_COPY: Record<'empty' | 'too-long' | 'profanity', string> = {
+      empty:     'Name cannot be empty',
+      'too-long': `Max ${MAX_PLAYER_NAME_LEN} characters`,
+      profanity: "That name isn't allowed",
+    };
+
     const confirm = (): void => {
-      setPlayerName(input.value);
+      const validated = validatePlayerName(input.value);
+      if (!validated.ok) {
+        errorMsg.textContent = NAME_ERROR_COPY[validated.reason];
+        errorMsg.style.visibility = 'visible';
+        return;
+      }
+      setPlayerName(validated.name);
       this.playerNameText.setText(`${getPlayerName()}  [edit]`);
+      void PlayerNameClient.updateName(getEffectivePlayerId(), validated.name);
       close();
     };
 
     input.addEventListener('input', () => {
       const len = input.value.length;
-      counter.textContent = `${len} / 20`;
+      counter.textContent = `${len} / ${MAX_PLAYER_NAME_LEN}`;
       counter.style.color = len >= 19 ? '#ff4444' : '#556677';
+      errorMsg.style.visibility = 'hidden';
     });
 
     input.addEventListener('keydown', (e: KeyboardEvent) => {
