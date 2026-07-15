@@ -5,7 +5,6 @@
 CREATE TABLE IF NOT EXISTS score (
   heap_id    TEXT    NOT NULL,
   player_id  TEXT    NOT NULL,
-  name       TEXT    NOT NULL, -- legacy/unread: names resolve via player_name join; '' on new inserts, dropped in a later cleanup migration
   score      INTEGER NOT NULL,
   created_at TEXT    NOT NULL,
   updated_at TEXT    NOT NULL,
