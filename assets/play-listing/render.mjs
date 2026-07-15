@@ -1,8 +1,8 @@
 // Play Store listing asset renderer.
-// Run from repo root:  node play-listing/render.mjs
-// Outputs 00-feature.png (1024x500) + 01..05 phone screenshots (1080x1920) into play-listing/.
+// Run from repo root:  node assets/play-listing/render.mjs
+// Outputs 00-feature.png (1024x500) + 01..07 phone screenshots (1080x1920) into assets/play-listing/.
 //
-// Raw game captures live in play-listing/raw/ (regenerate via `npm run scene-preview`).
+// Raw game captures live in assets/play-listing/raw/ (regenerate via `npm run scene-preview`).
 // To add a new screenshot: drop the capture in raw/, add an entry to the `jobs` array.
 import pw from 'playwright';
 import fs from 'node:fs';

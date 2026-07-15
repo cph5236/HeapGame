@@ -39,7 +39,7 @@ slots. (`raw/climb2` is kept as a spare open-sky hero alternative.)
 Raw game captures live in `raw/` (from `npm run scene-preview`). Fonts in `fonts/`.
 
 ```bash
-node play-listing/render.mjs   # re-renders all assets into this folder
+node assets/play-listing/render.mjs   # re-renders all assets into this folder
 ```
 
 Edit captions/headlines in the `jobs` array at the bottom of `render.mjs`.
