@@ -8,15 +8,22 @@ All images are rendered to Google's **exact** required pixel dimensions.
 | File | Size | Slot | Headline |
 |---|---|---|---|
 | `00-feature.png` | 1024×500 | Feature graphic | HEAP wordmark + tagline + junk-tower art |
-| `01-climb.png` | 1080×1920 | Phone screenshot 1 | CLIMB THE HEAP |
-| `02-leaderboard.png` | 1080×1920 | Phone screenshot 2 | TOP THE LEADERBOARD |
-| `03-custom.png` | 1080×1920 | Phone screenshot 3 | DRESS THE BAG |
-| `04-upgrades.png` | 1080×1920 | Phone screenshot 4 | UPGRADE & CLIMB |
-| `05-store.png` | 1080×1920 | Phone screenshot 5 | STOCK THE STASH |
+| `01-climb-A.png` | 1080×1920 | Hero option A (170ft, beside the heap) | CLIMB THE HEAP |
+| `01-climb-B.png` | 1080×1920 | Hero option B (437ft, open sky) | CLIMB THE HEAP |
+| `02-place.png` | 1080×1920 | Screenshot | BUILD THE HEAP |
+| `03-salvage.png` | 1080×1920 | Screenshot | GRAB SALVAGE |
+| `04-leaderboard.png` | 1080×1920 | Screenshot | TOP THE LEADERBOARD |
+| `05-custom.png` | 1080×1920 | Screenshot | DRESS THE BAG |
+| `06-enemy.png` | 1080×1920 | Screenshot | DODGE THE PESTS |
+| `07-upgrades.png` | 1080×1920 | Screenshot | UPGRADE & CLIMB |
 
-Phone screenshots are 9:16 and ≥1080px, so they satisfy Play's promo-eligibility
-rule (≥4 screenshots, ≥3 at 1080px+). The same files can be reused for the 7"/10"
-tablet slots.
+**Pick ONE of the two `01-climb-*` heroes** for slot 1; the final phone set is 7
+screenshots. They're 9:16 and ≥1080px, satisfying Play's promo-eligibility rule
+(≥4 screenshots, ≥3 at 1080px+). Same files reusable for the 7"/10" tablet slots.
+
+> Note: the live-play captures (`raw/*.webp`) are 400px-wide downscaled copies, so
+> they're slightly soft when scaled into the frame. Replace with full-resolution
+> device screenshots (~1080px+) and re-render for crisp final art.
 
 ## Design system
 

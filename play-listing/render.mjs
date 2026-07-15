@@ -25,6 +25,12 @@ const SHOTS = {
   store:   img(`${DIR}/raw/store.png`),
   custom:  img(`${DIR}/raw/custom.png`),
   upgrade: img(`${DIR}/raw/upgrade.png`),
+  // live-play action captures (from device)
+  climb1:  img(`${DIR}/raw/climb1.png`),   // 170 ft — beside the heap wall
+  climb2:  img(`${DIR}/raw/climb2.png`),   // 437 ft — high in open sky
+  place:   img(`${DIR}/raw/place.png`),    // 538 ft — PLACE moment
+  salvage: img(`${DIR}/raw/salvage.png`),  // 175 ft — Box Spring GRAB
+  enemy:   img(`${DIR}/raw/enemy.png`),    // 445 ft — rat + heap on left
 };
 
 const FONTCSS = `
@@ -157,21 +163,31 @@ function feature() {
 // ---- render jobs ----
 const jobs = [
   { name: '00-feature', w: 1024, h: 500, html: feature() },
-  { name: '01-climb', w: 1080, h: 1920, html: phone({
-      shot: SHOTS.game, ft: '0', kicker: 'A community-built world',
-      headline: 'CLIMB<br>THE HEAP', sub: 'Scale a giant tower of trash built by <b>every player</b> — dodge enemies and race to the top.' }) },
-  { name: '02-leaderboard', w: 1080, h: 1920, html: phone({
+  // two hero options — pick one later
+  { name: '01-climb-A', w: 1080, h: 1920, html: phone({
+      shot: SHOTS.climb1, ft: '170', kicker: 'A community-built world',
+      headline: 'CLIMB<br>THE HEAP', sub: 'Scale a giant tower of trash built by <b>every player</b> — race to the top.' }) },
+  { name: '01-climb-B', w: 1080, h: 1920, html: phone({
+      shot: SHOTS.climb2, ft: '437', kicker: 'A community-built world',
+      headline: 'CLIMB<br>THE HEAP', sub: 'Scale a giant tower of trash built by <b>every player</b> — race to the top.' }) },
+  { name: '02-place', w: 1080, h: 1920, html: phone({
+      shot: SHOTS.place, ft: '538', kicker: 'Every piece stays',
+      headline: 'BUILD<br>THE HEAP', sub: 'Drop items onto the heap — <b>every piece you place stays</b> for the next player.' }) },
+  { name: '03-salvage', w: 1080, h: 1920, html: phone({
+      shot: SHOTS.salvage, ft: '175', kicker: 'Loot the climb',
+      headline: 'GRAB<br>SALVAGE', sub: 'Snatch <b>rare salvage</b> for big points and buffs — think +90 jump.' }) },
+  { name: '04-leaderboard', w: 1080, h: 1920, html: phone({
       shot: SHOTS.score, ft: '9,819', kicker: 'Compete worldwide',
       headline: 'TOP THE<br>LEADERBOARD', sub: 'Chain kills, keep your pace, climb higher — then <b>rule the global high scores</b>.' }) },
-  { name: '03-custom', w: 1080, h: 1920, html: phone({
+  { name: '05-custom', w: 1080, h: 1920, html: phone({
       shot: SHOTS.custom, ft: '3,120', kicker: 'Make it yours',
       headline: 'DRESS<br>THE BAG', sub: 'Unlock <b>50+ cosmetics</b> — hats, faces, trails — and climb in style.' }) },
-  { name: '04-upgrades', w: 1080, h: 1920, html: phone({
+  { name: '06-enemy', w: 1080, h: 1920, html: phone({
+      shot: SHOTS.enemy, ft: '445', kicker: 'Mind the vermin',
+      headline: 'DODGE<br>THE PESTS', sub: 'Rats and critters roam the heap. <b>Stomp them</b> or leap clear.' }) },
+  { name: '07-upgrades', w: 1080, h: 1920, html: phone({
       shot: SHOTS.upgrade, ft: '5,400', kicker: 'Progress every run',
       headline: 'UPGRADE<br>&amp; CLIMB', sub: 'Spend coins on <b>jumps, dashes and boosts</b> — every run makes you stronger.' }) },
-  { name: '05-store', w: 1080, h: 1920, html: phone({
-      shot: SHOTS.store, ft: '1,850', kicker: 'Gear up',
-      headline: 'STOCK<br>THE STASH', sub: 'Grab <b>placeables &amp; power-ups</b> — ladders, shields, revives — before you climb.' }) },
 ];
 
 const browser = await chromium.launch();
