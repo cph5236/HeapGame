@@ -97,6 +97,15 @@ describe('PUT /players/:playerId/name', () => {
     expect(await nameDb.getName(PLAYER)).toBe('Padded');
   });
 
+  it('playerId over MAX_ID_LEN (65 chars): 400, nothing written', async () => {
+    const { app, nameDb, authDb } = makeApp();
+    const res = await rename(app, 'FineName', SECRET, 'x'.repeat(65));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'invalid player id' });
+    expect(await nameDb.getName('x'.repeat(65))).toBeNull();
+    expect(authDb.rows.size).toBe(0);
+  });
+
   it('invalid JSON body: 400', async () => {
     const { app } = makeApp();
     const res = await app.request(`/players/${PLAYER}/name`, {

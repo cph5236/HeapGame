@@ -285,6 +285,9 @@ export function scoreRoutes(
     const now = new Date().toISOString();
 
     // First-seen name seeding: score submit never updates an existing name.
+    // The getName→setName check-then-act is intentionally unguarded: two
+    // concurrent first submits can each seed a default, but setName is an
+    // idempotent upsert so last-write-wins and nothing corrupts.
     if (playerNameDb) {
       const existingName = await playerNameDb.getName(playerId);
       if (existingName === null) {
