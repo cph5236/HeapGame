@@ -32,7 +32,7 @@ slots. (`raw/climb2` is kept as a spare open-sky hero alternative.)
 - **Monospace kickers** echo the in-game HUD (`ft`, `coins`).
 - **Signature:** an **altitude rail** down the left edge with a "you are here" `ft`
   marker, derived from the height mechanic. It unifies the set as one climb; on
-  `02-leaderboard` the marker is tied to the on-screen `9,819` score.
+  `04-leaderboard` the marker is tied to the on-screen `9,819` score.
 
 ## Regenerating / editing
 
@@ -67,7 +67,7 @@ still only ships the AAB; it does not touch the listing.
 > `Heap: Climbing Platformer`
 
 **Short description** (80 max):
-> Climb a community-built trash heap in this arcade platformer. Race for high scores!
+> Climb a community trash heap in this arcade platformer. Race for high scores!
 
 **Full description** — see the game's store listing; keyword targets woven in
 naturally: *climbing game, platformer, arcade, leaderboard, community-built*.
