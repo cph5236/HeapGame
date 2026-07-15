@@ -163,12 +163,9 @@ function feature() {
 // ---- render jobs ----
 const jobs = [
   { name: '00-feature', w: 1024, h: 500, html: feature() },
-  // two hero options — pick one later
-  { name: '01-climb-A', w: 1080, h: 1920, html: phone({
+  // hero (chosen: climb1 / 170ft, beside the heap wall). climb2 kept in SHOTS as a spare.
+  { name: '01-climb', w: 1080, h: 1920, html: phone({
       shot: SHOTS.climb1, ft: '170', kicker: 'A community-built world',
-      headline: 'CLIMB<br>THE HEAP', sub: 'Scale a giant tower of trash built by <b>every player</b> — race to the top.' }) },
-  { name: '01-climb-B', w: 1080, h: 1920, html: phone({
-      shot: SHOTS.climb2, ft: '437', kicker: 'A community-built world',
       headline: 'CLIMB<br>THE HEAP', sub: 'Scale a giant tower of trash built by <b>every player</b> — race to the top.' }) },
   { name: '02-place', w: 1080, h: 1920, html: phone({
       shot: SHOTS.place, ft: '538', kicker: 'Every piece stays',

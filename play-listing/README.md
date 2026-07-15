@@ -8,18 +8,17 @@ All images are rendered to Google's **exact** required pixel dimensions.
 | File | Size | Slot | Headline |
 |---|---|---|---|
 | `00-feature.png` | 1024×500 | Feature graphic | HEAP wordmark + tagline + junk-tower art |
-| `01-climb-A.png` | 1080×1920 | Hero option A (170ft, beside the heap) | CLIMB THE HEAP |
-| `01-climb-B.png` | 1080×1920 | Hero option B (437ft, open sky) | CLIMB THE HEAP |
-| `02-place.png` | 1080×1920 | Screenshot | BUILD THE HEAP |
-| `03-salvage.png` | 1080×1920 | Screenshot | GRAB SALVAGE |
-| `04-leaderboard.png` | 1080×1920 | Screenshot | TOP THE LEADERBOARD |
-| `05-custom.png` | 1080×1920 | Screenshot | DRESS THE BAG |
-| `06-enemy.png` | 1080×1920 | Screenshot | DODGE THE PESTS |
-| `07-upgrades.png` | 1080×1920 | Screenshot | UPGRADE & CLIMB |
+| `01-climb.png` | 1080×1920 | Screenshot 1 (hero) | CLIMB THE HEAP |
+| `02-place.png` | 1080×1920 | Screenshot 2 | BUILD THE HEAP |
+| `03-salvage.png` | 1080×1920 | Screenshot 3 | GRAB SALVAGE |
+| `04-leaderboard.png` | 1080×1920 | Screenshot 4 | TOP THE LEADERBOARD |
+| `05-custom.png` | 1080×1920 | Screenshot 5 | DRESS THE BAG |
+| `06-enemy.png` | 1080×1920 | Screenshot 6 | DODGE THE PESTS |
+| `07-upgrades.png` | 1080×1920 | Screenshot 7 | UPGRADE & CLIMB |
 
-**Pick ONE of the two `01-climb-*` heroes** for slot 1; the final phone set is 7
-screenshots. They're 9:16 and ≥1080px, satisfying Play's promo-eligibility rule
-(≥4 screenshots, ≥3 at 1080px+). Same files reusable for the 7"/10" tablet slots.
+The 7 phone screenshots are 9:16 and ≥1080px, satisfying Play's promo-eligibility
+rule (≥4 screenshots, ≥3 at 1080px+). Same files reusable for the 7"/10" tablet
+slots. (`raw/climb2` is kept as a spare open-sky hero alternative.)
 
 > Note: the live-play captures (`raw/*.webp`) are 400px-wide downscaled copies, so
 > they're slightly soft when scaled into the frame. Replace with full-resolution
