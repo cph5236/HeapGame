@@ -486,7 +486,7 @@ export class MenuScene extends Phaser.Scene {
 
     const NAME_ERROR_COPY: Record<'empty' | 'too-long' | 'profanity', string> = {
       empty:     'Name cannot be empty',
-      'too-long': 'Max 20 characters',
+      'too-long': `Max ${MAX_PLAYER_NAME_LEN} characters`,
       profanity: "That name isn't allowed",
     };
 

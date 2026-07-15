@@ -5,8 +5,9 @@ import type { Vertex } from '../systems/HeapPolygon';
 import { generateAllTextures } from '../entities/TextureGenerators';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
-import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, setGpgsPlayerId, setPlayerName, getEffectivePlayerId, getRawSaveForCloudSync, applyMergedSave, mergeCloudSave, getTutorialDone } from '../systems/SaveData';
+import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, setGpgsPlayerId, setPlayerName, getPlayerName, getEffectivePlayerId, getRawSaveForCloudSync, applyMergedSave, mergeCloudSave, getTutorialDone } from '../systems/SaveData';
 import { PlayerNameClient } from '../systems/PlayerNameClient';
+import { validatePlayerName } from '../../shared/playerName';
 import type { RawSave } from '../systems/SaveData';
 import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
 import { buildInfiniteEntry } from '../data/infiniteCatalog';
@@ -53,7 +54,13 @@ export class BootScene extends Phaser.Scene {
       // Sync the GPGS display name to the server's player_name table — score
       // submit no longer updates names, and GPGS players can't reach the
       // rename modal, so this is their only refresh path after first seed.
-      void PlayerNameClient.updateName(getEffectivePlayerId(), player.displayName);
+      // Uses the locally-stored form (setPlayerName truncates to the shared
+      // max) and only when it passes the shared validator — raw GPGS names
+      // can be up to 100 chars and the server would 400 silently.
+      const validated = validatePlayerName(getPlayerName());
+      if (validated.ok) {
+        void PlayerNameClient.updateName(getEffectivePlayerId(), validated.name);
+      }
       this.game.events.emit('gpgs:signed-in', player.displayName);
 
       // Load cloud snapshot and merge with local SaveData.
