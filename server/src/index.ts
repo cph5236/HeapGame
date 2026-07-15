@@ -6,6 +6,7 @@ import { D1FeedbackDB } from './feedbackDb';
 import { D1ConfigDB } from './configDb';
 import { D1CustomizationDB } from './customizationDb';
 import { D1PlayerAuthDB } from './playerAuthDb';
+import { D1ContributionDB } from './contributionDb';
 import { CachedHeapDB } from './cache/CachedHeapDB';
 import { CachedScoreDB } from './cache/CachedScoreDB';
 import { CachedConfigDB } from './cache/CachedConfigDB';
@@ -54,6 +55,7 @@ export default {
       configDb,
       customizationDb: new D1CustomizationDB(env.DB_SCORES),
       playerAuthDb:    new D1PlayerAuthDB(env.DB_SCORES),
+      contributionDb:  new D1ContributionDB(env.DB_SCORES),
       limiters: {
         scores: env.RL_SCORES,
         place:  env.RL_PLACE,

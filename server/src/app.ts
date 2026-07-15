@@ -18,6 +18,7 @@ import type { FeedbackDB } from './feedbackDb';
 import type { ConfigDB } from './configDb';
 import type { CustomizationDB } from './customizationDb';
 import type { PlayerAuthDB } from './playerAuthDb';
+import type { ContributionDB } from './contributionDb';
 
 export interface AppOptions {
   /** Comma-separated origin list, or '*' to allow all (dev only). */
@@ -43,6 +44,8 @@ export interface AppOptions {
   customizationDb?: CustomizationDB;
   /** Player write-auth (player_auth table in heap_scores). If unset, writes are not enforced. */
   playerAuthDb?: PlayerAuthDB;
+  /** Placement contribution counters (player_contribution in heap_scores). If unset, placements don't tick. */
+  contributionDb?: ContributionDB;
   /** Sink for incoming /log entries. If unset, /log is not mounted. */
   logSink?: Sink;
 }
@@ -94,7 +97,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   app.put   ('/heaps/:id/enemy-params', adminGate);
   app.delete('/heaps/:id',              adminGate);
 
-  app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink, opts.playerAuthDb));
+  app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink, opts.playerAuthDb, opts.contributionDb));
   app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink, opts.playerAuthDb));
 
   if (opts.codeDb) {

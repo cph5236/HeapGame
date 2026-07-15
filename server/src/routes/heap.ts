@@ -7,7 +7,8 @@ import { captureServer } from '../logging/captureServerEvent';
 import { isPointInside, checkFreeze, hashVertices } from '../polygon';
 import { MAX_ID_LEN } from '../constants';
 import type { PlayerAuthDB } from '../playerAuthDb';
-import { enforcePlayerAuth } from '../playerAuth';
+import { enforcePlayerAuth, PLAYER_TOKEN_HEADER } from '../playerAuth';
+import type { ContributionDB } from '../contributionDb';
 import type {
   CreateHeapRequest,
   CreateHeapResponse,
@@ -99,6 +100,7 @@ export function heapRoutes(
   db: HeapDB,
   getSink: () => Sink | undefined,
   authDb?: PlayerAuthDB,
+  contributionDb?: ContributionDB,
 ): Hono {
   const app = new Hono();
 
@@ -490,6 +492,24 @@ export function heapRoutes(
       if (!applied) continue; // lost-update conflict — re-read and retry
 
       await db.updateTopY(id, y);
+
+      // Contribution tick: only for authenticated placements — guid + token
+      // both present AND the auth gate actually ran (authDb wired) so the
+      // token is proven verified/claimed, not merely present. Never fails
+      // the placement.
+      if (contributionDb && authDb && playerGuid && c.req.header(PLAYER_TOKEN_HEADER)) {
+        try {
+          await contributionDb.increment(id, playerGuid, new Date().toISOString());
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : String(err);
+          console.warn(`[place] contribution increment failed heapId=${id}: ${detail}`);
+          const sink = getSink();
+          if (sink) {
+            await captureServer(sink, 'warn', 'place:contribution-failed', { heapId: id, playerId: playerGuid, error: detail });
+          }
+        }
+      }
+
       return c.json({ accepted: true, version: newVersion, bonusCoins } satisfies PlaceResponse);
     }
 

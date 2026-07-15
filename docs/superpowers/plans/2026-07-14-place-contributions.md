@@ -1,0 +1,238 @@
+# Placement Contribution Tracking Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Server-side per-(heap, player) contribution counter that ticks when an authenticated /place is accepted. DB-only — no UI, no GPGS, no client change.
+
+**Architecture:** New `player_contribution` table in `heap_scores` (migration 0004), a `ContributionDB` interface + D1 impl following the `playerAuthDb.ts` pattern (no KV cache), and a guarded increment on the `accepted: true` path of the /place handler.
+
+**Tech Stack:** Cloudflare D1 (SQLite), Hono, Vitest.
+
+## Global Constraints
+
+- Branch `feature/place-contributions` off `feature/place-auth` (NOT main). PR targets `feature/place-auth`.
+- Migration follows the repo's **two-file rule**: numbered migration in `server/migrations/heap_scores/` AND the same DDL mirrored into `server/schema/heap_scores.sql`. Invoke the `adding-d1-migrations` project skill (Skill tool) before writing the migration and follow it.
+- Tick only when playerGuid AND X-Player-Token were both present (see spec) and the placement returned `accepted: true`.
+- A contribution-write failure must never fail the placement (try/catch + warn capture).
+- Run `npm test` (root), `cd server && npx vitest run`, and `npm run build` (root) before declaring done.
+- Commit per task; message style `feat(contributions): …`.
+
+---
+
+### Task 1: Migration + schema (two-file rule)
+
+**Files:**
+- Create: `server/migrations/heap_scores/0004_player_contribution.sql`
+- Modify: `server/schema/heap_scores.sql` (append table)
+
+**Interfaces:**
+- Produces: `player_contribution` table — columns `heap_id TEXT`, `player_id TEXT`, `count INTEGER DEFAULT 0`, `updated_at TEXT`, PK `(heap_id, player_id)`.
+
+- [ ] **Step 1: Invoke the `adding-d1-migrations` skill and follow its checklist for the heap_scores DB.**
+
+- [ ] **Step 2: Write the migration** — `server/migrations/heap_scores/0004_player_contribution.sql`:
+
+```sql
+-- Per-(heap, player) placement contribution counter. Ticks server-side when an
+-- authenticated /heaps/:id/place is accepted.
+CREATE TABLE IF NOT EXISTS player_contribution (
+  heap_id    TEXT    NOT NULL,
+  player_id  TEXT    NOT NULL,
+  count      INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT    NOT NULL,
+  PRIMARY KEY (heap_id, player_id)
+);
+```
+
+- [ ] **Step 3: Mirror the identical CREATE TABLE into `server/schema/heap_scores.sql`** (append after player_auth, keeping the file's comment style).
+
+- [ ] **Step 4: Apply locally** per the skill (local D1 only — NEVER --remote):
+Run: `cd server && npx wrangler d1 migrations apply heap_scores --local`
+Expected: 0004 applied.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add server/migrations/heap_scores/0004_player_contribution.sql server/schema/heap_scores.sql
+git commit -m "feat(contributions): player_contribution table (heap_scores 0004)"
+```
+
+---
+
+### Task 2: ContributionDB interface + D1 impl + mock (TDD)
+
+**Files:**
+- Create: `server/src/contributionDb.ts`
+- Create: `server/tests/contributionDb.test.ts`
+- Mock: put `MockContributionDB` wherever the existing mocks live (check `server/tests/helpers/` — follow how MockScoreDB / the playerAuth mock are organized and colocate consistently).
+
+**Interfaces:**
+- Produces:
+
+```ts
+export interface ContributionDB {
+  /** Atomic +1 (insert-at-1 on first placement). */
+  increment(heapId: string, playerId: string, now: string): Promise<void>;
+  /** Current count, 0 when no row. */
+  getCount(heapId: string, playerId: string): Promise<number>;
+}
+export class D1ContributionDB implements ContributionDB { constructor(d1: D1Database) }
+```
+
+- [ ] **Step 1: Write failing tests** for the mock (and, if the repo has a pattern for testing D1 impls against a local miniflare/d1 shim — check `scoreDb.mock.test.ts` — follow that pattern; otherwise test mock semantics only):
+
+```ts
+// getCount on empty → 0
+// increment once → getCount 1, twice → 2
+// counts are isolated per (heapId, playerId) pair
+```
+
+- [ ] **Step 2: Run, verify fail.** `cd server && npx vitest run tests/contributionDb.test.ts`
+
+- [ ] **Step 3: Implement** `server/src/contributionDb.ts`:
+
+```ts
+/** Abstraction over D1 for the player_contribution table (placement counters). */
+export interface ContributionDB {
+  /** Atomic +1 (insert-at-1 on first placement). */
+  increment(heapId: string, playerId: string, now: string): Promise<void>;
+  /** Current count, 0 when no row. */
+  getCount(heapId: string, playerId: string): Promise<number>;
+}
+
+export class D1ContributionDB implements ContributionDB {
+  constructor(private d1: D1Database) {}
+
+  async increment(heapId: string, playerId: string, now: string): Promise<void> {
+    await this.d1
+      .prepare(`
+        INSERT INTO player_contribution (heap_id, player_id, count, updated_at)
+        VALUES (?1, ?2, 1, ?3)
+        ON CONFLICT (heap_id, player_id) DO UPDATE SET count = count + 1, updated_at = ?3
+      `)
+      .bind(heapId, playerId, now)
+      .run();
+  }
+
+  async getCount(heapId: string, playerId: string): Promise<number> {
+    const row = await this.d1
+      .prepare('SELECT count FROM player_contribution WHERE heap_id=?1 AND player_id=?2')
+      .bind(heapId, playerId)
+      .first<{ count: number }>();
+    return row?.count ?? 0;
+  }
+}
+```
+
+And the mock (in-memory Map keyed `${heapId} ${playerId}`), mirroring these semantics exactly.
+
+- [ ] **Step 4: Run, verify pass.**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add server/src/contributionDb.ts server/tests/contributionDb.test.ts <mock file path>
+git commit -m "feat(contributions): ContributionDB interface, D1 impl, mock"
+```
+
+---
+
+### Task 3: Tick on accepted authenticated placement (TDD)
+
+**Files:**
+- Modify: `server/src/routes/heap.ts` (heapRoutes signature + /place accept path)
+- Modify: `server/src/app.ts` (AppOptions + passthrough)
+- Modify: `server/src/index.ts` (wire `new D1ContributionDB(env.DB_SCORES)`)
+- Test: `server/tests/placeContribution.test.ts` (new)
+
+**Interfaces:**
+- Consumes: Task 2's `ContributionDB`; the place-auth branch's `heapRoutes(db, getSink, authDb?)` and `PLAYER_TOKEN_HEADER` from `server/src/playerAuth.ts`.
+- Produces: `heapRoutes(db, getSink, authDb?, contributionDb?)`; `AppOptions.contributionDb?: ContributionDB`.
+
+- [ ] **Step 1: Write failing route tests** in `server/tests/placeContribution.test.ts`, reusing the app/heap seeding helpers used by `placeAuth.test.ts` (from the parent branch) plus `MockContributionDB`:
+
+```ts
+// 1. guid+token place accepted → getCount === 1; place again (new valid coord) → 2
+// 2. guid, NO token, unclaimed → 200 accepted, count stays 0
+// 3. no guid → accepted, count 0
+// 4. placement rejected 400 (x out of zone) with guid+token → count 0
+// 5. accepted:false (place same point twice so second is inside polygon) → count stays 1
+// 6. app built WITHOUT contributionDb → guid+token place still 200 accepted
+// 7. increment that throws (mock throwing impl) → place still returns 200 accepted:true
+```
+
+- [ ] **Step 2: Run, verify fail.**
+
+- [ ] **Step 3: Implement.** In `server/src/routes/heap.ts`:
+
+```ts
+import type { ContributionDB } from '../contributionDb';
+import { enforcePlayerAuth, PLAYER_TOKEN_HEADER } from '../playerAuth';
+
+export function heapRoutes(
+  db: HeapDB,
+  getSink: () => Sink | undefined,
+  authDb?: PlayerAuthDB,
+  contributionDb?: ContributionDB,
+): Hono {
+```
+
+On the accept path (currently `await db.updateTopY(id, y); return c.json({ accepted: true, ... })`), before the return:
+
+```ts
+      await db.updateTopY(id, y);
+
+      // Contribution tick: only for authenticated placements (guid + token both
+      // present — the auth gate above already rejected mismatches). Never fails
+      // the placement.
+      if (contributionDb && playerGuid && c.req.header(PLAYER_TOKEN_HEADER)) {
+        try {
+          await contributionDb.increment(id, playerGuid, new Date().toISOString());
+        } catch (err) {
+          console.warn(`[place] contribution increment failed heapId=${id}`);
+          const sink = getSink();
+          if (sink) {
+            await captureServer(sink, 'warn', 'place:contribution-failed', { heapId: id, playerId: playerGuid });
+          }
+        }
+      }
+
+      return c.json({ accepted: true, version: newVersion, bonusCoins } satisfies PlaceResponse);
+```
+
+(`playerGuid` is already destructured by the place-auth code earlier in the handler; reuse that binding — do not re-parse the body.)
+
+`server/src/app.ts`: add to AppOptions:
+
+```ts
+  /** Placement contribution counters (player_contribution in heap_scores). If unset, placements don't tick. */
+  contributionDb?: ContributionDB;
+```
+
+and pass through: `heapRoutes(heapDb, () => opts.logSink, opts.playerAuthDb, opts.contributionDb)`.
+
+`server/src/index.ts`: alongside the existing `playerAuthDb` line:
+
+```ts
+      contributionDb:  new D1ContributionDB(env.DB_SCORES),
+```
+
+(with the matching import).
+
+- [ ] **Step 4: Full verification.** `cd server && npx vitest run` all green; `npm test` (root) green; `npm run build` green.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add server/src/routes/heap.ts server/src/app.ts server/src/index.ts server/tests/placeContribution.test.ts
+git commit -m "feat(contributions): tick player_contribution on accepted authenticated placement"
+```
+
+---
+
+## Self-review checklist (before PR)
+
+- [ ] No client files changed at all in this PR.
+- [ ] 409/400/403/`accepted:false` paths verifiably don't tick (tests prove it).
+- [ ] Migration + schema mirror each other exactly.
+- [ ] Test/build outputs pasted into PR body.
