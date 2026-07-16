@@ -1,7 +1,7 @@
 # Daily Drop — daily reward system
 
 **Date:** 2026-07-16
-**Status:** Approved design, pre-implementation
+**Status:** Implemented (see docs/superpowers/plans/2026-07-16-daily-drop.md)
 **Brainstorm artifact:** https://claude.ai/code/artifact/6ea8b8cd-66bd-4e2d-a6b4-ed9babe7441a
 
 ## Purpose
