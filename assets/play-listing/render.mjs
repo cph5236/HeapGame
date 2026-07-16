@@ -20,9 +20,7 @@ const ARCHIVO = font(`${DIR}/fonts/ArchivoBlack.ttf`);
 
 const SHOTS = {
   game:    img(`${DIR}/raw/game.png`),
-  menu:    img(`${DIR}/raw/menu.png`),
   score:   img(`${DIR}/raw/score.png`),
-  store:   img(`${DIR}/raw/store.png`),
   custom:  img(`${DIR}/raw/custom.png`),
   upgrade: img(`${DIR}/raw/upgrade.png`),
   // live-play action captures (from device)

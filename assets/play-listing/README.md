@@ -20,9 +20,10 @@ The 7 phone screenshots are 9:16 and ≥1080px, satisfying Play's promo-eligibil
 rule (≥4 screenshots, ≥3 at 1080px+). Same files reusable for the 7"/10" tablet
 slots. (`raw/climb2` is kept as a spare open-sky hero alternative.)
 
-> Note: the live-play captures (`raw/*.webp`) are 400px-wide downscaled copies, so
-> they're slightly soft when scaled into the frame. Replace with full-resolution
-> device screenshots (~1080px+) and re-render for crisp final art.
+> Note: the live-play captures are 400px-wide downscaled copies (`raw/*.webp`
+> originals, converted to the `raw/*.png` the renderer actually reads), so they're
+> slightly soft when scaled into the frame. Replace with full-resolution device
+> screenshots (~1080px+) and re-render for crisp final art.
 
 ## Design system
 
