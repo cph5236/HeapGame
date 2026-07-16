@@ -2,6 +2,7 @@
 
 import { Hono } from 'hono';
 import type { ConfigDB } from '../configDb';
+import { sanitizeRewardTable } from '../../../shared/dailyDrop';
 
 const KEY_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
 const MAX_VALUE_LENGTH = 8192;
@@ -43,6 +44,17 @@ function validateKnownKeyShape(key: string, value: unknown): string | null {
     }
     if (v.min > v.max) {
       return 'min must be <= max';
+    }
+  }
+  if (key === 'daily_streak_grace_hours' || key === 'daily_min_gap_hours') {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      return 'value must be a positive number of hours';
+    }
+  }
+  if (key === 'daily_rewards') {
+    // sanitizeRewardTable returns its input by identity iff well-formed.
+    if (sanitizeRewardTable(value) !== value) {
+      return 'value must be a 7-entry array of non-empty grant arrays';
     }
   }
   return null;

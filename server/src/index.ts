@@ -2,6 +2,7 @@ import { createApp } from './app';
 import { D1HeapDB } from './db';
 import { D1ScoreDB } from './scoreDb';
 import { D1RewardCodeDB } from './codeDb';
+import { D1DailyClaimDB } from './dailyDb';
 import { D1FeedbackDB } from './feedbackDb';
 import { D1ConfigDB } from './configDb';
 import { D1CustomizationDB } from './customizationDb';
@@ -52,6 +53,7 @@ export default {
       allowedOrigins: env.ALLOWED_ORIGINS,
       adminSecret:    env.ADMIN_SECRET,
       codeDb:         new D1RewardCodeDB(env.DB_REWARDS),
+      dailyDb:        new D1DailyClaimDB(env.DB_REWARDS),
       feedbackDb:     new D1FeedbackDB(env.DB_TELEMETRY),
       configDb,
       customizationDb: new D1CustomizationDB(env.DB_SCORES),

@@ -6,6 +6,7 @@ import { heapRoutes } from './routes/heap';
 import { scoreRoutes } from './routes/scores';
 import { logRoutes } from './routes/log';
 import { codeRoutes } from './routes/codes';
+import { dailyRoutes } from './routes/daily';
 import { feedbackRoutes } from './routes/feedback';
 import { configRoutes } from './routes/config';
 import { customizationRoutes } from './routes/customization';
@@ -15,6 +16,7 @@ import { requireAdminSecret } from './middleware/adminAuth';
 import { rateLimit, type RateLimiter, setRateLimitSink } from './middleware/rateLimit';
 import type { Sink } from './logging/Sink';
 import type { RewardCodeDB } from './codeDb';
+import type { DailyClaimDB } from './dailyDb';
 import type { FeedbackDB } from './feedbackDb';
 import type { ConfigDB } from './configDb';
 import type { CustomizationDB } from './customizationDb';
@@ -38,6 +40,8 @@ export interface AppOptions {
   };
   /** Reward-code D1 access. If unset, /codes is not mounted. */
   codeDb?: RewardCodeDB;
+  /** Daily Drop claims (daily_claims in heap_rewards). If unset, /daily is not mounted. */
+  dailyDb?: DailyClaimDB;
   /** Feedback D1 access. If unset, /feedback is not mounted. */
   feedbackDb?: FeedbackDB;
   /** Config D1 access. If unset, /config is not mounted. */
@@ -111,6 +115,12 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
     app.post('/codes', adminGate);
     app.get ('/codes', adminGate);
     app.route('/codes', codeRoutes(opts.codeDb, () => opts.logSink, opts.playerAuthDb));
+  }
+
+  if (opts.dailyDb) {
+    // Player claim endpoint — rate-limited, no admin gate.
+    app.post('/daily/claim', rateLimit(lim.codes, 'daily-claim'));
+    app.route('/daily', dailyRoutes(opts.dailyDb, opts.configDb, () => opts.logSink, opts.playerAuthDb));
   }
 
   if (opts.feedbackDb) {

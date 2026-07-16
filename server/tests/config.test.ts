@@ -139,6 +139,26 @@ describe('PUT /config/:key', () => {
     expect(res.status).toBe(200);
   });
 
+  it('rejects a negative daily_min_gap_hours value (400)', async () => {
+    const app = makeApp();
+    const res = await app.request('/config/daily_min_gap_hours', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: -5 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts a valid daily_min_gap_hours value (200)', async () => {
+    const app = makeApp();
+    const res = await app.request('/config/daily_min_gap_hours', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: 10 }),
+    });
+    expect(res.status).toBe(200);
+  });
+
   it('rejects a malformed JSON body (400)', async () => {
     const app = makeApp();
     const res = await app.request('/config/some_key', {
