@@ -31,6 +31,7 @@ import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { bottomButtonLayout, bottomButtonRowY, podiumSlots, PODIUM_CENTER_AVATAR_SCALE, PODIUM_SIDE_AVATAR_SCALE } from './scoreLayout';
 import { composeAvatar } from '../ui/avatar';
 import { getPlayConsoleId, LEADERBOARD_HIGH_SCORE_ID } from '../data/achievementDefs';
+import { markRunEnded } from '../systems/dailyRunGate';
 
 
 /** Top-N entries shown as podium boxes (the avatar-showcase spots). */
@@ -169,6 +170,7 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   create(): void {
+    markRunEnded();
     setupUiCamera(this);
     AudioManager.play('music-score');
     const isPreview = this._mockLeaderboard !== null || this._forceBreakdownOpen
