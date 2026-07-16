@@ -195,4 +195,19 @@ for (const j of jobs) {
   await page.close();
   console.log('rendered', j.name, `${j.w}x${j.h}`);
 }
+
+// Tablet variants — the same 7 phone screenshots re-rendered at 1.5x DPR
+// (1620x2880) so the shorter side clears Google's 10-inch minimum (1080px)
+// comfortably. Reused for both GPP tablet folders: `tablet-screenshots`
+// (7-inch) and `large-tablet-screenshots` (10-inch).
+fs.mkdirSync(`${DIR}/tablet`, { recursive: true });
+for (const j of jobs.filter((j) => /^0[1-7]-/.test(j.name))) {
+  const page = await browser.newPage({ viewport: { width: 1080, height: 1920 }, deviceScaleFactor: 1.5 });
+  await page.setContent(j.html, { waitUntil: 'load' });
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForTimeout(120);
+  await page.screenshot({ path: `${DIR}/tablet/${j.name}.png` });
+  await page.close();
+  console.log('rendered tablet', j.name, '1620x2880');
+}
 await browser.close();

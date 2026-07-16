@@ -17,8 +17,10 @@ All images are rendered to Google's **exact** required pixel dimensions.
 | `07-upgrades.png` | 1080×1920 | Screenshot 7 | UPGRADE & CLIMB |
 
 The 7 phone screenshots are 9:16 and ≥1080px, satisfying Play's promo-eligibility
-rule (≥4 screenshots, ≥3 at 1080px+). Same files reusable for the 7"/10" tablet
-slots. (`raw/climb2` is kept as a spare open-sky hero alternative.)
+rule (≥4 screenshots, ≥3 at 1080px+). The same 7 are re-rendered at 1.5× DPR
+(**1620×2880**, in `tablet/`) for the two tablet slots — the higher res clears
+Google's 10-inch minimum (1080px short side), which the 1080-wide phone images sit
+exactly on. (`raw/climb2` is kept as a spare open-sky hero alternative.)
 
 > Note: the live-play captures are 400px-wide downscaled copies (`raw/*.webp`
 > originals, converted to the `raw/*.png` the renderer actually reads), so they're
@@ -50,8 +52,18 @@ To add a screenshot: drop a capture in `raw/`, add a `jobs` entry.
 
 The live listing is sourced from `android/app/src/main/play/` (text in
 `listings/en-US/*.txt`, graphics in `listings/en-US/graphics/**`). The final
-assets from this folder are copied there with GPP's numeric names
-(`feature-graphic/1.png`, `phone-screenshots/1..7.png`, both tablet folders).
+assets from this folder are copied there with GPP's numeric names. **The graphics
+folder names must be exactly what GPP recognizes**, or it silently skips them:
+
+| Slot | GPP folder | Source |
+|---|---|---|
+| Feature graphic | `feature-graphic/1.png` | `00-feature.png` |
+| Phone | `phone-screenshots/1..7.png` | `01..07-*.png` (1080×1920) |
+| 7-inch tablet | `tablet-screenshots/1..7.png` | `tablet/01..07-*.png` (1620×2880) |
+| 10-inch tablet | `large-tablet-screenshots/1..7.png` | `tablet/01..07-*.png` (1620×2880) |
+
+⚠️ Not `tablet-7-inch-screenshots` / `tablet-10-inch-screenshots` — GPP ignores
+those names entirely (the tablet slots silently won't update).
 
 Publish via the **manual** `Publish Play Listing` GitHub Action
 (`.github/workflows/publish-listing.yml`, `workflow_dispatch`). It runs
