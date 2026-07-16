@@ -1384,10 +1384,11 @@ export class MenuScene extends Phaser.Scene {
     const zone = this.add.zone(0, 0, 48, 48).setInteractive({ useHandCursor: true });
     icon.add(zone);
     zone.on('pointerup', () => {
-      if (state === 'ready' && status) this.openDaily(status);
-      else this.showDailyToast(state === 'offline'
-        ? 'Offline — rewards need a connection'
-        : 'Finish a run to open today\'s drop!');
+      if (state === 'ready' && status) { this.openDaily(status); return; }
+      // Locked: previews the streak track + today's reward (spec) rather than
+      // just telling the player to come back — no claim path from here.
+      if (state === 'locked' && status) { this.openDailyLockedPreview(status); return; }
+      this.showDailyToast('Offline — rewards need a connection');
     });
 
     this.dailyCanIcon = icon;
@@ -1400,6 +1401,10 @@ export class MenuScene extends Phaser.Scene {
       this.dailyCanIcon = undefined;
       if (this.balanceText?.active) this.balanceText.setText(`${getBalance()} coins`);
     });
+  }
+
+  private openDailyLockedPreview(status: DailyStatusResponse): void {
+    openDailyDropOverlay(this, status, () => {}, true);
   }
 
   private showDailyToast(msg: string): void {

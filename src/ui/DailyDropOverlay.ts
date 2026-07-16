@@ -3,13 +3,22 @@
 // Daily Drop claim overlay: dimmed backdrop, panel with the 7-day streak
 // strip, a procedural trash can that pops open on tap, and the repair prompt
 // when the streak broke. All positions are logical-layout coordinates.
+//
+// `locked = true` renders the same streak-strip panel as a read-only preview
+// (spec: tapping the locked can-icon "previews the streak track and today's
+// reward") — no wiggle, no tap-to-claim, no claimDaily call; the can is
+// replaced by static "Finish a run to open" copy. Dismiss (backdrop / ✕)
+// behaves identically in both modes.
 
 import Phaser from 'phaser';
 import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { claimDaily } from '../systems/DailyDropClient';
 import { AdClient } from '../systems/ads/AdClient';
-import { streakChips } from './dailyDropLogic';
+import { streakChips, dailyRewardPreview } from './dailyDropLogic';
+import { ITEM_DEFS } from '../data/itemDefs';
 import type { DailyStatusResponse } from '../../shared/dailyTypes';
+
+const itemName = (id: string): string => ITEM_DEFS.find((d) => d.id === id)?.name ?? id;
 
 const DEPTH = 300;
 const ACCENT = 0xff9922;
@@ -21,6 +30,7 @@ export function openDailyDropOverlay(
   scene: Phaser.Scene,
   status: DailyStatusResponse,
   onClosed: (claimed: boolean) => void,
+  locked = false,
 ): void {
   const w = logicalWidth(scene);
   const h = logicalHeight(scene);
@@ -81,6 +91,14 @@ export function openDailyDropOverlay(
     }).setOrigin(0.5));
   });
 
+  // Locked preview: no claim yet today, so show today's reward instead of
+  // waiting for a claim result to reveal it.
+  if (locked) {
+    root.add(scene.add.text(cx, stripY + 38, `Today: ${dailyRewardPreview(status.todayGrants, itemName)}`, {
+      fontSize: '14px', color: '#cfd6ff', align: 'center', wordWrap: { width: 340 },
+    }).setOrigin(0.5));
+  }
+
   // Procedural trash can (day 7 goes golden).
   const golden = day === 7;
   const canY = panelTop + 200;
@@ -105,15 +123,18 @@ export function openDailyDropOverlay(
     root.addAt(glow, root.getIndex(can));
   }
 
-  const hint = scene.add.text(cx, panelTop + 285, 'TAP THE CAN!', {
+  const hint = scene.add.text(cx, panelTop + 285, locked ? 'Finish a run to open' : 'TAP THE CAN!', {
     fontSize: '15px', color: '#ffce8a', fontStyle: 'bold',
   }).setOrigin(0.5);
   root.add(hint);
-  scene.tweens.add({ targets: hint, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
-  const wiggle = scene.tweens.add({
-    targets: can, angle: { from: -2.5, to: 2.5 }, duration: 140,
-    yoyo: true, repeat: -1, repeatDelay: 1400,
-  });
+  let wiggle: Phaser.Tweens.Tween | undefined;
+  if (!locked) {
+    scene.tweens.add({ targets: hint, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
+    wiggle = scene.tweens.add({
+      targets: can, angle: { from: -2.5, to: 2.5 }, duration: 140,
+      yoyo: true, repeat: -1, repeatDelay: 1400,
+    });
+  }
 
   const setHint = (msg: string, color = '#e9e4d8'): void => {
     hint.setText(msg).setColor(color);
@@ -121,7 +142,7 @@ export function openDailyDropOverlay(
 
   const showRewards = (messages: string[], streakDay: number): void => {
     claimed = true;
-    wiggle.stop();
+    wiggle?.stop();
     can.setAngle(0);
     // Lid pops off.
     scene.tweens.add({
@@ -183,20 +204,23 @@ export function openDailyDropOverlay(
     resetBtn.on('pointerup', () => { if (!busy) void finish('reset'); });
   };
 
-  // The can is the claim button.
-  const canZone = scene.add.zone(cx, canY, 110, 110).setInteractive({ useHandCursor: true });
-  root.add(canZone);
-  canZone.on('pointerup', async () => {
-    if (busy || claimed) return;
-    busy = true;
-    setHint('…');
-    const out = await claimDaily();
-    switch (out.status) {
-      case 'claimed':      showRewards(out.messages, out.streakDay); break;
-      case 'streakBroken': busy = false; showRepairPrompt(out.repairableDay); break;
-      case 'notEligible':  busy = false; setHint('Already claimed — come back tomorrow!'); break;
-      case 'offline':      busy = false; setHint('Offline — rewards need a connection', '#e08a7a'); break;
-      default:             busy = false; setHint('Something went wrong — try again later', '#e08a7a');
-    }
-  });
+  // The can is the claim button — locked mode is preview-only, so it must
+  // never wire up a claim path (no run yet today).
+  if (!locked) {
+    const canZone = scene.add.zone(cx, canY, 110, 110).setInteractive({ useHandCursor: true });
+    root.add(canZone);
+    canZone.on('pointerup', async () => {
+      if (busy || claimed) return;
+      busy = true;
+      setHint('…');
+      const out = await claimDaily();
+      switch (out.status) {
+        case 'claimed':      showRewards(out.messages, out.streakDay); break;
+        case 'streakBroken': busy = false; showRepairPrompt(out.repairableDay); break;
+        case 'notEligible':  busy = false; setHint('Already claimed — come back tomorrow!'); break;
+        case 'offline':      busy = false; setHint('Offline — rewards need a connection', '#e08a7a'); break;
+        default:             busy = false; setHint('Something went wrong — try again later', '#e08a7a');
+      }
+    });
+  }
 }
