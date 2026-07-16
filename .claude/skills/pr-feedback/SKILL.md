@@ -1,17 +1,23 @@
 ---
 name: pr-feedback
-description: Use when asked to pull, check, or action the automated Claude review-bot's feedback on a HeapGame GitHub PR — e.g. "grab the bot's comments on the PR and action them", "address the code review the bot left", "see what the review bot said and fix it".
+description: Use when asked to pull, check, or action review feedback on a HeapGame GitHub PR — from the automated Claude review-bot or a human reviewer — e.g. "grab the bot's comments on the PR and action them", "address the code review on the PR", "see what the reviewer said and fix it".
 ---
 
-# Actioning PR Bot Feedback
+# Actioning PR Review Feedback
 
-Pull the automated Claude reviewer's comment off a GitHub PR, triage its
-findings, and apply the ones worth applying — consulting the user on anything
-major. The reviewer is the `claude-code-review.yml` GitHub Action; it posts as
-the `claude` user and signs off with "Claude finished reviewing".
+Pull review feedback off a GitHub PR — from the automated Claude reviewer **and**
+any human reviewer — triage it, and apply what's worth applying, consulting the
+user on anything major.
+
+The Claude reviewer is the `claude-code-review.yml` Action, posting as
+`claude[bot]`; its tracking comment starts with `**Claude finished @<user>'s
+task**`. **Login gotcha:** `gh pr view --json` (GraphQL) reports the login as
+`claude` with the `[bot]` suffix **stripped**, while the REST API (`gh api`) keeps
+`claude[bot]`. Always match the login **case-insensitively with `test("claude")`**
+so both forms hit — an exact `=="claude"` silently misses the REST results.
 
 ## When to use
-- The review bot has (or should have) left a comment on a PR and you want to act on it.
+- A reviewer — the Claude bot or a human — has (or should have) left feedback on a PR and you want to act on it.
 - **Not** for reviewing a PR yourself → that's `/review`.
 - **Not** for your local uncommitted diff → that's `/code-review`.
 
@@ -22,14 +28,28 @@ the `claude` user and signs off with "Claude finished reviewing".
    gh pr view --json number,url -q .number
    ```
 
-2. **Fetch the bot's feedback** (author `claude`), newest first — check both issue comments and formal reviews:
+2. **Gather the feedback** — two sources, both matter:
+
+   **a) The Claude review bot's comment** (a tracking issue-comment). `gh pr view`
+   is GraphQL, which strips the `[bot]` suffix, so `test("claude";"i")` matches:
    ```bash
    gh pr view <N> --json comments \
-     -q '[.comments[] | select(.author.login=="claude")] | last | .body'
-   gh api repos/{owner}/{repo}/pulls/<N>/reviews \
-     -q '[.[] | select(.user.login=="claude")] | last | .body'
+     -q '[.comments[] | select(.author.login | test("claude";"i"))] | last | .body'
    ```
-   If nothing is there yet, the review Action may still be running — check the
+
+   **b) Any human (or other) reviewer** — formal reviews and inline comments via the
+   REST API, which keeps the real `[bot]` suffix. Take every author **except** known
+   deploy/CI bots (cloudflare-workers-and-pages, dependabot, codecov…):
+   ```bash
+   gh api repos/{owner}/{repo}/pulls/<N>/reviews \
+     --jq '.[] | select(.body != "" and (.user.login | test("cloudflare|dependabot|codecov";"i") | not))
+                | "@\(.user.login) [\(.state)]: \(.body)"'
+   gh api repos/{owner}/{repo}/pulls/<N>/comments \
+     --jq '.[] | "@\(.user.login) \(.path):L\(.line): \(.body)"'
+   ```
+
+   Triage **all** of it — the Claude bot, a teammate's review, an inline nit. If
+   nothing relevant is there yet, the review Action may still be running — check the
    PR's Actions run and wait. **Do not guess at the feedback.**
 
 3. **Triage with rigor.** REQUIRED SUB-SKILL: invoke `superpowers:receiving-code-review`.
@@ -50,5 +70,6 @@ the `claude` user and signs off with "Claude finished reviewing".
    rejected and why.
 
 ## Notes
-- Take the **newest** bot comment — it re-reviews after each push.
+- The Claude bot re-reviews after each push — take its **newest** comment. Human
+  reviews don't refresh, so read every one.
 - Findings usually sit under a "Minor issues" / "Findings" / "Review summary" heading.
