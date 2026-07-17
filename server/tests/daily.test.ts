@@ -119,6 +119,25 @@ describe('POST /daily/claim', () => {
     expect(res.status).toBe(409);
   });
 
+  it("a lost race reports nextEligibleAt from the winner's claim, not a flat min-gap", async () => {
+    const db = new MockDailyDb();
+    const winnerAt = T0 + 5 * 60_000; // winner claimed 5 min after our eligibility read
+    // First get: no row (we look eligible). After losing the write, the
+    // re-read sees the winner's row.
+    let reads = 0;
+    db.get = async () => (++reads === 1 ? null : {
+      player_id: 'p1', last_claim_at: winnerAt, last_claim_offset_min: NY,
+      streak_day: 1, total_claims: 1,
+    });
+    db.record = async () => false;
+    const app = makeApp(db);
+    const res = await claim(app, 'p1', NY);
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    // Default 10h min gap dominates the next-local-midnight bound here.
+    expect(body.nextEligibleAt).toBe(winnerAt + 10 * H);
+  });
+
   it('uses a config-overridden reward table', async () => {
     const cfg = new MockConfigDB();
     await cfg.set('daily_rewards', [

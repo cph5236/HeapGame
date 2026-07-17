@@ -10,13 +10,12 @@ import { enforcePlayerAuth } from '../playerAuth';
 import { isItemId } from '../../../shared/itemIds';
 import {
   clampOffsetMin, decideClaim, grantsForDay, grantsToRewards,
-  sanitizeRewardTable, statusFromState,
+  nextEligibleAt, sanitizeRewardTable, statusFromState,
   DEFAULT_GRACE_HOURS, DEFAULT_MIN_GAP_HOURS,
 } from '../../../shared/dailyDrop';
 import type { DailyClaimRequest } from '../../../shared/dailyTypes';
 
 const MAX_GUID_LEN = 64;
-const HOUR_MS = 3_600_000;
 
 export function dailyRoutes(
   dailyDb: DailyClaimDB,
@@ -83,7 +82,13 @@ export function dailyRoutes(
     const stored = await dailyDb.record(guid, now, offset, decision.day, row ? row.last_claim_at : null);
     if (!stored) {
       // Lost a same-instant race — another device's claim landed first.
-      return c.json({ kind: 'notEligible', nextEligibleAt: now + minGapHours * HOUR_MS }, 409);
+      // Re-read the winner's row so nextEligibleAt uses the shared formula
+      // (next local midnight vs min gap), matching every other 409 path.
+      const fresh = await dailyDb.get(guid);
+      return c.json({
+        kind: 'notEligible',
+        nextEligibleAt: nextEligibleAt(fresh?.last_claim_at ?? now, offset, minGapHours),
+      }, 409);
     }
 
     const rewards = grantsToRewards(grantsForDay(table, decision.day), isItemId);
