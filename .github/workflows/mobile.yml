@@ -8,7 +8,41 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Pushes to main only need a publish when the app version was bumped (V0.x.y
+  # release commits). Every other merge already had its PR verify build, and
+  # publishing an unchanged versionCode is rejected by Play Console.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'push'
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether to build
+        id: decide
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ -z "${BEFORE//0/}" ]; then
+            # New branch: no range to diff — build rather than silently skip.
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif git diff "$BEFORE" "$AFTER" -- android/app/build.gradle | grep -qE '^\+.*versionCode'; then
+            echo "versionCode changed — publishing to Play Console."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version unchanged — skipping (PR build already verified this merge)."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   android:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
