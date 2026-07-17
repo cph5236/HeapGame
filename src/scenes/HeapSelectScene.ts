@@ -28,6 +28,7 @@ export class HeapSelectScene extends Phaser.Scene {
   constructor() { super({ key: 'HeapSelectScene' }); }
 
   create(): void {
+    this.starting = false;
     setupUiCamera(this);
     const bg = this.add.graphics();
     const bands: [number, number, number][] = [
