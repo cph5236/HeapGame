@@ -3,6 +3,7 @@ import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMe
 import { buildControlsOverlay, type ControlsOverlay } from '../ui/buildControlsOverlay';
 import { buildVolumePanel, type VolumePanel } from '../ui/buildVolumePanel';
 import { InputManager } from '../systems/InputManager';
+import { markRunEnded } from '../systems/dailyRunGate';
 
 export interface PauseSceneData {
   /** Scene key of the paused game scene to resume/stop. */
@@ -148,6 +149,7 @@ export class PauseScene extends Phaser.Scene {
 
   private exitToMenu(): void {
     InputManager.getInstance().setSuppressionRect('pause', null);
+    markRunEnded();
     this.scene.stop(this.gameSceneKey);
     this.scene.stop();
     this.scene.start('MenuScene');

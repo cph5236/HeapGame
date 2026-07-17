@@ -1,10 +1,10 @@
 // src/systems/CodeClient.ts
 
-import { getEffectivePlayerId, addBalance, addItem } from './SaveData';
+import { getEffectivePlayerId } from './SaveData';
 import { fetchWithLog } from '../logging/fetchWithLog';
-import { ITEM_DEFS } from '../data/itemDefs';
 import type { RewardPayload, RedeemCodeRequest } from '../../shared/codeTypes';
 import { authHeaders, logIfAuthRejected } from './authToken';
+import { applyReward } from './applyReward';
 
 const SERVER_URL: string =
   (import.meta as unknown as { env: Record<string, string> }).env.VITE_HEAP_SERVER_URL ??
@@ -38,7 +38,10 @@ export async function redeemCode(rawCode: string): Promise<RedeemResult> {
 
   if (res.ok) {
     const reward = (await res.json()) as RewardPayload;
-    return applyReward(reward);
+    const applied = applyReward(reward);
+    return applied.ok
+      ? { status: 'success', message: `✓ ${applied.message}`, reward }
+      : { status: 'error', message: applied.message };
   }
 
   logIfAuthRejected('codes:redeem', res.status);
@@ -54,17 +57,4 @@ export async function redeemCode(rawCode: string): Promise<RedeemResult> {
     }
     default:  return { status: 'error', message: 'Could not redeem' };
   }
-}
-
-function applyReward(reward: RewardPayload): RedeemResult {
-  if (reward.rewardType === 'coins') {
-    addBalance(reward.rewardAmount);
-    return { status: 'success', message: `✓ +${reward.rewardAmount} coins`, reward };
-  }
-  const def = ITEM_DEFS.find(d => d.id === reward.rewardId);
-  if (!def) {
-    return { status: 'error', message: 'Unknown reward item' };
-  }
-  addItem(def.id, reward.rewardAmount);
-  return { status: 'success', message: `✓ +${reward.rewardAmount} ${def.name}`, reward };
 }

@@ -22,6 +22,12 @@ import { entranceScale } from './menuIntro';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { openFeedbackOverlay } from './FeedbackOverlay';
+import { fetchDailyStatus } from '../systems/DailyDropClient';
+import { hasPlayedToday, deviceUtcOffsetMin } from '../systems/dailyRunGate';
+import { dailyIconState, shouldAutoShowPopup, type DailyIconState } from '../ui/dailyDropLogic';
+import { openDailyDropOverlay } from '../ui/DailyDropOverlay';
+import { localDateKey } from '../../shared/dailyDrop';
+import type { DailyStatusResponse } from '../../shared/dailyTypes';
 
 export class MenuScene extends Phaser.Scene {
   private farSilhouette!: Phaser.GameObjects.Graphics;
@@ -51,6 +57,7 @@ export class MenuScene extends Phaser.Scene {
 
   private _forceSettingsOpen = false;
   private tiltPrompt?: Phaser.GameObjects.Container;
+  private dailyCanIcon?: Phaser.GameObjects.Container;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -116,6 +123,7 @@ export class MenuScene extends Phaser.Scene {
     } else {
       this.load.once(Phaser.Loader.Events.COMPLETE, () => AudioManager.play('music-menu'));
     }
+    void this.setupDailyDrop();
   }
 
   // ── Sky ──────────────────────────────────────────────────────────────────────
@@ -1318,5 +1326,91 @@ export class MenuScene extends Phaser.Scene {
       this.input.keyboard!.once('keydown-H', () => this.scene.start('HeapSelectScene'));
       this.input.keyboard!.once('keydown-L', () => this.openLeaderboard());
     });
+  }
+
+  // ── Daily Drop ─────────────────────────────────────────────────────────────
+
+  private async setupDailyDrop(): Promise<void> {
+    const result = await fetchDailyStatus();
+    if (!this.scene.isActive()) return; // player already navigated away
+    const status = result.status === 'ok' ? result.data : null;
+    const played = hasPlayedToday(deviceUtcOffsetMin());
+    const state = dailyIconState(status, played);
+    if (state === 'hidden') return;
+
+    this.addDailyCanIcon(state, status);
+
+    const POPUP_KEY = 'heap_daily_popup_shown';
+    const todayKey = localDateKey(Date.now(), deviceUtcOffsetMin());
+    if (status && shouldAutoShowPopup(state, localStorage.getItem(POPUP_KEY), todayKey)) {
+      localStorage.setItem(POPUP_KEY, todayKey);
+      this.openDaily(status);
+    }
+  }
+
+  private addDailyCanIcon(state: DailyIconState, status: DailyStatusResponse | null): void {
+    const x = 36;
+    const y = 96;
+    const icon = this.add.container(x, y).setDepth(20);
+
+    const g = this.add.graphics();
+    const bodyColor = state === 'ready' ? 0x8d96ad : 0x565d70;
+    g.fillStyle(0x0a0c1a, 0.55);
+    g.fillRoundedRect(-22, -22, 44, 44, 10);
+    g.lineStyle(1, 0xffffff, 0.18);
+    g.strokeRoundedRect(-22, -22, 44, 44, 10);
+    g.fillStyle(bodyColor, 1);
+    g.fillRoundedRect(-9, -6, 18, 18, 3);   // can body
+    g.fillRoundedRect(-12, -11, 24, 5, 2);  // lid
+    icon.add(g);
+
+    if (state === 'ready') {
+      const badge = this.add.circle(16, -16, 8, 0xff9922).setStrokeStyle(1, 0xb3650f);
+      const bang = this.add.text(16, -16, '!', {
+        fontSize: '12px', color: '#1a0f00', fontStyle: 'bold',
+      }).setOrigin(0.5);
+      icon.add([badge, bang]);
+      this.tweens.add({
+        targets: icon, angle: { from: -4, to: 4 }, duration: 130,
+        yoyo: true, repeat: -1, repeatDelay: 1600,
+      });
+    } else if (state === 'locked') {
+      const lock = this.add.text(16, -16, '🔒', { fontSize: '12px' }).setOrigin(0.5);
+      icon.add(lock);
+    } else { // offline
+      icon.setAlpha(0.5);
+    }
+
+    const zone = this.add.zone(0, 0, 48, 48).setInteractive({ useHandCursor: true });
+    icon.add(zone);
+    zone.on('pointerup', () => {
+      if (state === 'ready' && status) { this.openDaily(status); return; }
+      // Locked: previews the streak track + today's reward (spec) rather than
+      // just telling the player to come back — no claim path from here.
+      if (state === 'locked' && status) { this.openDailyLockedPreview(status); return; }
+      this.showDailyToast('Offline — rewards need a connection');
+    });
+
+    this.dailyCanIcon = icon;
+  }
+
+  private openDaily(status: DailyStatusResponse): void {
+    openDailyDropOverlay(this, status, (claimed) => {
+      if (!claimed) return;
+      this.dailyCanIcon?.destroy();
+      this.dailyCanIcon = undefined;
+      if (this.balanceText?.active) this.balanceText.setText(`${getBalance()} coins`);
+    });
+  }
+
+  private openDailyLockedPreview(status: DailyStatusResponse): void {
+    openDailyDropOverlay(this, status, () => {}, true);
+  }
+
+  private showDailyToast(msg: string): void {
+    const t = this.add.text(36, 132, msg, {
+      fontSize: '13px', color: '#ffce8a', stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0, 0.5).setDepth(21);
+    this.tweens.add({ targets: t, alpha: 0, delay: 1800, duration: 400, onComplete: () => t.destroy() });
   }
 }
