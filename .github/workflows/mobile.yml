@@ -19,14 +19,20 @@ jobs:
       - uses: actions/checkout@v4
         if: github.event_name == 'push'
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Decide whether to build
         id: decide
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
         run: |
           if [ "${{ github.event_name }}" != "push" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
-          elif git diff HEAD^ HEAD -- android/app/build.gradle | grep -qE '^\+.*versionCode'; then
+          elif [ -z "${BEFORE//0/}" ]; then
+            # New branch: no range to diff — build rather than silently skip.
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif git diff "$BEFORE" "$AFTER" -- android/app/build.gradle | grep -qE '^\+.*versionCode'; then
             echo "versionCode changed — publishing to Play Console."
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
