@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS heap (
   ghost_point_count INTEGER NOT NULL DEFAULT 1,
   base_item_spawn_rate     REAL NOT NULL DEFAULT 0.33,
   positive_item_spawn_rate REAL NOT NULL DEFAULT 0.15,
-  negative_item_spawn_rate REAL NOT NULL DEFAULT 0.85
+  negative_item_spawn_rate REAL NOT NULL DEFAULT 0.85,
+  locked_by_heap_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS heap_parameters (

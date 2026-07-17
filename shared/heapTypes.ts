@@ -17,6 +17,8 @@ export interface HeapParams {
   baseItemSpawnRate: number;      // 0..1 chance a salvage pickup spawns per surface candidate
   positiveItemSpawnRate: number;  // weight for choosing a beneficial item when one spawns
   negativeItemSpawnRate: number;  // weight for choosing a hindering item when one spawns
+  /** Heap id the player must beat before this heap unlocks; null/absent = unlocked. */
+  lockedByHeapId?: string | null;
 }
 
 export const DEFAULT_HEAP_PARAMS: HeapParams = {
