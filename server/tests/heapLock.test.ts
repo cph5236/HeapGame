@@ -5,6 +5,7 @@ import { createApp } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import type { CreateHeapResponse, ListHeapsResponse, GetHeapResponse } from '../../shared/heapTypes';
+import { INFINITE_HEAP_ID } from '../../shared/heapTypes';
 
 const VERTICES = [
   { x: 100, y: 400 },
@@ -158,5 +159,13 @@ describe('heap locking — validation', () => {
       body: JSON.stringify({ lockedByHeapId: 42 }),
     });
     expect(res.status).toBe(400);
+  });
+
+  it('rejects the infinite heap as a lock prerequisite (it can never be beaten)', async () => {
+    const db = new MockHeapDB();
+    db.seedHeap(INFINITE_HEAP_ID, 1, []);
+    const app = createApp(db, new MockScoreDB(), {});
+    const a = await createHeap(app);
+    expect((await setLock(app, a, INFINITE_HEAP_ID)).status).toBe(400);
   });
 });

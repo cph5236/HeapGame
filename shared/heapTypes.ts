@@ -1,5 +1,15 @@
 // shared/heapTypes.ts
 
+/**
+ * Well-known row id for the infinite heap. The DB has no `isInfinite` column —
+ * the client (src/data/infiniteCatalog.ts) merges `isInfinite: true` onto the
+ * row with this id. The infinite heap can never be recorded as "beaten"
+ * (markHeapBeaten only fires from story-mode placeBlock), so the server
+ * rejects this id as a lock prerequisite (see validateLockTarget in
+ * server/src/routes/heap.ts) to prevent a permanently unwinnable lock.
+ */
+export const INFINITE_HEAP_ID = 'FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF';
+
 export interface Vertex {
   x: number;
   y: number;

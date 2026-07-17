@@ -24,7 +24,7 @@ import type {
   HeapParams,
   HeapEnemyParams,
 } from '../../../shared/heapTypes';
-import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
+import { DEFAULT_HEAP_PARAMS, INFINITE_HEAP_ID } from '../../../shared/heapTypes';
 import { generateDefaultPolygon } from '../../../shared/heapPolygon';
 
 // Mirror of src/constants.ts WORLD_WIDTH. Update both if either changes.
@@ -115,6 +115,7 @@ async function validateLockTarget(db: HeapDB, heapId: string, lockedByHeapId: st
   const rows = await db.listHeaps();
   const lockedBy = new Map(rows.map((r) => [r.id, r.locked_by_heap_id ?? null]));
   if (!lockedBy.has(lockedByHeapId)) return 'lockedByHeapId must reference an existing heap';
+  if (lockedByHeapId === INFINITE_HEAP_ID) return 'the infinite heap cannot be a lock prerequisite (it can never be beaten)';
   if (lockedByHeapId === heapId) return 'a heap cannot be locked by itself';
   let cursor: string | null = lockedByHeapId;
   for (let hops = 0; cursor !== null && hops <= lockedBy.size; hops++) {
