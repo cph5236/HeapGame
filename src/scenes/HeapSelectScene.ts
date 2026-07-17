@@ -218,10 +218,15 @@ export class HeapSelectScene extends Phaser.Scene {
         logicalWidth(this) - 2 * ROW_PAD_X, ROW_H - 6,
         0x05060c, 0.62,
       );
-      this.add.text(lx, midY, `🔒 Beat ${lock.prereqName} to unlock`, {
+      const hint = this.add.text(lx, midY, `🔒 Beat ${lock.prereqName} to unlock`, {
         fontSize: '15px', fontStyle: 'bold', color: '#ffcc88',
         stroke: '#000000', strokeThickness: 3,
       }).setOrigin(0, 0.5);
+      // Solid backing pill so the hint stays readable over the row's stat text.
+      this.add.rectangle(
+        lx + hint.width / 2, midY, hint.width + 14, hint.height + 6, 0x05060c, 0.92,
+      );
+      this.children.bringToTop(hint);
     }
 
     return rowBg;
