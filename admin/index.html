@@ -89,7 +89,7 @@
     </div>
     <div class="row">
       <div><label>negativeItemSpawnRate (weight)</label><input type="number" step="0.05" min="0" id="ep-negativeItemSpawnRate" /></div>
-      <div></div>
+      <div><label>Locked by <span class="muted">(player must beat first)</span></label><select id="ep-lockedBy"></select></div>
     </div>
     <div class="row">
       <div></div>
@@ -344,6 +344,12 @@
       $('ep-positiveItemSpawnRate').value = heap.params.positiveItemSpawnRate ?? 0.5;
       $('ep-negativeItemSpawnRate').value = heap.params.negativeItemSpawnRate ?? 0.5;
       $('ep-worldHeight').value   = heap.params.worldHeight;
+      const lockSel = $('ep-lockedBy');
+      lockSel.innerHTML = '<option value="">None</option>' + cachedHeaps
+        .filter(h => h.id !== heap.id)
+        .map(h => `<option value="${h.id}">${escapeHtml(h.params.name)}</option>`)
+        .join('');
+      lockSel.value = heap.params.lockedByHeapId ?? '';
       loadEnemyParams(heap.id);
     }
 
@@ -408,6 +414,7 @@
         baseItemSpawnRate:     Number($('ep-baseItemSpawnRate').value),
         positiveItemSpawnRate: Number($('ep-positiveItemSpawnRate').value),
         negativeItemSpawnRate: Number($('ep-negativeItemSpawnRate').value),
+        lockedByHeapId: $('ep-lockedBy').value || null,
       };
       try {
         const res = await adminFetch(`/heaps/${editingHeapId}/params`, {
