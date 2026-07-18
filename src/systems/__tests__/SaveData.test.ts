@@ -36,6 +36,8 @@ import {
   getAdRunState,
   setAdRunState,
   getPlayerSecret,
+  getBeatenHeapIds,
+  markHeapBeaten,
 } from '../SaveData';
 
 // Stub localStorage — vitest runs in node environment
@@ -537,10 +539,13 @@ import {
   getRawSaveForCloudSync,
   getEffectiveControlMode,
   setSessionControlMode,
+  type RawSave,
 } from '../SaveData';
 
-describe('mergeCloudSave', () => {
-  const base = () => ({
+// Full-save builder shared by mergeCloudSave tests — a complete RawSave so the
+// required fields (e.g. beatenHeapIds) can't be silently omitted.
+function baseSave(): RawSave {
+  return {
     schemaVersion: 3,
     balance:        100,
     upgrades:       { air_jump: 1, dash: 0 },
@@ -550,9 +555,14 @@ describe('mergeCloudSave', () => {
     playerGuid:     'local-guid',
     playerName:     'LocalPlayer',
     highScores:     { 'heap-1': 500 },
+    beatenHeapIds:  [],
     cosmeticsOwned: [],
     cosmeticsEquipped: {},
-  });
+  };
+}
+
+describe('mergeCloudSave', () => {
+  const base = baseSave;
 
   it('takes the higher balance', () => {
     const local = { ...base(), balance: 200 };
@@ -649,6 +659,47 @@ describe('mergeCloudSave', () => {
     const cloud = { ...base(), playerSecret: 'cloud-secret' };
     expect(mergeCloudSave(local, cloud).playerSecret).toBe('cloud-secret');
   });
+});
+
+describe('beatenHeapIds', () => {
+  it('defaults to empty and marks heaps beaten with dedup', () => {
+    expect(getBeatenHeapIds()).toEqual([]);
+    markHeapBeaten('heap-1');
+    markHeapBeaten('heap-1');
+    markHeapBeaten('heap-2');
+    expect(getBeatenHeapIds()).toEqual(['heap-1', 'heap-2']);
+  });
+
+  it('persists across cache reset', () => {
+    markHeapBeaten('heap-1');
+    resetCacheForTests();
+    expect(getBeatenHeapIds()).toEqual(['heap-1']);
+  });
+
+  it('old saves without the field load with []', () => {
+    store['heap_save'] = JSON.stringify({ schemaVersion: 5, balance: 10 });
+    resetCacheForTests();
+    expect(getBeatenHeapIds()).toEqual([]);
+  });
+});
+
+describe('mergeCloudSave — beatenHeapIds', () => {
+  it('unions local and cloud beaten heaps', () => {
+    const local = { ...JSON.parse(JSON.stringify(baseSave())), beatenHeapIds: ['a', 'b'] };
+    const cloud = { ...JSON.parse(JSON.stringify(baseSave())), beatenHeapIds: ['b', 'c'] };
+    const merged = mergeCloudSave(local, cloud);
+    expect([...merged.beatenHeapIds].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('tolerates a cloud save missing the field entirely', () => {
+    const local = { ...baseSave(), beatenHeapIds: ['a'] };
+    const cloud = baseSave() as any;
+    delete cloud.beatenHeapIds;
+    expect(mergeCloudSave(local, cloud).beatenHeapIds).toEqual(['a']);
+  });
+
+  // playerSecret-survives-merge is already covered above by
+  // 'preserves playerSecret from local (matches the hash the server already stored)'.
 });
 
 describe('soundSettings – schema v4 migration', () => {

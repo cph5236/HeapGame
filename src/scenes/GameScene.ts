@@ -48,7 +48,7 @@ import {
   ENEMY_RADAR_RANGE_PER_LEVEL,
 } from '../constants';
 import { EnemyManager } from '../systems/EnemyManager';
-import { addBalance, addItem } from '../systems/SaveData';
+import { addBalance, addItem, markHeapBeaten } from '../systems/SaveData';
 import { ITEM_DEFS } from '../data/itemDefs';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
@@ -677,6 +677,10 @@ export class GameScene extends Phaser.Scene {
     // Run already ended (died this frame) — don't start a success outro on top of it.
     if (this._playerDead || this.blockPlaced) return;
     this.blockPlaced = true;
+
+    // Any successful placement beats this heap — recorded before the outro so
+    // a crash mid-animation can't lose it (unlocks lockedByHeapId dependents).
+    markHeapBeaten(this._heapId);
 
     const px     = this.player.sprite.x;
     const py     = this.player.sprite.y;

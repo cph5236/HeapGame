@@ -42,6 +42,7 @@ export class MockHeapDB implements HeapDB {
       base_item_spawn_rate:     row.base_item_spawn_rate,
       positive_item_spawn_rate: row.positive_item_spawn_rate,
       negative_item_spawn_rate: row.negative_item_spawn_rate,
+      locked_by_heap_id: row.locked_by_heap_id,
     }));
   }
 
@@ -88,6 +89,7 @@ export class MockHeapDB implements HeapDB {
       base_item_spawn_rate:     params.baseItemSpawnRate     ?? DEFAULT_HEAP_PARAMS.baseItemSpawnRate,
       positive_item_spawn_rate: params.positiveItemSpawnRate ?? DEFAULT_HEAP_PARAMS.positiveItemSpawnRate,
       negative_item_spawn_rate: params.negativeItemSpawnRate ?? DEFAULT_HEAP_PARAMS.negativeItemSpawnRate,
+      locked_by_heap_id: params.lockedByHeapId ?? null,
     });
   }
 
@@ -123,6 +125,7 @@ export class MockHeapDB implements HeapDB {
       base_item_spawn_rate:     params.baseItemSpawnRate     ?? existing.base_item_spawn_rate,
       positive_item_spawn_rate: params.positiveItemSpawnRate ?? existing.positive_item_spawn_rate,
       negative_item_spawn_rate: params.negativeItemSpawnRate ?? existing.negative_item_spawn_rate,
+      locked_by_heap_id: params.lockedByHeapId ?? null,
     });
   }
 
@@ -167,6 +170,7 @@ export class MockHeapDB implements HeapDB {
       base_item_spawn_rate:     params.baseItemSpawnRate     ?? DEFAULT_HEAP_PARAMS.baseItemSpawnRate,
       positive_item_spawn_rate: params.positiveItemSpawnRate ?? DEFAULT_HEAP_PARAMS.positiveItemSpawnRate,
       negative_item_spawn_rate: params.negativeItemSpawnRate ?? DEFAULT_HEAP_PARAMS.negativeItemSpawnRate,
+      locked_by_heap_id: params.lockedByHeapId ?? null,
     });
   }
 

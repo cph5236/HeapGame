@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
-import { setSelectedHeapId, finalizeLegacyPlaced, getEffectivePlayerId } from '../systems/SaveData';
+import { setSelectedHeapId, finalizeLegacyPlaced, getEffectivePlayerId, getBeatenHeapIds } from '../systems/SaveData';
 import { HeapClient } from '../systems/HeapClient';
 import { drawDifficulty } from '../ui/DifficultyStars';
 import { InputManager } from '../systems/InputManager';
@@ -10,6 +10,7 @@ import { heightFt } from '../util/format';
 import type { PlayerScoreEntry } from '../../shared/scoreTypes';
 import { getLogger } from '../logging';
 import { applyYouStats } from './heapSelectStats';
+import { getLockState } from './heapLockLogic';
 
 const ROW_H = 102;
 const ROW_PAD_X = 16;
@@ -21,10 +22,13 @@ export class HeapSelectScene extends Phaser.Scene {
   private activeId: string = '';
   private playerScores: Map<string, PlayerScoreEntry> = new Map();
   private rankTextByRow: Map<number, Phaser.GameObjects.Text> = new Map();
+  private beatenIds: string[] = [];
+  private starting = false;
 
   constructor() { super({ key: 'HeapSelectScene' }); }
 
   create(): void {
+    this.starting = false;
     setupUiCamera(this);
     const bg = this.add.graphics();
     const bands: [number, number, number][] = [
@@ -76,6 +80,7 @@ export class HeapSelectScene extends Phaser.Scene {
     this.sorted = [...catalog].sort((a, b) =>
       a.params.difficulty - b.params.difficulty
       || a.createdAt.localeCompare(b.createdAt));
+    this.beatenIds = getBeatenHeapIds();
 
     this.activeId = this.game.registry.get('activeHeapId') as string;
 
@@ -204,7 +209,25 @@ export class HeapSelectScene extends Phaser.Scene {
       const i = this.rowBgs.indexOf(rowBg);
       if (i >= 0) { this.selectedIndex = i; this.refreshHighlight(); }
     });
-    rowBg.once('pointerup', () => this.select(this.sorted[this.rowBgs.indexOf(rowBg)]));
+    rowBg.on('pointerup', () => this.select(this.sorted[this.rowBgs.indexOf(rowBg)]));
+
+    const lock = getLockState(heap, this.sorted, this.beatenIds);
+    if (lock.locked) {
+      this.add.rectangle(
+        logicalWidth(this) / 2, y + ROW_H / 2,
+        logicalWidth(this) - 2 * ROW_PAD_X, ROW_H - 6,
+        0x05060c, 0.62,
+      );
+      const hint = this.add.text(lx, midY, `🔒 Beat ${lock.prereqName} to unlock`, {
+        fontSize: '15px', fontStyle: 'bold', color: '#ffcc88',
+        stroke: '#000000', strokeThickness: 3,
+      }).setOrigin(0, 0.5);
+      // Solid backing pill so the hint stays readable over the row's stat text.
+      this.add.rectangle(
+        lx + hint.width / 2, midY, hint.width + 14, hint.height + 6, 0x05060c, 0.92,
+      );
+      this.children.bringToTop(hint);
+    }
 
     return rowBg;
   }
@@ -266,6 +289,14 @@ export class HeapSelectScene extends Phaser.Scene {
   }
 
   private select(heap: HeapSummary): void {
+    const lock = getLockState(heap, this.sorted, this.beatenIds);
+    if (lock.locked) {
+      this.cameras.main.shake(120, 0.004);  // denial feedback
+      return;
+    }
+    if (this.starting) return;  // double-start guard (replaces the old `once`)
+    this.starting = true;
+
     setSelectedHeapId(heap.id);
     getLogger().event({ type: 'heap:selected', heapId: heap.id });
     this.game.registry.set('activeHeapId', heap.id);

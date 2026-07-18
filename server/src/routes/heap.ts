@@ -24,7 +24,7 @@ import type {
   HeapParams,
   HeapEnemyParams,
 } from '../../../shared/heapTypes';
-import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
+import { DEFAULT_HEAP_PARAMS, INFINITE_HEAP_ID } from '../../../shared/heapTypes';
 import { generateDefaultPolygon } from '../../../shared/heapPolygon';
 
 // Mirror of src/constants.ts WORLD_WIDTH. Update both if either changes.
@@ -93,7 +93,36 @@ function resolveParams(input: Partial<HeapParams> | undefined): HeapParams | { e
   merged.positiveItemSpawnRate = Math.max(0, merged.positiveItemSpawnRate ?? DEFAULT_HEAP_PARAMS.positiveItemSpawnRate);
   merged.negativeItemSpawnRate = Math.max(0, merged.negativeItemSpawnRate ?? DEFAULT_HEAP_PARAMS.negativeItemSpawnRate);
 
+  // Heap lock pointer: string id or null (null/absent = unlocked). Existence
+  // and cycle checks need DB access and run in validateLockTarget instead.
+  if (merged.lockedByHeapId !== undefined && merged.lockedByHeapId !== null) {
+    if (typeof merged.lockedByHeapId !== 'string' || merged.lockedByHeapId.length === 0 || merged.lockedByHeapId.length > MAX_ID_LEN) {
+      return { error: 'lockedByHeapId must be a heap id string or null' };
+    }
+  }
+
   return merged;
+}
+
+/**
+ * DB-backed validation for a non-null lockedByHeapId. Walks the existing
+ * lock chain from the proposed prerequisite: if it reaches the heap being
+ * edited, this edit would close a lock cycle — every heap in a cycle is
+ * permanently locked for every player (fail-open never triggers because no
+ * prerequisite is missing), so cycles must be rejected here.
+ */
+async function validateLockTarget(db: HeapDB, heapId: string, lockedByHeapId: string): Promise<string | null> {
+  const rows = await db.listHeaps();
+  const lockedBy = new Map(rows.map((r) => [r.id, r.locked_by_heap_id ?? null]));
+  if (!lockedBy.has(lockedByHeapId)) return 'lockedByHeapId must reference an existing heap';
+  if (lockedByHeapId === INFINITE_HEAP_ID) return 'the infinite heap cannot be a lock prerequisite (it can never be beaten)';
+  if (lockedByHeapId === heapId) return 'a heap cannot be locked by itself';
+  let cursor: string | null = lockedByHeapId;
+  for (let hops = 0; cursor !== null && hops <= lockedBy.size; hops++) {
+    if (cursor === heapId) return 'lockedByHeapId would create a lock cycle';
+    cursor = lockedBy.get(cursor) ?? null;
+  }
+  return null;
 }
 
 export function heapRoutes(
@@ -115,6 +144,11 @@ export function heapRoutes(
 
     const resolved = resolveParams(body.params);
     if ('error' in resolved) return c.json({ error: resolved.error }, 400);
+
+    if (resolved.lockedByHeapId != null) {
+      const lockErr = await validateLockTarget(db, '', resolved.lockedByHeapId);
+      if (lockErr) return c.json({ error: lockErr }, 400);
+    }
 
     let vertices: Vertex[];
     if (Array.isArray(body.vertices)) {
@@ -174,6 +208,7 @@ export function heapRoutes(
           baseItemSpawnRate:     r.base_item_spawn_rate,
           positiveItemSpawnRate: r.positive_item_spawn_rate,
           negativeItemSpawnRate: r.negative_item_spawn_rate,
+          lockedByHeapId:  r.locked_by_heap_id ?? null,
         },
       })),
     } satisfies ListHeapsResponse);
@@ -254,6 +289,7 @@ export function heapRoutes(
         baseItemSpawnRate:     row.base_item_spawn_rate,
         positiveItemSpawnRate: row.positive_item_spawn_rate,
         negativeItemSpawnRate: row.negative_item_spawn_rate,
+        lockedByHeapId:  row.locked_by_heap_id ?? null,
       },
       enemyParams,
     } satisfies GetHeapResponse);
@@ -283,7 +319,12 @@ export function heapRoutes(
         baseItemSpawnRate:     bodyParams.baseItemSpawnRate     ?? row.base_item_spawn_rate,
         positiveItemSpawnRate: bodyParams.positiveItemSpawnRate ?? row.positive_item_spawn_rate,
         negativeItemSpawnRate: bodyParams.negativeItemSpawnRate ?? row.negative_item_spawn_rate,
+        lockedByHeapId: 'lockedByHeapId' in bodyParams ? bodyParams.lockedByHeapId : row.locked_by_heap_id,
       };
+      if ('lockedByHeapId' in bodyParams && merged.lockedByHeapId != null) {
+        const lockErr = await validateLockTarget(db, id, merged.lockedByHeapId);
+        if (lockErr) return c.json({ error: lockErr }, 400);
+      }
       await db.updateHeapParams(id, merged);
     }
 
@@ -323,8 +364,14 @@ export function heapRoutes(
       baseItemSpawnRate:     body.baseItemSpawnRate     ?? existing.base_item_spawn_rate,
       positiveItemSpawnRate: body.positiveItemSpawnRate ?? existing.positive_item_spawn_rate,
       negativeItemSpawnRate: body.negativeItemSpawnRate ?? existing.negative_item_spawn_rate,
+      lockedByHeapId: 'lockedByHeapId' in body ? body.lockedByHeapId : existing.locked_by_heap_id,
     });
     if ('error' in merged) return c.json({ error: merged.error }, 400);
+
+    if ('lockedByHeapId' in body && merged.lockedByHeapId != null) {
+      const lockErr = await validateLockTarget(db, id, merged.lockedByHeapId);
+      if (lockErr) return c.json({ error: lockErr }, 400);
+    }
 
     await db.updateHeapParams(id, merged);
 

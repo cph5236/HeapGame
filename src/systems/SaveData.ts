@@ -50,6 +50,10 @@ interface RawSave {
   playerName:     string;
   gpgsPlayerId?:  string;
   highScores:     Record<string, number>;
+  /** Heaps this player has beaten (any successful placement). Required, not
+   *  optional: mergeCloudSave returns a hand-built literal, and an optional
+   *  field silently vanishes there instead of failing the build. */
+  beatenHeapIds:  string[];
   cosmeticsOwned:      string[];
   cosmeticsEquipped:   EquippedLoadout;
   loadoutSyncPending?: boolean;
@@ -85,6 +89,7 @@ function freshSave(): RawSave {
     playerGuid:     generateGuid(),
     playerName:     generateDefaultPlayerName(),
     highScores:     {},
+    beatenHeapIds:  [],
     cosmeticsOwned: [],
     cosmeticsEquipped: {},
     tutorialDone:   false,
@@ -119,6 +124,7 @@ function migrate(parsed: any): RawSave {
       playerName:     parsed.playerName     ?? generateDefaultPlayerName(),
       gpgsPlayerId:   parsed.gpgsPlayerId,
       highScores:     parsed.highScores     ?? {},
+      beatenHeapIds:  parsed.beatenHeapIds  ?? [],
       cosmeticsOwned: parsed.cosmeticsOwned ?? [],
       cosmeticsEquipped: parsed.cosmeticsEquipped ?? {},
       loadoutSyncPending: parsed.loadoutSyncPending,
@@ -148,6 +154,7 @@ function migrate(parsed: any): RawSave {
       playerGuid:     parsed.playerGuid ?? generateGuid(),
       playerName:     parsed.playerName ?? generateDefaultPlayerName(),
       highScores:     parsed.highScores ?? {},
+      beatenHeapIds:  [],
       cosmeticsOwned: [],
       cosmeticsEquipped: {},
       tutorialDone:   parsed.tutorialDone ?? true,
@@ -172,6 +179,7 @@ function migrate(parsed: any): RawSave {
       playerName:     parsed.playerName     ?? generateDefaultPlayerName(),
       gpgsPlayerId:   parsed.gpgsPlayerId,
       highScores:     parsed.highScores     ?? {},
+      beatenHeapIds:  [],
       cosmeticsOwned:    [],
       cosmeticsEquipped: {},
       tutorialDone:   parsed.tutorialDone   ?? true,
@@ -198,6 +206,7 @@ function migrate(parsed: any): RawSave {
     playerName:     parsed.playerName     ?? generateDefaultPlayerName(),
     gpgsPlayerId:   parsed.gpgsPlayerId,
     highScores:     parsed.highScores     ?? {},
+    beatenHeapIds:  [],
     cosmeticsOwned: [],
     cosmeticsEquipped: {},
     tutorialDone:   parsed.tutorialDone   ?? true,
@@ -482,6 +491,17 @@ export function setLocalHighScore(heapId: string, score: number): void {
   persist(data);
 }
 
+// ── Beaten heaps (heap-lock feature) ─────────────────────────────────────────
+
+export function getBeatenHeapIds(): string[] { return [...load().beatenHeapIds]; }
+
+export function markHeapBeaten(heapId: string): void {
+  const data = load();
+  if (data.beatenHeapIds.includes(heapId)) return;
+  data.beatenHeapIds.push(heapId);
+  persist(data);
+}
+
 // ── Cosmetics ─────────────────────────────────────────────────────────────────
 
 export function getOwnedCosmetics(): string[] { return [...load().cosmeticsOwned]; }
@@ -601,6 +621,11 @@ export function mergeCloudSave(local: RawSave, cloud: RawSave): RawSave {
     ...(local.cosmeticsOwned ?? []), ...(cloud.cosmeticsOwned ?? []),
   ])];
 
+  // Union beaten heaps — a heap beaten on either device stays beaten.
+  const beatenHeapIds = [...new Set([
+    ...(local.beatenHeapIds ?? []), ...(cloud.beatenHeapIds ?? []),
+  ])];
+
   return {
     schemaVersion: CURRENT_SCHEMA,
     balance:        Math.max(local.balance, cloud.balance),
@@ -617,6 +642,7 @@ export function mergeCloudSave(local: RawSave, cloud: RawSave): RawSave {
     // the secret on next getPlayerSecret() → permanent 403 mismatch.
     playerSecret:   local.playerSecret ?? cloud.playerSecret,
     highScores,
+    beatenHeapIds,
     cosmeticsOwned,
     cosmeticsEquipped:  { ...(primary.cosmeticsEquipped ?? {}) },
     hatAdjustments:     { ...(secondary.hatAdjustments ?? {}), ...(primary.hatAdjustments ?? {}) },

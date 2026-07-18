@@ -89,7 +89,7 @@
     </div>
     <div class="row">
       <div><label>negativeItemSpawnRate (weight)</label><input type="number" step="0.05" min="0" id="ep-negativeItemSpawnRate" /></div>
-      <div></div>
+      <div><label>Locked by <span class="muted">(player must beat first)</span></label><select id="ep-lockedBy"></select></div>
     </div>
     <div class="row">
       <div></div>
@@ -211,6 +211,9 @@
     const LS_URL    = 'heapAdmin.serverUrl';
     const LS_SECRET = 'heapAdmin.adminSecret';
     const DEFAULT_URL = 'http://localhost:8787';
+    // Well-known infinite-heap row id — must match shared/heapTypes.ts INFINITE_HEAP_ID
+    // (this page is standalone static HTML and cannot import shared code).
+    const INFINITE_HEAP_ID = 'FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF';
     const KINDS = ['percher', 'ghost'];
     const FIELDS = ['spawnStartPxAboveFloor', 'spawnEndPxAboveFloor', 'spawnRampPxAboveFloor', 'spawnChanceMin', 'spawnChanceMax'];
     // Keep in sync with shared/itemIds.ts (server validates reward_id against that list).
@@ -344,6 +347,12 @@
       $('ep-positiveItemSpawnRate').value = heap.params.positiveItemSpawnRate ?? 0.5;
       $('ep-negativeItemSpawnRate').value = heap.params.negativeItemSpawnRate ?? 0.5;
       $('ep-worldHeight').value   = heap.params.worldHeight;
+      const lockSel = $('ep-lockedBy');
+      lockSel.innerHTML = '<option value="">None</option>' + cachedHeaps
+        .filter(h => h.id !== heap.id && h.id !== INFINITE_HEAP_ID)
+        .map(h => `<option value="${h.id}">${escapeHtml(h.params.name)}</option>`)
+        .join('');
+      lockSel.value = heap.params.lockedByHeapId ?? '';
       loadEnemyParams(heap.id);
     }
 
@@ -408,6 +417,7 @@
         baseItemSpawnRate:     Number($('ep-baseItemSpawnRate').value),
         positiveItemSpawnRate: Number($('ep-positiveItemSpawnRate').value),
         negativeItemSpawnRate: Number($('ep-negativeItemSpawnRate').value),
+        lockedByHeapId: $('ep-lockedBy').value || null,
       };
       try {
         const res = await adminFetch(`/heaps/${editingHeapId}/params`, {
