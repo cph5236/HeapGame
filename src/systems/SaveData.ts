@@ -627,6 +627,9 @@ export function mergeCloudSave(local: RawSave, cloud: RawSave): RawSave {
   ])];
 
   return {
+    // Spread local first so any field not explicitly merged below can't silently
+    // vanish (device-local prefs, plus future fields). Explicit overrides win.
+    ...local,
     schemaVersion: CURRENT_SCHEMA,
     balance:        Math.max(local.balance, cloud.balance),
     upgrades,
@@ -652,6 +655,12 @@ export function mergeCloudSave(local: RawSave, cloud: RawSave): RawSave {
     adRunTarget:     local.adRunTarget,
     controlMode:     local.controlMode,   // device-local — local always wins
     joystickSide:    local.joystickSide,  // device-local — local always wins
+    // One-time UI flags: seen/done on either device counts, so a signed-in merge
+    // never re-nags. (Previously dropped here → hint/tutorial reappeared each launch.)
+    customizeHintSeen: local.customizeHintSeen || cloud.customizeHintSeen,
+    tutorialDone:      local.tutorialDone      || cloud.tutorialDone,
+    // Sound prefs are per-device; keep local, fall back to cloud on fresh install.
+    soundSettings:     local.soundSettings ?? cloud.soundSettings,
   };
 }
 
