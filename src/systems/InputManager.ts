@@ -186,6 +186,13 @@ export class InputManager {
     this.jumpVx          = 0;
     this.dashJustFired   = false;
     this.diveJustFired   = false;
+    // Abandon any in-flight touch too: a finger still down when the run starts
+    // must not retro-fire a jump/dash/dive when it eventually lifts in-game.
+    this.touchState          = 'idle';
+    this.activeTouchId       = undefined;
+    this.dragUp              = false;
+    this.dragDown            = false;
+    this.uiGestureSuppressed = false;
   }
 
   /** True if a page-space point falls inside any registered suppression zone.

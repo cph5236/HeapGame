@@ -135,6 +135,10 @@ export class InfiniteGameScene extends Phaser.Scene {
     // before any HUD/world objects are created. See GameplayUiCamera.
     setupGameplayUiCamera(this);
 
+    // Drop any tap/swipe buffered before the run began (e.g. the tap on the START
+    // RUN button) so it can't leak a jump into this run's first frame.
+    InputManager.getInstance().clearBufferedActions();
+
     this._runKills     = {};
     this._runStartTime = null;
     this._playerDead   = false;

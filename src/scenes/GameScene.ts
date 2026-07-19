@@ -140,6 +140,10 @@ export class GameScene extends Phaser.Scene {
     // registered via addToGameplayUi below.
     setupGameplayUiCamera(this);
 
+    // Drop any tap/swipe buffered before the run began (e.g. the tap on the START
+    // RUN button) so it can't leak a jump into this run's first frame.
+    InputManager.getInstance().clearBufferedActions();
+
     this.blockPlaced = false;
     this._runKills     = {};
     this._runStartTime = null;
