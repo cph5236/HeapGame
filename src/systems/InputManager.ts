@@ -188,6 +188,14 @@ export class InputManager {
     this.diveJustFired   = false;
     // Abandon any in-flight touch too: a finger still down when the run starts
     // must not retro-fire a jump/dash/dive when it eventually lifts in-game.
+    this.resetTouchTracking();
+  }
+
+  /** Drop the active touch back to idle without firing an impulse. Shared by
+   *  onTouchCancel (finger cancelled by the OS) and clearBufferedActions (finger
+   *  still down across a scene boundary). A later onTouchEnd for this touch then
+   *  hits the `touchState === 'idle'` guard and is ignored. */
+  private resetTouchTracking(): void {
     this.touchState          = 'idle';
     this.activeTouchId       = undefined;
     this.dragUp              = false;
@@ -361,11 +369,7 @@ export class InputManager {
   };
 
   private onTouchCancel = (): void => {
-    this.touchState         = 'idle';
-    this.activeTouchId      = undefined;
-    this.dragUp             = false;
-    this.dragDown           = false;
-    this.uiGestureSuppressed = false;
+    this.resetTouchTracking();
   };
 
   private onTouchEnd = (e: TouchEvent): void => {
