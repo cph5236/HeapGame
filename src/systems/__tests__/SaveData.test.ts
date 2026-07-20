@@ -661,6 +661,45 @@ describe('mergeCloudSave', () => {
   });
 });
 
+// Regression: mergeCloudSave built a hand-listed literal that silently dropped
+// one-time UI/device-local flags, so a GPGS cloud merge on every signed-in launch
+// wiped them — re-showing the customizer hint, replaying the tutorial, and
+// resetting sound prefs. These flags must survive the merge.
+describe('mergeCloudSave — one-time UI / device-local flags', () => {
+  const base = baseSave;
+  const sound = { master: 0.3, music: 0.1, playerSfx: 0.5, enemySfx: 0.2, envSfx: 0.4 };
+
+  it('keeps customizeHintSeen when seen locally and cloud has not seen it', () => {
+    const local = { ...base(), customizeHintSeen: true };
+    const cloud = { ...base() };                              // undefined
+    expect(mergeCloudSave(local, cloud).customizeHintSeen).toBe(true);
+  });
+
+  it('keeps customizeHintSeen when seen only in the cloud (seen on either device = seen)', () => {
+    const local = { ...base(), customizeHintSeen: false };
+    const cloud = { ...base(), customizeHintSeen: true };
+    expect(mergeCloudSave(local, cloud).customizeHintSeen).toBe(true);
+  });
+
+  it('keeps tutorialDone when done on either device', () => {
+    const local = { ...base(), tutorialDone: false };
+    const cloud = { ...base(), tutorialDone: true };
+    expect(mergeCloudSave(local, cloud).tutorialDone).toBe(true);
+  });
+
+  it('preserves local sound settings through the merge', () => {
+    const local = { ...base(), soundSettings: sound };
+    const cloud = { ...base() };
+    expect(mergeCloudSave(local, cloud).soundSettings).toEqual(sound);
+  });
+
+  it('falls back to cloud sound settings when local has none', () => {
+    const local = { ...base() };
+    const cloud = { ...base(), soundSettings: sound };
+    expect(mergeCloudSave(local, cloud).soundSettings).toEqual(sound);
+  });
+});
+
 describe('beatenHeapIds', () => {
   it('defaults to empty and marks heaps beaten with dedup', () => {
     expect(getBeatenHeapIds()).toEqual([]);
