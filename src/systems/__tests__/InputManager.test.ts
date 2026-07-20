@@ -476,6 +476,38 @@ describe('InputManager — drag state machine', () => {
   });
 });
 
+// ── clearBufferedActions — run-start input reset ──────────────────────────────
+// Fresh runs (GameScene/InfiniteGameScene.create) call clearBufferedActions so a
+// tap made just before the run starts — e.g. the tap on the START RUN button —
+// can't leak a jump into the game's first frame.
+describe('InputManager — clearBufferedActions', () => {
+  it('drops a completed tap buffered before the run so it cannot jump on the first frame', async () => {
+    const { im, fire } = await makeMobileIM();
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+    fire('touchstart', { touches: [{ clientX: 100, clientY: 100 }] });
+    vi.spyOn(performance, 'now').mockReturnValue(50);       // quick tap
+    fire('touchend', { changedTouches: [{ clientX: 100, clientY: 100 }] });
+    vi.restoreAllMocks();
+
+    im.clearBufferedActions();                               // run begins
+    im.update(16, false);
+    expect(im.jumpJustPressed).toBe(false);
+  });
+
+  it('abandons an in-flight touch so a finger still down at run-start cannot later fire a jump', async () => {
+    const { im, fire } = await makeMobileIM();
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+    fire('touchstart', { touches: [{ clientX: 100, clientY: 100 }] });  // finger goes down
+    im.clearBufferedActions();                               // run begins while finger is still down
+    vi.spyOn(performance, 'now').mockReturnValue(50);
+    fire('touchend', { changedTouches: [{ clientX: 100, clientY: 100 }] }); // finger lifts in-game
+    vi.restoreAllMocks();
+
+    im.update(16, false);
+    expect(im.jumpJustPressed).toBe(false);
+  });
+});
+
 // ── pendingJumpVx ─────────────────────────────────────────────────────────────
 
 describe('InputManager — pendingJumpVx', () => {
