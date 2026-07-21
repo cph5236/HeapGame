@@ -6,6 +6,7 @@ import { authHeaders, logIfAuthRejected } from './authToken';
 import { applyReward } from './applyReward';
 import { deviceUtcOffsetMin } from './dailyRunGate';
 import type { DailyClaimResponse, DailyStatusResponse } from '../../shared/dailyTypes';
+import type { RewardPayload } from '../../shared/codeTypes';
 
 const SERVER_URL: string =
   (import.meta as unknown as { env: Record<string, string> }).env.VITE_HEAP_SERVER_URL ??
@@ -29,7 +30,7 @@ export async function fetchDailyStatus(): Promise<DailyStatusResult> {
 }
 
 export type DailyClaimResult =
-  | { status: 'claimed'; messages: string[]; streakDay: number }
+  | { status: 'claimed'; messages: string[]; streakDay: number; rewards: RewardPayload[] }
   | { status: 'streakBroken'; repairableDay: number }
   | { status: 'notEligible' }
   | { status: 'offline' }
@@ -66,5 +67,5 @@ export async function claimDaily(resolution?: 'repair' | 'reset'): Promise<Daily
     .map((r) => applyReward(r))
     .filter((a) => a.ok)
     .map((a) => a.message);
-  return { status: 'claimed', messages, streakDay: data.streakDay };
+  return { status: 'claimed', messages, streakDay: data.streakDay, rewards: data.rewards };
 }

@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { dailyIconState, shouldAutoShowPopup, streakChips, grantPreviewText, dailyRewardPreview } from '../dailyDropLogic';
+import { dailyIconState, shouldAutoShowPopup, streakChips, grantPreviewText, dailyRewardPreview, COIN_COLOR, burstColorsForRewards } from '../dailyDropLogic';
+import { ACCENT_COLORS } from '../../data/itemAccents';
 import type { DailyStatusResponse, DailyGrant } from '../../../shared/dailyTypes';
+import type { RewardPayload } from '../../../shared/codeTypes';
 
 const base: DailyStatusResponse = { streakDay: 2, claimedToday: false, nextClaimDay: 3, todayGrants: [] };
 
@@ -73,5 +75,36 @@ describe('dailyRewardPreview', () => {
 
   it('empty grants preview to an empty string', () => {
     expect(dailyRewardPreview([], itemName)).toBe('');
+  });
+});
+
+describe('burstColorsForRewards', () => {
+  const coins: RewardPayload = { rewardType: 'coins', rewardAmount: 50 };
+  const ladder: RewardPayload = { rewardType: 'item', rewardId: 'ladder', rewardAmount: 1 };
+
+  it('returns exactly `count` colors', () => {
+    expect(burstColorsForRewards([coins], 10)).toHaveLength(10);
+  });
+
+  it('colors a coins-only day entirely in the coin color', () => {
+    expect(burstColorsForRewards([coins], 6)).toEqual(Array(6).fill(COIN_COLOR));
+  });
+
+  it('uses the item accent color for an item grant', () => {
+    expect(burstColorsForRewards([ladder], 4)).toEqual(Array(4).fill(ACCENT_COLORS.ladder));
+  });
+
+  it('interleaves colors on a mixed day (day 7: coins + item)', () => {
+    expect(burstColorsForRewards([coins, ladder], 4))
+      .toEqual([COIN_COLOR, ACCENT_COLORS.ladder, COIN_COLOR, ACCENT_COLORS.ladder]);
+  });
+
+  it('falls back to the coin color for an unknown item id', () => {
+    const mystery: RewardPayload = { rewardType: 'item', rewardId: 'not_a_real_item', rewardAmount: 1 };
+    expect(burstColorsForRewards([mystery], 3)).toEqual(Array(3).fill(COIN_COLOR));
+  });
+
+  it('defaults to the coin color when there are no rewards', () => {
+    expect(burstColorsForRewards([], 3)).toEqual(Array(3).fill(COIN_COLOR));
   });
 });

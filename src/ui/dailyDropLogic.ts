@@ -4,6 +4,26 @@
 // without Phaser, same pattern as hudLogic.ts).
 
 import type { DailyGrant, DailyStatusResponse } from '../../shared/dailyTypes';
+import type { RewardPayload } from '../../shared/codeTypes';
+import { ACCENT_COLORS } from '../data/itemAccents';
+import type { ItemId } from '../../shared/itemIds';
+
+/** Orange used for coin tokens (matches the overlay ACCENT chrome). */
+export const COIN_COLOR = 0xff9922;
+
+/** Burst-token color for one reward: coins are orange, items take their store
+ *  accent color so a Ladder day bursts green, a Shield day purple, etc. */
+export function rewardColor(reward: RewardPayload): number {
+  if (reward.rewardType === 'coins') return COIN_COLOR;
+  return ACCENT_COLORS[reward.rewardId as ItemId] ?? COIN_COLOR;
+}
+
+/** `count` colors for the claim burst, cycling through the day's rewards so a
+ *  mixed day (day 7: coins + item) interleaves orange and the item accent. */
+export function burstColorsForRewards(rewards: RewardPayload[], count: number): number[] {
+  const palette = rewards.length ? rewards.map(rewardColor) : [COIN_COLOR];
+  return Array.from({ length: count }, (_, i) => palette[i % palette.length]);
+}
 
 export type DailyIconState = 'hidden' | 'locked' | 'ready' | 'offline';
 
