@@ -56,8 +56,15 @@ export class Enemy {
       this.sprite.setData('speed', def.speed);
       this.sprite.setVelocityX(def.speed); // start walking right; state machine takes over
       this.sprite.play('rat-walk-right');
+    } else if (def.kind === 'jumper') {
+      // Wall-mounted, stationary. EnemyManager.trySpawn sets flip + state.
+      if (def.bodyIdle) applyBodyBox(this.sprite.body, def.bodyIdle);
+      this.sprite.setImmovable(true);
+      this.sprite.setData('speed', 0);
+      this.sprite.setData('vulnerable', true); // retracted = defeatable
+      this.sprite.play('jumper-idle-1');
     } else {
-      // Patrol left→right — direction is flipped manually in EnemyManager.update()
+      // Ghost (vulture): patrol left→right — direction flipped in EnemyManager.update()
       this.sprite.setVelocityX(-def.speed); // start moving left
       this.sprite.setData('speed', def.speed);
       this.sprite.play('vulture-fly-left');
