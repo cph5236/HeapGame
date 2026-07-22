@@ -32,8 +32,13 @@ const SURFACE_ANGLE_THRESHOLD = 30; // deg — below this an edge is a walkable 
 
 // Proximity-overlay panel geometry (drawn as a rounded, rarity-tinted card).
 const OVERLAY_W      = 256;
-const OVERLAY_H      = 146;
 const OVERLAY_RADIUS = 12;
+/** Inner top/bottom padding and inter-row gap for the proximity card. The card
+ *  height is computed per-frame from the stacked rows (an effect summary can wrap
+ *  to 2 lines), so these drive the layout rather than a fixed OVERLAY_H. */
+const OVERLAY_PAD     = 12;
+const OVERLAY_ROW_GAP = 8;
+const OVERLAY_BADGE_H = 20;
 const OVERLAY_FILL_ALPHA = 0.78; // semi-transparent so the panel doesn't hide the player behind it
 
 /** Pick dark or light badge text for contrast against a fill colour. Uses the
@@ -109,6 +114,7 @@ export class PickupManager {
   private overlayPrompt!:   Phaser.GameObjects.Text;
   private overlayParts:     (Phaser.GameObjects.GameObject & { setVisible(v: boolean): unknown })[] = [];
   private panelColor = -1;  // last rarity color the panel frame was drawn with (redraw cache)
+  private panelHeight = -1; // last card height drawn (varies with effect wrap; redraw cache)
 
   // Mobile grab button (screen-space)
   private grabBtn?:   Phaser.GameObjects.Rectangle;
@@ -343,15 +349,16 @@ export class PickupManager {
 
   /** Redraw the rounded card with a rarity-tinted frame. Cheap, but only called
    *  when the active pickup's rarity colour changes (panelColor cache). */
-  private drawPanel(color: number): void {
+  private drawPanel(color: number, height: number): void {
     const g = this.overlayBg;
     g.clear();
-    // Body — drawn from (-W/2, -H) to (W/2, 0) so the card's bottom sits at the
-    // graphics origin (placed just above the item each frame).
+    // Body — drawn from (-W/2, -height) to (W/2, 0) so the card's bottom sits at
+    // the graphics origin (placed just above the item each frame). Height varies
+    // with content (a wrapped effect summary), so this is cached on panelHeight.
     g.fillStyle(0x0a0818, OVERLAY_FILL_ALPHA);
-    g.fillRoundedRect(-OVERLAY_W / 2, -OVERLAY_H, OVERLAY_W, OVERLAY_H, OVERLAY_RADIUS);
+    g.fillRoundedRect(-OVERLAY_W / 2, -height, OVERLAY_W, height, OVERLAY_RADIUS);
     g.lineStyle(2, color, 1);
-    g.strokeRoundedRect(-OVERLAY_W / 2, -OVERLAY_H, OVERLAY_W, OVERLAY_H, OVERLAY_RADIUS);
+    g.strokeRoundedRect(-OVERLAY_W / 2, -height, OVERLAY_W, height, OVERLAY_RADIUS);
   }
 
   private refreshOverlay(): void {
@@ -363,46 +370,60 @@ export class PickupManager {
     const p = this.pickups[this.activeIndex];
     const rdef = RARITY_DEFS[p.rarity];
     const cx = p.x;
-    const topY = p.y - PICKUP_SIZE / 2 - 8; // card bottom sits just above the item
+    const bottomY = p.y - PICKUP_SIZE / 2 - 8; // card bottom sits just above the item
+    const isMobile = InputManager.getInstance().isMobile;
 
-    // Rounded card, frame tinted to the rarity colour (redrawn only on change).
-    if (rdef.color !== this.panelColor) {
-      this.drawPanel(rdef.color);
-      this.panelColor = rdef.color;
-    }
-    this.overlayBg.setPosition(cx, topY).setVisible(true);
-
-    // Tier badge — a filled pill in the rarity colour, sized to its label.
-    this.overlayRarity
-      .setText(rdef.label)
-      .setColor(badgeTextColor(rdef.color));
-    this.overlayRarityBg
-      .setPosition(cx, topY - 130)
-      .setSize(this.overlayRarity.width + 18, 20)
-      .setFillStyle(rdef.color, 1)
-      .setVisible(true);
-    this.overlayRarity.setPosition(cx, topY - 130).setVisible(true);
-
-    this.overlayName.setPosition(cx, topY - 104).setText(p.def.name).setVisible(true);
-    this.overlayFlavor.setPosition(cx, topY - 76).setText(p.def.description).setVisible(true);
-    // Auto-summarised mechanical effect, scaled to the rolled rarity so the
-    // overlay shows what the player will actually get (so flavour text doesn't
-    // hide what it does).
+    // Set every text first, so each object's measured .height reflects any
+    // word-wrapping (the effect summary can wrap to 2 lines at high rarity).
+    this.overlayRarity.setText(rdef.label).setColor(badgeTextColor(rdef.color));
+    this.overlayName.setText(p.def.name);
+    this.overlayFlavor.setText(p.def.description);
+    // Rarity-scaled effect summary so the overlay shows what the player actually gets.
     const effLabel = p.def.grantsShield ? 'Absorb 1 hit' : formatEffectSummary(applyRarity(p.def.effect, p.rarity));
-    this.overlayEffect.setPosition(cx, topY - 46).setText(effLabel).setVisible(true);
+    this.overlayEffect.setText(effLabel);
     // Carry items show their rarity-scaled point value; instant/free items show FREE.
     const scaledBonus = Math.round(p.def.scoreBonus * RARITY_SCORE_MULT[p.rarity]);
-    const bonusLabel = p.def.scoreBonus > 0 ? `+${scaledBonus} pts` : 'FREE';
-    this.overlayBonus.setPosition(cx, topY - 26).setText(bonusLabel).setVisible(true);
+    this.overlayBonus.setText(p.def.scoreBonus > 0 ? `+${scaledBonus} pts` : 'FREE');
 
-    const isMobile = InputManager.getInstance().isMobile;
+    // Stack rows from the BOTTOM up (the card is anchored just above the item), so
+    // a 2-line effect grows the card upward rather than overlapping the bonus/
+    // prompt beneath it. `cursor` tracks the bottom edge of the next row up.
+    let cursor = bottomY - OVERLAY_PAD;
+    const stackUp = (t: Phaser.GameObjects.Text): void => {
+      t.setPosition(cx, cursor - t.height / 2).setVisible(true);
+      cursor -= t.height + OVERLAY_ROW_GAP;
+    };
+
+    // Bottom row: the grab prompt (desktop) or nothing (mobile shows the GRAB button).
     if (isMobile) {
       this.overlayPrompt.setVisible(false);
       this.setGrabButtonVisible(true);
     } else {
-      this.overlayPrompt.setPosition(cx, topY - 10).setText('Press E to grab').setVisible(true);
+      this.overlayPrompt.setText('Press E to grab');
       this.setGrabButtonVisible(false);
+      stackUp(this.overlayPrompt);
     }
+    stackUp(this.overlayBonus);
+    stackUp(this.overlayEffect);
+    stackUp(this.overlayFlavor);
+    stackUp(this.overlayName);
+
+    // Tier badge — a filled pill in the rarity colour, sized to its label; a fixed-
+    // height row above the name.
+    this.overlayRarityBg.setSize(this.overlayRarity.width + 18, OVERLAY_BADGE_H).setFillStyle(rdef.color, 1);
+    const badgeCenterY = cursor - OVERLAY_BADGE_H / 2;
+    this.overlayRarityBg.setPosition(cx, badgeCenterY).setVisible(true);
+    this.overlayRarity.setPosition(cx, badgeCenterY).setVisible(true);
+
+    // Size the card to span from just above the badge down to the item, and redraw
+    // only when the rarity colour or the computed height changes.
+    const height = Math.round(bottomY - (badgeCenterY - OVERLAY_BADGE_H / 2) + OVERLAY_PAD);
+    if (rdef.color !== this.panelColor || height !== this.panelHeight) {
+      this.drawPanel(rdef.color, height);
+      this.panelColor = rdef.color;
+      this.panelHeight = height;
+    }
+    this.overlayBg.setPosition(cx, bottomY).setVisible(true);
   }
 
   private hideOverlay(): void {

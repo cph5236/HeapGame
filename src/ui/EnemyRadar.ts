@@ -2,8 +2,8 @@
 import Phaser from 'phaser';
 import { getDprCap } from '../systems/displayMetrics';
 import { addToGameplayUi } from '../systems/GameplayUiCamera';
-import { selectBlips, type Blip, type RadarView, type RadarOpts } from '../systems/enemyRadarMath';
-import { ENEMY_RADAR_MARGIN_PX, ENEMY_RADAR_MAX_ARROWS } from '../constants';
+import { selectBlips, visibleWorldRect, type Blip, type RadarView, type RadarOpts } from '../systems/enemyRadarMath';
+import { ENEMY_RADAR_MARGIN_PX, ENEMY_RADAR_MAX_ARROWS, ENEMY_RADAR_ONSCREEN_PAD_PX, PICKUP_RADAR_ONSCREEN_PAD_PX } from '../constants';
 
 const ARROW_BOX   = 18; // logical px (square texture display size)
 const ARROW_DEPTH = 30; // above the HUD chips (score/pause/revive sit at depth 19–21)
@@ -113,15 +113,17 @@ export class EnemyRadar {
     wrapPeriod: number,
     pickups: readonly { x: number; y: number }[] = NO_TARGETS,
   ): void {
-    // Logical visible rect from scroll + size/zoom — NOT camera.worldView, which
-    // is refreshed only in preRender and is stale during update().
-    const view: RadarView = {
-      x: camera.scrollX,
-      y: camera.scrollY,
-      width: camera.width / camera.zoom,
-      height: camera.height / camera.zoom,
-    };
-    const opts: RadarOpts = { rangePx: this.rangePx, marginPx: ENEMY_RADAR_MARGIN_PX, wrapPeriod };
+    // Visible world rect, reconstructed to match Phaser's camera.worldView but valid
+    // mid-update (worldView itself lags a frame / is zero on frame 1). Phaser zooms
+    // about the camera centre, so this insets the top-left by the zoom loss — plain
+    // scrollX is only right at zoom 1 and mis-flags on-screen targets at DPR > 1.
+    const view: RadarView = visibleWorldRect(camera);
+    // Shared opts; the on-screen suppression pad is sized per channel to its sprite
+    // (enemies are larger than pickups), so a target isn't arrowed while visible nor
+    // over-suppressed while genuinely off-screen.
+    const base = { rangePx: this.rangePx, marginPx: ENEMY_RADAR_MARGIN_PX, wrapPeriod };
+    const enemyOpts:  RadarOpts = { ...base, onScreenPadPx: ENEMY_RADAR_ONSCREEN_PAD_PX };
+    const pickupOpts: RadarOpts = { ...base, onScreenPadPx: PICKUP_RADAR_ONSCREEN_PAD_PX };
 
     // Enemies: gather active sprite refs (sprites satisfy {x,y}; no new objects).
     this.enemyScratch.length = 0;
@@ -132,12 +134,12 @@ export class EnemyRadar {
       }
     }
     this.enemyChannel.render(
-      selectBlips(this.enemyScratch, playerX, playerY, view, opts, this.enemyChannel.capacity),
+      selectBlips(this.enemyScratch, playerX, playerY, view, enemyOpts, this.enemyChannel.capacity),
     );
 
     // Pickups: the caller passes a live position list (already {x,y}); no gather needed.
     this.pickupChannel.render(
-      selectBlips(pickups, playerX, playerY, view, opts, this.pickupChannel.capacity),
+      selectBlips(pickups, playerX, playerY, view, pickupOpts, this.pickupChannel.capacity),
     );
   }
 }

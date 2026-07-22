@@ -18,6 +18,13 @@ export interface RadarOpts {
   marginPx: number;
   /** Horizontal wrap period (worldWidth + wrapPad); the world is a cylinder. */
   wrapPeriod: number;
+  /**
+   * Grows the "on-screen" suppression rect outward by this many logical px, so an
+   * enemy whose centre is just past the edge — but whose sprite is still clearly
+   * visible — gets no arrow (an arrow pointing at something you can already see is
+   * noise). Defaults to 0 (suppress only when the centre is strictly inside view).
+   */
+  onScreenPadPx?: number;
 }
 
 export interface Blip {
@@ -28,6 +35,40 @@ export interface Blip {
   angle: number;
   /** Player→enemy distance in world px (for nearest-N selection). */
   dist: number;
+}
+
+/** Minimal camera shape needed to reconstruct the visible world rect. */
+export interface CameraRectSource {
+  scrollX: number;
+  scrollY: number;
+  /** Physical camera pixel size (Phaser Camera.width/height). */
+  width: number;
+  height: number;
+  /** Camera zoom — equals the DPR cap under the crisp-canvas setup. */
+  zoom: number;
+}
+
+/**
+ * The camera's visible world rect — identical to Phaser `Camera.worldView`, but
+ * reconstructed so it is valid *during* scene `update()` (Phaser only refreshes
+ * worldView in preRender, so reading it in update() lags a frame and is zero on
+ * the very first frame).
+ *
+ * Phaser zooms about the camera CENTRE (regardless of `originX/Y`), so the visible
+ * rect's top-left is inset from `scrollX/Y` by half the size lost to zoom. Treating
+ * the top-left as plain `scrollX` (the old radar bug) offsets the rect by hundreds
+ * of px once zoom = DPR > 1 — which mis-flagged on-screen targets as off-screen on
+ * high-DPR phones (desktop DPR=1 hid it). At zoom 1 this reduces to `scrollX/Y`.
+ */
+export function visibleWorldRect(cam: CameraRectSource): RadarView {
+  const width = cam.width / cam.zoom;
+  const height = cam.height / cam.zoom;
+  return {
+    x: cam.scrollX + (cam.width - width) / 2,
+    y: cam.scrollY + (cam.height - height) / 2,
+    width,
+    height,
+  };
 }
 
 /**
@@ -74,7 +115,8 @@ export function computeBlip(
   // off-screen and must keep its arrow.
   const rawSx = enemyX - view.x;
   const rawSy = enemyY - view.y;
-  if (rawSx >= 0 && rawSx <= view.width && rawSy >= 0 && rawSy <= view.height) {
+  const pad = opts.onScreenPadPx ?? 0;
+  if (rawSx >= -pad && rawSx <= view.width + pad && rawSy >= -pad && rawSy <= view.height + pad) {
     return null;
   }
 
