@@ -13,6 +13,16 @@ export function applyBodyBox(
   body.setOffset(box.offsetX, box.offsetY);
 }
 
+/** Mirror a body box horizontally within a frame, for setFlipX(true) sprites. */
+export function mirrorBodyBox(box: BodyBox, frameWidth: number): BodyBox {
+  return {
+    width:   box.width,
+    height:  box.height,
+    offsetX: frameWidth - box.offsetX - box.width,
+    offsetY: box.offsetY,
+  };
+}
+
 export class Enemy {
   readonly sprite: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
   readonly kind: EnemyKind;
