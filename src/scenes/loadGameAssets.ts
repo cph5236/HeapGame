@@ -16,6 +16,7 @@ import bridgeUrl      from '../sprites/Bridge/Bridge.png?url';
 import vultureFlyLeftUrl  from '../sprites/Enemies/vulture/vulture-fly-left.png?url';
 import vultureFlyRightUrl from '../sprites/Enemies/vulture/vulture-fly-right.png?url';
 import ratUrl             from '../sprites/Enemies/Rat/rat.png?url';
+import jumperUrl          from '../sprites/Enemies/JumperCables/Jumper_Cables.png?url';
 import trashbagNoStringsUrl from '../sprites/player/trashbag-nostrings.png?url';
 import outroDeathUrl        from '../sprites/outro/trashbag-Death.png';
 
@@ -87,6 +88,7 @@ export function loadGameAssets(scene: Phaser.Scene): void {
   scene.load.spritesheet('vulture-fly-left',  vultureFlyLeftUrl,  { frameWidth: 64, frameHeight: 43 });
   scene.load.spritesheet('vulture-fly-right', vultureFlyRightUrl, { frameWidth: 64, frameHeight: 42 });
   scene.load.spritesheet('rat',               ratUrl,             { frameWidth: 32, frameHeight: 32 });
+  scene.load.spritesheet('jumper',            jumperUrl,          { frameWidth: 256, frameHeight: 256 });
 
   // ── Portal (recycle-items now reuse OBJECT_DEFS keys, no separate load) ──
   scene.load.image(PORTAL_DEF.spriteKey, PORTAL_DEF.spritePath);
@@ -116,6 +118,10 @@ export function loadGameAssets(scene: Phaser.Scene): void {
     scene.anims.create({ key: 'rat-walk-left',  frames: scene.anims.generateFrameNumbers('rat', { start: 9,  end: 11 }), frameRate: 10, repeat: -1 });
     scene.anims.create({ key: 'vulture-fly-left',  frames: scene.anims.generateFrameNumbers('vulture-fly-left',  { start: 0, end: 3 }), frameRate: 10, repeat: -1 });
     scene.anims.create({ key: 'vulture-fly-right', frames: scene.anims.generateFrameNumbers('vulture-fly-right', { start: 0, end: 3 }), frameRate: 10, repeat: -1 });
+    scene.anims.create({ key: 'jumper-idle-1',   frames: scene.anims.generateFrameNumbers('jumper', { start: 0,  end: 3  }), frameRate: 6,  repeat: -1 });
+    scene.anims.create({ key: 'jumper-idle-2',   frames: scene.anims.generateFrameNumbers('jumper', { start: 4,  end: 7  }), frameRate: 6,  repeat: -1 });
+    scene.anims.create({ key: 'jumper-attack-1', frames: scene.anims.generateFrameNumbers('jumper', { start: 8,  end: 11 }), frameRate: 12, repeat: 0  });
+    scene.anims.create({ key: 'jumper-attack-2', frames: scene.anims.generateFrameNumbers('jumper', { start: 12, end: 15 }), frameRate: 12, repeat: 0  });
 
     // Register flipbook anims for sheet-based cosmetics.
     for (const key of Object.keys(COSMETIC_ART)) {
