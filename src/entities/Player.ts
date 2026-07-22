@@ -134,6 +134,7 @@ export class Player {
   private _onGround       = false;
   private _onWall         = false;
   private _frozen         = false;
+  private _stunned        = false;
   private _justLanded     = false;
   private _justJumped     = false;
   private _justAirJumped  = false;
@@ -148,6 +149,7 @@ export class Player {
   get hasDash():              boolean { return this.dashEnabled; }
   get hasActiveShield():      boolean { return this.shieldActive; }
   get isReviveArmed():        boolean { return this.reviveArmed; }
+  get isStunned():            boolean { return this._stunned; }
 
   /** Jump launch velocity including base jumpBoost and any carried jump bonus. */
   private get jumpVelocity(): number {
@@ -696,5 +698,25 @@ export class Player {
     this.sprite.setVelocity(0, 0);
     this.sprite.body.setAllowGravity(false);
     this._frozen = true;
+  }
+
+  /**
+   * Temporarily disable controls with an outward knockback, keeping gravity on
+   * so the player is knocked off the climb and falls. Distinct from freeze(),
+   * which halts physics entirely. No-op if already frozen/dead.
+   */
+  stun(durationMs: number, knockback: { x: number; y: number }): void {
+    if (this._frozen) return;
+    this._stunned = true;
+    this.setControlsEnabled(false);
+    this.sprite.body.setAllowGravity(true);
+    this.sprite.setVelocity(knockback.x, knockback.y);
+    // Player stores no `scene` field; the sprite carries a `.scene` back-ref.
+    this.sprite.scene.time.delayedCall(durationMs, () => {
+      // Don't re-enable if a freeze/death took over during the stun.
+      if (this._frozen) { this._stunned = false; return; }
+      this._stunned = false;
+      this.setControlsEnabled(true);
+    });
   }
 }

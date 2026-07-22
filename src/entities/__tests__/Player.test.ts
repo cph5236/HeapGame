@@ -2162,3 +2162,53 @@ describe('Player — player-action events', () => {
   });
 });
 
+// ── 16. stun() ─────────────────────────────────────────────────────────────
+
+describe('Player — stun', () => {
+  it('stun disables controls, keeps gravity on, applies knockback, restores after duration', async () => {
+    const { player, sprite, spy } = await makePlayer({ onGround: true });
+    const timers: Array<{ ms: number; cb: () => void }> = [];
+    (sprite.scene as any).time = { delayedCall: (ms: number, cb: () => void) => { timers.push({ ms, cb }); return {}; } };
+
+    player.stun(500, { x: 280, y: -180 });
+
+    expect(player.isStunned).toBe(true);
+    // gravity stays ON during a stun (unlike freeze) — setAllowGravity(true) called
+    expect(sprite.body.setAllowGravity).toHaveBeenLastCalledWith(true);
+    // knockback applied via setVelocity(x, y)
+    expect(spy.setVelocityX[spy.setVelocityX.length - 1]).toBe(280);
+    expect(spy.setVelocityY[spy.setVelocityY.length - 1]).toBe(-180);
+
+    // fire the captured restore timer
+    expect(timers).toHaveLength(1);
+    timers[0].cb();
+    expect(player.isStunned).toBe(false);
+  });
+
+  it('is a no-op when already frozen', async () => {
+    const { player, sprite } = await makePlayer({ onGround: true });
+    (sprite.scene as any).time = { delayedCall: vi.fn(() => ({})) };
+    player.freeze();
+
+    player.stun(500, { x: 280, y: -180 });
+
+    expect(player.isStunned).toBe(false);
+    expect((sprite.scene as any).time.delayedCall).not.toHaveBeenCalled();
+  });
+
+  it('restore callback does not re-enable controls if frozen took over during the stun', async () => {
+    const { player, sprite } = await makePlayer({ onGround: true });
+    const timers: Array<{ ms: number; cb: () => void }> = [];
+    (sprite.scene as any).time = { delayedCall: (ms: number, cb: () => void) => { timers.push({ ms, cb }); return {}; } };
+
+    player.stun(500, { x: 280, y: -180 });
+    player.freeze(); // takes over mid-stun
+
+    timers[0].cb();
+
+    // Controls must stay disabled (frozen), not re-enabled by the stale stun timer
+    expect((player as any).controlsEnabled).toBe(false);
+    expect(player.isStunned).toBe(false);
+  });
+});
+
