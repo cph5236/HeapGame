@@ -14,9 +14,10 @@ import Phaser from 'phaser';
 import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { claimDaily } from '../systems/DailyDropClient';
 import { AdClient } from '../systems/ads/AdClient';
-import { streakChips, dailyRewardPreview } from './dailyDropLogic';
+import { streakChips, dailyRewardPreview, burstColorsForRewards } from './dailyDropLogic';
 import { ITEM_DEFS } from '../data/itemDefs';
 import type { DailyStatusResponse } from '../../shared/dailyTypes';
+import type { RewardPayload } from '../../shared/codeTypes';
 
 const itemName = (id: string): string => ITEM_DEFS.find((d) => d.id === id)?.name ?? id;
 
@@ -47,17 +48,30 @@ export function openDailyDropOverlay(
   const close = (): void => { root.destroy(); onClosed(claimed); };
   backdrop.on('pointerup', () => { if (!busy) close(); });
 
-  // Panel.
+  // Panel — width clamps to the viewport so it never bleeds off the sides on
+  // narrow phones (many report innerWidth 360–375, below the 380 design width).
+  const panelW = Math.min(380, w - 32);
+  const panelLeft = cx - panelW / 2;
   const panelTop = h * 0.2;
-  const panelH = 340;
+  // Compact by default (can + hint). The extra height only exists for the rare
+  // streak-repair buttons, so the panel grows to REPAIR_H when that prompt shows
+  // instead of leaving dead space below the hint the rest of the time.
+  const COMPACT_H = 292;
+  const REPAIR_H = 332;
+  let panelH = COMPACT_H;
   const panel = scene.add.graphics();
-  panel.fillStyle(PANEL, 0.97);
-  panel.fillRoundedRect(cx - 190, panelTop, 380, panelH, 16);
-  panel.lineStyle(2, ACCENT, 0.9);
-  panel.strokeRoundedRect(cx - 190, panelTop, 380, panelH, 16);
-  root.add(panel);
   // Panel area eats taps so they don't hit the backdrop-dismiss.
-  const panelZone = scene.add.zone(cx, panelTop + panelH / 2, 380, panelH).setInteractive();
+  const panelZone = scene.add.zone(cx, panelTop + panelH / 2, panelW, panelH).setInteractive();
+  const drawPanel = (): void => {
+    panel.clear();
+    panel.fillStyle(PANEL, 0.97);
+    panel.fillRoundedRect(panelLeft, panelTop, panelW, panelH, 16);
+    panel.lineStyle(2, ACCENT, 0.9);
+    panel.strokeRoundedRect(panelLeft, panelTop, panelW, panelH, 16);
+    panelZone.setSize(panelW, panelH).setPosition(cx, panelTop + panelH / 2);
+  };
+  drawPanel();
+  root.add(panel);
   root.add(panelZone);
 
   const day = status.nextClaimDay;
@@ -67,7 +81,7 @@ export function openDailyDropOverlay(
   root.add(title);
 
   // Dismiss ✕.
-  const closeBtn = scene.add.text(cx + 165, panelTop + 28, '✕', {
+  const closeBtn = scene.add.text(panelLeft + panelW - 25, panelTop + 28, '✕', {
     fontSize: '22px', color: '#9a95a8',
   }).setOrigin(0.5).setInteractive({ useHandCursor: true });
   closeBtn.on('pointerup', () => { if (!busy) close(); });
@@ -76,8 +90,11 @@ export function openDailyDropOverlay(
   // 7-day streak strip.
   const chips = streakChips(day);
   const stripY = panelTop + 70;
+  // Chip spacing shrinks only if the (clamped) panel is too narrow for the
+  // 7-wide strip at the design gap; centered on cx either way.
+  const chipGap = Math.min(44, (panelW - 44) / 6);
   chips.forEach((chip, i) => {
-    const x = cx - 132 + i * 44;
+    const x = cx + (i - 3) * chipGap;
     const g = scene.add.graphics();
     const fill = chip === 'done' ? ACCENT_DARK : chip === 'now' ? ACCENT : 0x0e1124;
     g.fillStyle(fill, 1);
@@ -95,7 +112,7 @@ export function openDailyDropOverlay(
   // waiting for a claim result to reveal it.
   if (locked) {
     root.add(scene.add.text(cx, stripY + 38, `Today: ${dailyRewardPreview(status.todayGrants, itemName)}`, {
-      fontSize: '14px', color: '#cfd6ff', align: 'center', wordWrap: { width: 340 },
+      fontSize: '14px', color: '#cfd6ff', align: 'center', wordWrap: { width: panelW - 40 },
     }).setOrigin(0.5));
   }
 
@@ -123,7 +140,7 @@ export function openDailyDropOverlay(
     root.addAt(glow, root.getIndex(can));
   }
 
-  const hint = scene.add.text(cx, panelTop + 285, locked ? 'Finish a run to open' : 'TAP THE CAN!', {
+  const hint = scene.add.text(cx, panelTop + 262, locked ? 'Finish a run to open' : 'TAP THE CAN!', {
     fontSize: '15px', color: '#ffce8a', fontStyle: 'bold',
   }).setOrigin(0.5);
   root.add(hint);
@@ -140,46 +157,72 @@ export function openDailyDropOverlay(
     hint.setText(msg).setColor(color);
   };
 
-  const showRewards = (messages: string[], streakDay: number): void => {
+  const showRewards = (messages: string[], streakDay: number, rewards: RewardPayload[]): void => {
     claimed = true;
     wiggle?.stop();
     can.setAngle(0);
+    // The hint has done its job — drop it (the modal closes via ✕ / backdrop
+    // like any other), rather than lingering on the stale "TAP THE CAN!".
+    scene.tweens.killTweensOf(hint);
+    hint.setVisible(false);
     // Lid pops off.
     scene.tweens.add({
       targets: lid, angle: -95, x: -46, y: -34, duration: 420, ease: 'Back.easeOut',
     });
-    // Coin burst.
-    for (let i = 0; i < 8; i++) {
-      const coin = scene.add.circle(cx, canY - 34, 6, ACCENT).setStrokeStyle(1, ACCENT_DARK);
-      root.add(coin);
-      const a = -Math.PI / 2 + (i - 3.5) * 0.32;
+    // Token burst — colored per reward (coins orange, items their store accent).
+    // Each token shoots up out of the can mouth, then falls under "gravity" and
+    // bounces to a settle line at the base before fading where it lands, so the
+    // payout reads as a physical spill instead of dots that hang in the air.
+    const TOKEN_COUNT = 10;
+    const mouthY = canY - 34;   // where the lid sat
+    const settleY = canY + 26;  // can base
+    burstColorsForRewards(rewards, TOKEN_COUNT).forEach((color, i) => {
+      const dir = i % 2 === 0 ? 1 : -1;
+      const spread = Phaser.Math.Between(24, 96) * dir;
+      const peakY = mouthY - Phaser.Math.Between(52, 98);
+      const token = scene.add.circle(cx, mouthY, 6, color)
+        .setStrokeStyle(1, ACCENT_DARK).setDepth(1);
+      root.add(token);
+      // Launch up-and-out (slight lag behind the lid crack)…
       scene.tweens.add({
-        targets: coin,
-        x: cx + Math.cos(a) * Phaser.Math.Between(50, 90),
-        y: canY - 34 + Math.sin(a) * Phaser.Math.Between(60, 100),
-        alpha: { from: 1, to: 0.85 },
-        duration: 620, ease: 'Cubic.easeOut',
+        targets: token, x: cx + spread * 0.6, y: peakY,
+        duration: 260, delay: 120 + i * 18, ease: 'Quad.easeOut',
+        onComplete: () => {
+          // …then fall + bounce to the settle line, and fade where it lands.
+          scene.tweens.add({
+            targets: token, x: cx + spread, y: settleY,
+            duration: 760, ease: 'Bounce.easeOut',
+          });
+          scene.tweens.add({
+            targets: token, alpha: 0,
+            duration: 300, delay: 760, ease: 'Quad.easeIn',
+            onComplete: () => token.destroy(),
+          });
+        },
       });
-    }
+    });
     title.setText(`DAY ${streakDay} CLAIMED!`);
     const lines = messages.join('\n');
     const rewardText = scene.add.text(cx, canY - 96, lines, {
       fontSize: '18px', color: '#ffffff', fontStyle: 'bold', align: 'center',
-      stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5).setAlpha(0);
+      stroke: '#000000', strokeThickness: 3, wordWrap: { width: panelW - 40 },
+    }).setOrigin(0.5).setAlpha(0).setDepth(2);
     root.add(rewardText);
     scene.tweens.add({ targets: rewardText, alpha: 1, y: canY - 108, duration: 350, delay: 250 });
-    setHint('TAP ANYWHERE TO CLOSE');
     busy = false;
   };
 
   const showRepairPrompt = (repairableDay: number): void => {
+    // Grow the panel to make room for the two repair buttons below the hint.
+    panelH = REPAIR_H;
+    drawPanel();
     setHint(`Streak broken! Keep Day ${repairableDay}?`, '#e08a7a');
-    const adBtn = scene.add.text(cx - 80, panelTop + 315, '▶ WATCH AD', {
+    const btnY = panelTop + 300;
+    const adBtn = scene.add.text(cx - 80, btnY, '▶ WATCH AD', {
       fontSize: '15px', color: '#1a0f00', fontStyle: 'bold',
       backgroundColor: '#ff9922', padding: { x: 12, y: 6 },
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    const resetBtn = scene.add.text(cx + 85, panelTop + 315, 'START OVER', {
+    const resetBtn = scene.add.text(cx + 85, btnY, 'START OVER', {
       fontSize: '15px', color: '#e9e4d8',
       backgroundColor: '#2b2f4a', padding: { x: 12, y: 6 },
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
@@ -190,7 +233,7 @@ export function openDailyDropOverlay(
       busy = true;
       adBtn.destroy(); resetBtn.destroy();
       const out = await claimDaily(resolution);
-      if (out.status === 'claimed') showRewards(out.messages, out.streakDay);
+      if (out.status === 'claimed') showRewards(out.messages, out.streakDay, out.rewards);
       else { setHint('Something went wrong — try again later'); busy = false; }
     };
     adBtn.on('pointerup', async () => {
@@ -215,7 +258,7 @@ export function openDailyDropOverlay(
       setHint('…');
       const out = await claimDaily();
       switch (out.status) {
-        case 'claimed':      showRewards(out.messages, out.streakDay); break;
+        case 'claimed':      showRewards(out.messages, out.streakDay, out.rewards); break;
         case 'streakBroken': busy = false; showRepairPrompt(out.repairableDay); break;
         case 'notEligible':  busy = false; setHint('Already claimed — come back tomorrow!'); break;
         case 'offline':      busy = false; setHint('Offline — rewards need a connection', '#e08a7a'); break;
