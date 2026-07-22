@@ -187,7 +187,10 @@ export const ENEMY_RADAR_RANGE_PER_LEVEL = 0.10;
 export const ENEMY_RADAR_MARGIN_PX       = 24;
 /** Grows the on-screen suppression rect outward (logical px) so a target whose
  *  centre is just off the edge but whose sprite is still visible gets no arrow —
- *  ~half the largest enemy sprite, so a mostly-visible target is treated as seen. */
-export const ENEMY_RADAR_ONSCREEN_PAD_PX = 32;
+ *  ~half the sprite, so a mostly-visible target is treated as seen. Per channel:
+ *  enemies (ghost 51×43 / rat 48×48) and the smaller salvage pickups (28px), so a
+ *  pickup that's genuinely off-screen isn't over-suppressed by an enemy-sized pad. */
+export const ENEMY_RADAR_ONSCREEN_PAD_PX  = 32;
+export const PICKUP_RADAR_ONSCREEN_PAD_PX = 16;
 /** Max simultaneous arrows (pool size). */
 export const ENEMY_RADAR_MAX_ARROWS      = 8;
