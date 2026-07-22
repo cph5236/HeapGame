@@ -72,13 +72,13 @@ mirroring the existing rat state machine. Runtime state lives in the same
 States:
 
 1. **`idle`** (armed, retracted) — alternates `jumper-idle-1` / `jumper-idle-2`
-   every ~2000 ms. **Vulnerable.** Continuously checks player distance.
+   every ~1000 ms. **Vulnerable.** Continuously checks player distance.
 2. **`attacking`** (extended, hazard) — entered when the player is within
    **ATTACK_RANGE_PX ≈ 140** of the clamp. Plays an attack anim (clamp extends,
    sparks). The clamp is a **hazard for ~500 ms** (`ATTACK_ACTIVE_MS`).
    **Not vulnerable** during this window.
 3. **`cooldown`** (disarmed, retracted) — after the attack window, retracts and
-   plays **only `jumper-idle-1`** (never idle-2) for **COOLDOWN_MS ≈ 1200 ms** as
+   plays **only `jumper-idle-1`** (never idle-2) for **COOLDOWN_MS ≈ 3000 ms** as
    a visual tell that it will not attack. **Vulnerable.** Does not re-trigger
    during cooldown even if the player is in range. On expiry → back to `idle`.
 
