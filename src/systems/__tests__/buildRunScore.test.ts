@@ -14,6 +14,11 @@ const TEST_DEFS: Record<EnemyKind, EnemyDef> = {
     spawnOnHeapSurface: true, spawnOnHeapWall: false,
     displayName: 'VULTURE', scoreValue: 200,
   },
+  jumper: {
+    kind: 'jumper', textureKey: 'jumper', width: 72, height: 72, speed: 0,
+    spawnOnHeapSurface: false, spawnOnHeapWall: true,
+    displayName: 'JUMPER CABLES', scoreValue: 150,
+  },
 };
 
 describe('buildRunScore', () => {
