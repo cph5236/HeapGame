@@ -31,6 +31,9 @@ const MIN_ENEMY_SPACING_PX = 100; // min horizontal gap between enemies spawned 
 const JUMPER_IDLE_ALT_MS = 1000;
 const JUMPER_FRAME_W = 256; // texture-frame width, for body-box mirroring
 const JUMPER_WALL_GAP_PX = 6; // extra px off the wall face, texture-space independent (world px)
+const JUMPER_ATTACK_RANGE_PX = 140;
+const JUMPER_ATTACK_ACTIVE_MS = 500;
+const JUMPER_COOLDOWN_MS = 3000;
 
 type RatStateName = 'walk-right' | 'idle-right' | 'walk-left' | 'idle-left' | 'stationary';
 
@@ -307,6 +310,53 @@ export class EnemyManager {
 
         const wantAnim = body.velocity.x < 0 ? 'vulture-fly-left' : 'vulture-fly-right';
         if (s.anims.currentAnim?.key !== wantAnim) s.play(wantAnim);
+      } else if (rt.kind === 'jumper') {
+        const body = s.body as Phaser.Physics.Arcade.Body;
+        const dx = s.x - playerX;
+        const dy = s.y - playerY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const prev = rt.jumperState ?? 'idle';
+        const msInState = now - (rt.stateSince ?? now);
+        const next = jumperNextState(prev, msInState, dist, {
+          attackRangePx: JUMPER_ATTACK_RANGE_PX,
+          attackActiveMs: JUMPER_ATTACK_ACTIVE_MS,
+          cooldownMs: JUMPER_COOLDOWN_MS,
+        });
+
+        const flipped = rt.outwardX !== undefined && rt.outwardX < 0;
+        const idleBox   = ENEMY_DEFS.jumper.bodyIdle!;
+        const attackBox = ENEMY_DEFS.jumper.bodyAttack!;
+        const boxFor = (b: typeof idleBox) => (flipped ? mirrorBodyBox(b, JUMPER_FRAME_W) : b);
+
+        if (next !== prev) {
+          rt.jumperState = next;
+          rt.stateSince = now;
+          if (next === 'attacking') {
+            const key = rt.attackToggle ? 'jumper-attack-2' : 'jumper-attack-1';
+            rt.attackToggle = !rt.attackToggle;
+            s.play(key);
+            applyBodyBox(body, boxFor(attackBox));
+            s.setData('vulnerable', false);
+          } else if (next === 'cooldown') {
+            // Disarmed tell: idle-1 only.
+            s.play('jumper-idle-1');
+            rt.idleShowing2 = false;
+            applyBodyBox(body, boxFor(idleBox));
+            s.setData('vulnerable', true);
+          } else {
+            // back to idle (armed)
+            s.play('jumper-idle-1');
+            rt.idleShowing2 = false;
+            rt.idleAltAt = now + JUMPER_IDLE_ALT_MS;
+            applyBodyBox(body, boxFor(idleBox));
+            s.setData('vulnerable', true);
+          }
+        } else if (next === 'idle' && now >= (rt.idleAltAt ?? 0)) {
+          // Alternate idle-1/idle-2 while armed.
+          rt.idleShowing2 = !rt.idleShowing2;
+          s.play(rt.idleShowing2 ? 'jumper-idle-2' : 'jumper-idle-1');
+          rt.idleAltAt = now + JUMPER_IDLE_ALT_MS;
+        }
       }
     }
   }
