@@ -134,20 +134,27 @@ export function aggregateModifiers(carried: readonly CarriedPickup[]): CarryModi
   );
 }
 
-/** Compact human-readable summary of an effect, for the proximity overlay.
- *  Multiplier levers read as words (floaty/heavy, fast/slow cd, wall±); speed is a
- *  signed %, jump/air are signed numbers. Empty when the item has no stat effect
- *  (e.g. the instant shield). */
+/** Human-readable summary of an effect, for the proximity overlay. Uses plain
+ *  words rather than jargon so players can tell at a glance what each lever does:
+ *  signed % Speed, signed Jump Height, ± Air Jumps, Floaty/Heavy (gravity),
+ *  Faster/Slower Cooldown, and Slower/Faster Rising Wall (the rising wall is the
+ *  hazard, so slower is good). Empty when the item has no stat effect (the shield). */
 export function formatEffectSummary(effect: PickupEffect): string {
   const parts: string[] = [];
   if (effect.speedMult !== 1) {
-    parts.push(`${effect.speedMult > 1 ? '+' : ''}${Math.round((effect.speedMult - 1) * 100)}% spd`);
+    parts.push(`${effect.speedMult > 1 ? '+' : ''}${Math.round((effect.speedMult - 1) * 100)}% Speed`);
   }
-  if (effect.jumpBonus !== 0)     parts.push(`${effect.jumpBonus > 0 ? '+' : ''}${Math.round(effect.jumpBonus)} jump`);
-  if (effect.extraAirJumps !== 0) parts.push(`${effect.extraAirJumps > 0 ? '+' : ''}${effect.extraAirJumps} air`);
-  if ((effect.gravityMult  ?? 1) !== 1) parts.push(effect.gravityMult!  < 1 ? 'floaty'   : 'heavy');
-  if ((effect.cooldownMult ?? 1) !== 1) parts.push(effect.cooldownMult! < 1 ? 'fast cd' : 'slow cd');
-  if ((effect.wallSpeedMult ?? 1) !== 1) parts.push(effect.wallSpeedMult! > 1 ? 'wall speed+' : 'wall speed-');
+  if (effect.jumpBonus !== 0) {
+    parts.push(`${effect.jumpBonus > 0 ? '+' : ''}${Math.round(effect.jumpBonus)} Jump Height`);
+  }
+  if (effect.extraAirJumps !== 0) {
+    const n = effect.extraAirJumps;
+    parts.push(`${n > 0 ? '+' : ''}${n} Air Jump${Math.abs(n) === 1 ? '' : 's'}`);
+  }
+  if ((effect.gravityMult  ?? 1) !== 1) parts.push(effect.gravityMult!  < 1 ? 'Floaty'          : 'Heavy');
+  if ((effect.cooldownMult ?? 1) !== 1) parts.push(effect.cooldownMult! < 1 ? 'Faster Cooldown' : 'Slower Cooldown');
+  // wallSpeedMult scales the rising hazard wall: >1 climbs faster (bad), <1 slower (good).
+  if ((effect.wallSpeedMult ?? 1) !== 1) parts.push(effect.wallSpeedMult! > 1 ? 'Faster Rising Wall' : 'Slower Rising Wall');
   return parts.join(' · ');
 }
 
@@ -194,7 +201,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Going nowhere fast.',
     color:       0x9a5a3a,
     polarity:    'negative',
-    effect:      { speedMult: 0.8, jumpBonus: -80, extraAirJumps: 0 },
+    effect:      { speedMult: 0.8, jumpBonus: -40, extraAirJumps: 0 },
     scoreBonus:  PICKUP_BONUS['rusty-anchor'],
   },
   {
@@ -251,7 +258,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Old worn-out skateboard.',
     color:       0xcc4444,
     polarity:    'negative',
-    effect:      { speedMult: 1.15, jumpBonus: -50, extraAirJumps: 0 },
+    effect:      { speedMult: 1.15, jumpBonus: -25, extraAirJumps: 0 },
     scoreBonus:  PICKUP_BONUS['skateboard'],
   },
   {
@@ -314,7 +321,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: "Fast. Stopping's your problem.",
     color:       0xbb6644,
     polarity:    'negative',
-    effect:      { speedMult: 1.3, jumpBonus: -90, extraAirJumps: 0 },
+    effect:      { speedMult: 1.3, jumpBonus: -45, extraAirJumps: 0 },
     scoreBonus:  PICKUP_BONUS['rusted-roller-skates'],
   },
   {

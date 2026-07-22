@@ -3,6 +3,7 @@ import {
   wrapNearestX,
   computeBlip,
   selectBlips,
+  visibleWorldRect,
   type RadarView,
   type RadarOpts,
 } from '../enemyRadarMath';
@@ -10,6 +11,29 @@ import {
 const VIEW: RadarView = { x: 0, y: 0, width: 480, height: 900 };
 const OPTS: RadarOpts = { rangePx: 600, marginPx: 24, wrapPeriod: 1200 };
 const PX = 240, PY = 450; // player at view centre
+
+describe('visibleWorldRect', () => {
+  // Cross-checked against a live Phaser Camera.worldView (debug session): the same
+  // inputs gave worldView ≈ (1205, 2273, 273, 364) — this reconstruction lands
+  // within ~1px (Phaser rounds internally), which is what the on-screen test needs.
+  it('matches Phaser worldView under DPR zoom (the mobile case)', () => {
+    const r = visibleWorldRect({ scrollX: 1000, scrollY: 2000, width: 682, height: 909, zoom: 2.5 });
+    expect(r.x).toBeCloseTo(1204.6, 1);
+    expect(r.y).toBeCloseTo(2272.7, 1);
+    expect(r.width).toBeCloseTo(272.8, 1);
+    expect(r.height).toBeCloseTo(363.6, 1);
+  });
+  it('reduces to plain scroll at zoom 1 (the desktop case)', () => {
+    const r = visibleWorldRect({ scrollX: 1000, scrollY: 2000, width: 480, height: 900, zoom: 1 });
+    expect(r).toEqual({ x: 1000, y: 2000, width: 480, height: 900 });
+  });
+  it('centres the inset — the rect stays centred on scroll+size/2', () => {
+    const r = visibleWorldRect({ scrollX: 0, scrollY: 0, width: 1000, height: 1000, zoom: 2 });
+    // centre of the visible rect equals the camera-midpoint (scroll + physical size / 2)
+    expect(r.x + r.width / 2).toBeCloseTo(500, 5);
+    expect(r.y + r.height / 2).toBeCloseTo(500, 5);
+  });
+});
 
 describe('wrapNearestX', () => {
   it('returns the raw x when no wrapped image is closer', () => {
@@ -28,6 +52,16 @@ describe('wrapNearestX', () => {
 describe('computeBlip', () => {
   it('returns null for an on-screen enemy', () => {
     expect(computeBlip(240, 450, PX, PY, VIEW, OPTS)).toBeNull();
+  });
+  it('suppresses the arrow for an edge-straddling enemy when onScreenPadPx is set', () => {
+    // Enemy centre 20px past the right edge (x=500, view width 480) — its sprite is
+    // still clearly visible. With a 32px pad the on-screen rect grows to x<=512, so
+    // no arrow. Without the pad (base OPTS) it would still show.
+    const padded: RadarOpts = { ...OPTS, onScreenPadPx: 32 };
+    expect(computeBlip(500, 450, PX, PY, VIEW, padded)).toBeNull();
+    expect(computeBlip(500, 450, PX, PY, VIEW, OPTS)).not.toBeNull();
+    // A genuinely off-screen enemy (60px past the edge, body fully off) still shows.
+    expect(computeBlip(540, 450, PX, PY, VIEW, padded)).not.toBeNull();
   });
   it('returns null for an enemy beyond range', () => {
     // 700px straight up — off-screen but out of the 600px range

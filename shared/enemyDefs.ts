@@ -61,7 +61,7 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
     textureKey: 'vulture-fly-left',
     width: 51,
     height: 43,
-    speed: 320,
+    speed: 288, // 0.9× of the old 320 — softened per player feedback (was too fast)
     spawnOnHeapSurface: true,
     spawnOnHeapWall: false,
     displayName: 'VULTURE',

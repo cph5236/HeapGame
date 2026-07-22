@@ -185,5 +185,9 @@ export const ENEMY_RADAR_BASE_RANGE_PX   = 350;
 export const ENEMY_RADAR_RANGE_PER_LEVEL = 0.10;
 /** Arrow inset from the screen edge, in logical px. */
 export const ENEMY_RADAR_MARGIN_PX       = 24;
+/** Grows the on-screen suppression rect outward (logical px) so a target whose
+ *  centre is just off the edge but whose sprite is still visible gets no arrow —
+ *  ~half the largest enemy sprite, so a mostly-visible target is treated as seen. */
+export const ENEMY_RADAR_ONSCREEN_PAD_PX = 32;
 /** Max simultaneous arrows (pool size). */
 export const ENEMY_RADAR_MAX_ARROWS      = 8;

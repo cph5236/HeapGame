@@ -2,8 +2,8 @@
 import Phaser from 'phaser';
 import { getDprCap } from '../systems/displayMetrics';
 import { addToGameplayUi } from '../systems/GameplayUiCamera';
-import { selectBlips, type Blip, type RadarView, type RadarOpts } from '../systems/enemyRadarMath';
-import { ENEMY_RADAR_MARGIN_PX, ENEMY_RADAR_MAX_ARROWS } from '../constants';
+import { selectBlips, visibleWorldRect, type Blip, type RadarView, type RadarOpts } from '../systems/enemyRadarMath';
+import { ENEMY_RADAR_MARGIN_PX, ENEMY_RADAR_MAX_ARROWS, ENEMY_RADAR_ONSCREEN_PAD_PX } from '../constants';
 
 const ARROW_BOX   = 18; // logical px (square texture display size)
 const ARROW_DEPTH = 30; // above the HUD chips (score/pause/revive sit at depth 19–21)
@@ -113,15 +113,17 @@ export class EnemyRadar {
     wrapPeriod: number,
     pickups: readonly { x: number; y: number }[] = NO_TARGETS,
   ): void {
-    // Logical visible rect from scroll + size/zoom — NOT camera.worldView, which
-    // is refreshed only in preRender and is stale during update().
-    const view: RadarView = {
-      x: camera.scrollX,
-      y: camera.scrollY,
-      width: camera.width / camera.zoom,
-      height: camera.height / camera.zoom,
+    // Visible world rect, reconstructed to match Phaser's camera.worldView but valid
+    // mid-update (worldView itself lags a frame / is zero on frame 1). Phaser zooms
+    // about the camera centre, so this insets the top-left by the zoom loss — plain
+    // scrollX is only right at zoom 1 and mis-flags on-screen targets at DPR > 1.
+    const view: RadarView = visibleWorldRect(camera);
+    const opts: RadarOpts = {
+      rangePx: this.rangePx,
+      marginPx: ENEMY_RADAR_MARGIN_PX,
+      wrapPeriod,
+      onScreenPadPx: ENEMY_RADAR_ONSCREEN_PAD_PX,
     };
-    const opts: RadarOpts = { rangePx: this.rangePx, marginPx: ENEMY_RADAR_MARGIN_PX, wrapPeriod };
 
     // Enemies: gather active sprite refs (sprites satisfy {x,y}; no new objects).
     this.enemyScratch.length = 0;
