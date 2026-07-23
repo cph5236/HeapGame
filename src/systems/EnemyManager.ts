@@ -30,12 +30,17 @@ const RAT_IDLE_MS = 1000;
 const MIN_ENEMY_SPACING_PX = 100; // min horizontal gap between enemies spawned in the same band
 const JUMPER_IDLE_ALT_MS = 1000;
 const JUMPER_FRAME_W = 256; // texture-frame width, for body-box mirroring
-const JUMPER_WALL_GAP_PX = 6; // extra px off the wall face, texture-space independent (world px)
-// A jumper seats at the wall-edge midpoint; the sprite is ~72px tall, so a short
-// edge (a jagged notch or corner facet) can't seat it flush — it overhangs into
-// the neighbouring facets and reads as floating or buried. Only spawn on a wall
-// run at least this long so the clamp has a flush stretch of face to mount on.
-const JUMPER_MIN_WALL_LEN_PX = 110;
+// How far the jumper's sprite CENTRE sits off the wall edge along the outward
+// normal. Small + positive: the inner half of the sprite embeds INTO the wall
+// (hidden behind the trash — see the depth-2 render in Enemy.ts) while the clamp
+// pokes into open air. Seating into the wall (rather than fully clear of it)
+// means a receding/jagged face can't leave the base floating in open space.
+const JUMPER_WALL_SEAT_PX = 12;
+// Coarse filter for degenerate tiny facets. With the base embedded + occluded,
+// short edges read as "emerging from the trash" rather than floating/buried, so
+// this only needs to reject slivers too small to host the enemy at all — kept
+// low so Infinite's jagged silhouette still spawns jumpers.
+const JUMPER_MIN_WALL_LEN_PX = 40;
 const JUMPER_ATTACK_RANGE_PX = 140;
 // Min telegraph so the lunge anim always plays; the clamp then holds out while
 // the player stays in range (so they meet a live clamp), capped by the max.
@@ -165,13 +170,16 @@ export class EnemyManager {
       const angle = computeSurfaceAngle(v1, v2);
       const spawnX = (v1.x + v2.x) / 2;
       if (Math.abs(spawnX - lastSpawnX) < MIN_ENEMY_SPACING_PX) continue;
-      const spawnY = Math.min(v1.y, v2.y);
+      const isWallEdge = angle >= SURFACE_ANGLE_THRESHOLD;
+      // Surface enemies anchor at the top vertex (they stand on the surface);
+      // wall enemies anchor at the edge's vertical MIDDLE, so a jumper seats in
+      // the centre of the wall run rather than up in the top corner.
+      const spawnY = isWallEdge ? (v1.y + v2.y) / 2 : Math.min(v1.y, v2.y);
       // Patrol bounds: inset from the edge ends so the rat turns shy of the
       // corners (stays on the visible surface, never walks into the heap).
       const leftV  = v1.x <= v2.x ? v1 : v2;
       const rightV = v1.x <= v2.x ? v2 : v1;
       const { minX, maxX, minY, maxY } = insetPatrolBounds(leftV, rightV, RAT_PATROL_END_MARGIN_PX);
-      const isWallEdge = angle >= SURFACE_ANGLE_THRESHOLD;
       // Reject wall edges too short to seat the jumper sprite flush (see const).
       const wallLongEnough = Math.hypot(v2.x - v1.x, v2.y - v1.y) >= JUMPER_MIN_WALL_LEN_PX;
       const wallFace = isWallEdge && wallLongEnough
@@ -415,7 +423,9 @@ export class EnemyManager {
     let spawnX = x;
     let spawnY = y - def.height / 2;
     if (isWall && wallFace) {
-      const offset = def.width / 2 + JUMPER_WALL_GAP_PX;
+      // Seat the sprite centre just off the face: inner half embeds into the wall
+      // (hidden by the depth-2 render), clamp pokes into open air.
+      const offset = JUMPER_WALL_SEAT_PX;
       spawnX = x + wallFace.nx * offset;
       spawnY = y + wallFace.ny * offset; // y here is the edge midpoint top; nudge along normal
     }

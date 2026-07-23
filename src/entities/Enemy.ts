@@ -58,6 +58,10 @@ export class Enemy {
       this.sprite.play('rat-walk-right');
     } else if (def.kind === 'jumper') {
       // Wall-mounted, stationary. EnemyManager.trySpawn sets flip + state.
+      // Render behind the heap face (depth 3) and the infinite kill-wall body
+      // (depth 5): the jumper is seated INTO the wall, so its base/overhang is
+      // occluded by the trash and only the clamp that pokes into open air shows.
+      this.sprite.setDepth(2);
       if (def.bodyIdle) applyBodyBox(this.sprite.body, def.bodyIdle);
       this.sprite.setImmovable(true);
       this.sprite.setData('speed', 0);
