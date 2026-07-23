@@ -31,6 +31,11 @@ const MIN_ENEMY_SPACING_PX = 100; // min horizontal gap between enemies spawned 
 const JUMPER_IDLE_ALT_MS = 1000;
 const JUMPER_FRAME_W = 256; // texture-frame width, for body-box mirroring
 const JUMPER_WALL_GAP_PX = 6; // extra px off the wall face, texture-space independent (world px)
+// A jumper seats at the wall-edge midpoint; the sprite is ~72px tall, so a short
+// edge (a jagged notch or corner facet) can't seat it flush — it overhangs into
+// the neighbouring facets and reads as floating or buried. Only spawn on a wall
+// run at least this long so the clamp has a flush stretch of face to mount on.
+const JUMPER_MIN_WALL_LEN_PX = 110;
 const JUMPER_ATTACK_RANGE_PX = 140;
 // Min telegraph so the lunge anim always plays; the clamp then holds out while
 // the player stays in range (so they meet a live clamp), capped by the max.
@@ -167,7 +172,9 @@ export class EnemyManager {
       const rightV = v1.x <= v2.x ? v2 : v1;
       const { minX, maxX, minY, maxY } = insetPatrolBounds(leftV, rightV, RAT_PATROL_END_MARGIN_PX);
       const isWallEdge = angle >= SURFACE_ANGLE_THRESHOLD;
-      const wallFace = isWallEdge
+      // Reject wall edges too short to seat the jumper sprite flush (see const).
+      const wallLongEnough = Math.hypot(v2.x - v1.x, v2.y - v1.y) >= JUMPER_MIN_WALL_LEN_PX;
+      const wallFace = isWallEdge && wallLongEnough
         ? computeWallFace(v1, v2, this.heapPolygon.length > 0 ? this.heapPolygon : vertices)
         : undefined;
       for (const def of Object.values(ENEMY_DEFS)) {
