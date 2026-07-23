@@ -1,8 +1,8 @@
 // src/systems/EnemyManager.ts
 import Phaser from 'phaser';
 import { AudioManager, distanceToProximityT } from './AudioManager';
-import { Enemy, applyBodyBox } from '../entities/Enemy';
-import { ENEMY_DEFS, EnemyDef } from '../data/enemyDefs';
+import { Enemy, applyBodyBox, mirrorBodyBox } from '../entities/Enemy';
+import { ENEMY_DEFS, EnemyDef, DEFAULT_ENEMY_PARAMS } from '../data/enemyDefs';
 import { SOUND_DEFS } from '../data/soundDefs';
 import type { HeapEnemyParams } from '../../shared/heapTypes';
 import { CHUNK_BAND_HEIGHT, ENEMY_CULL_DISTANCE, MOCK_HEAP_HEIGHT_PX, RAT_MIN_PATROL_PX, RAT_PATROL_END_MARGIN_PX, WORLD_WIDTH } from '../constants';
@@ -17,13 +17,36 @@ import {
   computeGhostFlip,
   insetPatrolBounds,
   shouldPatrol,
+  computeWallFace,
+  jumperNextState,
+  type WallFace,
+  type JumperState,
 } from './EnemySpawnMath';
 
-export { isPointInsidePolygon, computeSurfaceAngle, spawnChance, scaleSpawnChance, computeGhostFlip, insetPatrolBounds, shouldPatrol };
+export { isPointInsidePolygon, computeSurfaceAngle, spawnChance, scaleSpawnChance, computeGhostFlip, insetPatrolBounds, shouldPatrol, computeWallFace, jumperNextState };
 
 const SURFACE_ANGLE_THRESHOLD = 30; // degrees — below this is a surface, above is a wall
 const RAT_IDLE_MS = 1000;
 const MIN_ENEMY_SPACING_PX = 100; // min horizontal gap between enemies spawned in the same band
+const JUMPER_IDLE_ALT_MS = 1000;
+const JUMPER_FRAME_W = 256; // texture-frame width, for body-box mirroring
+// How far the jumper's sprite CENTRE sits off the wall edge along the outward
+// normal. Small + positive: the inner half of the sprite embeds INTO the wall
+// (hidden behind the trash — see the depth-2 render in Enemy.ts) while the clamp
+// pokes into open air. Seating into the wall (rather than fully clear of it)
+// means a receding/jagged face can't leave the base floating in open space.
+const JUMPER_WALL_SEAT_PX = 45;
+// Coarse filter for degenerate tiny facets. With the base embedded + occluded,
+// short edges read as "emerging from the trash" rather than floating/buried, so
+// this only needs to reject slivers too small to host the enemy at all — kept
+// low so Infinite's jagged silhouette still spawns jumpers.
+const JUMPER_MIN_WALL_LEN_PX = 40;
+const JUMPER_ATTACK_RANGE_PX = 140;
+// Min telegraph so the lunge anim always plays; the clamp then holds out while
+// the player stays in range (so they meet a live clamp), capped by the max.
+const JUMPER_ATTACK_MIN_MS = 500;
+const JUMPER_ATTACK_MAX_MS = 1400;
+const JUMPER_COOLDOWN_MS = 3000;
 
 type RatStateName = 'walk-right' | 'idle-right' | 'walk-left' | 'idle-left' | 'stationary';
 
@@ -32,7 +55,7 @@ type RatStateName = 'walk-right' | 'idle-right' | 'walk-left' | 'idle-left' | 's
  * DataManager overhead of reading 7+ keys via getData() every frame per enemy.
  */
 interface EnemyRuntime {
-  kind: 'percher' | 'ghost';
+  kind: 'percher' | 'ghost' | 'jumper';
   speed: number;
   // Percher (rat) only:
   minX?: number;
@@ -41,6 +64,13 @@ interface EnemyRuntime {
   maxY?: number;
   ratState?: RatStateName;
   idleUntil?: number;
+  // Jumper only:
+  jumperState?: JumperState;
+  stateSince?: number;   // scene.time.now when the current jumperState was entered
+  outwardX?: number;     // -1 or +1: open-air direction (flip + knockback)
+  idleAltAt?: number;    // next time to toggle idle-1/idle-2 while idle
+  idleShowing2?: boolean;
+  attackToggle?: boolean; // alternate attack-1/attack-2 for variety
 }
 
 export class EnemyManager {
@@ -78,7 +108,9 @@ export class EnemyManager {
   }
 
   setEnemyParams(params: HeapEnemyParams): void {
-    this._enemyParams = params;
+    // Merge over defaults so newly-added kinds (e.g. jumper) spawn on heaps
+    // whose stored enemy_params predate them. Per-heap keys still override.
+    this._enemyParams = { ...DEFAULT_ENEMY_PARAMS, ...params };
   }
 
   /** Update the heap polygon used for interior-spawn rejection. Call after every polygon load. */
@@ -138,15 +170,24 @@ export class EnemyManager {
       const angle = computeSurfaceAngle(v1, v2);
       const spawnX = (v1.x + v2.x) / 2;
       if (Math.abs(spawnX - lastSpawnX) < MIN_ENEMY_SPACING_PX) continue;
-      const spawnY = Math.min(v1.y, v2.y);
+      const isWallEdge = angle >= SURFACE_ANGLE_THRESHOLD;
+      // Surface enemies anchor at the top vertex (they stand on the surface);
+      // wall enemies anchor at the edge's vertical MIDDLE, so a jumper seats in
+      // the centre of the wall run rather than up in the top corner.
+      const spawnY = isWallEdge ? (v1.y + v2.y) / 2 : Math.min(v1.y, v2.y);
       // Patrol bounds: inset from the edge ends so the rat turns shy of the
       // corners (stays on the visible surface, never walks into the heap).
       const leftV  = v1.x <= v2.x ? v1 : v2;
       const rightV = v1.x <= v2.x ? v2 : v1;
       const { minX, maxX, minY, maxY } = insetPatrolBounds(leftV, rightV, RAT_PATROL_END_MARGIN_PX);
+      // Reject wall edges too short to seat the jumper sprite flush (see const).
+      const wallLongEnough = Math.hypot(v2.x - v1.x, v2.y - v1.y) >= JUMPER_MIN_WALL_LEN_PX;
+      const wallFace = isWallEdge && wallLongEnough
+        ? computeWallFace(v1, v2, this.heapPolygon.length > 0 ? this.heapPolygon : vertices)
+        : undefined;
       for (const def of Object.values(ENEMY_DEFS)) {
         if (spawned >= maxEnemies) break;
-        if (this.trySpawn(def, spawnX, spawnY, angle, minX, maxX, minY, maxY)) {
+        if (this.trySpawn(def, spawnX, spawnY, angle, minX, maxX, minY, maxY, wallFace ?? undefined)) {
           spawned++;
           lastSpawnX = spawnX;
         }
@@ -287,6 +328,54 @@ export class EnemyManager {
 
         const wantAnim = body.velocity.x < 0 ? 'vulture-fly-left' : 'vulture-fly-right';
         if (s.anims.currentAnim?.key !== wantAnim) s.play(wantAnim);
+      } else if (rt.kind === 'jumper') {
+        const body = s.body as Phaser.Physics.Arcade.Body;
+        const dx = s.x - playerX;
+        const dy = s.y - playerY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const prev = rt.jumperState ?? 'idle';
+        const msInState = now - (rt.stateSince ?? now);
+        const next = jumperNextState(prev, msInState, dist, {
+          attackRangePx: JUMPER_ATTACK_RANGE_PX,
+          attackMinMs: JUMPER_ATTACK_MIN_MS,
+          attackMaxMs: JUMPER_ATTACK_MAX_MS,
+          cooldownMs: JUMPER_COOLDOWN_MS,
+        });
+
+        const flipped = rt.outwardX !== undefined && rt.outwardX < 0;
+        const idleBox   = ENEMY_DEFS.jumper.bodyIdle!;
+        const attackBox = ENEMY_DEFS.jumper.bodyAttack!;
+        const boxFor = (b: typeof idleBox) => (flipped ? mirrorBodyBox(b, JUMPER_FRAME_W) : b);
+
+        if (next !== prev) {
+          rt.jumperState = next;
+          rt.stateSince = now;
+          if (next === 'attacking') {
+            const key = rt.attackToggle ? 'jumper-attack-2' : 'jumper-attack-1';
+            rt.attackToggle = !rt.attackToggle;
+            s.play(key);
+            applyBodyBox(body, boxFor(attackBox));
+            s.setData('vulnerable', false);
+          } else if (next === 'cooldown') {
+            // Disarmed tell: idle-1 only.
+            s.play('jumper-idle-1');
+            rt.idleShowing2 = false;
+            applyBodyBox(body, boxFor(idleBox));
+            s.setData('vulnerable', true);
+          } else {
+            // back to idle (armed)
+            s.play('jumper-idle-1');
+            rt.idleShowing2 = false;
+            rt.idleAltAt = now + JUMPER_IDLE_ALT_MS;
+            applyBodyBox(body, boxFor(idleBox));
+            s.setData('vulnerable', true);
+          }
+        } else if (next === 'idle' && now >= (rt.idleAltAt ?? 0)) {
+          // Alternate idle-1/idle-2 while armed.
+          rt.idleShowing2 = !rt.idleShowing2;
+          s.play(rt.idleShowing2 ? 'jumper-idle-2' : 'jumper-idle-1');
+          rt.idleAltAt = now + JUMPER_IDLE_ALT_MS;
+        }
       }
     }
   }
@@ -302,6 +391,7 @@ export class EnemyManager {
     maxX?: number,
     minY?: number,
     maxY?: number,
+    wallFace?: WallFace,
   ): boolean {
     const isSurface = surfaceAngle < SURFACE_ANGLE_THRESHOLD;
     const isWall    = surfaceAngle >= SURFACE_ANGLE_THRESHOLD;
@@ -310,9 +400,15 @@ export class EnemyManager {
     if (def.spawnOnHeapWall    && !isWall)    return false;
     if (!def.spawnOnHeapSurface && !def.spawnOnHeapWall) return false;
 
-    // Reject interior edges: the space just above an exterior surface is open air
-    // (outside the polygon). Interior ledges and walls still have heap above them.
-    if (this.heapPolygon.length > 0 && isPointInsidePolygon(x, y - 1, this.heapPolygon)) return false;
+    if (isWall) {
+      // Wall enemies need a resolved open-air face; the surface "point above"
+      // interior test does not apply (open air is horizontal, not up).
+      if (!wallFace) return false;
+    } else {
+      // Reject interior edges: the space just above an exterior surface is open air
+      // (outside the polygon). Interior ledges and walls still have heap above them.
+      if (this.heapPolygon.length > 0 && isPointInsidePolygon(x, y - 1, this.heapPolygon)) return false;
+    }
 
     const spawnParams = this._enemyParams[def.kind];
     if (!spawnParams) return false;
@@ -322,11 +418,22 @@ export class EnemyManager {
     const chance = scaleSpawnChance(rawChance, this._spawnRateMult);
     if (Math.random() >= chance) return false;
 
-    const spawnY = y - def.height / 2;
-    const enemy = new Enemy(this.scene, this.group, x, spawnY, def);
+    // Placement: surface enemies sit centered above the edge; wall enemies sit
+    // just off the wall face in open air, at the edge midpoint height.
+    let spawnX = x;
+    let spawnY = y - def.height / 2;
+    if (isWall && wallFace) {
+      // Seat the sprite centre just off the face: inner half embeds into the wall
+      // (hidden by the depth-2 render), clamp pokes into open air.
+      const offset = JUMPER_WALL_SEAT_PX;
+      spawnX = x + wallFace.nx * offset;
+      spawnY = y + wallFace.ny * offset; // y here is the edge midpoint top; nudge along normal
+    }
+
+    const enemy = new Enemy(this.scene, this.group, spawnX, spawnY, def);
 
     const rt: EnemyRuntime = {
-      kind: def.kind as 'percher' | 'ghost',
+      kind: def.kind as 'percher' | 'ghost' | 'jumper',
       speed: def.speed,
     };
     if (def.kind === 'percher' && minX !== undefined && maxX !== undefined) {
@@ -346,6 +453,19 @@ export class EnemyManager {
         enemy.sprite.play('rat-idle');
         const idleBox = ENEMY_DEFS.percher.bodyIdle;
         if (idleBox) applyBodyBox(body, idleBox);
+      }
+    } else if (def.kind === 'jumper' && wallFace) {
+      rt.jumperState = 'idle';
+      rt.stateSince = this.scene.time.now;
+      rt.outwardX = wallFace.outwardX;
+      rt.idleAltAt = this.scene.time.now + JUMPER_IDLE_ALT_MS;
+      rt.idleShowing2 = false;
+      rt.attackToggle = false;
+      // Flip to face open air; mirror the idle body box when flipped.
+      if (wallFace.outwardX < 0) {
+        enemy.sprite.setFlipX(true);
+        const body = enemy.sprite.body as Phaser.Physics.Arcade.Body;
+        if (def.bodyIdle) applyBodyBox(body, mirrorBodyBox(def.bodyIdle, JUMPER_FRAME_W));
       }
     }
     this.runtime.set(enemy.sprite, rt);

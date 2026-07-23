@@ -1,7 +1,7 @@
 // shared/enemyDefs.ts
 import type { HeapEnemyParams } from './heapTypes';
 
-export type EnemyKind = 'percher' | 'ghost';
+export type EnemyKind = 'percher' | 'ghost' | 'jumper';
 
 /**
  * Physics body bounds in unscaled texture-frame pixels. Used to give an
@@ -28,6 +28,8 @@ export interface EnemyDef {
   /** Per-state body boxes. If omitted, body falls back to width × height. */
   bodyWalking?: BodyBox;
   bodyIdle?:    BodyBox;
+  /** Extended-clamp body box for the jumper attack state. */
+  bodyAttack?:  BodyBox;
 
   // Surface spawn eligibility
   spawnOnHeapSurface: boolean;
@@ -67,6 +69,23 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
     displayName: 'VULTURE',
     scoreValue: 200,
   },
+  jumper: {
+    kind: 'jumper',
+    textureKey: 'jumper',
+    width: 83,
+    height: 83,
+    speed: 0, // stationary; state machine drives animation only
+    // 256×256 source frame, displayed at 83×83. Boxes are in texture pixels,
+    // authored for the default rightward orientation (clamp base on the left).
+    // Retracted: mount + clamp hugging the wall side of the frame.
+    bodyIdle:   { width: 150, height: 150, offsetX: 30, offsetY: 55 },
+    // Extended: clamp reaches further into open air (wider box).
+    bodyAttack: { width: 210, height: 150, offsetX: 30, offsetY: 55 },
+    spawnOnHeapSurface: false,
+    spawnOnHeapWall: true,
+    displayName: 'JUMPER CABLES',
+    scoreValue: 150,
+  },
 };
 
 // Fallback params used when no server-provided HeapEnemyParams are available
@@ -85,5 +104,12 @@ export const DEFAULT_ENEMY_PARAMS: HeapEnemyParams = {
     spawnRampPxAboveFloor: 20000,
     spawnChanceMin: 0.10,
     spawnChanceMax: 0.35,
+  },
+  jumper: {
+    spawnStartPxAboveFloor: 3000,
+    spawnEndPxAboveFloor: -1,
+    spawnRampPxAboveFloor: 18000,
+    spawnChanceMin: 0.10,
+    spawnChanceMax: 0.30,
   },
 };

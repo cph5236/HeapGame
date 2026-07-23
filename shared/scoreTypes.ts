@@ -19,7 +19,7 @@ export interface LeaderboardContext {
 
 export interface SubmitScoreInputs {
   baseHeightPx: number;
-  kills:        { percher: number; ghost: number };
+  kills:        { percher: number; ghost: number; jumper?: number };
   elapsedMs:    number;
   isFailure:    boolean;
   /** Salvage pickups carried to the top (id + rarity). Server validates + scores them. */

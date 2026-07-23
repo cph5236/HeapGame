@@ -13,6 +13,16 @@ export function applyBodyBox(
   body.setOffset(box.offsetX, box.offsetY);
 }
 
+/** Mirror a body box horizontally within a frame, for setFlipX(true) sprites. */
+export function mirrorBodyBox(box: BodyBox, frameWidth: number): BodyBox {
+  return {
+    width:   box.width,
+    height:  box.height,
+    offsetX: frameWidth - box.offsetX - box.width,
+    offsetY: box.offsetY,
+  };
+}
+
 export class Enemy {
   readonly sprite: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
   readonly kind: EnemyKind;
@@ -46,8 +56,19 @@ export class Enemy {
       this.sprite.setData('speed', def.speed);
       this.sprite.setVelocityX(def.speed); // start walking right; state machine takes over
       this.sprite.play('rat-walk-right');
+    } else if (def.kind === 'jumper') {
+      // Wall-mounted, stationary. EnemyManager.trySpawn sets flip + state.
+      // Render behind the heap face (depth 3) and the infinite kill-wall body
+      // (depth 5): the jumper is seated INTO the wall, so its base/overhang is
+      // occluded by the trash and only the clamp that pokes into open air shows.
+      this.sprite.setDepth(2);
+      if (def.bodyIdle) applyBodyBox(this.sprite.body, def.bodyIdle);
+      this.sprite.setImmovable(true);
+      this.sprite.setData('speed', 0);
+      this.sprite.setData('vulnerable', true); // retracted = defeatable
+      this.sprite.play('jumper-idle-1');
     } else {
-      // Patrol left→right — direction is flipped manually in EnemyManager.update()
+      // Ghost (vulture): patrol left→right — direction flipped in EnemyManager.update()
       this.sprite.setVelocityX(-def.speed); // start moving left
       this.sprite.setData('speed', def.speed);
       this.sprite.play('vulture-fly-left');

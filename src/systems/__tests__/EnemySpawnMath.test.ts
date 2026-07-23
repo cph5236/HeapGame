@@ -7,6 +7,8 @@ import {
   computeGhostFlip,
   insetPatrolBounds,
   shouldPatrol,
+  computeWallFace,
+  jumperNextState,
 } from '../EnemySpawnMath';
 import type { EnemySpawnParams } from '../../../shared/heapTypes';
 
@@ -218,5 +220,77 @@ describe('shouldPatrol', () => {
   it('stands still when the span is below the minimum width', () => {
     expect(shouldPatrol(100, 140, 48)).toBe(false); // span 40
     expect(shouldPatrol(100, 100, 48)).toBe(false); // collapsed to a point
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeWallFace
+// ---------------------------------------------------------------------------
+
+describe('computeWallFace', () => {
+  // A square heap block from (0,0) to (100,100). Its right edge x=100 is a
+  // wall whose open air is to the +x side.
+  const square = [
+    { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 },
+  ];
+
+  it('returns +x outward for the right wall', () => {
+    const face = computeWallFace({ x: 100, y: 0 }, { x: 100, y: 100 }, square, 6);
+    expect(face).not.toBeNull();
+    expect(face!.outwardX).toBe(1);
+  });
+
+  it('returns -x outward for the left wall', () => {
+    const face = computeWallFace({ x: 0, y: 100 }, { x: 0, y: 0 }, square, 6);
+    expect(face).not.toBeNull();
+    expect(face!.outwardX).toBe(-1);
+  });
+
+  it('returns null for an edge with heap on both sides (interior)', () => {
+    // A thin polygon where a probe of 6 from the edge midpoint lands inside on
+    // both perpendicular sides: use a wide box and probe a vertical seam.
+    const seam = [
+      { x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 0, y: 200 },
+    ];
+    // The vertical segment x=100 from y=40..160 is fully interior — both
+    // perpendicular probes (+x and -x) stay inside the box.
+    const face = computeWallFace({ x: 100, y: 40 }, { x: 100, y: 160 }, seam, 6);
+    expect(face).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// jumperNextState
+// ---------------------------------------------------------------------------
+
+describe('jumperNextState', () => {
+  const cfg = { attackRangePx: 140, attackMinMs: 500, attackMaxMs: 1400, cooldownMs: 3000 };
+
+  it('idle → attacking when player in range', () => {
+    expect(jumperNextState('idle', 0, 100, cfg)).toBe('attacking');
+  });
+  it('idle stays idle when player out of range', () => {
+    expect(jumperNextState('idle', 0, 200, cfg)).toBe('idle');
+  });
+  it('attacking holds while the player stays in range (past the min window)', () => {
+    // Key behaviour: the clamp stays extended + hazardous as long as the player
+    // is closing in, so an approaching player still meets a live clamp.
+    expect(jumperNextState('attacking', 300, 50, cfg)).toBe('attacking');
+    expect(jumperNextState('attacking', 800, 50, cfg)).toBe('attacking');
+    expect(jumperNextState('attacking', 1399, 50, cfg)).toBe('attacking');
+  });
+  it('attacking → cooldown once the player leaves range, after the min window', () => {
+    expect(jumperNextState('attacking', 600, 200, cfg)).toBe('cooldown');
+  });
+  it('attacking holds through the min window even if the player already left range', () => {
+    // Min telegraph: the attack anim always plays out; no instant flicker-retract.
+    expect(jumperNextState('attacking', 300, 200, cfg)).toBe('attacking');
+  });
+  it('attacking → cooldown at the max cap even while the player camps in range', () => {
+    expect(jumperNextState('attacking', 1400, 50, cfg)).toBe('cooldown');
+  });
+  it('cooldown → idle after cooldown, ignores proximity meanwhile', () => {
+    expect(jumperNextState('cooldown', 100, 10, cfg)).toBe('cooldown');
+    expect(jumperNextState('cooldown', 3000, 10, cfg)).toBe('idle');
   });
 });

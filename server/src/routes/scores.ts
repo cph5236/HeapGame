@@ -184,6 +184,15 @@ export function scoreRoutes(
       }
       return c.json({ error: 'invalid score submission' }, 400);
     }
+    const jumper = kills.jumper ?? 0;
+    if (!Number.isInteger(jumper) || jumper < 0) {
+      console.warn(`[scores] reject: bad jumper (${jumper})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad jumper', value: jumper });
+      }
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
 
     // Heap-relative validation — needs the heap row
     const heap = await heapDb.getHeap(heapId);
@@ -217,11 +226,11 @@ export function scoreRoutes(
     }
 
     // Kill-rate cap
-    if ((percher + ghost) * 1000 > MAX_KILLS_PER_S * elapsedMs) {
-      console.warn(`[scores] reject: kill rate ${((percher + ghost) * 1000) / elapsedMs} /s exceeds ${MAX_KILLS_PER_S} (heapId=${heapId})`);
+    if ((percher + ghost + jumper) * 1000 > MAX_KILLS_PER_S * elapsedMs) {
+      console.warn(`[scores] reject: kill rate ${((percher + ghost + jumper) * 1000) / elapsedMs} /s exceeds ${MAX_KILLS_PER_S} (heapId=${heapId})`);
       const sink = getSink();
       if (sink) {
-        await captureServer(sink, 'warn', 'score:rejected', { reason: 'kill rate too high', heapId, killRatePerS: ((percher + ghost) * 1000) / elapsedMs });
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'kill rate too high', heapId, killRatePerS: ((percher + ghost + jumper) * 1000) / elapsedMs });
       }
       return c.json({ error: 'invalid score submission' }, 400);
     }
@@ -258,7 +267,7 @@ export function scoreRoutes(
 
     // Recompute score server-side — single source of truth
     const { finalScore } = buildRunScore(
-      { baseHeightPx, kills: { percher, ghost }, elapsedMs, salvageBonus },
+      { baseHeightPx, kills: { percher, ghost, jumper }, elapsedMs, salvageBonus },
       ENEMY_DEFS,
       isFailure,
       heap.score_mult,

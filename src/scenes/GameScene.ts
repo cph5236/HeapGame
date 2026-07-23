@@ -63,6 +63,7 @@ import type { Rarity } from '../../shared/pickupScores';
 import { TrashWallManager } from '../systems/TrashWallManager';
 import { TRASH_WALL_DEF } from '../data/trashWallDef';
 import { Enemy, type EnemyKind } from '../entities/Enemy';
+import { playElectrocutionEffect } from '../entities/effects/electrocution';
 import { buildRunScore } from '../systems/buildRunScore';
 import { ENEMY_DEFS, DEFAULT_ENEMY_PARAMS } from '../data/enemyDefs';
 import type { HeapParams } from '../../shared/heapTypes';
@@ -317,6 +318,22 @@ export class GameScene extends Phaser.Scene {
       this.player.sprite, this.enemyManager.group,
       this.handleEnemyDamage as unknown as ArcadeCB,
       this.isDamaging as unknown as ArcadeCB,
+      this,
+    );
+    // Jumper Cables: retracted contact defeats it (reuse the stomp flow);
+    // extended contact stuns the player.
+    this.physics.add.overlap(
+      this.player.sprite, this.enemyManager.group,
+      this.handleStomp as unknown as ArcadeCB,
+      ((_p: Phaser.GameObjects.GameObject, e: Phaser.GameObjects.GameObject) =>
+        this.isJumper(e) && this.isJumperVulnerable(e)) as unknown as ArcadeCB,
+      this,
+    );
+    this.physics.add.overlap(
+      this.player.sprite, this.enemyManager.group,
+      this.handleJumperStun as unknown as ArcadeCB,
+      ((_p: Phaser.GameObjects.GameObject, e: Phaser.GameObjects.GameObject) =>
+        this.isJumper(e) && !this.isJumperVulnerable(e) && !this.invincible) as unknown as ArcadeCB,
       this,
     );
 
@@ -747,10 +764,17 @@ export class GameScene extends Phaser.Scene {
 
   // ── Enemies ──────────────────────────────────────────────────────────────────
 
+  private readonly isJumper = (e: Phaser.GameObjects.GameObject): boolean =>
+    (e as Phaser.GameObjects.Sprite).getData('kind') === 'jumper';
+
+  private readonly isJumperVulnerable = (e: Phaser.GameObjects.GameObject): boolean =>
+    (e as Phaser.GameObjects.Sprite).getData('vulnerable') === true;
+
   private readonly isStomping = (
     player: Phaser.GameObjects.GameObject,
     enemy: Phaser.GameObjects.GameObject,
   ): boolean => {
+    if (this.isJumper(enemy)) return false;
     const p = player as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
     const e = enemy as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
     return p.body.velocity.y > 0 && p.body.center.y < e.body.center.y;
@@ -760,6 +784,7 @@ export class GameScene extends Phaser.Scene {
     player: Phaser.GameObjects.GameObject,
     enemy: Phaser.GameObjects.GameObject,
   ): boolean => {
+    if (this.isJumper(enemy)) return false;
     return !this.invincible && !this.isStomping(player, enemy);
   };
 
@@ -806,6 +831,34 @@ export class GameScene extends Phaser.Scene {
 
     this.invincible = true;
     this.time.delayedCall(PLAYER_INVINCIBLE_MS, () => { this.invincible = false; });
+  };
+
+  private readonly handleJumperStun = (
+    _player: Phaser.GameObjects.GameObject,
+    enemy: Phaser.GameObjects.GameObject,
+  ): void => {
+    // Shield absorbs the shock like any hit.
+    if (this.player.hasActiveShield) {
+      this.player.absorbHit();
+      this.invincible = true;
+      this.time.delayedCall(PLAYER_INVINCIBLE_MS * 4, () => { this.invincible = false; });
+      return;
+    }
+    if (this._playerDead || this.blockPlaced || this.invincible) return;
+
+    const e = enemy as Phaser.Physics.Arcade.Sprite;
+    const dir = Math.sign(this.player.sprite.x - e.x) || 1; // knock away from clamp
+    const STUN_MS = 750;
+    AudioManager.play('enemy-kill'); // reuse existing zap-ish cue; swap later if a dedicated SFX is added
+    this.player.stun(STUN_MS, { x: dir * 280, y: -180 });
+    playElectrocutionEffect(this, this.player.sprite, STUN_MS);
+    this.cameras.main.shake(180, 0.008);
+
+    // Invincibility must cover the full stun (not just PLAYER_INVINCIBLE_MS=400),
+    // otherwise the clamp can re-stun the player on the same lunge before control
+    // returns. Tie it to STUN_MS so the two never drift apart.
+    this.invincible = true;
+    this.time.delayedCall(STUN_MS, () => { this.invincible = false; });
   };
 
   private readonly handleEnemyDamage = (): void => {

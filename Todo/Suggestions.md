@@ -1,6 +1,9 @@
 # Suggestions — from player feedback
 **Last updated:** 2026-07-07
 
+
+## Resolved
+
 ## Slow down vultures (~0.85× speed)
 
 - **ids:** 3  ·  **players requesting:** 1
