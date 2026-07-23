@@ -129,6 +129,22 @@
         <div><label>spawnChanceMax (0–1)</label><input type="number" step="0.01" id="ghost-spawnChanceMax" /></div>
       </div>
     </div>
+
+    <div class="section" id="section-jumper">
+      <h2>Jumper (JUMPER CABLES) <span class="muted">— wall enemy</span></h2>
+      <div class="row">
+        <div><label>spawnStartPxAboveFloor</label><input type="number" id="jumper-spawnStartPxAboveFloor" /></div>
+        <div><label>spawnEndPxAboveFloor (-1 = none)</label><input type="number" id="jumper-spawnEndPxAboveFloor" /></div>
+      </div>
+      <div class="row">
+        <div><label>spawnRampPxAboveFloor (-1 = flat)</label><input type="number" id="jumper-spawnRampPxAboveFloor" /></div>
+        <div></div>
+      </div>
+      <div class="row">
+        <div><label>spawnChanceMin (0–1)</label><input type="number" step="0.01" id="jumper-spawnChanceMin" /></div>
+        <div><label>spawnChanceMax (0–1)</label><input type="number" step="0.01" id="jumper-spawnChanceMax" /></div>
+      </div>
+    </div>
     <button id="saveEnemyParams">Save Enemy Params</button>
   </div>
 
@@ -214,8 +230,16 @@
     // Well-known infinite-heap row id — must match shared/heapTypes.ts INFINITE_HEAP_ID
     // (this page is standalone static HTML and cannot import shared code).
     const INFINITE_HEAP_ID = 'FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF';
-    const KINDS = ['percher', 'ghost'];
+    const KINDS = ['percher', 'ghost', 'jumper'];
     const FIELDS = ['spawnStartPxAboveFloor', 'spawnEndPxAboveFloor', 'spawnRampPxAboveFloor', 'spawnChanceMin', 'spawnChanceMax'];
+    // Fallback pre-fill for kinds absent from a heap's stored enemy_params (e.g.
+    // jumper, added after the sentinel row was seeded — no D1 migration, the game
+    // merges these same defaults at runtime). Keep in sync with
+    // DEFAULT_ENEMY_PARAMS in shared/enemyDefs.ts. Without this, saving would
+    // write blank→-1 for jumper and disable it instead of leaving it at default.
+    const KIND_DEFAULTS = {
+      jumper: { spawnStartPxAboveFloor: 3000, spawnEndPxAboveFloor: -1, spawnRampPxAboveFloor: 18000, spawnChanceMin: 0.10, spawnChanceMax: 0.30 },
+    };
     // Keep in sync with shared/itemIds.ts (server validates reward_id against that list).
     const ITEM_IDS = ['ladder', 'ibeam', 'checkpoint', 'shield', 'revive', 'adrenaline', 'pogo', 'stall'];
 
@@ -372,7 +396,10 @@
         if (!res.ok) throw new Error(`${res.status}`);
         const params = await res.json();
         for (const kind of KINDS) {
-          const kp = params[kind] ?? {};
+          // Layer stored values over the kind's defaults, so a kind the heap has
+          // never saved (e.g. jumper) pre-fills with its runtime default instead
+          // of blanks that would persist as -1 (disabled) on the next save.
+          const kp = { ...(KIND_DEFAULTS[kind] || {}), ...(params[kind] || {}) };
           for (const field of FIELDS) {
             const el = $(`${kind}-${field}`);
             if (el) el.value = kp[field] ?? '';
