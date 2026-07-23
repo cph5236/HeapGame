@@ -3,6 +3,7 @@ import { Player } from '../entities/Player';
 import { PlayerAnimator } from '../entities/PlayerAnimator';
 import { PlayerCosmetics } from '../entities/PlayerCosmetics';
 import { PlayerOutro } from '../entities/PlayerOutro';
+import { playElectrocutionEffect } from '../entities/effects/electrocution';
 import { AudioManager } from '../systems/AudioManager';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
@@ -324,6 +325,22 @@ export class InfiniteGameScene extends Phaser.Scene {
         this.player.sprite, em.group,
         this.handleEnemyDamage as unknown as AP,
         this.isDamaging as unknown as AP,
+        this,
+      );
+      // Jumper Cables: retracted contact defeats it (reuse the stomp flow);
+      // extended contact stuns the player.
+      this.physics.add.overlap(
+        this.player.sprite, em.group,
+        this.handleStomp as unknown as AP,
+        ((_p: Phaser.GameObjects.GameObject, e: Phaser.GameObjects.GameObject) =>
+          this.isJumper(e) && this.isJumperVulnerable(e)) as unknown as AP,
+        this,
+      );
+      this.physics.add.overlap(
+        this.player.sprite, em.group,
+        this.handleJumperStun as unknown as AP,
+        ((_p: Phaser.GameObjects.GameObject, e: Phaser.GameObjects.GameObject) =>
+          this.isJumper(e) && !this.isJumperVulnerable(e) && !this.invincible && !this.debugNoclip) as unknown as AP,
         this,
       );
     }
@@ -666,10 +683,17 @@ export class InfiniteGameScene extends Phaser.Scene {
 
   // ── Enemy callbacks (same pattern as GameScene) ───────────────────────────────
 
+  private readonly isJumper = (e: Phaser.GameObjects.GameObject): boolean =>
+    (e as Phaser.GameObjects.Sprite).getData('kind') === 'jumper';
+
+  private readonly isJumperVulnerable = (e: Phaser.GameObjects.GameObject): boolean =>
+    (e as Phaser.GameObjects.Sprite).getData('vulnerable') === true;
+
   private readonly isStomping = (
     player: Phaser.GameObjects.GameObject,
     enemy:  Phaser.GameObjects.GameObject,
   ): boolean => {
+    if (this.isJumper(enemy)) return false;
     const p = player as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
     const e = enemy  as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
     return p.body.velocity.y > 0 && p.body.center.y < e.body.center.y;
@@ -678,7 +702,8 @@ export class InfiniteGameScene extends Phaser.Scene {
   private readonly isDamaging = (
     player: Phaser.GameObjects.GameObject,
     enemy:  Phaser.GameObjects.GameObject,
-  ): boolean => !this.invincible && !this.debugNoclip && !this.isStomping(player, enemy);
+  ): boolean =>
+    !this.isJumper(enemy) && !this.invincible && !this.debugNoclip && !this.isStomping(player, enemy);
 
   private readonly handleStomp = (
     _player: Phaser.GameObjects.GameObject,
@@ -725,6 +750,29 @@ export class InfiniteGameScene extends Phaser.Scene {
     }
 
     this.handleDeath();
+  };
+
+  private readonly handleJumperStun = (
+    _player: Phaser.GameObjects.GameObject,
+    enemy:   Phaser.GameObjects.GameObject,
+  ): void => {
+    if (this.player.hasActiveShield) {
+      this.player.absorbHit();
+      this.invincible = true;
+      this.time.delayedCall(PLAYER_INVINCIBLE_MS * 4, () => { this.invincible = false; });
+      return;
+    }
+    if (this._playerDead || this.invincible || this.debugNoclip) return;
+
+    const e = enemy as Phaser.Physics.Arcade.Sprite;
+    const dir = Math.sign(this.player.sprite.x - e.x) || 1;
+    AudioManager.play('enemy-kill');
+    this.player.stun(500, { x: dir * 280, y: -180 });
+    playElectrocutionEffect(this, this.player.sprite, 500);
+    this.cameras.main.shake(180, 0.008);
+
+    this.invincible = true;
+    this.time.delayedCall(PLAYER_INVINCIBLE_MS, () => { this.invincible = false; });
   };
 
   shutdown(): void {
