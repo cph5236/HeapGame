@@ -848,15 +848,17 @@ export class GameScene extends Phaser.Scene {
 
     const e = enemy as Phaser.Physics.Arcade.Sprite;
     const dir = Math.sign(this.player.sprite.x - e.x) || 1; // knock away from clamp
+    const STUN_MS = 750;
     AudioManager.play('enemy-kill'); // reuse existing zap-ish cue; swap later if a dedicated SFX is added
-    this.player.stun(500, { x: dir * 280, y: -180 });
-    playElectrocutionEffect(this, this.player.sprite, 500);
+    this.player.stun(STUN_MS, { x: dir * 280, y: -180 });
+    playElectrocutionEffect(this, this.player.sprite, STUN_MS);
     this.cameras.main.shake(180, 0.008);
 
+    // Invincibility must cover the full stun (not just PLAYER_INVINCIBLE_MS=400),
+    // otherwise the clamp can re-stun the player on the same lunge before control
+    // returns. Tie it to STUN_MS so the two never drift apart.
     this.invincible = true;
-    // Invincibility must cover the full 500ms stun (not just PLAYER_INVINCIBLE_MS=400),
-    // otherwise the clamp can re-stun the player on the same lunge before it releases.
-    this.time.delayedCall(500, () => { this.invincible = false; });
+    this.time.delayedCall(STUN_MS, () => { this.invincible = false; });
   };
 
   private readonly handleEnemyDamage = (): void => {
