@@ -140,18 +140,28 @@ export function computeWallFace(
 /**
  * Pure state transition for a Jumper Cable. `msInState` is time elapsed since
  * the current state was entered. Cooldown ignores proximity (the disarmed tell).
+ *
+ * The attack holds the clamp extended + hazardous for at least `attackMinMs`
+ * (so the lunge anim always plays out — no flicker-retract) and then stays out
+ * as long as the player remains within `attackRangePx`, so an approaching player
+ * still meets a live clamp regardless of how fast they close the gap. A hard
+ * `attackMaxMs` cap forces the retract → cooldown tell even if the player camps
+ * in range, preserving the "safe to brush past during cooldown" fairness.
  */
 export function jumperNextState(
   state: JumperState,
   msInState: number,
   distToPlayer: number,
-  cfg: { attackRangePx: number; attackActiveMs: number; cooldownMs: number },
+  cfg: { attackRangePx: number; attackMinMs: number; attackMaxMs: number; cooldownMs: number },
 ): JumperState {
   switch (state) {
     case 'idle':
       return distToPlayer <= cfg.attackRangePx ? 'attacking' : 'idle';
-    case 'attacking':
-      return msInState >= cfg.attackActiveMs ? 'cooldown' : 'attacking';
+    case 'attacking': {
+      if (msInState >= cfg.attackMaxMs) return 'cooldown';
+      const leftRange = distToPlayer > cfg.attackRangePx;
+      return msInState >= cfg.attackMinMs && leftRange ? 'cooldown' : 'attacking';
+    }
     case 'cooldown':
       return msInState >= cfg.cooldownMs ? 'idle' : 'cooldown';
   }

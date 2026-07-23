@@ -264,7 +264,7 @@ describe('computeWallFace', () => {
 // ---------------------------------------------------------------------------
 
 describe('jumperNextState', () => {
-  const cfg = { attackRangePx: 140, attackActiveMs: 500, cooldownMs: 3000 };
+  const cfg = { attackRangePx: 140, attackMinMs: 500, attackMaxMs: 1400, cooldownMs: 3000 };
 
   it('idle → attacking when player in range', () => {
     expect(jumperNextState('idle', 0, 100, cfg)).toBe('attacking');
@@ -272,9 +272,22 @@ describe('jumperNextState', () => {
   it('idle stays idle when player out of range', () => {
     expect(jumperNextState('idle', 0, 200, cfg)).toBe('idle');
   });
-  it('attacking → cooldown after active window', () => {
-    expect(jumperNextState('attacking', 500, 50, cfg)).toBe('cooldown');
+  it('attacking holds while the player stays in range (past the min window)', () => {
+    // Key behaviour: the clamp stays extended + hazardous as long as the player
+    // is closing in, so an approaching player still meets a live clamp.
     expect(jumperNextState('attacking', 300, 50, cfg)).toBe('attacking');
+    expect(jumperNextState('attacking', 800, 50, cfg)).toBe('attacking');
+    expect(jumperNextState('attacking', 1399, 50, cfg)).toBe('attacking');
+  });
+  it('attacking → cooldown once the player leaves range, after the min window', () => {
+    expect(jumperNextState('attacking', 600, 200, cfg)).toBe('cooldown');
+  });
+  it('attacking holds through the min window even if the player already left range', () => {
+    // Min telegraph: the attack anim always plays out; no instant flicker-retract.
+    expect(jumperNextState('attacking', 300, 200, cfg)).toBe('attacking');
+  });
+  it('attacking → cooldown at the max cap even while the player camps in range', () => {
+    expect(jumperNextState('attacking', 1400, 50, cfg)).toBe('cooldown');
   });
   it('cooldown → idle after cooldown, ignores proximity meanwhile', () => {
     expect(jumperNextState('cooldown', 100, 10, cfg)).toBe('cooldown');

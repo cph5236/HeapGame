@@ -32,7 +32,10 @@ const JUMPER_IDLE_ALT_MS = 1000;
 const JUMPER_FRAME_W = 256; // texture-frame width, for body-box mirroring
 const JUMPER_WALL_GAP_PX = 6; // extra px off the wall face, texture-space independent (world px)
 const JUMPER_ATTACK_RANGE_PX = 140;
-const JUMPER_ATTACK_ACTIVE_MS = 500;
+// Min telegraph so the lunge anim always plays; the clamp then holds out while
+// the player stays in range (so they meet a live clamp), capped by the max.
+const JUMPER_ATTACK_MIN_MS = 500;
+const JUMPER_ATTACK_MAX_MS = 1400;
 const JUMPER_COOLDOWN_MS = 3000;
 
 type RatStateName = 'walk-right' | 'idle-right' | 'walk-left' | 'idle-left' | 'stationary';
@@ -319,7 +322,8 @@ export class EnemyManager {
         const msInState = now - (rt.stateSince ?? now);
         const next = jumperNextState(prev, msInState, dist, {
           attackRangePx: JUMPER_ATTACK_RANGE_PX,
-          attackActiveMs: JUMPER_ATTACK_ACTIVE_MS,
+          attackMinMs: JUMPER_ATTACK_MIN_MS,
+          attackMaxMs: JUMPER_ATTACK_MAX_MS,
           cooldownMs: JUMPER_COOLDOWN_MS,
         });
 
