@@ -35,7 +35,7 @@ const JUMPER_FRAME_W = 256; // texture-frame width, for body-box mirroring
 // (hidden behind the trash — see the depth-2 render in Enemy.ts) while the clamp
 // pokes into open air. Seating into the wall (rather than fully clear of it)
 // means a receding/jagged face can't leave the base floating in open space.
-const JUMPER_WALL_SEAT_PX = 12;
+const JUMPER_WALL_SEAT_PX = 45;
 // Coarse filter for degenerate tiny facets. With the base embedded + occluded,
 // short edges read as "emerging from the trash" rather than floating/buried, so
 // this only needs to reject slivers too small to host the enemy at all — kept

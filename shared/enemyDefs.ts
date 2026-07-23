@@ -72,10 +72,10 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   jumper: {
     kind: 'jumper',
     textureKey: 'jumper',
-    width: 72,
-    height: 72,
+    width: 83,
+    height: 83,
     speed: 0, // stationary; state machine drives animation only
-    // 256×256 source frame, displayed at 72×72. Boxes are in texture pixels,
+    // 256×256 source frame, displayed at 83×83. Boxes are in texture pixels,
     // authored for the default rightward orientation (clamp base on the left).
     // Retracted: mount + clamp hugging the wall side of the frame.
     bodyIdle:   { width: 150, height: 150, offsetX: 30, offsetY: 55 },
