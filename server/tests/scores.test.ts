@@ -475,6 +475,22 @@ describe('POST /scores — input validation (server-recompute)', () => {
     expect(stored).not.toBeNull();
     expect(stored!.score).toBe(1000); // recomputed = baseHeightPx with no kills, isFailure=true, scoreMult=1
   });
+
+  it('credits jumper kills in the server-recomputed score', async () => {
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap(HEAP_ID, 1, [], HEAP_ID, 0, {
+      name: 'X', difficulty: 1, spawnRateMult: 1, coinMult: 1, scoreMult: 1, worldHeight: 2000,
+    });
+    const scoreDb = new MockScoreDB();
+    const app = createApp(heapDb, scoreDb);
+    const res = await submitScore(app, validBody({
+      inputs: { baseHeightPx: 1000, kills: { percher: 0, ghost: 0, jumper: 2 }, elapsedMs: 60_000, isFailure: true },
+    }));
+    expect(res.status).toBe(200);
+    const stored = await scoreDb.getScore(HEAP_ID, PLAYER_A);
+    expect(stored).not.toBeNull();
+    expect(stored!.score).toBe(1300); // 1000 baseHeightPx + 2 x 150 jumper credit
+  });
 });
 
 describe('POST /scores — remote logging', () => {

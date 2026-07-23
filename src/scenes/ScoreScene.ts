@@ -1012,6 +1012,7 @@ export class ScoreScene extends Phaser.Scene {
             kills: {
               percher: this._kills.percher ?? 0,
               ghost:   this._kills.ghost   ?? 0,
+              jumper:  this._kills.jumper  ?? 0,
             },
             elapsedMs: Math.floor(this._elapsedMs),
             isFailure: this.isFailure,

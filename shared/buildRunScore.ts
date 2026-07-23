@@ -39,7 +39,7 @@ export function buildRunScore(
     value:  stats.baseHeightPx,
   });
 
-  const kinds: EnemyKind[] = ['percher', 'ghost'];
+  const kinds: EnemyKind[] = ['percher', 'ghost', 'jumper'];
   for (const kind of kinds) {
     const count = stats.kills[kind];
     if (!count) continue;

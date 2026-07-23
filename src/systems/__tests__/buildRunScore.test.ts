@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildRunScore } from '../buildRunScore';
 import type { EnemyDef } from '../../data/enemyDefs';
 import type { EnemyKind } from '../../entities/Enemy';
+import { ENEMY_DEFS } from '../../data/enemyDefs';
 
 const TEST_DEFS: Record<EnemyKind, EnemyDef> = {
   percher: {
@@ -162,6 +163,16 @@ describe('buildRunScore', () => {
       // (1000 height + 1000 salvage) × 2
       expect(result.finalScore).toBe(4000);
     });
+  });
+
+  it('credits jumper kills at 150 each', () => {
+    const { finalScore, rows } = buildRunScore(
+      { baseHeightPx: 0, kills: { jumper: 2 }, elapsedMs: 0 },
+      ENEMY_DEFS,
+      true, // isFailure → no pace bonus, isolate the kill credit
+    );
+    expect(finalScore).toBe(300);
+    expect(rows.some(r => r.type === 'kill' && r.label.includes('JUMPER CABLES'))).toBe(true);
   });
 
   describe('buildRunScore scoreMult', () => {
