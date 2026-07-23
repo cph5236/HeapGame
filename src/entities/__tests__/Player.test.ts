@@ -2185,6 +2185,23 @@ describe('Player — stun', () => {
     expect(player.isStunned).toBe(false);
   });
 
+  it('knocks the player off a ladder so the knockback velocity is not immediately neutralized', async () => {
+    const { player, sprite, spy } = await makePlayer({ onGround: true });
+    (sprite.scene as any).time = { delayedCall: vi.fn(() => ({})) };
+    player.enterLadder();
+    expect(player.isOnLadder).toBe(true);
+
+    player.stun(500, { x: 280, y: -180 });
+
+    // Stun must drop the player off the ladder — otherwise handleLadder() (which
+    // runs before the controlsEnabled gate in update()) keeps climbing and zeroes
+    // the knockback velocity next frame, neutralizing the stun.
+    expect(player.isOnLadder).toBe(false);
+    // Knockback velocity must survive (applied after the ladder exit).
+    expect(spy.setVelocityX[spy.setVelocityX.length - 1]).toBe(280);
+    expect(spy.setVelocityY[spy.setVelocityY.length - 1]).toBe(-180);
+  });
+
   it('is a no-op when already frozen', async () => {
     const { player, sprite } = await makePlayer({ onGround: true });
     (sprite.scene as any).time = { delayedCall: vi.fn(() => ({})) };

@@ -854,7 +854,9 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.shake(180, 0.008);
 
     this.invincible = true;
-    this.time.delayedCall(PLAYER_INVINCIBLE_MS, () => { this.invincible = false; });
+    // Invincibility must cover the full 500ms stun (not just PLAYER_INVINCIBLE_MS=400),
+    // otherwise the clamp can re-stun the player on the same lunge before it releases.
+    this.time.delayedCall(500, () => { this.invincible = false; });
   };
 
   private readonly handleEnemyDamage = (): void => {

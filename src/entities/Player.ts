@@ -707,6 +707,7 @@ export class Player {
    */
   stun(durationMs: number, knockback: { x: number; y: number }): void {
     if (this._frozen) return;
+    if (this.onLadder) this.exitLadder(); // knock the player off the ladder so the stun isn't neutralized next frame
     this._stunned = true;
     this.setControlsEnabled(false);
     this.sprite.body.setAllowGravity(true);
