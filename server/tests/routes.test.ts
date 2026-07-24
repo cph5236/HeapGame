@@ -811,6 +811,58 @@ describe('PUT /heaps/:id/enemy-params', () => {
     expect(body.ghost.spawnStartPxAboveFloor).toBe(1000);
   });
 
+  it('bumps heap version so a version-gated client sees changed:true with fresh params', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as { id: string };
+
+    // Read the heap once to learn its current version (client's cached version).
+    const before = await (await app.request(`/heaps/${id}?version=0`)).json() as Extract<GetHeapResponse, { changed: true }>;
+    const oldVersion = before.version;
+
+    const params: HeapEnemyParams = {
+      ghost: { spawnStartPxAboveFloor: 2222, spawnEndPxAboveFloor: -1, spawnRampPxAboveFloor: 9000, spawnChanceMin: 0.1, spawnChanceMax: 0.4 },
+    };
+    const putRes = await app.request(`/heaps/${id}/enemy-params`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    expect(putRes.status).toBe(200);
+
+    // A client caught up to oldVersion must now be told the heap changed…
+    const after = await (await app.request(`/heaps/${id}?version=${oldVersion}`)).json() as GetHeapResponse;
+    expect(after.changed).toBe(true);
+    expect(after.version).toBeGreaterThan(oldVersion);
+    // …and the delta must carry the freshly-written enemy params.
+    const changed = after as Extract<GetHeapResponse, { changed: true }>;
+    expect(changed.enemyParams.ghost.spawnStartPxAboveFloor).toBe(2222);
+  });
+
+  it('a client caught up to the new version still gets changed:false', async () => {
+    const app = makeApp();
+    const createRes = await app.request('/heaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertices: VERTICES }),
+    });
+    const { id } = await createRes.json() as { id: string };
+
+    await app.request(`/heaps/${id}/enemy-params`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ghost: { spawnStartPxAboveFloor: 5, spawnEndPxAboveFloor: -1, spawnRampPxAboveFloor: 9000, spawnChanceMin: 0.1, spawnChanceMax: 0.4 } } as HeapEnemyParams),
+    });
+
+    const current = await (await app.request(`/heaps/${id}?version=0`)).json() as Extract<GetHeapResponse, { changed: true }>;
+    const res = await (await app.request(`/heaps/${id}?version=${current.version}`)).json() as GetHeapResponse;
+    expect(res.changed).toBe(false);
+  });
+
   it('returns 400 for non-object body', async () => {
     const app = makeApp();
     const createRes = await app.request('/heaps', {
