@@ -97,6 +97,26 @@ describe('syncLoadoutNow', () => {
 
     expect(fetchWithLog).toHaveBeenCalledTimes(1);
   });
+
+  it('re-syncs a change marked while a PUT is in flight', async () => {
+    getEquippedCosmetics.mockReturnValue({ tie: 'tie_blue' });
+    let resolveFirst!: (v: { ok: boolean }) => void;
+    fetchWithLog
+      .mockReturnValueOnce(new Promise((r) => { resolveFirst = r; })) // in-flight PUT of the old loadout
+      .mockResolvedValue({ ok: true });                              // follow-up PUT of the new loadout
+
+    const first = syncLoadoutNow();      // captures { tie: 'tie_blue' }, awaits
+    getEquippedCosmetics.mockReturnValue({ tie: 'tie_red' }); // player changes cosmetic…
+    markLoadoutDirty();                  // …mid-flight
+
+    resolveFirst({ ok: true });          // first PUT (old loadout) settles
+    await first;
+    await vi.waitFor(() => expect(fetchWithLog).toHaveBeenCalledTimes(2));
+
+    // The follow-up PUT carried the *newer* loadout, not the stale snapshot.
+    const [, secondInit] = fetchWithLog.mock.calls[1];
+    expect(JSON.parse(secondInit.body).loadout).toEqual({ tie: 'tie_red' });
+  });
 });
 
 describe('markLoadoutDirty', () => {

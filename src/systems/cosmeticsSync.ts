@@ -15,10 +15,15 @@ import {
 // flush and MenuScene's session-start retry both fire before the first PUT
 // resolves; without this guard they'd race into two identical PUTs.
 let inFlight: Promise<boolean> | null = null;
+// Set when the loadout is marked dirty while a PUT is already in flight: that
+// PUT captured the *old* loadout, so a fresh sync must run once it settles or
+// the newer change is lost (its success would clear the pending flag too).
+let resyncQueued = false;
 
 /** PUT the current loadout now. Manages the pending flag. */
 export function syncLoadoutNow(): Promise<boolean> {
   if (inFlight) return inFlight;
+  resyncQueued = false;
   inFlight = (async () => {
     try {
       const ok = await CustomizationClient.putLoadout(getEffectivePlayerId(), getEquippedCosmetics());
@@ -26,6 +31,12 @@ export function syncLoadoutNow(): Promise<boolean> {
       return ok;
     } finally {
       inFlight = null;
+      // A change landed mid-flight — send the current loadout now (re-reads it).
+      if (resyncQueued) {
+        resyncQueued = false;
+        setLoadoutSyncPending(true);
+        void syncLoadoutNow();
+      }
     }
   })();
   return inFlight;
@@ -38,6 +49,9 @@ export function syncLoadoutNow(): Promise<boolean> {
  */
 export function markLoadoutDirty(): void {
   setLoadoutSyncPending(true);
+  // If a PUT is in flight it snapshotted the pre-change loadout; queue a
+  // follow-up so this change still reaches the server.
+  if (inFlight) resyncQueued = true;
 }
 
 /** On editor exit: PUT once if there are unsynced changes, else do nothing. */
