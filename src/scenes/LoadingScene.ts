@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { loadGameAssets } from './loadGameAssets';
 import { preloadProgress, preloadComplete } from '../systems/infinitePreload';
+import { configReady } from '../systems/ConfigClient';
 import { MENU_LOADING_MIN_MS } from '../constants';
 
 // Themed boot loading screen. Blocks MenuScene/TutorialScene until the game's
@@ -75,6 +76,8 @@ export class LoadingScene extends Phaser.Scene {
   private loaderDone = false;
   private shownFrac = 0;      // eased display fraction (smooth growth)
   private transitioning = false;
+  /** Boot-time remote-config fetch has settled (or hit its timeout ceiling). */
+  private configSettled = false;
   /** Dev-only: hold the screen at a fixed progress for scene-preview screenshots. */
   private freeze: number | null = null;
 
@@ -101,6 +104,7 @@ export class LoadingScene extends Phaser.Scene {
     this.loaderDone    = false;
     this.shownFrac     = 0;
     this.transitioning = false;
+    this.configSettled = false;
     this.heroBob       = 0;
     this.freeze        = import.meta.env.DEV && typeof data?.freeze === 'number'
       ? Phaser.Math.Clamp(data.freeze, 0, 1) : null;
@@ -185,6 +189,17 @@ export class LoadingScene extends Phaser.Scene {
       fontFamily: 'sans-serif', fontSize: '14px', color: '#fff2d0', stroke: '#000000', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(11);
 
+    // Gate the transition on the boot-time config fetch too, so the menu opens
+    // with remote values in hand. Runs concurrently with the asset load below
+    // and is bounded by CONFIG_FETCH_TIMEOUT_MS, so it's usually invisible and
+    // never stalls past that ceiling. Dev preview (freeze) never transitions, so
+    // skip the wait there.
+    if (this.freeze !== null) {
+      this.configSettled = true;
+    } else {
+      void configReady().then(() => { this.configSettled = true; });
+    }
+
     // ── Kick off the real asset load ─────────────────────────────────────────
     if (this.freeze !== null) {
       // Dev preview: don't load or transition — just pose at the frozen progress.
@@ -227,7 +242,7 @@ export class LoadingScene extends Phaser.Scene {
     this.percentText.setText(`${Math.round(f * 100)}%`);
 
     if (this.freeze !== null) return; // dev preview holds; never transitions
-    if (preloadComplete(!this.loaderDone, elapsed, MENU_LOADING_MIN_MS) && this.shownFrac > 0.995) {
+    if (this.configSettled && preloadComplete(!this.loaderDone, elapsed, MENU_LOADING_MIN_MS) && this.shownFrac > 0.995) {
       this.transitioning = true;
       this.cameras.main.fadeOut(200, 0, 0, 0);
       this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {

@@ -42,6 +42,11 @@ export const INFINITE_DIFFICULTY_RANGE = 4_000_000;   // Y pixels for easy→har
  *  Kept short — the screen exists to hide asset load jank, not to stall the player. */
 export const MENU_LOADING_MIN_MS       = 500;
 
+/** Ceiling (ms) the loading screen will wait on the boot-time remote-config
+ *  fetch before giving up and proceeding with the last-known-good / default
+ *  values. Runs concurrently with asset loading, so it's usually invisible. */
+export const CONFIG_FETCH_TIMEOUT_MS   = 10_000;
+
 // ── Player ─────────────────────────────────────────────────────────────────────
 export const PLAYER_WIDTH  = 40;
 export const PLAYER_HEIGHT = 46;

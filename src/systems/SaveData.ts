@@ -3,6 +3,7 @@ import { ITEM_DEFS } from '../data/itemDefs';
 import { getCosmeticDef } from '../data/cosmeticDefs';
 import { clampHatAdjustment, type HatAdjustment, type HatAdjustments } from './cosmeticsLogic';
 import type { EquippedLoadout, CosmeticSlot } from '../../shared/cosmeticCatalog';
+import type { AppConfig } from '../../shared/configTypes';
 import { generateDefaultPlayerName, MAX_PLAYER_NAME_LEN } from '../../shared/playerName';
 import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL } from '../constants';
 
@@ -67,6 +68,10 @@ interface RawSave {
   adRunTarget?:     number;
   controlMode?:     'tilt' | 'joystick';
   joystickSide?:    'left' | 'right';
+  /** Last-known-good remote config (GET /config). A cache, not authoritative:
+   *  seeds ConfigClient before the boot fetch resolves and survives an offline
+   *  launch. Rides the cloud save so a fresh install starts warm. */
+  remoteConfig?:    AppConfig;
 }
 
 let _cache: RawSave | null = null;
@@ -138,6 +143,7 @@ function migrate(parsed: any): RawSave {
       adRunTarget:     parsed.adRunTarget,
       controlMode:    parsed.controlMode,
       joystickSide:   parsed.joystickSide,
+      remoteConfig:   parsed.remoteConfig,
     };
   }
 
@@ -259,6 +265,18 @@ export function setAdRunState(state: { runsSinceLast: number; target: number }):
   const data = load();
   data.adRunsSinceLast = state.runsSinceLast;
   data.adRunTarget     = state.target;
+  persist(data);
+}
+
+// ── Remote config cache (last-known-good; rides the cloud save) ──────────────────
+
+/** Last remote config successfully fetched, or undefined on a first-ever launch
+ *  that has never reached the server. Used to warm ConfigClient at boot. */
+export function getStoredRemoteConfig(): AppConfig | undefined { return load().remoteConfig; }
+
+export function setStoredRemoteConfig(config: AppConfig): void {
+  const data = load();
+  data.remoteConfig = config;
   persist(data);
 }
 
@@ -655,6 +673,9 @@ export function mergeCloudSave(local: RawSave, cloud: RawSave): RawSave {
     adRunTarget:     local.adRunTarget,
     controlMode:     local.controlMode,   // device-local — local always wins
     joystickSide:    local.joystickSide,  // device-local — local always wins
+    // Config cache: prefer local (this device just fetched it), fall back to
+    // cloud so a fresh install starts warm before its own first fetch.
+    remoteConfig:    local.remoteConfig ?? cloud.remoteConfig,
     // One-time UI flags: seen/done on either device counts, so a signed-in merge
     // never re-nags. (Previously dropped here → hint/tutorial reappeared each launch.)
     customizeHintSeen: local.customizeHintSeen || cloud.customizeHintSeen,
