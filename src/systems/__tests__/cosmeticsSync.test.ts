@@ -26,7 +26,7 @@ vi.mock('../../logging/fetchWithLog', () => ({
   fetchWithLog: (url: string, init?: Record<string, unknown>) => fetchWithLog(url, init),
 }));
 
-import { syncLoadoutNow } from '../cosmeticsSync';
+import { syncLoadoutNow, markLoadoutDirty, flushLoadoutSync } from '../cosmeticsSync';
 
 beforeEach(() => {
   resetAllData();
@@ -82,5 +82,69 @@ describe('syncLoadoutNow', () => {
 
     expect(ok).toBe(false);
     expect(setLoadoutSyncPending).toHaveBeenCalledWith(true);
+  });
+
+  it('coalesces concurrent calls into a single PUT', async () => {
+    let resolveFetch!: (v: { ok: boolean }) => void;
+    fetchWithLog.mockReturnValue(new Promise((r) => { resolveFetch = r; }));
+
+    // Two overlapping callers (SHUTDOWN flush + session-start retry).
+    const a = syncLoadoutNow();
+    const b = syncLoadoutNow();
+
+    resolveFetch({ ok: true });
+    await Promise.all([a, b]);
+
+    expect(fetchWithLog).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-syncs a change marked while a PUT is in flight', async () => {
+    getEquippedCosmetics.mockReturnValue({ tie: 'tie_blue' });
+    let resolveFirst!: (v: { ok: boolean }) => void;
+    fetchWithLog
+      .mockReturnValueOnce(new Promise((r) => { resolveFirst = r; })) // in-flight PUT of the old loadout
+      .mockResolvedValue({ ok: true });                              // follow-up PUT of the new loadout
+
+    const first = syncLoadoutNow();      // captures { tie: 'tie_blue' }, awaits
+    getEquippedCosmetics.mockReturnValue({ tie: 'tie_red' }); // player changes cosmetic…
+    markLoadoutDirty();                  // …mid-flight
+
+    resolveFirst({ ok: true });          // first PUT (old loadout) settles
+    await first;
+    await vi.waitFor(() => expect(fetchWithLog).toHaveBeenCalledTimes(2));
+
+    // The follow-up PUT carried the *newer* loadout, not the stale snapshot.
+    const [, secondInit] = fetchWithLog.mock.calls[1];
+    expect(JSON.parse(secondInit.body).loadout).toEqual({ tie: 'tie_red' });
+  });
+});
+
+describe('markLoadoutDirty', () => {
+  it('persists the pending flag without hitting the server', () => {
+    markLoadoutDirty();
+
+    expect(setLoadoutSyncPending).toHaveBeenCalledWith(true);
+    expect(fetchWithLog).not.toHaveBeenCalled();
+  });
+});
+
+describe('flushLoadoutSync', () => {
+  it('PUTs the loadout when there are unsynced changes', async () => {
+    getLoadoutSyncPending.mockReturnValue(true);
+    fetchWithLog.mockResolvedValue({ ok: true });
+
+    flushLoadoutSync();
+
+    await vi.waitFor(() => expect(fetchWithLog).toHaveBeenCalledTimes(1));
+    const [, init] = fetchWithLog.mock.calls[0];
+    expect(init.method).toBe('PUT');
+  });
+
+  it('does nothing when there is nothing to sync', () => {
+    getLoadoutSyncPending.mockReturnValue(false);
+
+    flushLoadoutSync();
+
+    expect(fetchWithLog).not.toHaveBeenCalled();
   });
 });

@@ -13,7 +13,7 @@ import {
   HAT_ANGLE_LIMIT, HAT_SCALE_MIN, HAT_SCALE_MAX,
 } from '../systems/cosmeticsLogic';
 import { syncSaveToCloud } from '../systems/cloudSave';
-import { scheduleLoadoutSync, flushLoadoutSync } from '../systems/cosmeticsSync';
+import { markLoadoutDirty, flushLoadoutSync } from '../systems/cosmeticsSync';
 import { createAnimatedAvatar, type AnimatedAvatarHandle } from '../ui/animatedAvatar';
 
 const SLOT_LABELS: Record<CosmeticSlot, string> = {
@@ -429,7 +429,9 @@ export class CustomizationScene extends Phaser.Scene {
     this.rebuildPreview();
     this.rebuildGrid();
     this.rebuildAdjustPanel();
-    scheduleLoadoutSync(this);
+    // Local save already persisted the change (equipCosmetic); just mark it for
+    // the single server PUT that fires when the player leaves the editor.
+    markLoadoutDirty();
   }
 
   // ── Hat fit adjustment (rotate ±15°, scale ±20%) ───────────────────────────
