@@ -847,7 +847,12 @@ export class GameScene extends Phaser.Scene {
     if (this._playerDead || this.blockPlaced || this.invincible) return;
 
     const e = enemy as Phaser.Physics.Arcade.Sprite;
-    const dir = Math.sign(this.player.sprite.x - e.x) || 1; // knock away from clamp
+    // Eject along the wall's open-air normal, not the momentary player-vs-enemy
+    // offset: the jumper is seated INTO the wall, so player.x - e.x can point
+    // back into the wall and slam the player against it. Fall back to relative
+    // position only if the outward direction wasn't recorded.
+    const outwardX = e.getData('outwardX') as number | undefined;
+    const dir = outwardX ?? (Math.sign(this.player.sprite.x - e.x) || 1);
     const STUN_MS = 750;
     AudioManager.play('enemy-kill'); // reuse existing zap-ish cue; swap later if a dedicated SFX is added
     this.player.stun(STUN_MS, { x: dir * 280, y: -180 });
