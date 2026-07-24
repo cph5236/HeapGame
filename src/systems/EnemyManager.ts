@@ -458,6 +458,10 @@ export class EnemyManager {
       rt.jumperState = 'idle';
       rt.stateSince = this.scene.time.now;
       rt.outwardX = wallFace.outwardX;
+      // Expose the open-air direction to scene overlap callbacks so the stun
+      // knockback always ejects away from the wall (the sprite is seated INTO
+      // the wall, so player.x - e.x can flip sign and toss the player inward).
+      enemy.sprite.setData('outwardX', wallFace.outwardX);
       rt.idleAltAt = this.scene.time.now + JUMPER_IDLE_ALT_MS;
       rt.idleShowing2 = false;
       rt.attackToggle = false;

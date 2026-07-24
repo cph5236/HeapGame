@@ -166,3 +166,22 @@ export function jumperNextState(
       return msInState >= cfg.cooldownMs ? 'idle' : 'cooldown';
   }
 }
+
+/**
+ * Horizontal sign (-1 or +1) to eject a stunned player when a jumper clamp hits.
+ *
+ * Prefers the wall's recorded open-air normal (`outwardX`, always ±1) so the
+ * knockback always throws the player away from the wall. The jumper sprite is
+ * seated INTO the wall, so a player who jumped up into the clamp can be on the
+ * wall side of the enemy center — using `playerX - enemyX` there flips the sign
+ * and slams them into the wall. Only when `outwardX` is unrecorded do we fall
+ * back to that relative-position heuristic (`|| 1` guards the exactly-aligned
+ * case so we never return 0).
+ */
+export function jumperEjectDir(
+  outwardX: number | undefined,
+  playerX: number,
+  enemyX: number,
+): number {
+  return outwardX ?? (Math.sign(playerX - enemyX) || 1);
+}

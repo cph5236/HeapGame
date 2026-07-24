@@ -10,6 +10,7 @@ import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { shouldBakeBands } from '../systems/generationPacing';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
 import { EnemyManager } from '../systems/EnemyManager';
+import { jumperEjectDir } from '../systems/EnemySpawnMath';
 import { TrashWallManager } from '../systems/TrashWallManager';
 import { BuffManager } from '../systems/BuffManager';
 import { PlaceableManager } from '../systems/PlaceableManager';
@@ -765,7 +766,11 @@ export class InfiniteGameScene extends Phaser.Scene {
     if (this._playerDead || this.invincible || this.debugNoclip) return;
 
     const e = enemy as Phaser.Physics.Arcade.Sprite;
-    const dir = Math.sign(this.player.sprite.x - e.x) || 1;
+    const dir = jumperEjectDir(
+      e.getData('outwardX') as number | undefined,
+      this.player.sprite.x,
+      e.x,
+    );
     const STUN_MS = 750;
     AudioManager.play('enemy-kill');
     this.player.stun(STUN_MS, { x: dir * 280, y: -180 });

@@ -9,6 +9,7 @@ import {
   shouldPatrol,
   computeWallFace,
   jumperNextState,
+  jumperEjectDir,
 } from '../EnemySpawnMath';
 import type { EnemySpawnParams } from '../../../shared/heapTypes';
 
@@ -292,5 +293,30 @@ describe('jumperNextState', () => {
   it('cooldown → idle after cooldown, ignores proximity meanwhile', () => {
     expect(jumperNextState('cooldown', 100, 10, cfg)).toBe('cooldown');
     expect(jumperNextState('cooldown', 3000, 10, cfg)).toBe('idle');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// jumperEjectDir
+// ---------------------------------------------------------------------------
+
+describe('jumperEjectDir', () => {
+  it('uses the recorded open-air normal regardless of player/enemy positions', () => {
+    // Right wall (outward +1): eject +x even when the player landed on the
+    // wall side of the seated-in sprite center (playerX < enemyX). This is the
+    // exact sign-flip the fix guards: the old heuristic would have returned -1
+    // and slammed the player into the wall.
+    expect(jumperEjectDir(1, 90, 100)).toBe(1);
+    // Left wall (outward -1): eject -x even when playerX > enemyX.
+    expect(jumperEjectDir(-1, 110, 100)).toBe(-1);
+  });
+
+  it('falls back to relative position when outwardX is unrecorded', () => {
+    expect(jumperEjectDir(undefined, 150, 100)).toBe(1);  // player right of enemy
+    expect(jumperEjectDir(undefined, 50, 100)).toBe(-1);  // player left of enemy
+  });
+
+  it('fallback defaults to +1 when player and enemy are exactly aligned', () => {
+    expect(jumperEjectDir(undefined, 100, 100)).toBe(1); // never 0 (no push)
   });
 });
