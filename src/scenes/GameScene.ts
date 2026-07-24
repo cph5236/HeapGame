@@ -246,6 +246,7 @@ export class GameScene extends Phaser.Scene {
       }
       this._playerDead = true;
       AudioManager.onPlayerDeath();
+      this.refreshHeapForNextRun();
       this.player.freeze();
       this.playerAnimator.update(0.016, { ...this.player.animState, justDied: true });
       this.playerCosmetics.hide();
@@ -763,6 +764,20 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Refresh this heap's server state (live zone + enemy params) into the cache
+   * and registry so the NEXT run — including a "PLAY AGAIN" retry straight after
+   * death — picks up any changes. Death places nothing, so this mirrors the
+   * post-placement load() flow (see onBlockPlaced) minus the append. Best-effort
+   * and fire-and-forget: load() resolves to a polygon and never rejects, and the
+   * current run has already ended so the live generator is untouched.
+   */
+  private refreshHeapForNextRun(): void {
+    void HeapClient.load(this._heapId).then((freshPolygon) => {
+      this.game.registry.set('heapPolygon', freshPolygon);
+    });
+  }
+
   // ── Enemies ──────────────────────────────────────────────────────────────────
 
   private readonly isJumper = (e: Phaser.GameObjects.GameObject): boolean =>
@@ -886,6 +901,7 @@ export class GameScene extends Phaser.Scene {
     if (this._playerDead || this.blockPlaced) return;
     this._playerDead = true;
     AudioManager.onPlayerDeath();
+    this.refreshHeapForNextRun();
     this.player.freeze();
     this.playerAnimator.update(0.016, { ...this.player.animState, justDied: true });
     this.playerCosmetics.hide();
