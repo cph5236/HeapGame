@@ -59,6 +59,16 @@ export function configReady(): Promise<void> {
   return primePromise ?? Promise.resolve();
 }
 
+/**
+ * True once a usable config is in hand — either warmed from last-known-good or
+ * freshly fetched. The LoadingScene uses this to decide whether it needs to
+ * *wait* on the fetch: with a fallback already live it can open the menu
+ * immediately and let the fetch refresh the cache in the background.
+ */
+export function hasConfig(): boolean {
+  return cached !== null;
+}
+
 export function getConfigValue<T>(key: string): T | undefined {
   return cached?.[key] as T | undefined;
 }

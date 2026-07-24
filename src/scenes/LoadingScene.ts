@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { loadGameAssets } from './loadGameAssets';
 import { preloadProgress, preloadComplete } from '../systems/infinitePreload';
-import { configReady } from '../systems/ConfigClient';
+import { configReady, hasConfig } from '../systems/ConfigClient';
 import { MENU_LOADING_MIN_MS } from '../constants';
 
 // Themed boot loading screen. Blocks MenuScene/TutorialScene until the game's
@@ -189,12 +189,13 @@ export class LoadingScene extends Phaser.Scene {
       fontFamily: 'sans-serif', fontSize: '14px', color: '#fff2d0', stroke: '#000000', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(11);
 
-    // Gate the transition on the boot-time config fetch too, so the menu opens
-    // with remote values in hand. Runs concurrently with the asset load below
-    // and is bounded by CONFIG_FETCH_TIMEOUT_MS, so it's usually invisible and
-    // never stalls past that ceiling. Dev preview (freeze) never transitions, so
-    // skip the wait there.
-    if (this.freeze !== null) {
+    // Only *wait* on the boot config fetch when there's nothing to fall back on
+    // (first-ever launch). BootScene already warmed the cache synchronously from
+    // last-known-good before starting this scene, so if hasConfig() is true a
+    // usable value is live — open the menu now and let the fetch refresh the
+    // cache in the background rather than stalling up to CONFIG_FETCH_TIMEOUT_MS
+    // on a flaky connection. Dev preview (freeze) never transitions, so skip it.
+    if (this.freeze !== null || hasConfig()) {
       this.configSettled = true;
     } else {
       void configReady().then(() => { this.configSettled = true; });

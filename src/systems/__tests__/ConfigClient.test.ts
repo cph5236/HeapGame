@@ -14,7 +14,7 @@ vi.mock('../SaveData', () => ({
   setStoredRemoteConfig: (c: unknown) => setStoredRemoteConfig(c),
 }));
 
-import { primeConfig, configReady, getConfigValue, resetConfigCacheForTests } from '../ConfigClient';
+import { primeConfig, configReady, getConfigValue, hasConfig, resetConfigCacheForTests } from '../ConfigClient';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -32,6 +32,32 @@ describe('ConfigClient', () => {
     expect(getConfigValue('ad_cadence')).toBeUndefined();
   });
 
+  it('hasConfig is false with nothing cached and true once warmed', () => {
+    expect(hasConfig()).toBe(false);
+    getStoredRemoteConfig.mockReturnValue({ ad_cadence: { min: 3, max: 7 } });
+    fetchWithLog.mockReturnValue(new Promise(() => { /* never resolves */ }));
+    vi.useFakeTimers();
+    try {
+      primeConfig();
+      // Warmed synchronously from last-known-good — usable before the fetch lands.
+      expect(hasConfig()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('hasConfig stays false on a first-ever launch with no persisted config', () => {
+    getStoredRemoteConfig.mockReturnValue(undefined);
+    fetchWithLog.mockReturnValue(new Promise(() => { /* never resolves */ }));
+    vi.useFakeTimers();
+    try {
+      primeConfig();
+      expect(hasConfig()).toBe(false); // nothing to fall back on → LoadingScene waits
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('populates and persists the cache on a successful fetch', async () => {
     fetchWithLog.mockResolvedValue(jsonResponse(200, { config: { ad_cadence: { min: 10, max: 20 } } }));
     await primeConfig();
@@ -41,11 +67,18 @@ describe('ConfigClient', () => {
   });
 
   it('warms the cache from last-known-good before the fetch resolves', () => {
-    getStoredRemoteConfig.mockReturnValue({ ad_cadence: { min: 3, max: 7 } });
-    fetchWithLog.mockReturnValue(new Promise(() => { /* never resolves */ }));
-    primeConfig();
-    // Synchronous read: the stored value is available immediately.
-    expect(getConfigValue('ad_cadence')).toEqual({ min: 3, max: 7 });
+    // Fake timers so the never-resolving fetch's 10s abort timer doesn't dangle
+    // past the test (the finally-clear only runs once the fetch settles).
+    vi.useFakeTimers();
+    try {
+      getStoredRemoteConfig.mockReturnValue({ ad_cadence: { min: 3, max: 7 } });
+      fetchWithLog.mockReturnValue(new Promise(() => { /* never resolves */ }));
+      primeConfig();
+      // Synchronous read: the stored value is available immediately.
+      expect(getConfigValue('ad_cadence')).toEqual({ min: 3, max: 7 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps last-known-good and does not persist when the fetch fails', async () => {
