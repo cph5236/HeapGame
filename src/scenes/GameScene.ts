@@ -48,6 +48,7 @@ import {
   ENEMY_RADAR_RANGE_PER_LEVEL,
 } from '../constants';
 import { EnemyManager } from '../systems/EnemyManager';
+import { jumperEjectDir } from '../systems/EnemySpawnMath';
 import { addBalance, addItem, markHeapBeaten } from '../systems/SaveData';
 import { ITEM_DEFS } from '../data/itemDefs';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
@@ -847,12 +848,11 @@ export class GameScene extends Phaser.Scene {
     if (this._playerDead || this.blockPlaced || this.invincible) return;
 
     const e = enemy as Phaser.Physics.Arcade.Sprite;
-    // Eject along the wall's open-air normal, not the momentary player-vs-enemy
-    // offset: the jumper is seated INTO the wall, so player.x - e.x can point
-    // back into the wall and slam the player against it. Fall back to relative
-    // position only if the outward direction wasn't recorded.
-    const outwardX = e.getData('outwardX') as number | undefined;
-    const dir = outwardX ?? (Math.sign(this.player.sprite.x - e.x) || 1);
+    const dir = jumperEjectDir(
+      e.getData('outwardX') as number | undefined,
+      this.player.sprite.x,
+      e.x,
+    );
     const STUN_MS = 750;
     AudioManager.play('enemy-kill'); // reuse existing zap-ish cue; swap later if a dedicated SFX is added
     this.player.stun(STUN_MS, { x: dir * 280, y: -180 });
