@@ -33,7 +33,7 @@ export class BootScene extends Phaser.Scene {
     generateAllTextures(this);
     AudioManager.init(this.sound);
     AdClient.initialize().catch(() => { /* silent — ad init is optional */ });
-    primeConfig(); // fire-and-forget — AdCadence falls back to hardcoded defaults until this resolves
+    primeConfig(); // kicks off the remote-config fetch; LoadingScene awaits configReady() before opening the menu
 
     // Default registry state so MenuScene can render before catalog resolves.
     this.game.registry.set('heapCatalog',    [] as HeapSummary[]);

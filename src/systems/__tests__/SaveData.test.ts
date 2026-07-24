@@ -35,6 +35,8 @@ import {
   setSoundVolume,
   getAdRunState,
   setAdRunState,
+  getStoredRemoteConfig,
+  setStoredRemoteConfig,
   getPlayerSecret,
   getBeatenHeapIds,
   markHeapBeaten,
@@ -97,6 +99,23 @@ describe('getPlayerConfig – jumpBoost', () => {
   ])('level %i grants jumpBoost %i', (level, expected) => {
     store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { jump_boost: level } });
     expect(getPlayerConfig().jumpBoost).toBe(expected);
+  });
+});
+
+describe('remote config cache', () => {
+  it('returns undefined on a fresh save', () => {
+    expect(getStoredRemoteConfig()).toBeUndefined();
+  });
+
+  it('persists and reads back the stored config', () => {
+    setStoredRemoteConfig({ ad_cadence: { min: 2, max: 4 } });
+    expect(getStoredRemoteConfig()).toEqual({ ad_cadence: { min: 2, max: 4 } });
+  });
+
+  it('survives a cache reload (round-trips through localStorage)', () => {
+    setStoredRemoteConfig({ ad_cadence: { min: 5, max: 9 } });
+    resetCacheForTests();
+    expect(getStoredRemoteConfig()).toEqual({ ad_cadence: { min: 5, max: 9 } });
   });
 });
 
@@ -624,6 +643,18 @@ describe('mergeCloudSave', () => {
     const merged = mergeCloudSave(local, cloud);
     expect(merged.adRunsSinceLast).toBe(1);
     expect(merged.adRunTarget).toBe(3);
+  });
+
+  it('keeps the local remote-config cache when present', () => {
+    const local = { ...base(), remoteConfig: { ad_cadence: { min: 1, max: 3 } } };
+    const cloud = { ...base(), remoteConfig: { ad_cadence: { min: 9, max: 9 } } };
+    expect(mergeCloudSave(local, cloud).remoteConfig).toEqual({ ad_cadence: { min: 1, max: 3 } });
+  });
+
+  it('adopts the cloud remote-config cache on a fresh install (no local copy)', () => {
+    const local = { ...base(), remoteConfig: undefined };
+    const cloud = { ...base(), remoteConfig: { ad_cadence: { min: 4, max: 6 } } };
+    expect(mergeCloudSave(local, cloud).remoteConfig).toEqual({ ad_cadence: { min: 4, max: 6 } });
   });
 
   it('prefers the name/selectedHeapId from whichever has higher balance', () => {
