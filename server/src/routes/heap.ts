@@ -253,6 +253,19 @@ export function heapRoutes(
     }
 
     await db.upsertEnemyParams(id, body);
+    // Bump the heap version so version-gated clients (base-heap load()) re-fetch
+    // the fresh enemy params on their next load instead of keeping stale cache.
+    // Reuse updateHeap with every other field unchanged; it also invalidates the
+    // KV heap-row cache. CAS on the current version — if a concurrent place wins
+    // the race it already bumped the version, so the client still refreshes.
+    await db.updateHeap(
+      id,
+      row.base_id,
+      row.version + 1,
+      JSON.parse(row.live_zone) as Vertex[],
+      row.freeze_y,
+      row.version,
+    );
     return c.json({ ok: true });
   });
 
