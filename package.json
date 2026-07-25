@@ -17,6 +17,8 @@
     "scene-preview": "tsx scripts/preview-scene.ts",
     "loadtest:seed": "tsx loadtest/scripts/seed-staging.ts",
     "loadtest:reset": "tsx loadtest/scripts/reset-staging.ts",
+    "loadtest": "k6 run loadtest/k6/main.js",
+    "loadtest:local": "k6 run -e SESSIONS=20 -e MAX_PLACEMENTS=5 loadtest/k6/main.js",
     "version:patch": "npm version patch --no-git-tag-version",
     "version:minor": "npm version minor --no-git-tag-version",
     "version:major": "npm version major --no-git-tag-version",

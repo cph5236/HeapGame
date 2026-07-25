@@ -114,26 +114,49 @@ async function main(): Promise<void> {
   const secret = randomUUID();
   const seeder = randomUUID();
 
-  // Valid placement window on a freshly created heap, mirroring the route's
-  // checks against the live (empty) zone:
+  // Valid placement window, mirroring the route's checks:
   //   x in [PLACE_X_MIN, PLACE_X_MAX]
-  //   y in [topY - PLACE_HEIGHT_GRACE_PX, topY + HEAP_TOP_ZONE_PX]
+  //   y in [topY - PLACE_HEIGHT_GRACE_PX, liveZoneBottomY]
   // (y >= 0 and y <= world_height are also required but are non-binding here
   // — MOCK_HEAP_HEIGHT_PX is enormous relative to this window.)
   //
-  // The upper y bound is also the live zone's active-zone floor
-  // (liveZoneBottomY) while the zone is still empty, and that floor is
-  // thereafter the running max of every y placed into it — it can only grow,
-  // never shrink. So the very first placement is pinned to exactly
-  // topY + HEAP_TOP_ZONE_PX to lock the floor at its widest possible value;
-  // every later placement is then free to land anywhere in the full window.
-  const yLow  = Math.max(0, large.topY - PLACE_HEIGHT_GRACE_PX);
-  const yHigh = large.topY + HEAP_TOP_ZONE_PX;
-
+  // An earlier version of this loop computed yLow/yHigh ONCE up front and
+  // pinned the very first placement to exactly topY + HEAP_TOP_ZONE_PX,
+  // reasoning that liveZoneBottomY (the floor) only grows from there, so a
+  // static window would stay valid for every later draw. That reasoning has
+  // a gap: /place returns HTTP 200 with `{accepted: false}` — not an error —
+  // when the chosen point already lies inside the existing base polygon, and
+  // a point at (x, topY + HEAP_TOP_ZONE_PX) is well within the range the
+  // base's own silhouette already covers, so the pinning placement itself
+  // was frequently the one silently rejected. When that happened the floor
+  // never got pinned to its widest value, later random draws kept sampling
+  // against the stale wide yHigh, and the loop started 400ing (observed
+  // locally against `wrangler dev`: placement index 2 failed with "y below
+  // active zone" because the server's real liveZoneBottomY had come out
+  // lower than the script's assumed window).
+  //
+  // Fixed by reading the live window fresh before every placement — the same
+  // approach loadtest/k6/scenarios/journey.js and placement.js already use
+  // against the long-lived fixture heap, now applied here too so this loop
+  // is self-correcting regardless of which individual placements land.
+  // top_y can only fall (server folds it via MIN on every accepted
+  // placement — see server/src/db.ts), so it's tracked locally rather than
+  // re-fetched, updating whenever an accepted placement's y undercuts it.
+  let currentTopY = large.topY;
   let accepted = 0;
   for (let i = 0; i < LARGE_SEED_VERTICES; i++) {
+    const stateRes = await fetch(`${BASE_URL}/heaps/${large.id}`);
+    if (!stateRes.ok) throw new Error(`seed state read ${i} failed: ${stateRes.status} ${await stateRes.text()}`);
+    const state = (await stateRes.json()) as { liveZone?: Vertex[] };
+    const liveZone = state.liveZone ?? [];
+
+    const yLow  = Math.max(0, currentTopY - PLACE_HEIGHT_GRACE_PX);
+    const yHigh = liveZone.length > 0
+      ? liveZone.reduce((max, v) => (v.y > max ? v.y : max), -Infinity)
+      : currentTopY + HEAP_TOP_ZONE_PX;
+
     const x = PLACE_X_MIN + Math.random() * (PLACE_X_MAX - PLACE_X_MIN);
-    const y = i === 0 ? yHigh : yLow + Math.random() * (yHigh - yLow);
+    const y = yLow + Math.random() * Math.max(0, yHigh - yLow);
 
     const res = await fetch(`${BASE_URL}/heaps/${large.id}/place`, {
       method: 'POST',
@@ -142,7 +165,10 @@ async function main(): Promise<void> {
     });
     if (!res.ok) throw new Error(`seed placement ${i} failed: ${res.status} ${await res.text()}`);
     const placed = (await res.json()) as { accepted: boolean };
-    if (placed.accepted) accepted++;
+    if (placed.accepted) {
+      accepted++;
+      if (y < currentTopY) currentTopY = y;
+    }
 
     if (i < LARGE_SEED_VERTICES - 1) await sleep(PLACE_DELAY_MS);
   }

@@ -14,7 +14,9 @@ export const LOADTEST_SECRET = ENV.LOADTEST_SECRET || '';
 /** Fraction of sessions that mint a brand-new identity, exercising the TOFU
  *  claim-on-first-write path. The rest reuse the seeded pool, which keeps
  *  score-submit KV invalidations low. */
-export const NEW_IDENTITY_RATE = Number(ENV.NEW_IDENTITY_RATE || 0.05);
+export const NEW_IDENTITY_RATE = ENV.NEW_IDENTITY_RATE !== undefined
+  ? Number(ENV.NEW_IDENTITY_RATE)
+  : 0.05;
 
 /**
  * Headers that make the Worker's rate limiter treat this VU as its own client,
