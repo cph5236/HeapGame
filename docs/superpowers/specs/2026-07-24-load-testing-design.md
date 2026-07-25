@@ -96,13 +96,64 @@ by score (`server/src/scoreDb.ts:144`) while the cache holds
 removes rows ranked 1001 and below, which by definition cannot appear in the
 cached top-50 window — so it can never invalidate anything that changed.
 
-**Fix:** drop the `kv.delete` from `CachedScoreDB.pruneScores`, leaving plain
+**Fix 2a:** drop the `kv.delete` from `CachedScoreDB.pruneScores`, leaving plain
 delegation to the inner repo. Halves the KV delete cost of an improved score
 submission from 2 to 1.
 
 This does mean `pruneScores` no longer invalidates at all. That is correct for
 the current retention gap (1,000 vs 50), and the reasoning is recorded as a
 comment on the method so a future change to either constant is flagged.
+
+**Fix 2b — invalidate only when the top-50 actually changes.** `upsertScore`
+returns `changed=true` whenever the player beat their *own* previous best
+(`server/src/scoreDb.ts:83`), which has nothing to do with whether the *leaderboard*
+changed. A player improving from 500 to 600 on a heap whose 50th place is 10,000
+busts a cache entry that would have returned identical bytes.
+
+```ts
+async upsertScore(heapId, playerId, score, now): Promise<boolean> {
+  const changed = await this.inner.upsertScore(heapId, playerId, score, now);
+  if (!changed) return false;
+
+  const cached = await this.kv.get<ScoreRow[]>(this.topKey(heapId), 'json');
+  if (!cached) return true;                  // nothing cached; nothing to bust
+  if (cached.length < CACHE_TOP_N            // board not full: any score enters
+      || score >= cached[cached.length - 1].score) {  // >= so ties invalidate
+    await this.kv.delete(this.topKey(heapId));
+  }
+  return true;
+}
+```
+
+Trades 1 KV read (100,000/day bucket) for 1 KV delete (1,000/day bucket) in the
+common case. Reads are 100x more plentiful, so the trade is strongly positive.
+
+**Why this stays correct.** `buildContext` sources the submitting player's own row
+from `getScore` and their rank from `getRank`, both of which are *uncached*
+straight-to-D1 delegations (`server/src/cache/CachedScoreDB.ts:61-68`). So a player
+always sees their own fresh score and rank. The only value served from cache is
+the `top` array — and if the new score didn't reach the 50th-place cutoff, that
+array is genuinely unchanged. The skip is invisible.
+
+Note also that the score cache is already eventually-consistent by design:
+`SCORES_TTL` is 60s, and neither `PUT /players/:id/name` nor
+`PUT /customization/:id` invalidates it, so cached names and loadouts already lag
+by up to a minute. This change is consistent with that existing posture rather
+than a new compromise.
+
+**Not applied to the heap cache.** The analogous "skip the delete when nothing is
+cached" trick was considered for `CachedHeapDB.invalidateHeap` and rejected:
+`cache:heap:{id}` is hot exactly when traffic is high, so under load the key is
+almost always present and the check would cost a read while still performing the
+delete. There is no threshold equivalent either — every placement genuinely
+changes the polygon, and a stale `version` would make clients miss other players'
+placements for up to `HEAP_TTL` (60s).
+
+**Fallback if more headroom is needed.** Because the player's own row and rank are
+uncached, write-invalidation on scores could be dropped entirely, letting the 60s
+TTL handle staleness and taking score-submit deletes to zero. Not proposed now —
+fix 2b keeps correctness where it matters for a cheap read — but it is the next
+lever if the delete budget still binds.
 
 ### 3. Staging-only synthetic rate-limit key
 
@@ -139,11 +190,12 @@ An `[env.staging]` block in `server/wrangler.toml` with:
 - The same `[[ratelimits]]` bindings as production
 - `LOADTEST_SECRET` and `ADMIN_SECRET` vars
 
-**Blocker to resolve first:** the D1 free plan allows **10 databases per account**.
-The account currently has 5 (the 4 sharded DBs plus the old `heap` DB kept as the
-PR #81 rollback path). Staging needs 4 more, reaching 9 — it fits, but leaves no
-headroom. Since the sharded topology has been live and stable since #81, the old
-`heap` database is retired as part of this work.
+**Prerequisite:** the D1 free plan allows **10 databases per account**. The account
+currently has 5 (the 4 sharded DBs plus the old `heap` DB kept as the PR #81
+rollback path). Staging needs 4 more, reaching 9 — it fits, but leaves no
+headroom. The sharded topology has been live and stable since #81, so the old
+`heap` database is retired first. **Confirmed 2026-07-24: the user will delete it
+manually.** This must happen before staging DBs are provisioned.
 
 ## Traffic model
 
@@ -220,15 +272,21 @@ a run of **800 sessions**, after the two invalidation fixes:
 |---|---|---|---|
 | Placements (journey, p=0.15) | 120 | 2 | 240 |
 | Placements (contention scenario) | 30 | 2 | 60 |
-| Score submit — pool identity that improved (~10% of 760) | 76 | 1 | 76 |
-| Score submit — new identity (5% of 800, always a PB) | 40 | 1 | 40 |
-| **Total** | | | **~416** |
+| Score submits that improved a personal best | ~116 | — | — |
+| ...of which reach the top-50 cutoff (fix 2b) | ~29 | 1 | 29 |
+| **Total** | | | **~329** |
 
-That is ~42% of the daily 1,000-delete bucket, allowing **two full runs per day**
-with headroom left for production.
+The top-50 hit rate is estimated at roughly a quarter: with a 200-identity pool,
+an improved score clears the 50th-place cutoff about 50/200 of the time. This is
+an estimate to be replaced with the measured value after the first run.
 
-Without the fixes the same run would cost roughly 1,320 deletes — over the entire
-daily bucket, before production gets a single placement.
+That is ~33% of the daily 1,000-delete bucket, allowing **two full runs per day**
+with comfortable headroom for production.
+
+Without the three fixes the same run would cost roughly 1,320 deletes — over the
+entire daily bucket, before production gets a single placement. Placements now
+dominate the remaining cost, which is why the heap cache is the place to look if
+further reduction is ever needed.
 
 ### Per-run caps
 
