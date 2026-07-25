@@ -252,16 +252,16 @@ describe('load-test rate-limit key override', () => {
   it('keys on the client IP when LOADTEST_SECRET is unset', async () => {
     const { keys, limiter } = recordingLimiter();
     const app = new Hono();
-    app.use('*', rateLimit(limiter, 'test'));
+    app.use('*', rateLimit(limiter, 'test', undefined));
     app.get('/x', (c) => c.text('ok'));
 
-    await app.fetch(new Request('http://localhost/x', {
+    await app.request('/x', {
       headers: {
         'cf-connecting-ip': '203.0.113.9',
         'X-LoadTest-Secret': 'shhh',
         'X-LoadTest-Key': 'vu-42',
       },
-    }), {});
+    });
 
     expect(keys).toEqual(['203.0.113.9']);
   });
@@ -269,16 +269,16 @@ describe('load-test rate-limit key override', () => {
   it('keys on X-LoadTest-Key when the secret matches', async () => {
     const { keys, limiter } = recordingLimiter();
     const app = new Hono();
-    app.use('*', rateLimit(limiter, 'test'));
+    app.use('*', rateLimit(limiter, 'test', 'shhh'));
     app.get('/x', (c) => c.text('ok'));
 
-    await app.fetch(new Request('http://localhost/x', {
+    await app.request('/x', {
       headers: {
         'cf-connecting-ip': '203.0.113.9',
         'X-LoadTest-Secret': 'shhh',
         'X-LoadTest-Key': 'vu-42',
       },
-    }), { LOADTEST_SECRET: 'shhh' });
+    });
 
     expect(keys).toEqual(['vu-42']);
   });
@@ -286,16 +286,16 @@ describe('load-test rate-limit key override', () => {
   it('ignores the override when the secret is wrong', async () => {
     const { keys, limiter } = recordingLimiter();
     const app = new Hono();
-    app.use('*', rateLimit(limiter, 'test'));
+    app.use('*', rateLimit(limiter, 'test', 'shhh'));
     app.get('/x', (c) => c.text('ok'));
 
-    await app.fetch(new Request('http://localhost/x', {
+    await app.request('/x', {
       headers: {
         'cf-connecting-ip': '203.0.113.9',
         'X-LoadTest-Secret': 'wrong',
         'X-LoadTest-Key': 'vu-42',
       },
-    }), { LOADTEST_SECRET: 'shhh' });
+    });
 
     expect(keys).toEqual(['203.0.113.9']);
   });
@@ -303,16 +303,42 @@ describe('load-test rate-limit key override', () => {
   it('falls back to the IP when the secret matches but no key is sent', async () => {
     const { keys, limiter } = recordingLimiter();
     const app = new Hono();
-    app.use('*', rateLimit(limiter, 'test'));
+    app.use('*', rateLimit(limiter, 'test', 'shhh'));
     app.get('/x', (c) => c.text('ok'));
 
-    await app.fetch(new Request('http://localhost/x', {
+    await app.request('/x', {
       headers: {
         'cf-connecting-ip': '203.0.113.9',
         'X-LoadTest-Secret': 'shhh',
       },
-    }), { LOADTEST_SECRET: 'shhh' });
+    });
 
     expect(keys).toEqual(['203.0.113.9']);
+  });
+
+  it('integration: createApp without loadTestSecret keys on client IP even with load-test headers present', async () => {
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap('h', 1, []);
+    const { keys, limiter } = recordingLimiter();
+    // No loadTestSecret in opts — mirrors a production deployment where
+    // LOADTEST_SECRET is never set, even though the client sends both headers.
+    const app = createApp(heapDb, new MockScoreDB(), {
+      limiters: { global: limiter },
+    });
+
+    await app.request('/heaps', {
+      headers: {
+        'cf-connecting-ip': '203.0.113.9',
+        'X-LoadTest-Secret': 'shhh',
+        'X-LoadTest-Key': 'vu-42',
+      },
+    });
+
+    // The global limiter middleware is mounted on both '/heaps' and '/heaps/*'
+    // and Hono dispatches both for this path, so `limit()` may be called more
+    // than once — the property under test is that every call keyed on the
+    // client IP, never on the attacker-supplied X-LoadTest-Key.
+    expect(keys.length).toBeGreaterThan(0);
+    expect(keys.every((k) => k === '203.0.113.9')).toBe(true);
   });
 });

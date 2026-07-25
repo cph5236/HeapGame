@@ -22,15 +22,16 @@ export function setRateLimitSink(g: () => Sink | undefined): void {
 export function rateLimit(
   limiter: RateLimiter | undefined,
   label: string,
+  loadTestSecret?: string,
 ): MiddlewareHandler {
   return async (c, next) => {
     if (!limiter) return next();
     const ip = c.req.header('cf-connecting-ip') ?? 'unknown';
     // Staging-only: let a load generator present a synthetic per-VU key so that
     // traffic from one machine models many players arriving from distinct IPs.
-    // LOADTEST_SECRET is never set in production, so this branch is unreachable
-    // there and the limiter keys on the (unspoofable) edge-set client IP.
-    const loadTestSecret = (c.env as { LOADTEST_SECRET?: string } | undefined)?.LOADTEST_SECRET;
+    // loadTestSecret comes from LOADTEST_SECRET, which is never set in
+    // production, so this branch is unreachable there and the limiter keys on
+    // the (unspoofable) edge-set client IP.
     const key = loadTestSecret && c.req.header('X-LoadTest-Secret') === loadTestSecret
       ? c.req.header('X-LoadTest-Key') ?? ip
       : ip;

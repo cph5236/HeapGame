@@ -54,6 +54,7 @@ export default {
     const app = createApp(heapDb, scoreDb, {
       allowedOrigins: env.ALLOWED_ORIGINS,
       adminSecret:    env.ADMIN_SECRET,
+      loadTestSecret: env.LOADTEST_SECRET,
       codeDb:         new D1RewardCodeDB(env.DB_REWARDS),
       dailyDb:        new D1DailyClaimDB(env.DB_REWARDS),
       feedbackDb:     new D1FeedbackDB(env.DB_TELEMETRY),
