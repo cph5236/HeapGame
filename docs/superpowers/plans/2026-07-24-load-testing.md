@@ -568,9 +568,11 @@ In `server/src/cache/CachedScoreDB.ts`, replace `upsertScore` and `pruneScores`:
     const key = this.topKey(heapId);
     const cached = await this.safeGet<ScoreRow[]>(key);
     if (!cached) return true;                         // nothing cached, nothing to bust
+    // NB: the dereference MUST stay inside the `||` so it is only evaluated once
+    // boardNotFull is known false. An empty cached array is truthy, so it does not
+    // hit the `!cached` guard above, and cached[-1].score would throw.
     const boardNotFull = cached.length < CACHE_TOP_N; // any score would enter
-    const cutoff = cached[cached.length - 1].score;   // current 50th place
-    if (boardNotFull || score >= cutoff) {            // >= so ties invalidate
+    if (boardNotFull || score >= cached[cached.length - 1].score) { // >= so ties invalidate
       await this.safeDelete(key);
     }
     return true;
@@ -585,7 +587,24 @@ In `server/src/cache/CachedScoreDB.ts`, replace `upsertScore` and `pruneScores`:
   }
 ```
 
-`boardNotFull` is evaluated before `cutoff` is used, and `cached` is non-empty whenever it is truthy (an empty array is only cached when the heap has no scores, in which case `boardNotFull` is `true` and short-circuits before `cutoff` is read). If `cached.length === 0`, `cutoff` would be `undefined` — the `||` short-circuit prevents it being compared.
+An empty cached array **is** reachable: `getTopScores` caches an empty result for a heap with no scores, and `[]` is truthy, so it does not trip the `!cached` guard. The array index must therefore stay **inside** the `||` expression. Hoisting it into its own `const cutoff = ...` statement would evaluate it unconditionally, and `cached[-1].score` throws `TypeError` — after the D1 write has already committed, so the score persists but the request 500s.
+
+Add a regression test for this case alongside the others:
+
+```ts
+  it('invalidates without crashing when the cached board is empty', async () => {
+    const inner = new MockScoreDB();
+    const kv = new MockKV();
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    await cached.getTopScores(HEAP_ID, 50); // caches [] — truthy, not a miss
+    kv.deletes.length = 0;
+
+    const changed = await cached.upsertScore(HEAP_ID, 'first-ever', 42, NOW);
+
+    expect(changed).toBe(true);
+    expect(kv.deletes).toEqual([`cache:scores:${HEAP_ID}:top`]);
+  });
+```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
