@@ -60,7 +60,7 @@ describe('CachedHeapDB', () => {
     expect(kv.has(`cache:heap:${HEAP_ID}`)).toBe(true);
     expect(kv.has('cache:heap:list')).toBe(true);
 
-    const applied = await cached.updateHeap(HEAP_ID, HEAP_ID, 2, [{ x: 5, y: 5 }], 0, 1);
+    const applied = await cached.updateHeap(HEAP_ID, HEAP_ID, 2, [{ x: 5, y: 5 }], 0, 0, 1);
     expect(applied).toBe(true);
     expect(kv.deletes).toContain(`cache:heap:${HEAP_ID}`);
     expect(kv.deletes).toContain('cache:heap:list');
@@ -77,7 +77,7 @@ describe('CachedHeapDB', () => {
     const deletesBefore = kv.deletes.length;
 
     // Stale expectedVersion (1 != 5) — CAS must fail and change nothing.
-    const applied = await cached.updateHeap(HEAP_ID, HEAP_ID, 6, [{ x: 1, y: 1 }], 0, 1);
+    const applied = await cached.updateHeap(HEAP_ID, HEAP_ID, 6, [{ x: 1, y: 1 }], 0, 0, 1);
     expect(applied).toBe(false);
     expect(kv.deletes.length).toBe(deletesBefore);
     expect(kv.has(`cache:heap:${HEAP_ID}`)).toBe(true);
@@ -258,7 +258,7 @@ describe('cache fail-open behaviour', () => {
     kv.failAll('delete');
 
     // The D1 write commits before invalidation, so the caller must see success.
-    const applied = await cached.updateHeap(HEAP_ID, HEAP_ID, 2, [{ x: 1, y: 2 }], 0, 1);
+    const applied = await cached.updateHeap(HEAP_ID, HEAP_ID, 2, [{ x: 1, y: 2 }], 0, 0, 1);
     expect(applied).toBe(true);
     expect((await inner.getHeap(HEAP_ID))?.version).toBe(2);
   });
@@ -286,5 +286,54 @@ describe('cache fail-open behaviour', () => {
 
     const all = await cached.getAll();
     expect(all['ad_cadence']).toBe('3');
+  });
+});
+
+describe('CachedHeapDB top_y folding', () => {
+  it('updateHeap applies the summit candidate and invalidates exactly twice', async () => {
+    const inner = new MockHeapDB();
+    const kv = new MockKV();
+    const cached = new CachedHeapDB(inner, kv.asKV(), noWait);
+    inner.seedHeap(HEAP_ID, 1, []);
+    inner.setTopYForTest(HEAP_ID, 900);
+    await cached.getHeap(HEAP_ID);
+    await cached.listHeaps();
+    kv.deletes.length = 0;
+
+    const applied = await cached.updateHeap(HEAP_ID, HEAP_ID, 2, [{ x: 1, y: 400 }], 0, 400, 1);
+
+    expect(applied).toBe(true);
+    // Summit is the LOWEST y, so 400 beats 900.
+    expect(inner.getTopYForTest(HEAP_ID)).toBe(400);
+    // Exactly one invalidation: the heap row and the list, and nothing more.
+    expect(kv.deletes).toEqual([`cache:heap:${HEAP_ID}`, 'cache:heap:list']);
+  });
+
+  it('updateHeap does not raise the summit when the candidate is lower down', async () => {
+    const inner = new MockHeapDB();
+    const kv = new MockKV();
+    const cached = new CachedHeapDB(inner, kv.asKV(), noWait);
+    inner.seedHeap(HEAP_ID, 1, []);
+    inner.setTopYForTest(HEAP_ID, 300);
+
+    await cached.updateHeap(HEAP_ID, HEAP_ID, 2, [{ x: 1, y: 800 }], 0, 800, 1);
+
+    expect(inner.getTopYForTest(HEAP_ID)).toBe(300);
+  });
+
+  it('a failed CAS leaves top_y untouched and performs no invalidation', async () => {
+    const inner = new MockHeapDB();
+    const kv = new MockKV();
+    const cached = new CachedHeapDB(inner, kv.asKV(), noWait);
+    inner.seedHeap(HEAP_ID, 5, []);
+    inner.setTopYForTest(HEAP_ID, 900);
+    kv.deletes.length = 0;
+
+    // expectedVersion 1 != actual 5 -> CAS must fail.
+    const applied = await cached.updateHeap(HEAP_ID, HEAP_ID, 2, [{ x: 1, y: 100 }], 0, 100, 1);
+
+    expect(applied).toBe(false);
+    expect(inner.getTopYForTest(HEAP_ID)).toBe(900);
+    expect(kv.deletes).toEqual([]);
   });
 });

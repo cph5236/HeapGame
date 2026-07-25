@@ -33,6 +33,7 @@ class RacingHeapDB extends MockHeapDB {
     version: number,
     liveZone: Vertex[],
     freezeY: number,
+    topYCandidate: number,
     expectedVersion?: number,
   ): Promise<boolean> {
     if (this.injections > 0) {
@@ -40,9 +41,9 @@ class RacingHeapDB extends MockHeapDB {
       const cur = (await this.getHeap(id))!;
       const rivalZone: Vertex[] = [...(JSON.parse(cur.live_zone) as Vertex[]), { x: 700, y: 250 }];
       // Unconditional rival write — bumps version so the caller's CAS is stale.
-      await super.updateHeap(id, cur.base_id, cur.version + 1, rivalZone, cur.freeze_y);
+      await super.updateHeap(id, cur.base_id, cur.version + 1, rivalZone, cur.freeze_y, 250);
     }
-    return super.updateHeap(id, baseId, version, liveZone, freezeY, expectedVersion);
+    return super.updateHeap(id, baseId, version, liveZone, freezeY, topYCandidate, expectedVersion);
   }
 }
 

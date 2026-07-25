@@ -71,10 +71,10 @@ export interface HeapDB {
     version: number,
     liveZone: Vertex[],
     freezeY: number,
+    topYCandidate: number,
     expectedVersion?: number,
   ): Promise<boolean>;
   updateHeapParams(id: string, params: HeapParams): Promise<void>;
-  updateTopY(id: string, candidateY: number): Promise<void>;
   deleteHeap(id: string): Promise<void>;
   getBaseVerticesById(baseId: string): Promise<Vertex[] | null>;
   createBase(id: string, heapId: string, vertices: Vertex[], vertexHash: string, now: string): Promise<void>;
@@ -150,19 +150,22 @@ export class D1HeapDB implements HeapDB {
     version: number,
     liveZone: Vertex[],
     freezeY: number,
+    topYCandidate: number,
     expectedVersion?: number,
   ): Promise<boolean> {
+    // top_y is the summit — the LOWEST y — so MIN() only ever raises the peak.
+    // Folding it into the CAS makes the summit update atomic with the placement
+    // and halves both the D1 writes and the KV invalidations per placement.
     if (expectedVersion === undefined) {
       await this.d1
-        .prepare('UPDATE heap SET base_id = ?1, version = ?2, live_zone = ?3, freeze_y = ?4 WHERE id = ?5')
-        .bind(baseId, version, JSON.stringify(liveZone), freezeY, id)
+        .prepare('UPDATE heap SET base_id = ?1, version = ?2, live_zone = ?3, freeze_y = ?4, top_y = MIN(top_y, ?5) WHERE id = ?6')
+        .bind(baseId, version, JSON.stringify(liveZone), freezeY, topYCandidate, id)
         .run();
       return true;
     }
-    // Compare-and-swap: only write if the version we read is still current.
     const res = await this.d1
-      .prepare('UPDATE heap SET base_id = ?1, version = ?2, live_zone = ?3, freeze_y = ?4 WHERE id = ?5 AND version = ?6')
-      .bind(baseId, version, JSON.stringify(liveZone), freezeY, id, expectedVersion)
+      .prepare('UPDATE heap SET base_id = ?1, version = ?2, live_zone = ?3, freeze_y = ?4, top_y = MIN(top_y, ?5) WHERE id = ?6 AND version = ?7')
+      .bind(baseId, version, JSON.stringify(liveZone), freezeY, topYCandidate, id, expectedVersion)
       .run();
     return (res.meta.changes ?? 0) > 0;
   }
@@ -177,13 +180,6 @@ export class D1HeapDB implements HeapDB {
       )
       .bind(params.name, params.difficulty, params.spawnRateMult, params.coinMult, params.scoreMult, params.worldHeight, ghostPointCount,
             params.baseItemSpawnRate, params.positiveItemSpawnRate, params.negativeItemSpawnRate, params.lockedByHeapId ?? null, id)
-      .run();
-  }
-
-  async updateTopY(id: string, candidateY: number): Promise<void> {
-    await this.d1
-      .prepare('UPDATE heap SET top_y = MIN(top_y, ?1) WHERE id = ?2')
-      .bind(candidateY, id)
       .run();
   }
 

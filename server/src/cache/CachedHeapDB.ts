@@ -84,9 +84,10 @@ export class CachedHeapDB implements HeapDB {
     version: number,
     liveZone: Vertex[],
     freezeY: number,
+    topYCandidate: number,
     expectedVersion?: number,
   ): Promise<boolean> {
-    const applied = await this.inner.updateHeap(id, baseId, version, liveZone, freezeY, expectedVersion);
+    const applied = await this.inner.updateHeap(id, baseId, version, liveZone, freezeY, topYCandidate, expectedVersion);
     // A failed CAS changed nothing — the winning writer already busted the cache.
     if (applied) await this.invalidateHeap(id);
     return applied;
@@ -94,11 +95,6 @@ export class CachedHeapDB implements HeapDB {
 
   async updateHeapParams(id: string, params: HeapParams): Promise<void> {
     await this.inner.updateHeapParams(id, params);
-    await this.invalidateHeap(id);
-  }
-
-  async updateTopY(id: string, candidateY: number): Promise<void> {
-    await this.inner.updateTopY(id, candidateY);
     await this.invalidateHeap(id);
   }
 
