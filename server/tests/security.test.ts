@@ -341,4 +341,31 @@ describe('load-test rate-limit key override', () => {
     expect(keys.length).toBeGreaterThan(0);
     expect(keys.every((k) => k === '203.0.113.9')).toBe(true);
   });
+
+  it('integration: createApp WITH loadTestSecret keys on X-LoadTest-Key when the matching secret is presented', async () => {
+    // Positive-direction counterpart to the previous test: proves the wiring a
+    // prior fix round found broken (the original implementation read c.env,
+    // which is empty in the deployed Worker) actually works when loadTestSecret
+    // is threaded through createApp's options the way index.ts does it.
+    const heapDb = new MockHeapDB();
+    heapDb.seedHeap('h', 1, []);
+    const { keys, limiter } = recordingLimiter();
+    const app = createApp(heapDb, new MockScoreDB(), {
+      loadTestSecret: 'shhh',
+      limiters: { global: limiter },
+    });
+
+    await app.request('/heaps', {
+      headers: {
+        'cf-connecting-ip': '203.0.113.9',
+        'X-LoadTest-Secret': 'shhh',
+        'X-LoadTest-Key': 'vu-42',
+      },
+    });
+
+    // Same double-dispatch caveat as above ('/heaps' + '/heaps/*') — assert
+    // every recorded key, not an exact call count.
+    expect(keys.length).toBeGreaterThan(0);
+    expect(keys.every((k) => k === 'vu-42')).toBe(true);
+  });
 });

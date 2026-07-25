@@ -12,6 +12,8 @@
 // is then a single delete, keeping writes consistent.
 
 import type { ScoreDB, ScoreRow } from '../scoreDb';
+import type { Sink } from '../logging/Sink';
+import { captureServer } from '../logging/captureServerEvent';
 
 /** Cache the top this-many rows per heap; matches MAX_LIMIT in routes/scores.ts. */
 const CACHE_TOP_N = 50;
@@ -24,6 +26,9 @@ export class CachedScoreDB implements ScoreDB {
     private inner: ScoreDB,
     private kv: KVNamespace,
     private waitUntil: (p: Promise<unknown>) => void,
+    /** Optional telemetry sink — see CachedHeapDB for rationale. Optional so
+     *  tests can construct this class directly. */
+    private sink?: Sink,
   ) {}
 
   private topKey(heapId: string): string {
@@ -101,6 +106,7 @@ export class CachedScoreDB implements ScoreDB {
       return await this.kv.get<T>(key, 'json');
     } catch (err) {
       console.warn(`[cache] KV get failed key=${key}: ${err instanceof Error ? err.message : String(err)}`);
+      await this.reportKvFailure('get', key, err);
       return null;
     }
   }
@@ -112,6 +118,18 @@ export class CachedScoreDB implements ScoreDB {
       await this.kv.delete(key);
     } catch (err) {
       console.warn(`[cache] KV delete failed key=${key}: ${err instanceof Error ? err.message : String(err)}`);
+      await this.reportKvFailure('delete', key, err);
     }
+  }
+
+  /** Best-effort telemetry for a KV failure. Never throws — captureServer
+   *  already swallows sink errors internally, and the sink itself is optional. */
+  private async reportKvFailure(op: 'get' | 'delete', key: string, err: unknown): Promise<void> {
+    if (!this.sink) return;
+    await captureServer(this.sink, 'warn', 'cache:kv-failed', {
+      op,
+      key,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }

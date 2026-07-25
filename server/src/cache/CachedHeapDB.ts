@@ -13,6 +13,8 @@
 
 import type { HeapDB, HeapRow, HeapSummaryRow } from '../db';
 import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
+import type { Sink } from '../logging/Sink';
+import { captureServer } from '../logging/captureServerEvent';
 
 /** live_zone / top_y change on placement → short TTL backs up write-invalidation. */
 const HEAP_TTL = 60;
@@ -24,6 +26,10 @@ export class CachedHeapDB implements HeapDB {
     private inner: HeapDB,
     private kv: KVNamespace,
     private waitUntil: (p: Promise<unknown>) => void,
+    /** Optional telemetry sink — when present, KV failures are also reported as
+     *  a 'cache:kv-failed' event so a real outage surfaces in heap_logs instead
+     *  of only console.warn. Optional so tests can construct this class directly. */
+    private sink?: Sink,
   ) {}
 
   // ---- reads (cache-aside) ----
@@ -137,6 +143,7 @@ export class CachedHeapDB implements HeapDB {
       return await this.kv.get<T>(key, 'json');
     } catch (err) {
       console.warn(`[cache] KV get failed key=${key}: ${err instanceof Error ? err.message : String(err)}`);
+      await this.reportKvFailure('get', key, err);
       return null;
     }
   }
@@ -148,6 +155,18 @@ export class CachedHeapDB implements HeapDB {
       await this.kv.delete(key);
     } catch (err) {
       console.warn(`[cache] KV delete failed key=${key}: ${err instanceof Error ? err.message : String(err)}`);
+      await this.reportKvFailure('delete', key, err);
     }
+  }
+
+  /** Best-effort telemetry for a KV failure. Never throws — captureServer
+   *  already swallows sink errors internally, and the sink itself is optional. */
+  private async reportKvFailure(op: 'get' | 'delete', key: string, err: unknown): Promise<void> {
+    if (!this.sink) return;
+    await captureServer(this.sink, 'warn', 'cache:kv-failed', {
+      op,
+      key,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }

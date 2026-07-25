@@ -47,10 +47,12 @@ export default {
       ? new AnalyticsEngineSink(env.LOGS)
       : new D1Sink(env.DB_TELEMETRY);
     // Read-heavy repos get a KV cache decorator; transactional + telemetry repos
-    // hit their domain DB directly.
-    const heapDb   = new CachedHeapDB(new D1HeapDB(env.DB_HEAP), env.CACHE, w);
-    const scoreDb  = new CachedScoreDB(new D1ScoreDB(env.DB_SCORES), env.CACHE, w);
-    const configDb = new CachedConfigDB(new D1ConfigDB(env.DB_HEAP), env.CACHE, w);
+    // hit their domain DB directly. The same logSink used for route-level
+    // telemetry is threaded in so KV outages land in heap_logs, not just
+    // console.warn (which only wrangler tail sees live).
+    const heapDb   = new CachedHeapDB(new D1HeapDB(env.DB_HEAP), env.CACHE, w, logSink);
+    const scoreDb  = new CachedScoreDB(new D1ScoreDB(env.DB_SCORES), env.CACHE, w, logSink);
+    const configDb = new CachedConfigDB(new D1ConfigDB(env.DB_HEAP), env.CACHE, w, logSink);
     const app = createApp(heapDb, scoreDb, {
       allowedOrigins: env.ALLOWED_ORIGINS,
       adminSecret:    env.ADMIN_SECRET,

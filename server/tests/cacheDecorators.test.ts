@@ -13,6 +13,7 @@ import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockConfigDB } from './helpers/mockConfigDb';
 import { MockKV } from './helpers/mockKv';
+import { MockSink } from './helpers/mockSink';
 
 const HEAP_ID = 'heap-1';
 const noWait = (_p: Promise<unknown>) => {};
@@ -279,6 +280,106 @@ describe('cache fail-open behaviour', () => {
 
     const all = await cached.getAll();
     expect(all['ad_cadence']).toBe('3');
+  });
+});
+
+describe('cache KV failure telemetry', () => {
+  it('CachedHeapDB.getHeap emits cache:kv-failed on a KV get error, with sink present', async () => {
+    const inner = new MockHeapDB();
+    const kv = new MockKV();
+    const sink = new MockSink();
+    const cached = new CachedHeapDB(inner, kv.asKV(), noWait, sink);
+    inner.seedHeap(HEAP_ID, 3, []);
+
+    kv.failAll('get');
+
+    const row = await cached.getHeap(HEAP_ID);
+    expect(row?.version).toBe(3); // still degrades to a cache miss / D1 fallback
+
+    expect(sink.written).toHaveLength(1);
+    expect(sink.written[0].message).toBe('cache:kv-failed');
+    expect(sink.written[0].level).toBe('warn');
+    expect(sink.written[0].payload).toMatchObject({
+      op: 'get',
+      key: `cache:heap:${HEAP_ID}`,
+    });
+    expect(typeof sink.written[0].payload.error).toBe('string');
+  });
+
+  it('CachedHeapDB.updateHeap emits cache:kv-failed on a KV delete error, and still applies the write', async () => {
+    const inner = new MockHeapDB();
+    const kv = new MockKV();
+    const sink = new MockSink();
+    const cached = new CachedHeapDB(inner, kv.asKV(), noWait, sink);
+    inner.seedHeap(HEAP_ID, 1, []);
+
+    kv.failAll('delete');
+
+    const applied = await cached.updateHeap(HEAP_ID, HEAP_ID, 2, [{ x: 1, y: 2 }], 0, 0, 1);
+    expect(applied).toBe(true);
+
+    // Two invalidation deletes attempted (heap row + list), both fail → two events.
+    expect(sink.written).toHaveLength(2);
+    for (const entry of sink.written) {
+      expect(entry.message).toBe('cache:kv-failed');
+      expect(entry.level).toBe('warn');
+      expect(entry.payload.op).toBe('delete');
+    }
+    const keys = sink.written.map((e) => e.payload.key);
+    expect(keys).toEqual(expect.arrayContaining([`cache:heap:${HEAP_ID}`, 'cache:heap:list']));
+  });
+
+  it('CachedHeapDB does not emit or throw when no sink is configured', async () => {
+    const inner = new MockHeapDB();
+    const kv = new MockKV();
+    const cached = new CachedHeapDB(inner, kv.asKV(), noWait); // no sink
+    inner.seedHeap(HEAP_ID, 3, []);
+
+    kv.failAll('get');
+
+    await expect(cached.getHeap(HEAP_ID)).resolves.toMatchObject({ version: 3 });
+  });
+
+  it('CachedScoreDB.getTopScores emits cache:kv-failed on a KV get error', async () => {
+    const inner = new MockScoreDB();
+    const kv = new MockKV();
+    const sink = new MockSink();
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait, sink);
+    await inner.upsertScore(HEAP_ID, 'p1', 500, '2026-01-01T00:00:00.000Z');
+
+    kv.failAll('get');
+
+    const top = await cached.getTopScores(HEAP_ID, 5);
+    expect(top).toHaveLength(1);
+
+    expect(sink.written).toHaveLength(1);
+    expect(sink.written[0].message).toBe('cache:kv-failed');
+    expect(sink.written[0].level).toBe('warn');
+    expect(sink.written[0].payload).toMatchObject({
+      op: 'get',
+      key: `cache:scores:${HEAP_ID}:top`,
+    });
+  });
+
+  it('CachedConfigDB.getAll emits cache:kv-failed on a KV get error', async () => {
+    const inner = new MockConfigDB();
+    const kv = new MockKV();
+    const sink = new MockSink();
+    const cached = new CachedConfigDB(inner, kv.asKV(), noWait, sink);
+    await inner.set('ad_cadence', '3', '2026-01-01T00:00:00.000Z');
+
+    kv.failAll('get');
+
+    const all = await cached.getAll();
+    expect(all['ad_cadence']).toBe('3');
+
+    expect(sink.written).toHaveLength(1);
+    expect(sink.written[0].message).toBe('cache:kv-failed');
+    expect(sink.written[0].level).toBe('warn');
+    expect(sink.written[0].payload).toMatchObject({
+      op: 'get',
+      key: 'cache:config:all',
+    });
   });
 });
 
