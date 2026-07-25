@@ -57,8 +57,7 @@ export class CachedScoreDB implements ScoreDB {
     const cached = await this.safeGet<ScoreRow[]>(key);
     if (!cached) return true;                         // nothing cached, nothing to bust
     const boardNotFull = cached.length < CACHE_TOP_N; // any score would enter
-    const cutoff = cached[cached.length - 1].score;   // current 50th place
-    if (boardNotFull || score >= cutoff) {            // >= so ties invalidate
+    if (boardNotFull || score >= cached[cached.length - 1].score) { // >= so ties invalidate
       await this.safeDelete(key);
     }
     return true;

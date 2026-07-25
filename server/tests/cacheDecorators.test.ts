@@ -433,4 +433,19 @@ describe('CachedScoreDB selective invalidation', () => {
     expect(changed).toBe(false);
     expect(kv.deletes).toEqual([]);
   });
+
+  it('invalidates without crashing when the cached board is empty', async () => {
+    const inner = new MockScoreDB();
+    const kv = new MockKV();
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    // Read the leaderboard of a heap with no scores — this caches an empty array,
+    // which is truthy, so it is NOT treated as a cache miss.
+    await cached.getTopScores(HEAP_ID, 50);
+    kv.deletes.length = 0;
+
+    const changed = await cached.upsertScore(HEAP_ID, 'first-ever', 42, '2026-01-01T00:00:00.000Z');
+
+    expect(changed).toBe(true);
+    expect(kv.deletes).toEqual([`cache:scores:${HEAP_ID}:top`]);
+  });
 });
