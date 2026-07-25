@@ -60,6 +60,31 @@ describe('k6 payloads satisfy the shared request types', () => {
     expect(clamped.inputs.elapsedMs).toBe(1);
   });
 
+  it('buildScoreBody handles optional kills.jumper correctly', () => {
+    // kills.jumper is optional on SubmitScoreInputs (shared/scoreTypes.ts:22)
+    // and floored server-side via `kills.jumper ?? 0` when present
+    // (server/src/routes/scores.ts:187-195). payloads.js:29-31 has bespoke
+    // logic for this — it must floor a fractional jumper when supplied, and
+    // must leave the key genuinely absent (not defaulted to 0) when the
+    // caller doesn't supply one, matching the "optional" semantics of the
+    // shared type.
+    const withJumper = buildScoreBody({
+      heapId: 'h1', playerId: 'p1', playerName: 'T',
+      elapsedMs: 1000, kills: { percher: 0, ghost: 0, jumper: 3.9 },
+      baseHeightPx: 0, isFailure: false,
+    });
+    expect(withJumper.inputs.kills.jumper).toBe(3);
+    expect(Number.isInteger(withJumper.inputs.kills.jumper)).toBe(true);
+
+    const withoutJumper = buildScoreBody({
+      heapId: 'h1', playerId: 'p1', playerName: 'T',
+      elapsedMs: 1000, kills: { percher: 0, ghost: 0 },
+      baseHeightPx: 0, isFailure: false,
+    });
+    expect('jumper' in withoutJumper.inputs.kills).toBe(false);
+    expect(withoutJumper.inputs.kills.jumper).toBeUndefined();
+  });
+
   it('buildLogBody produces a batch envelope matching the real /log contract', () => {
     // server/src/routes/log.ts (~line 43) expects `{ entries: [...] }` where
     // each entry has `eventType` / `payload` (not `event` / `data`), a
@@ -79,7 +104,9 @@ describe('k6 payloads satisfy the shared request types', () => {
     expect(entry.level).toBe('event');
     expect(entry.eventType).toBe('loadtest:tick');
     expect(entry.payload).toEqual({ n: 1 });
-    expect(['web', 'android', 'ios']).toContain(entry.platform);
+    // platform wasn't supplied above — must default to 'web' specifically,
+    // not merely "some valid value".
+    expect(entry.platform).toBe('web');
     expect(typeof entry.timestamp).toBe('number');
     expect(Number.isFinite(entry.timestamp)).toBe(true);
     // 'ts'/'event'/'data' must not leak through as stray keys the server
@@ -94,5 +121,12 @@ describe('k6 payloads satisfy the shared request types', () => {
     // server's VALID_LEVELS set would reject it outright.
     const body = buildLogBody({ level: 'info', event: 'x', data: {} });
     expect(['error', 'warn', 'event']).toContain(body.entries[0].level);
+  });
+
+  it('buildLogBody normalizes a bogus platform to "web" rather than sending one the server 400s on', () => {
+    // 'switch' is not a valid Platform (shared/logging/events.ts) — the
+    // server's VALID_PLATFORMS set would reject it outright.
+    const body = buildLogBody({ level: 'event', event: 'x', data: {}, platform: 'switch' });
+    expect(body.entries[0].platform).toBe('web');
   });
 });
