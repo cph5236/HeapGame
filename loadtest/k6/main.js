@@ -10,23 +10,36 @@
 //                  plus one extra heap-base fetch per VU on its first
 //                  iteration only.
 //   - placement(): 3 requests/iteration (GET /heaps, GET /heaps/:id, POST
-//                  .../place) — so the 30-iteration default below is 90
-//                  requests, not 30. iterations=30 is chosen to match the
-//                  design spec's placement-scenario budget of 30 placements
-//                  (120 from journey + 30 here = the 150 global placement
-//                  cap), not to match a request count.
+//                  .../place) — so a 30-iteration run is 90 requests, not 30.
 //   - limiter():   1 request/iteration, no budget (see limiter.js header).
 
+import http from 'k6/http';
 import { SharedArray } from 'k6/data';
 import { createBudget } from './lib/budget.js';
+import { numEnv } from './lib/config.js';
 import { journey } from './scenarios/journey.js';
 import { placement } from './scenarios/placement.js';
 import { limiter } from './scenarios/limiter.js';
 
 /* global __ENV */
 
-const SESSIONS = Number(__ENV.SESSIONS || 800);
-const MAX_PLACEMENTS = Number(__ENV.MAX_PLACEMENTS || 150);
+// 409 (CAS conflict under contention) and 429 (rate limited) are designed
+// outcomes of this harness, not failures. Declaring them expected is what
+// makes the http_req_failed threshold below meaningful — k6 defines
+// http_req_failed as the complement of the expected/actual status match, so
+// filtering THAT metric by `expected_response:true` (an earlier version of
+// this file did) selects exactly the population that can never contain a
+// failure: a vacuous threshold that reads 0% and can never fire, even
+// through a total 5xx outage. This runs once per VU during that VU's init
+// phase (see k6's test-lifecycle docs) and applies to every http.* call made
+// from that VU afterwards, including calls made from the imported scenario
+// modules — 'k6/http' is the same module instance within one VU's runtime,
+// so setting the callback here reaches journey.js/placement.js/limiter.js's
+// own http.get/http.post calls without them needing to opt in individually.
+http.setResponseCallback(http.expectedStatuses({ min: 200, max: 399 }, 409, 429));
+
+const SESSIONS = numEnv(__ENV.SESSIONS, 800);
+const MAX_PLACEMENTS = numEnv(__ENV.MAX_PLACEMENTS, 150);
 
 // k6's shared-iterations executor requires iterations >= vus (it hands out at
 // least one iteration per VU up front). 50 is the right VU count at the
@@ -34,6 +47,17 @@ const MAX_PLACEMENTS = Number(__ENV.MAX_PLACEMENTS || 150);
 // and fail to start at all — cap journey's VU count to SESSIONS itself for
 // small dry runs rather than hardcoding 50.
 const JOURNEY_VUS = Math.min(50, SESSIONS);
+
+// The placement scenario has the same iterations >= vus constraint, and its
+// canPlace() gate makes it worse than journey's: placement() returns
+// immediately when the budget is exhausted (see placement.js), so a per-VU
+// placement cap below 1 doesn't just under-count — it silently no-ops the
+// rest of that VU's iterations entirely for the whole run. Scaling both the
+// iteration count AND the VU count down with MAX_PLACEMENTS (rather than
+// leaving them at fixed 30/15) keeps the per-VU budget (below) at >= 1 no
+// matter how small MAX_PLACEMENTS is set for a local dry run.
+const PLACEMENT_ITERATIONS = Math.max(1, Math.min(30, MAX_PLACEMENTS));
+const PLACEMENT_VUS = Math.max(1, Math.min(15, PLACEMENT_ITERATIONS));
 
 const fixtures = new SharedArray('fixtures', () => [JSON.parse(open('../fixtures.json'))]);
 
@@ -48,8 +72,8 @@ export const options = {
     },
     placement: {
       executor: 'shared-iterations',
-      vus: 15,
-      iterations: 30,
+      vus: PLACEMENT_VUS,
+      iterations: PLACEMENT_ITERATIONS,
       maxDuration: '5m',
       startTime: '30s',
       exec: 'placementScenario',
@@ -64,8 +88,10 @@ export const options = {
     },
   },
   thresholds: {
-    // 409 (CAS conflict) and 429 (rate limited) are expected outcomes, not failures.
-    'http_req_failed{expected_response:true}': ['rate<0.01'],
+    // Meaningful now that expected statuses are declared above: this reads
+    // the real failure rate (genuine 4xx/5xx), not a metric pre-filtered
+    // down to nothing.
+    'http_req_failed':                         ['rate<0.01'],
     'http_req_duration{name:heaps-list}':      ['p(95)<500', 'p(99)<1500'],
     'http_req_duration{name:heap-get}':        ['p(95)<500', 'p(99)<1500'],
     'http_req_duration{name:scores-context}':  ['p(95)<500', 'p(99)<1500'],
@@ -74,20 +100,28 @@ export const options = {
   },
 };
 
-// Per-VU budget: k6 VUs do not share module state, so divide the global caps by
-// the scenario's VU count. This is a redundant safety net, not the primary
-// control — the authoritative global bound is each scenario's `iterations`
-// above, which is fixed before the run starts. Dividing 10,000 (the run's
-// overall request ceiling) by each scenario's own VU count is deliberately
-// generous headroom rather than a tight per-scenario slice: journey's real
-// steady-state usage is ~135 requests/VU (16 iterations/VU * ~8.4/iteration)
-// against a 200/VU cap, and placement's real usage is ~6 requests/VU (2
-// iterations/VU * 3/iteration) against a ~667/VU cap. Both caps only exist to
-// catch a runaway bug (e.g. an infinite retry loop), not to shape normal
-// volume — normal volume is shaped entirely by `iterations` + the scenario
-// bodies' own probabilities.
-const journeyBudget   = createBudget({ maxRequests: 10_000 / JOURNEY_VUS, maxPlacements: MAX_PLACEMENTS / JOURNEY_VUS });
-const placementBudget = createBudget({ maxRequests: 10_000 / 15, maxPlacements: MAX_PLACEMENTS / 15 });
+// Per-VU budget: k6 VUs do not share module state, so divide the global caps
+// by the scenario's VU count. This is a redundant safety net, not the
+// primary control — the authoritative global bound is each scenario's
+// `iterations` above, which is fixed before the run starts. Both divisors
+// are wrapped in Math.max(1, Math.ceil(...)): a cap that rounds down to 0
+// permanently blocks a VU's canPlace() gate after its very first placement
+// (0 is never < a value at or below 0), which is exactly how the placement
+// scenario silently ran at roughly half its configured volume before this
+// fix — a VU that placed once had placements=1, which was not < its
+// fractional per-VU cap, and canPlace() then blocked it for every remaining
+// iteration. journey's placement gate is probabilistic rather than a
+// blanket early-return, so the same fractional-cap issue there was a
+// smaller under-count rather than a rest-of-run no-op, but the guard is
+// applied here too so it can't happen at all.
+const journeyBudget = createBudget({
+  maxRequests:   Math.max(1, Math.ceil(10_000 / JOURNEY_VUS)),
+  maxPlacements: Math.max(1, Math.ceil(MAX_PLACEMENTS / JOURNEY_VUS)),
+});
+const placementBudget = createBudget({
+  maxRequests:   Math.max(1, Math.ceil(10_000 / PLACEMENT_VUS)),
+  maxPlacements: Math.max(1, Math.ceil(MAX_PLACEMENTS / PLACEMENT_VUS)),
+});
 
 export function journeyScenario()   { journey(fixtures[0], journeyBudget); }
 export function placementScenario() { placement(fixtures[0], placementBudget); }

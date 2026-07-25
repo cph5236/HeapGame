@@ -25,7 +25,7 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter, Rate } from 'k6/metrics';
-import { BASE_URL, loadTestHeaders } from '../lib/config.js';
+import { BASE_URL, loadTestHeaders, numEnv } from '../lib/config.js';
 import { pickIdentity } from '../lib/player.js';
 import { buildPlaceBody, buildScoreBody, buildLogBody } from '../lib/payloads.js';
 
@@ -35,8 +35,11 @@ export const placeConflicts = new Counter('place_conflicts');
 export const placeAccepted   = new Counter('place_accepted');
 export const rateLimited     = new Rate('rate_limited');
 
-/** Probability a session places a block. Real players place rarely. */
-const PLACE_RATE = Number(__ENV.PLACE_RATE || 0.15);
+/** Probability a session places a block. Real players place rarely.
+ *  `numEnv` (not `Number(__ENV.PLACE_RATE || 0.15)`) so an explicit
+ *  `-e PLACE_RATE=0` — the README's documented way to disable placements
+ *  from journey traffic — is honoured instead of falling back to 0.15. */
+const PLACE_RATE = numEnv(__ENV.PLACE_RATE, 0.15);
 
 // Mirrors the placement-validation window in server/src/routes/heap.ts
 // (POST /:id/place, ~line 403 on). PLACE_X_MIN/PLACE_X_MAX/

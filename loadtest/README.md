@@ -66,8 +66,10 @@ BASE_URL=http://localhost:8787 npm run loadtest:local
 
 `loadtest:local` runs `k6 run -e SESSIONS=20 -e MAX_PLACEMENTS=5
 loadtest/k6/main.js` — the same scenarios and thresholds as a real run, just
-at throwaway volume (20 journey iterations, the placement scenario's fixed 30
-iterations, 20 limiter probes). `ADMIN_SECRET` can be anything locally:
+at throwaway volume (20 journey iterations; the placement scenario scales
+its own iteration/VU count down with `MAX_PLACEMENTS` — see
+[Per-run budget](#per-run-budget) — so this becomes 5 iterations across 5
+VUs; 20 limiter probes). `ADMIN_SECRET` can be anything locally:
 `requireAdminSecret` no-ops when the server-side secret is unset, which it is
 by default under plain `wrangler dev` (no `.dev.vars` in this repo). Expect
 **zero 4xx other than 409 (CAS conflict) and 429 (rate limited), and zero
@@ -123,18 +125,50 @@ Against the per-run caps from the design spec:
 - **≤ 800 sessions / ≤ 10,000 requests** — actual ≈ 6,840, comfortably under.
 - **≤ 150 placements total across scenarios** — 120 (journey) + 30
   (placement) = 150 exactly; this is *why* the placement scenario's
-  iteration count is 30 and not something derived from a request budget.
+  iteration count is 30 at the default `MAX_PLACEMENTS` and not something
+  derived from a request budget.
 - **KV deletes ≈ 329/run** (accounting in the design spec, ~a third of the
   daily 1,000 bucket) — **≈ 2 runs/day** with headroom left for production.
 
+### How `placement`'s volume scales with `MAX_PLACEMENTS`
+
+`main.js` derives the `placement` scenario's own iteration and VU counts from
+`MAX_PLACEMENTS` instead of hardcoding them, specifically so a small
+`MAX_PLACEMENTS` (as `loadtest:local` uses) can't produce a per-VU placement
+budget below 1 — `placement()` returns immediately once its budget is
+exhausted (see `k6/scenarios/placement.js`), so a cap that rounds down to 0
+doesn't just under-count, it silently no-ops the rest of that VU's
+iterations for the whole run (this shipped broken in the first version of
+this file — a `loadtest:local` run's `cas_accepted + cas_conflicts` totals
+came out to roughly half the configured iteration count instead of matching
+it; see the fix note in `task-12-report.md` if you're tracing history):
+
+```js
+const PLACEMENT_ITERATIONS = Math.max(1, Math.min(30, MAX_PLACEMENTS));
+const PLACEMENT_VUS = Math.max(1, Math.min(15, PLACEMENT_ITERATIONS));
+// per-VU budget: Math.max(1, Math.ceil(MAX_PLACEMENTS / PLACEMENT_VUS))
+```
+
+| `MAX_PLACEMENTS` | Iterations | VUs | Per-VU budget | Real cap |
+|---|---|---|---|---|
+| 150 (default) | 30 | 15 | 10 | 30 (bounded by iterations, budget never binds) |
+| 5 (`loadtest:local`) | 5 | 5 | 1 | 5 (budget binds at exactly 1/VU) |
+
+Verified against both cases with a real local run (see `task-12-report.md`):
+`MAX_PLACEMENTS=5` reaches its full `5/5 shared iters` rather than stalling
+partway, and `MAX_PLACEMENTS=150` reaches `30/30`.
+
 `createBudget()` divides these global caps by each scenario's VU count to get
-a per-VU runtime safety net (k6 VUs don't share module state). Those divisors
-are deliberately generous, not a tight per-scenario slice — e.g. journey's
-real steady-state usage is ~135 requests/VU against a 200/VU cap. The
-authoritative bound is always each scenario's `iterations` in `main.js`,
-fixed before the run starts; the per-VU counter only exists to abort a
-scenario that's somehow sending far more requests per iteration than
-expected (a bug), not to shape normal volume.
+a per-VU runtime safety net (k6 VUs don't share module state). Every divisor
+(both `journey`'s and `placement`'s) is wrapped in `Math.max(1, Math.ceil(...))`
+so it can never round down to a value that permanently blocks a VU's
+`canPlace()` gate. Aside from that floor, the divisors are deliberately
+generous, not a tight per-scenario slice — e.g. journey's real steady-state
+usage is ~135 requests/VU against a 200/VU cap. The authoritative bound is
+always each scenario's `iterations` in `main.js`, fixed before the run
+starts; the per-VU counter only exists to abort a scenario that's somehow
+sending far more requests per iteration than expected (a bug), not to shape
+normal volume.
 
 ## Tunable env vars
 
@@ -145,11 +179,19 @@ wire the two most common ones):
 |---|---|---|
 | `BASE_URL` | `http://localhost:8787` | Target Worker. |
 | `LOADTEST_SECRET` | *(unset)* | Staging-only synthetic rate-limit key. Inert (no-op) everywhere else, including production. |
-| `SESSIONS` | 800 | `journey` scenario's total iteration count (shared across its 50 VUs). |
-| `MAX_PLACEMENTS` | 150 | Global placement safety-net cap, divided across the `journey` and `placement` scenarios' VU counts (see above). |
-| `PLACE_RATE` | 0.15 | Probability a `journey` session attempts a placement. |
+| `SESSIONS` | 800 | `journey` scenario's total iteration count. Also caps its VU count (`min(50, SESSIONS)`) so a small override never sets iterations below vus, which k6 rejects outright. |
+| `MAX_PLACEMENTS` | 150 | Global placement safety-net cap. Also sizes the `placement` scenario's own iteration/VU counts (see [Per-run budget](#per-run-budget)) and both scenarios' per-VU budget divisors. |
+| `PLACE_RATE` | 0.15 | Probability a `journey` session attempts a placement. An explicit `-e PLACE_RATE=0` is honoured (disables placements from journey traffic entirely) rather than falling back to 0.15. |
 | `NEW_IDENTITY_RATE` | 0.05 | Fraction of sessions that mint a brand-new identity instead of drawing from the seeded pool. Set explicitly (`-e NEW_IDENTITY_RATE=0`) to pin a run entirely to the seeded pool — an explicit `0` is honoured, it does not fall back to the default. |
 | `PLACE_FIXTURE` | `small` | Which fixture heap the `placement` scenario hammers — `small` or `large`. See the [CPU-vs-polygon-size hypothesis](#leading-hypothesis-placement-cpu-vs-polygon-size) below. |
+
+All numeric vars above (`SESSIONS`, `MAX_PLACEMENTS`, `PLACE_RATE`,
+`NEW_IDENTITY_RATE`) share one parsing rule (`numEnv` in `k6/lib/config.js`):
+only a genuinely absent or blank-string value falls back to the default —
+`0` and every other numeric string is used as given. The naive
+`Number(__ENV.X || default)` pattern this replaced silently discarded an
+explicit `0` (`0 || default` evaluates the default), which is exactly the
+value someone setting `PLACE_RATE=0` or `NEW_IDENTITY_RATE=0` needs honoured.
 
 ## Reset between runs
 
@@ -176,11 +218,23 @@ than the expected CAS/geometry ones) and `rate_limit:hit`.
 
 k6 prints a summary at the end of the run. What to look at:
 
-- **Thresholds** (`main.js`): `http_req_failed{expected_response:true}` <1%
-  excludes 409/429 by design — a threshold breach here means genuine 4xx/5xx,
-  not contention or rate limiting. Read endpoints are held to p95<500ms /
-  p99<1500ms; `POST .../place` (both the `place` and `place-contention` tags)
-  to p95<1000ms.
+- **Thresholds** (`main.js`): `http_req_failed` <1% is the error-rate gate.
+  `main.js` calls `http.setResponseCallback(http.expectedStatuses({ min: 200,
+  max: 399 }, 409, 429))` at module scope (once per VU, during that VU's init
+  phase — applies to every `http.*` call the VU makes afterwards, including
+  from the imported scenario modules) so that 409/429 count as *expected*
+  responses rather than failures before the threshold ever sees them. This
+  matters: thresholding `http_req_failed` filtered by an
+  `expected_response:true` tag (an earlier version of this file did that
+  instead) is vacuous — k6 defines `http_req_failed` as the complement of the
+  expected/actual match, so a population already filtered down to "responses
+  that matched expectations" can never contain a failure, and the threshold
+  reads a permanent 0% regardless of what the server actually returns. With
+  the fix, a threshold breach means genuine unexpected 4xx/5xx. Read
+  endpoints are additionally held to p95<500ms / p99<1500ms; `POST .../place`
+  (both the `place` and `place-contention` tags) to p95<1000ms — expect these
+  latency thresholds specifically (not the error-rate one) to be noisy under
+  local `wrangler dev`, see the dry-run loop section above.
 - **`place_accepted` / `place_conflicts`** (journey.js): placements from the
   realistic-traffic scenario that succeeded vs. exhausted their 5 CAS retries
   (409). A non-trivial `place_conflicts` count here (contention outside the
