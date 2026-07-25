@@ -3,14 +3,10 @@
 
 import { NEW_IDENTITY_RATE } from './config.js';
 
-// `salt` is XORed into every nibble so that two back-to-back uuid() calls
-// sharing the same closed-over `rand` (e.g. a constant test double like
-// `() => 0.0`) still diverge — otherwise a fresh-mint identity's playerId and
-// playerSecret would collide whenever rand() isn't actually random.
-function uuid(rand, salt = 0) {
+function uuid(rand) {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
-    const r = ((rand() * 16) | 0) ^ salt;
-    const v = ch === 'x' ? r & 0xf : (r & 0x3) | 0x8;
+    const r = (rand() * 16) | 0;
+    const v = ch === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
 }
@@ -31,7 +27,7 @@ function uuid(rand, salt = 0) {
  */
 export function pickIdentity(pool, vuId, iteration, rand = Math.random) {
   if (rand() < NEW_IDENTITY_RATE || pool.length === 0) {
-    return { playerId: uuid(rand, 0x0), playerSecret: uuid(rand, 0xf), isNew: true };
+    return { playerId: uuid(rand), playerSecret: uuid(rand), isNew: true };
   }
   const idx = (vuId * 31 + iteration) % pool.length;
   const picked = pool[idx];
