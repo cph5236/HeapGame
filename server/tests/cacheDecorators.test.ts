@@ -151,15 +151,8 @@ describe('CachedScoreDB', () => {
     expect(kv.has(`cache:scores:${HEAP_ID}:top`)).toBe(false);
   });
 
-  it('pruneScores invalidates the top cache', async () => {
-    const { inner, kv, cached } = setup();
-    seedScores(inner, 5);
-    await cached.getTopScores(HEAP_ID, 5);
-    expect(kv.has(`cache:scores:${HEAP_ID}:top`)).toBe(true);
-
-    await cached.pruneScores(HEAP_ID);
-    expect(kv.deletes).toContain(`cache:scores:${HEAP_ID}:top`);
-  });
+  // pruneScores no longer invalidates the cache — see 'pruneScores no longer
+  // touches KV' in the 'CachedScoreDB selective invalidation' block below.
 });
 
 describe('CachedConfigDB', () => {
@@ -334,6 +327,110 @@ describe('CachedHeapDB top_y folding', () => {
 
     expect(applied).toBe(false);
     expect(inner.getTopYForTest(HEAP_ID)).toBe(900);
+    expect(kv.deletes).toEqual([]);
+  });
+});
+
+describe('CachedScoreDB selective invalidation', () => {
+  const NOW = '2026-01-01T00:00:00.000Z';
+
+  async function seedFullBoard(inner: MockScoreDB) {
+    // 50 players scoring 1000, 1020, ... 1980. Cutoff (50th place) is 1000.
+    for (let i = 0; i < 50; i++) {
+      await inner.upsertScore(HEAP_ID, `filler-${i}`, 1000 + i * 20, NOW);
+    }
+  }
+
+  it('pruneScores no longer touches KV', async () => {
+    const inner = new MockScoreDB();
+    const kv = new MockKV();
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    await inner.upsertScore(HEAP_ID, 'p1', 500, NOW);
+    await cached.getTopScores(HEAP_ID, 5);
+    kv.deletes.length = 0;
+
+    await cached.pruneScores(HEAP_ID);
+
+    expect(kv.deletes).toEqual([]);
+  });
+
+  it('skips invalidation when the improved score misses the top-50 cutoff', async () => {
+    const inner = new MockScoreDB();
+    const kv = new MockKV();
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    await seedFullBoard(inner);
+    await cached.getTopScores(HEAP_ID, 50); // populate the cache
+    kv.deletes.length = 0;
+
+    // A genuine personal best (no prior row), but far below the 1000 cutoff.
+    const changed = await cached.upsertScore(HEAP_ID, 'nobody', 600, NOW);
+
+    expect(changed).toBe(true);
+    expect(kv.deletes).toEqual([]);
+  });
+
+  it('invalidates when the improved score reaches the cutoff', async () => {
+    const inner = new MockScoreDB();
+    const kv = new MockKV();
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    await seedFullBoard(inner);
+    await cached.getTopScores(HEAP_ID, 50);
+    kv.deletes.length = 0;
+
+    const changed = await cached.upsertScore(HEAP_ID, 'climber', 5000, NOW);
+
+    expect(changed).toBe(true);
+    expect(kv.deletes).toEqual([`cache:scores:${HEAP_ID}:top`]);
+  });
+
+  it('invalidates on an exact tie with the cutoff', async () => {
+    const inner = new MockScoreDB();
+    const kv = new MockKV();
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    await seedFullBoard(inner);
+    await cached.getTopScores(HEAP_ID, 50);
+    kv.deletes.length = 0;
+
+    await cached.upsertScore(HEAP_ID, 'tied', 1000, NOW); // == cutoff
+
+    expect(kv.deletes).toEqual([`cache:scores:${HEAP_ID}:top`]);
+  });
+
+  it('invalidates when the board is not yet full, since any score enters', async () => {
+    const inner = new MockScoreDB();
+    const kv = new MockKV();
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    await inner.upsertScore(HEAP_ID, 'p1', 9000, NOW);
+    await cached.getTopScores(HEAP_ID, 50); // cache holds 1 row
+    kv.deletes.length = 0;
+
+    await cached.upsertScore(HEAP_ID, 'p2', 1, NOW);
+
+    expect(kv.deletes).toEqual([`cache:scores:${HEAP_ID}:top`]);
+  });
+
+  it('skips invalidation when nothing is cached', async () => {
+    const inner = new MockScoreDB();
+    const kv = new MockKV();
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    // No getTopScores call, so no cache entry exists.
+
+    await cached.upsertScore(HEAP_ID, 'p1', 9999, NOW);
+
+    expect(kv.deletes).toEqual([]);
+  });
+
+  it('does not invalidate when the score did not improve', async () => {
+    const inner = new MockScoreDB();
+    const kv = new MockKV();
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    await inner.upsertScore(HEAP_ID, 'p1', 9000, NOW);
+    await cached.getTopScores(HEAP_ID, 50);
+    kv.deletes.length = 0;
+
+    const changed = await cached.upsertScore(HEAP_ID, 'p1', 100, NOW);
+
+    expect(changed).toBe(false);
     expect(kv.deletes).toEqual([]);
   });
 });

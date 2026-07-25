@@ -47,13 +47,29 @@ export class CachedScoreDB implements ScoreDB {
 
   async upsertScore(heapId: string, playerId: string, score: number, now: string): Promise<boolean> {
     const changed = await this.inner.upsertScore(heapId, playerId, score, now);
-    if (changed) await this.safeDelete(this.topKey(heapId));
-    return changed;
+    if (!changed) return false;
+
+    // `changed` only means the player beat their OWN previous best, which says
+    // nothing about whether the leaderboard moved. Bust the cache only when the
+    // new score can actually appear in the cached window — trading a KV read
+    // (100k/day bucket) for a KV delete (1k/day bucket).
+    const key = this.topKey(heapId);
+    const cached = await this.safeGet<ScoreRow[]>(key);
+    if (!cached) return true;                         // nothing cached, nothing to bust
+    const boardNotFull = cached.length < CACHE_TOP_N; // any score would enter
+    const cutoff = cached[cached.length - 1].score;   // current 50th place
+    if (boardNotFull || score >= cutoff) {            // >= so ties invalidate
+      await this.safeDelete(key);
+    }
+    return true;
   }
 
   async pruneScores(heapId: string): Promise<void> {
+    // No invalidation: prune retains the top 1000 (see D1ScoreDB.pruneScores)
+    // while this cache holds only CACHE_TOP_N (50), so pruning can only ever
+    // remove rows that were never in the cached window. Revisit if either
+    // constant changes.
     await this.inner.pruneScores(heapId);
-    await this.safeDelete(this.topKey(heapId));
   }
 
   // ---- uncached delegation ----
