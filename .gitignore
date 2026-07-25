@@ -22,3 +22,6 @@ screenshots/
 StorelistingScreenshots/
 # DPR gate screenshot artifact (regenerated each run)
 dpr-gate.png
+
+# Load-test fixtures — contains generated player secrets, regenerate with `npm run loadtest:seed`
+loadtest/fixtures.json
