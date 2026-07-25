@@ -79,7 +79,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
       return list.includes(origin) ? origin : null;
     },
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'X-Admin-Secret', 'X-Player-Token'],
+    allowHeaders: ['Content-Type', 'X-Admin-Secret', 'X-Player-Token', 'X-LoadTest-Secret', 'X-LoadTest-Key'],
   }));
 
   // Rate limiting — global circuit breaker on all heap/score traffic

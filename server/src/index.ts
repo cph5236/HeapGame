@@ -26,6 +26,8 @@ export interface Env {
   CACHE: KVNamespace;
   ALLOWED_ORIGINS?: string;
   ADMIN_SECRET?: string;
+  /** Staging only — enables the synthetic rate-limit key. Never set in production. */
+  LOADTEST_SECRET?: string;
   RL_SCORES?: RateLimiter;
   RL_PLACE?:  RateLimiter;
   RL_GLOBAL?: RateLimiter;

@@ -26,12 +26,20 @@ export function rateLimit(
   return async (c, next) => {
     if (!limiter) return next();
     const ip = c.req.header('cf-connecting-ip') ?? 'unknown';
-    const { success } = await limiter.limit({ key: ip });
+    // Staging-only: let a load generator present a synthetic per-VU key so that
+    // traffic from one machine models many players arriving from distinct IPs.
+    // LOADTEST_SECRET is never set in production, so this branch is unreachable
+    // there and the limiter keys on the (unspoofable) edge-set client IP.
+    const loadTestSecret = (c.env as { LOADTEST_SECRET?: string } | undefined)?.LOADTEST_SECRET;
+    const key = loadTestSecret && c.req.header('X-LoadTest-Secret') === loadTestSecret
+      ? c.req.header('X-LoadTest-Key') ?? ip
+      : ip;
+    const { success } = await limiter.limit({ key });
     if (!success) {
-      console.warn(`[ratelimit] blocked label=${label} ip=${ip} path=${c.req.path}`);
+      console.warn(`[ratelimit] blocked label=${label} key=${key} path=${c.req.path}`);
       const sink = _getSink?.();
       if (sink) {
-        await captureServer(sink, 'warn', 'rate_limit:hit', { bucket: label, ip });
+        await captureServer(sink, 'warn', 'rate_limit:hit', { bucket: label, key });
       }
       return c.json({ error: 'rate limit exceeded' }, 429);
     }
