@@ -36,9 +36,10 @@ Two consequences drive the whole design:
 
 ## Prerequisite server changes
 
-Three changes, all TDD'd against `server/tests/`, landing before any load test
-runs. The first two are redundant-KV-write fixes that are worth shipping on their
-own merits — they are production efficiency wins, not test scaffolding.
+Four changes, all TDD'd against `server/tests/`, landing before any load test
+runs. Changes 1 and 2 are redundant-KV-write fixes and change 4 is a resilience
+fix; all three are worth shipping on their own merits as production improvements,
+not test scaffolding. **Change 4 is the highest priority of the four.**
 
 ### 1. Fold `top_y` into the CAS write
 
@@ -178,6 +179,75 @@ so the condition short-circuits, the headers are inert, and the limiter keys on
 test rather than being switched off, so its behaviour is exercised rather than
 bypassed.
 
+### 4. Make the cache layer fail open
+
+**This is the highest-priority change of the four.** There is currently no
+`try`/`catch` anywhere in `server/src/cache/`. When a KV daily bucket is
+exhausted, the operation errors and the exception propagates out of the decorator,
+through the route handler, and out as a 500.
+
+**Read path — full outage with an unreachable fallback.**
+`server/src/cache/CachedHeapDB.ts:32` and `:41`:
+
+```ts
+const hit = await this.kv.get<HeapRow>(key, 'json');
+if (hit) return hit;
+const row = await this.inner.getHeap(id);   // unreachable if kv.get throws
+```
+
+Exhausting the 100,000/day read bucket makes every `GET /heaps` and
+`GET /heaps/:id` return 500. The game cannot load a heap at all. The D1 fallback
+on the next line is never reached, so the system does **not** degrade to hitting
+D1 directly — it simply fails.
+
+**Write path — durable writes reported as failures.** `invalidateHeap` is awaited
+*after* the D1 write has committed (`server/src/cache/CachedHeapDB.ts:91`). A
+throw there returns 500 for a placement that is durably persisted, so the client
+retries or reports failure for work that actually succeeded. The stale entry also
+survives, since the delete failed.
+
+**Already graceful, by accident:** `kv.put` repopulations run inside
+`waitUntil(...)`, so their failures land outside the response path.
+
+**Fix:** a small internal helper per decorator wrapping every KV call.
+
+- Reads: on error, log once and return `null`, so the existing cache-miss path
+  falls through to D1. Correct, just slower.
+- Invalidations: on error, log and continue. The D1 write already succeeded, so
+  the request must still report success. Staleness is bounded by the 60s TTL.
+
+```ts
+private async safeGet<T>(key: string): Promise<T | null> {
+  try {
+    return await this.kv.get<T>(key, 'json');
+  } catch (err) {
+    console.warn(`[cache] KV get failed key=${key}: ${err}`);
+    return null;   // fall through to D1
+  }
+}
+
+private async safeDelete(key: string): Promise<void> {
+  try {
+    await this.kv.delete(key);
+  } catch (err) {
+    console.warn(`[cache] KV delete failed key=${key}: ${err}`);
+    // D1 already committed; TTL bounds the staleness at 60s
+  }
+}
+```
+
+Applied across `CachedHeapDB`, `CachedScoreDB` and `CachedConfigDB`.
+
+**Why this is a load-test prerequisite, not just good hygiene.** The test
+deliberately operates near these buckets. Without the fix, exhausting a bucket
+mid-run produces 500s indistinguishable from genuine application failure, plus
+phantom-failed writes that corrupt the results. With it, quota exhaustion shows up
+as a latency increase and a log line — a clean, interpretable signal.
+
+**Verification note:** the exact KV failure mode at quota exhaustion (throw vs.
+error result) should be confirmed during the first staging run. The fix is correct
+under either behaviour, since neither is currently handled at all.
+
 ## Staging environment
 
 An `[env.staging]` block in `server/wrangler.toml` with:
@@ -283,7 +353,7 @@ an estimate to be replaced with the measured value after the first run.
 That is ~33% of the daily 1,000-delete bucket, allowing **two full runs per day**
 with comfortable headroom for production.
 
-Without the three fixes the same run would cost roughly 1,320 deletes — over the
+Without the invalidation fixes the same run would cost roughly 1,320 deletes — over the
 entire daily bucket, before production gets a single placement. Placements now
 dominate the remaining cost, which is why the heap cache is the place to look if
 further reduction is ever needed.
