@@ -21,7 +21,7 @@ export class CachedConfigDB implements ConfigDB {
   ) {}
 
   async getAll(): Promise<AppConfig> {
-    const hit = await this.kv.get<AppConfig>(CONFIG_KEY, 'json');
+    const hit = await this.safeGet<AppConfig>(CONFIG_KEY);
     if (hit) return hit;
 
     const all = await this.inner.getAll();
@@ -31,11 +31,33 @@ export class CachedConfigDB implements ConfigDB {
 
   async set(key: string, value: unknown, now: string): Promise<void> {
     await this.inner.set(key, value, now);
-    await this.kv.delete(CONFIG_KEY);
+    await this.safeDelete(CONFIG_KEY);
   }
 
   async delete(key: string): Promise<void> {
     await this.inner.delete(key);
-    await this.kv.delete(CONFIG_KEY);
+    await this.safeDelete(CONFIG_KEY);
+  }
+
+  // ---- helpers ----
+
+  /** KV read that degrades to a cache miss on error, so callers fall through to D1. */
+  private async safeGet<T>(key: string): Promise<T | null> {
+    try {
+      return await this.kv.get<T>(key, 'json');
+    } catch (err) {
+      console.warn(`[cache] KV get failed key=${key}: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  }
+
+  /** KV delete that never fails the request. The D1 write already committed;
+   *  staleness is bounded by CONFIG_TTL. */
+  private async safeDelete(key: string): Promise<void> {
+    try {
+      await this.kv.delete(key);
+    } catch (err) {
+      console.warn(`[cache] KV delete failed key=${key}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 }

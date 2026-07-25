@@ -35,7 +35,7 @@ export class CachedScoreDB implements ScoreDB {
     if (limit > CACHE_TOP_N) return this.inner.getTopScores(heapId, limit);
 
     const key = this.topKey(heapId);
-    const hit = await this.kv.get<ScoreRow[]>(key, 'json');
+    const hit = await this.safeGet<ScoreRow[]>(key);
     if (hit) return hit.slice(0, limit);
 
     const top = await this.inner.getTopScores(heapId, CACHE_TOP_N);
@@ -47,13 +47,13 @@ export class CachedScoreDB implements ScoreDB {
 
   async upsertScore(heapId: string, playerId: string, score: number, now: string): Promise<boolean> {
     const changed = await this.inner.upsertScore(heapId, playerId, score, now);
-    if (changed) await this.kv.delete(this.topKey(heapId));
+    if (changed) await this.safeDelete(this.topKey(heapId));
     return changed;
   }
 
   async pruneScores(heapId: string): Promise<void> {
     await this.inner.pruneScores(heapId);
-    await this.kv.delete(this.topKey(heapId));
+    await this.safeDelete(this.topKey(heapId));
   }
 
   // ---- uncached delegation ----
@@ -76,5 +76,27 @@ export class CachedScoreDB implements ScoreDB {
 
   getPlayerScores(playerId: string): Promise<Array<{ heapId: string; name: string; score: number; rank: number }>> {
     return this.inner.getPlayerScores(playerId);
+  }
+
+  // ---- helpers ----
+
+  /** KV read that degrades to a cache miss on error, so callers fall through to D1. */
+  private async safeGet<T>(key: string): Promise<T | null> {
+    try {
+      return await this.kv.get<T>(key, 'json');
+    } catch (err) {
+      console.warn(`[cache] KV get failed key=${key}: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  }
+
+  /** KV delete that never fails the request. The D1 write already committed;
+   *  staleness is bounded by SCORES_TTL. */
+  private async safeDelete(key: string): Promise<void> {
+    try {
+      await this.kv.delete(key);
+    } catch (err) {
+      console.warn(`[cache] KV delete failed key=${key}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 }

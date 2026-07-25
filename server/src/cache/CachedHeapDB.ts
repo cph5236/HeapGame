@@ -30,7 +30,7 @@ export class CachedHeapDB implements HeapDB {
 
   async listHeaps(): Promise<HeapSummaryRow[]> {
     const key = 'cache:heap:list';
-    const hit = await this.kv.get<HeapSummaryRow[]>(key, 'json');
+    const hit = await this.safeGet<HeapSummaryRow[]>(key);
     if (hit) return hit;
     const rows = await this.inner.listHeaps();
     this.waitUntil(this.kv.put(key, JSON.stringify(rows), { expirationTtl: HEAP_TTL }));
@@ -39,7 +39,7 @@ export class CachedHeapDB implements HeapDB {
 
   async getHeap(id: string): Promise<HeapRow | null> {
     const key = `cache:heap:${id}`;
-    const hit = await this.kv.get<HeapRow>(key, 'json');
+    const hit = await this.safeGet<HeapRow>(key);
     if (hit) return hit;
     const row = await this.inner.getHeap(id);
     if (row) this.waitUntil(this.kv.put(key, JSON.stringify(row), { expirationTtl: HEAP_TTL }));
@@ -55,7 +55,7 @@ export class CachedHeapDB implements HeapDB {
 
   async getBaseVerticesById(baseId: string): Promise<Vertex[] | null> {
     const key = `cache:base:${baseId}`;
-    const hit = await this.kv.get<Vertex[]>(key, 'json');
+    const hit = await this.safeGet<Vertex[]>(key);
     if (hit) return hit;
     const v = await this.inner.getBaseVerticesById(baseId);
     if (v) this.waitUntil(this.kv.put(key, JSON.stringify(v), { expirationTtl: BASE_TTL }));
@@ -130,8 +130,28 @@ export class CachedHeapDB implements HeapDB {
   /** Bust the per-heap row cache and the list cache. Synchronous (write path). */
   private async invalidateHeap(id: string): Promise<void> {
     await Promise.all([
-      this.kv.delete(`cache:heap:${id}`),
-      this.kv.delete('cache:heap:list'),
+      this.safeDelete(`cache:heap:${id}`),
+      this.safeDelete('cache:heap:list'),
     ]);
+  }
+
+  /** KV read that degrades to a cache miss on error, so callers fall through to D1. */
+  private async safeGet<T>(key: string): Promise<T | null> {
+    try {
+      return await this.kv.get<T>(key, 'json');
+    } catch (err) {
+      console.warn(`[cache] KV get failed key=${key}: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  }
+
+  /** KV delete that never fails the request. The D1 write already committed;
+   *  staleness is bounded by HEAP_TTL. */
+  private async safeDelete(key: string): Promise<void> {
+    try {
+      await this.kv.delete(key);
+    } catch (err) {
+      console.warn(`[cache] KV delete failed key=${key}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 }

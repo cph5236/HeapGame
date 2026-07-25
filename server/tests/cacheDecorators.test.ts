@@ -223,3 +223,68 @@ describe('CachedConfigDB', () => {
     expect(after).toEqual({ ad_cadence: { min: 40, max: 50 } });
   });
 });
+
+describe('cache fail-open behaviour', () => {
+  it('CachedHeapDB.getHeap falls through to D1 when KV get throws', async () => {
+    const inner = new MockHeapDB();
+    const kv = new MockKV();
+    const cached = new CachedHeapDB(inner, kv.asKV(), noWait);
+    inner.seedHeap(HEAP_ID, 3, []);
+
+    kv.failAll('get');
+
+    const row = await cached.getHeap(HEAP_ID);
+    expect(row?.version).toBe(3);
+  });
+
+  it('CachedHeapDB.listHeaps falls through to D1 when KV get throws', async () => {
+    const inner = new MockHeapDB();
+    const kv = new MockKV();
+    const cached = new CachedHeapDB(inner, kv.asKV(), noWait);
+    inner.seedHeap(HEAP_ID, 1, []);
+
+    kv.failAll('get');
+
+    const rows = await cached.listHeaps();
+    expect(rows).toHaveLength(1);
+  });
+
+  it('CachedHeapDB.updateHeap still reports success when invalidation throws', async () => {
+    const inner = new MockHeapDB();
+    const kv = new MockKV();
+    const cached = new CachedHeapDB(inner, kv.asKV(), noWait);
+    inner.seedHeap(HEAP_ID, 1, []);
+
+    kv.failAll('delete');
+
+    // The D1 write commits before invalidation, so the caller must see success.
+    const applied = await cached.updateHeap(HEAP_ID, HEAP_ID, 2, [{ x: 1, y: 2 }], 0, 1);
+    expect(applied).toBe(true);
+    expect((await inner.getHeap(HEAP_ID))?.version).toBe(2);
+  });
+
+  it('CachedScoreDB.getTopScores falls through to D1 when KV get throws', async () => {
+    const inner = new MockScoreDB();
+    const kv = new MockKV();
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    await inner.upsertScore(HEAP_ID, 'p1', 500, '2026-01-01T00:00:00.000Z');
+
+    kv.failAll('get');
+
+    const top = await cached.getTopScores(HEAP_ID, 5);
+    expect(top).toHaveLength(1);
+    expect(top[0].score).toBe(500);
+  });
+
+  it('CachedConfigDB.getAll falls through to D1 when KV get throws', async () => {
+    const inner = new MockConfigDB();
+    const kv = new MockKV();
+    const cached = new CachedConfigDB(inner, kv.asKV(), noWait);
+    await inner.set('ad_cadence', '3', '2026-01-01T00:00:00.000Z');
+
+    kv.failAll('get');
+
+    const all = await cached.getAll();
+    expect(all['ad_cadence']).toBe('3');
+  });
+});
