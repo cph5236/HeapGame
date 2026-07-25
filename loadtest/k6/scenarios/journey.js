@@ -1,6 +1,11 @@
 // The realistic player session: boot, load a heap, read the leaderboard, play a
 // run, submit a score. Endpoint mix and ordering mirror what the game client
-// actually does (src/systems/*Client.ts). ~10 requests per iteration.
+// actually does (src/systems/*Client.ts). 8 mandatory requests per iteration
+// (4 boot-batch + heap-get + scores-context + score-submit + log), plus ~0.35
+// in expectation across the three probabilistic branches (place ~15%,
+// customization-put ~10%, daily-claim ~10%), plus one extra heap-base fetch
+// on each VU's very first iteration only — ~8.3-8.5 requests/iteration in
+// steady state, not 10.
 //
 // Every request shape below was checked against its route handler in
 // server/src/routes/*.ts, not copied from the original design brief — see
@@ -44,6 +49,10 @@ const PLACE_X_MIN            = WORLD_WIDTH * 0.125; // 120
 const PLACE_X_MAX            = WORLD_WIDTH * 0.875; // 840
 const PLACE_HEIGHT_GRACE_PX  = 200;
 const HEAP_TOP_ZONE_PX       = 300;
+
+// Mirror of server/src/routes/scores.ts's module-local MAX_CLIMB_RATE_Y_PER_S
+// (not exported). Used to bound baseHeightPx on the score submit below.
+const MAX_CLIMB_RATE_Y_PER_S = 400;
 
 function jsonHeaders(extra) {
   return Object.assign({ 'Content-Type': 'application/json' }, extra || {});
@@ -102,17 +111,27 @@ export function journey(fixtures, budget) {
   boot.forEach((r) => { track(r); budget.recordRequest(); });
   check(boot[1], { 'heaps list ok': (r) => r.status === 200 });
 
-  // Current summit for our heap, off the list response's HeapSummary.topY —
-  // needed below to pick a legal placement window. null (not 0) when
-  // unavailable, so a failed/odd boot response skips placement rather than
-  // sending a placement guaranteed to 400 against a nonsense window.
+  // Current summit (topY) and climbable world height (params.worldHeight)
+  // for our heap, off the list response's HeapSummary — needed below both to
+  // pick a legal placement window and to bound baseHeightPx on the score
+  // submit (scores.ts rejects baseHeightPx > (worldHeight - topY) + grace,
+  // and the heap sits near the *bottom* of its worldHeight, so that gap is
+  // only ~1-2kpx, not the multi-million-px worldHeight itself). null (not 0)
+  // when unavailable, so a failed/odd boot response skips placement rather
+  // than sending a placement guaranteed to 400 against a nonsense window;
+  // baseHeightPx falls back to a small constant instead (see below) since
+  // score-submit is not optional like placement is.
   let topY = null;
+  let worldHeight = null;
   if (boot[1].status === 200) {
     try {
       const list = boot[1].json();
       const summary = (list.heaps || []).find((h) => h.id === heapId);
-      if (summary) topY = summary.topY;
-    } catch { /* malformed body — topY stays null */ }
+      if (summary) {
+        topY = summary.topY;
+        worldHeight = summary.params && summary.params.worldHeight;
+      }
+    } catch { /* malformed body — topY/worldHeight stay null */ }
   }
 
   // ---- heap load ----
@@ -154,6 +173,11 @@ export function journey(fixtures, budget) {
     const res = track(http.post(`${BASE_URL}/heaps/${heapId}/place`, JSON.stringify(body), {
       headers: authed, tags: { name: 'place' },
     }));
+    // A placement is both a placement (the scarce KV-affecting resource) and
+    // an ordinary HTTP request — budget.exceeded() only reads the request
+    // counter, so it must be incremented here too or ~15% of iterations'
+    // real requests are invisible to the account-wide quota safety net.
+    budget.recordRequest();
     budget.recordPlacement();
     check(res, { 'place not 5xx': (r) => r.status < 500 });
     // /place returns HTTP 200 for both accepted and legitimately-rejected
@@ -171,13 +195,39 @@ export function journey(fixtures, budget) {
 
   // ---- end of run ----
   const authed = jsonHeaders(Object.assign({ 'X-Player-Token': id.playerSecret }, lt));
+
+  const elapsedMs = 20_000 + Math.floor(Math.random() * 40_000);
+
+  // scores.ts:208-216 rejects baseHeightPx > (worldHeight - topY) + 200. The
+  // heap is generated near the *bottom* of its (huge) worldHeight, so that
+  // ceiling is small (empirically ~1400-1700px for a freshly seeded fixture)
+  // — sampling uniformly out of a flat [0, 4000) range 400s the majority of
+  // submissions. scores.ts:219-226 separately rejects baseHeightPx*1000 >
+  // MAX_CLIMB_RATE_Y_PER_S*elapsedMs (an implied climb-rate cap independent
+  // of the heap-height check). Bound baseHeightPx by the tighter of the two:
+  // the heap's actual current climbable height (read fresh each iteration,
+  // same topY/worldHeight as the placement window above — falls back to a
+  // small constant safely under the observed floor when either is
+  // unreadable, since unlike placement, score-submit runs every iteration
+  // and isn't optional) and this iteration's own climb-rate ceiling — the
+  // latter guards against a long-running test having grown the fixture heap
+  // enough that the heap-height bound alone would stop being safe.
+  const maxByHeapHeight = (topY !== null && worldHeight !== null)
+    ? Math.max(1, worldHeight - topY)
+    : 1000;
+  const maxByClimbRate = Math.floor(MAX_CLIMB_RATE_Y_PER_S * elapsedMs / 1000);
+  const baseHeightPx = Math.floor(Math.random() * Math.max(1, Math.min(maxByHeapHeight, maxByClimbRate)));
+
+  // Kill-rate cap (MAX_KILLS_PER_S = 1) needs no such clamp: at most 3 kills
+  // (2 percher + 1 ghost; jumper omitted) over a minimum 20s window is
+  // 0.15/s, comfortably under 1/s regardless of the random draws below.
   const scoreBody = buildScoreBody({
     heapId,
     playerId: id.playerId,
     playerName: `LoadTest ${__VU}`,
-    elapsedMs: 20_000 + Math.floor(Math.random() * 40_000),
+    elapsedMs,
     kills: { percher: Math.floor(Math.random() * 3), ghost: Math.floor(Math.random() * 2) },
-    baseHeightPx: Math.floor(Math.random() * 4000),
+    baseHeightPx,
     isFailure: Math.random() < 0.7,
   });
   const scoreRes = track(http.post(`${BASE_URL}/scores`, JSON.stringify(scoreBody), {
