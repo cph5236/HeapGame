@@ -26,7 +26,15 @@ if (!ADMIN_SECRET) throw new Error('ADMIN_SECRET is required');
  * script gets the same gate even though only the seed script was mandated.
  */
 function looksLikeStaging(url: string): boolean {
-  return /\bstaging\b/i.test(url) || /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url);
+  // Match the HOSTNAME only. Testing the whole URL string would let
+  // https://heap-server-prod.example.com/?note=staging through the gate.
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return false; // unparseable URL is not something we should write to
+  }
+  return /\bstaging\b/i.test(host) || host === 'localhost' || host === '127.0.0.1';
 }
 
 if (!looksLikeStaging(BASE_URL)) {
