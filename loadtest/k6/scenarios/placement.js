@@ -88,7 +88,15 @@ export function placement(fixtures, budget) {
 
   const id = pickIdentity(fixtures.identities, __VU, __ITER);
   const heapId = FIXTURE === 'large' ? fixtures.largeHeapId : fixtures.smallHeapId;
-  const lt = loadTestHeaders(`vu-${__VU}`);
+  // Key per ITERATION, not per VU. journey.js keys per VU because it models
+  // real players, where one player is one bucket. This scenario is a synthetic
+  // stress test, and per-VU keying breaks it at high iteration counts: at
+  // PLACEMENT_VUS=1 every request shares one bucket, so 200 placements (600
+  // requests with the two state reads) blow through RL_GLOBAL (300/min) and
+  // RL_PLACE (30/min) and come back 429. That silently turns a cost
+  // measurement into a rate-limiter measurement — observed as 44 of 81
+  // placements failing the 'resolved' check on the first isolation run.
+  const lt = loadTestHeaders(`vu-${__VU}-iter-${__ITER}`);
 
   // Live window read, same two calls journey.js makes during boot — reused
   // here per-iteration (not once per VU) because this scenario's whole
