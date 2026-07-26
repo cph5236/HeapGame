@@ -114,17 +114,55 @@ intact.
 
 ## Seed and reset
 
-Seeding is a one-off that costs roughly 400 placements against the daily budget.
-It creates a small heap fixture, a large pre-grown one, and a pool of ~200
-reusable player identities in the gitignored `loadtest/fixtures.json`.
+Seeding is a one-off that costs roughly 400 placements against the daily budget
+(plus an equal number of state reads). It creates a small heap fixture, a large
+pre-grown one, and a pool of 200 reusable player identities.
+
+`BASE_URL`, `ADMIN_SECRET` and `LOADTEST_SECRET` are read from the repo-root
+`.env`, so no prefixing is needed:
 
 ```bash
-BASE_URL=<url> ADMIN_SECRET=<secret> npm run loadtest:seed
-BASE_URL=<url> ADMIN_SECRET=<secret> npm run loadtest:reset   # between runs
+npm run loadtest:seed
+npm run loadtest:reset   # between runs
 ```
+
+**`LOADTEST_SECRET` makes seeding roughly 100x faster.** When it is set, each
+seed request presents a unique `X-LoadTest-Key` and lands in its own rate-limit
+bucket, so the growth loop runs unpaced. Without it the loop must sleep 2200ms
+between placements to stay under `RL_PLACE` (30/min) and `RL_GLOBAL` (300/min),
+taking ~15 minutes for the default 400 placements. Override with
+`PLACE_DELAY_MS` to pace it deliberately.
 
 Both scripts refuse to run against a URL that does not look like staging or
 localhost.
+
+### What seeding produces
+
+`loadtest/fixtures.json` — **gitignored**, because it contains generated player
+secrets:
+
+```json
+{
+  "smallHeapId": "<uuid>",
+  "largeHeapId": "<uuid>",
+  "identities": [{ "playerId": "<uuid>", "playerSecret": "<uuid>" }]
+}
+```
+
+The 200 identities are generated locally as UUID pairs — no server call. They
+become real server-side rows lazily, the first time a scenario writes as one:
+the TOFU claim in `server/src/playerAuth.ts` binds that `playerSecret` to that
+`playerId` on first write, and every later write must present the same token.
+
+**Reuse them across runs; don't regenerate casually.** That is what keeps score
+submissions cheap. A fresh identity's first score is always a personal best, so
+it invalidates the leaderboard cache and spends a KV delete from the 1,000/day
+account-wide bucket. A returning identity only invalidates when it actually
+beats its stored best. `npm run loadtest:reset` deliberately leaves
+`fixtures.json` alone for this reason — it resets the heaps, not the players.
+
+If you do lose the file, re-running the seed mints new identities; the old rows
+stay in `player_auth` on staging, harmless but orphaned.
 
 ## Watch a run
 

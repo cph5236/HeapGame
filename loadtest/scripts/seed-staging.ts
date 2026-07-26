@@ -22,21 +22,58 @@ import type { CreateHeapResponse, Vertex } from '../../shared/heapTypes';
 const BASE_URL     = process.env.BASE_URL     ?? '';
 const ADMIN_SECRET = process.env.ADMIN_SECRET ?? '';
 const POOL_SIZE    = Number(process.env.POOL_SIZE ?? 200);
-/** Vertices pre-placed on the large fixture. */
-const LARGE_SEED_VERTICES = Number(process.env.LARGE_SEED_VERTICES ?? 400);
+
 /**
- * Delay between growth placements. POST /heaps/:id/place is rate-limited to
- * RL_PLACE = 30 requests/min per client IP (server/wrangler.toml) and this
- * script is not exempt from it (that limiter has no admin-secret bypass) —
- * without pacing, the growth loop below would start getting 429s around
- * placement #30 and abort. 2200ms keeps us under the 2000ms/request cap with
- * a small safety margin. Override for a faster/slower loop if the staging
- * limiter config ever changes.
+ * Reuse an existing heap instead of creating one. Set either to a heap GUID —
+ * e.g. one made through the admin UI (`admin/index.html`) or `npm run seed` —
+ * and this script skips creating that fixture and adopts it. Unset, it creates
+ * the fixture itself.
+ *
+ * Reusing is the cheaper path: creating a heap is a write plus a base-vertex
+ * snapshot, and duplicates accumulate on the staging heap list.
  */
-const PLACE_DELAY_MS = Number(process.env.PLACE_DELAY_MS ?? 2200);
+const SMALL_HEAP_ID = process.env.SMALL_HEAP_ID ?? '';
+const LARGE_HEAP_ID = process.env.LARGE_HEAP_ID ?? '';
+/** Vertices pre-placed on the large fixture. Placements, not players. */
+const LARGE_SEED_VERTICES = Number(process.env.LARGE_SEED_VERTICES ?? 400);
+
+/**
+ * Staging's synthetic rate-limit key (server/src/middleware/rateLimit.ts).
+ * When set, each request presents its own bucket key, so the growth loop is not
+ * throttled and needs no pacing. Absent — e.g. against local `wrangler dev`,
+ * or a staging deploy with the secret removed — the loop falls back to sleeping
+ * between placements. Never set in production, where the header is inert.
+ */
+const LOADTEST_SECRET = process.env.LOADTEST_SECRET ?? '';
+const RATE_LIMIT_BYPASS = LOADTEST_SECRET.length > 0;
+
+/**
+ * Delay between growth placements. Without the bypass above, `POST
+ * /heaps/:id/place` is capped at RL_PLACE = 30 requests/min per client IP and
+ * the whole `/heaps` tree at RL_GLOBAL = 300/min (server/wrangler.toml), with
+ * no admin-secret exemption — so an unpaced loop starts 429ing around placement
+ * #30 and aborts. 2200ms clears the 2000ms/request floor with margin, at the
+ * cost of ~15 minutes for the default 400 placements.
+ *
+ * With the bypass, every request lands in its own bucket, so the default drops
+ * to 0. Override explicitly to pace it anyway.
+ */
+const PLACE_DELAY_MS = Number(
+  process.env.PLACE_DELAY_MS ?? (RATE_LIMIT_BYPASS ? 0 : 2200),
+);
 
 if (!BASE_URL)     throw new Error('BASE_URL is required');
 if (!ADMIN_SECRET) throw new Error('ADMIN_SECRET is required');
+
+/**
+ * Headers that give this request its own rate-limit bucket. `key` must be
+ * unique per request for the loop to run unthrottled — reusing one key would
+ * just move every request into a single shared bucket.
+ */
+function loadTestHeaders(key: string): Record<string, string> {
+  if (!RATE_LIMIT_BYPASS) return {};
+  return { 'X-LoadTest-Secret': LOADTEST_SECRET, 'X-LoadTest-Key': key };
+}
 
 /**
  * Production safety gate. Deliberately an allow-list (only URLs that clearly
@@ -103,11 +140,33 @@ async function createHeap(name: string): Promise<{ id: string; topY: number }> {
   return { id: body.id, topY: computeInitialTopY(vertices) };
 }
 
+/**
+ * Adopt an existing heap by GUID. `topY` comes from the server's own summary
+ * rather than being recomputed locally, so an already-grown heap reports its
+ * real current summit instead of the value its base vertices started at.
+ */
+async function adoptHeap(id: string, label: string): Promise<{ id: string; topY: number }> {
+  const res = await fetch(`${BASE_URL}/heaps`, { headers: loadTestHeaders('seed-adopt') });
+  if (!res.ok) throw new Error(`adoptHeap(${id}) list failed: ${res.status} ${await res.text()}`);
+  const body = (await res.json()) as { heaps?: Array<{ id: string; topY: number; params?: { name?: string } }> };
+  const found = (body.heaps ?? []).find((h) => h.id === id);
+  if (!found) {
+    throw new Error(
+      `${label} heap ${id} not found on ${BASE_URL}. Check the GUID, and that you are pointing at the right Worker.`,
+    );
+  }
+  return { id: found.id, topY: found.topY };
+}
+
 async function main(): Promise<void> {
-  const small = await createHeap('LoadTest Small');
-  const large = await createHeap('LoadTest Large');
-  console.log(`small heap: ${small.id}`);
-  console.log(`large heap: ${large.id} (topY=${large.topY})`);
+  const small = SMALL_HEAP_ID
+    ? await adoptHeap(SMALL_HEAP_ID, 'small')
+    : await createHeap('LoadTest Small');
+  const large = LARGE_HEAP_ID
+    ? await adoptHeap(LARGE_HEAP_ID, 'large')
+    : await createHeap('LoadTest Large');
+  console.log(`small heap: ${small.id} ${SMALL_HEAP_ID ? '(adopted)' : '(created)'}`);
+  console.log(`large heap: ${large.id} (topY=${large.topY}) ${LARGE_HEAP_ID ? '(adopted)' : '(created)'}`);
 
   // Grow the large fixture. Placements go through the real endpoint so the
   // polygon is shaped exactly as production data would be.
@@ -145,7 +204,9 @@ async function main(): Promise<void> {
   let currentTopY = large.topY;
   let accepted = 0;
   for (let i = 0; i < LARGE_SEED_VERTICES; i++) {
-    const stateRes = await fetch(`${BASE_URL}/heaps/${large.id}`);
+    const stateRes = await fetch(`${BASE_URL}/heaps/${large.id}`, {
+      headers: loadTestHeaders(`seed-state-${i}`),
+    });
     if (!stateRes.ok) throw new Error(`seed state read ${i} failed: ${stateRes.status} ${await stateRes.text()}`);
     const state = (await stateRes.json()) as { liveZone?: Vertex[] };
     const liveZone = state.liveZone ?? [];
@@ -160,7 +221,11 @@ async function main(): Promise<void> {
 
     const res = await fetch(`${BASE_URL}/heaps/${large.id}/place`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Player-Token': secret },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Player-Token': secret,
+        ...loadTestHeaders(`seed-place-${i}`),
+      },
       body: JSON.stringify({ x, y, playerGuid: seeder }),
     });
     if (!res.ok) throw new Error(`seed placement ${i} failed: ${res.status} ${await res.text()}`);
@@ -170,7 +235,7 @@ async function main(): Promise<void> {
       if (y < currentTopY) currentTopY = y;
     }
 
-    if (i < LARGE_SEED_VERTICES - 1) await sleep(PLACE_DELAY_MS);
+    if (PLACE_DELAY_MS > 0 && i < LARGE_SEED_VERTICES - 1) await sleep(PLACE_DELAY_MS);
   }
   console.log(`grew large heap: ${accepted}/${LARGE_SEED_VERTICES} placements accepted`);
 
