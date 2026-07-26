@@ -98,3 +98,109 @@ namespace_id = "1006"
 # installs only server/ deps, so alias the import to the local install.
 [alias]
 obscenity = "./node_modules/obscenity"
+
+# ── Load-test staging ─────────────────────────────────────────────────────────
+# A second Worker with its own D1 shards, KV namespace and Analytics Engine
+# dataset, so load tests never touch production data. Note that Cloudflare's
+# free-tier daily quotas are ACCOUNT-WIDE, so a run here still spends
+# production's budget — see loadtest/README.md.
+#
+# Deploy:   npx wrangler deploy --env staging
+# Migrate:  npx wrangler d1 migrations apply <db>_staging --remote --env staging
+# Secrets:  npx wrangler secret put ADMIN_SECRET    --env staging
+#           npx wrangler secret put LOADTEST_SECRET --env staging
+#
+# LOADTEST_SECRET enables the synthetic per-request rate-limit key in
+# middleware/rateLimit.ts. It is deliberately absent from the production [vars]
+# above, which makes that branch unreachable in production.
+#
+# Runbook: docs/superpowers/runbooks/loadtest-staging.md
+[env.staging]
+name = "heap-server-staging"
+
+# Wrangler environments do not inherit top-level config, so every binding,
+# var and alias is repeated below rather than merged from above.
+[env.staging.alias]
+obscenity = "./node_modules/obscenity"
+
+[[env.staging.d1_databases]]
+binding = "DB_HEAP"
+database_name = "heap_core_staging"
+database_id = "a323e04c-1cf6-477f-8b2e-709d6b808db0"
+migrations_dir = "migrations/heap_core"
+
+[[env.staging.d1_databases]]
+binding = "DB_SCORES"
+database_name = "heap_scores_staging"
+database_id = "946309ab-d994-4769-9280-031127a3b1c5"
+migrations_dir = "migrations/heap_scores"
+
+[[env.staging.d1_databases]]
+binding = "DB_REWARDS"
+database_name = "heap_rewards_staging"
+database_id = "8577b2c3-8698-4645-a2a8-06fc9af55a26"
+migrations_dir = "migrations/heap_rewards"
+
+[[env.staging.d1_databases]]
+binding = "DB_TELEMETRY"
+database_name = "heap_telemetry_staging"
+database_id = "ba9269bc-33c5-43da-b45a-46e8c93f3e1d"
+migrations_dir = "migrations/heap_telemetry"
+
+[[env.staging.kv_namespaces]]
+binding = "CACHE"
+id = "b639188e2fdd472cbc216809414adb66"
+
+# Separate dataset so load-test noise never reaches the crash-triage workflow,
+# which reads heap_logs.
+[[env.staging.analytics_engine_datasets]]
+  binding = "LOGS"
+  dataset = "heap_logs_staging"
+
+[env.staging.vars]
+ALLOWED_ORIGINS = "*"
+
+# Same limits as production, so the limiter is exercised under load rather than
+# bypassed. namespace_ids are 2001-2006 so staging never shares counters with
+# production's 1001-1006.
+[[env.staging.ratelimits]]
+name = "RL_SCORES"
+namespace_id = "2001"
+  [env.staging.ratelimits.simple]
+  limit = 10
+  period = 60
+
+[[env.staging.ratelimits]]
+name = "RL_PLACE"
+namespace_id = "2002"
+  [env.staging.ratelimits.simple]
+  limit = 30
+  period = 60
+
+[[env.staging.ratelimits]]
+name = "RL_GLOBAL"
+namespace_id = "2003"
+  [env.staging.ratelimits.simple]
+  limit = 300
+  period = 60
+
+[[env.staging.ratelimits]]
+name = "RL_LOG"
+namespace_id = "2004"
+  [env.staging.ratelimits.simple]
+  limit = 100
+  period = 60
+
+[[env.staging.ratelimits]]
+name = "RL_CODES"
+namespace_id = "2005"
+  [env.staging.ratelimits.simple]
+  limit = 10
+  period = 60
+
+[[env.staging.ratelimits]]
+name = "RL_FEEDBACK"
+namespace_id = "2006"
+  [env.staging.ratelimits.simple]
+  limit = 5
+  period = 60
