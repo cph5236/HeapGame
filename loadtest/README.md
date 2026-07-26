@@ -210,13 +210,38 @@ value someone setting `PLACE_RATE=0` or `NEW_IDENTITY_RATE=0` needs honoured.
 ## Reset between runs
 
 ```bash
-BASE_URL=<staging-or-local-url> ADMIN_SECRET=<...> npm run loadtest:reset
+npm run loadtest:reset                    # small fixture only (default)
+RESET_LARGE=true npm run loadtest:reset   # both — see the warning below
 ```
 
-Puts both fixture heaps' live zones back to empty so runs are repeatable.
-Identities in `fixtures.json` are deliberately **not** regenerated — reusing
-the same pool across runs is what keeps score-submit KV cost low (see the
+Puts the **small** fixture's live zone back to empty so runs are repeatable.
+
+**The large fixture is left intact by default, and you almost never want to
+reset it.** Its whole purpose is to *be* a large polygon — the control the
+small fixture is compared against when testing whether placement CPU scales
+with vertex count. Emptying it destroys the only property that makes it
+useful, and rebuilding costs ~400 placements (~800 KV deletes from an
+account-wide 1,000/day bucket shared with production), which cannot be
+recovered until 00:00 UTC.
+
+Identities in `fixtures.json` are likewise **not** regenerated — reusing the
+same pool across runs is what keeps score-submit KV cost low (see the
 identity-model rationale in the design spec).
+
+### Fixture drift
+
+Each run against the small fixture grows it, so the contrast between the two
+narrows over time. Measure before relying on a comparison:
+
+```bash
+curl -s "$BASE_URL/heaps/<id>/base" | jq length      # base vertices
+curl -s "$BASE_URL/heaps/<id>" | jq '.liveZone|length'  # live-zone vertices
+```
+
+Placement cost is driven by `base + liveZone` together — `POST /place` builds
+`[...base, ...liveZone]` and runs `isPointInside` over the whole polygon, up to
+5 times in the CAS retry loop. Reset the small fixture when the ratio gets too
+close to call.
 
 ## Watching the server
 
