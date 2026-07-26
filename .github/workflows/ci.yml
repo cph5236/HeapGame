@@ -18,5 +18,21 @@ jobs:
 
       - run: npm ci
 
+      # server/ has its own package.json and node_modules (the Workers build
+      # installs only server deps), so the server suite needs its own install.
+      - name: Install server deps
+        run: npm ci --prefix server
+
       - name: Typecheck + Build
         run: npm run build
+
+      # Root suite: client, shared, and the loadtest payload-contract test.
+      # `npm test` chains `test:loadtest-types`, which is what actually enforces
+      # that the k6 payload builders still match the shared/ request types —
+      # k6 runs its own JS runtime and cannot import them directly.
+      - name: Test (client + shared + loadtest contract)
+        run: npm test
+
+      - name: Test (server)
+        run: npx vitest run
+        working-directory: server
