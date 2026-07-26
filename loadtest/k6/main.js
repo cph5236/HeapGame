@@ -102,16 +102,38 @@ export const options = {
       exec: 'limiterScenario',
     },
   },
+  // The default set omits p(99), which is where a cache miss or a CAS retry
+  // actually shows up — the interesting behaviour lives past p(95).
+  summaryTrendStats: ['min', 'med', 'avg', 'p(90)', 'p(95)', 'p(99)', 'max'],
+
   thresholds: {
     // Meaningful now that expected statuses are declared above: this reads
     // the real failure rate (genuine 4xx/5xx), not a metric pre-filtered
     // down to nothing.
     'http_req_failed':                         ['rate<0.01'],
+
+    // --- gating: these express real service expectations ---
     'http_req_duration{name:heaps-list}':      ['p(95)<500', 'p(99)<1500'],
     'http_req_duration{name:heap-get}':        ['p(95)<500', 'p(99)<1500'],
     'http_req_duration{name:scores-context}':  ['p(95)<500', 'p(99)<1500'],
     'http_req_duration{name:place}':           ['p(95)<1000'],
     'http_req_duration{name:place-contention}':['p(95)<1000'],
+
+    // --- observation only ---
+    // k6 materialises a tagged submetric ONLY when a threshold references it.
+    // Without these entries the other nine tagged endpoints emit data points
+    // that never surface in the summary at all — we tag 14 endpoints and saw
+    // 5. The bound is deliberately unreachable (60s) so these report without
+    // gating; tighten one into the block above once its budget is known.
+    'http_req_duration{name:config}':            ['p(99)<60000'],
+    'http_req_duration{name:daily-status}':      ['p(99)<60000'],
+    'http_req_duration{name:daily-claim}':       ['p(99)<60000'],
+    'http_req_duration{name:customization-get}': ['p(99)<60000'],
+    'http_req_duration{name:customization-put}': ['p(99)<60000'],
+    'http_req_duration{name:heap-base}':         ['p(99)<60000'],
+    'http_req_duration{name:score-submit}':      ['p(99)<60000'],
+    'http_req_duration{name:log}':               ['p(99)<60000'],
+    'http_req_duration{name:limiter-probe}':     ['p(99)<60000'],
   },
 };
 
