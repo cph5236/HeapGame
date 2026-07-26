@@ -21,3 +21,10 @@ export interface AdCadenceConfig {
   min: number;
   max: number;
 }
+
+/**
+ * Shape of the 'min_version' config value — the hard update gate. Defined with
+ * its parser/comparator in shared/versionGate.ts and re-exported here so the
+ * config key shapes stay discoverable from one place.
+ */
+export type { MinVersionConfig } from './versionGate';

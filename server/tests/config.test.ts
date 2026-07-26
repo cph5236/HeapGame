@@ -236,3 +236,62 @@ describe('DELETE /config/:key', () => {
     expect(await res.json()).toEqual({ ok: true, key: 'never_existed' });
   });
 });
+
+describe('PUT /config/min_version', () => {
+  async function put(value: unknown, configDb = new MockConfigDB()) {
+    const app = makeApp(configDb);
+    return app.request('/config/min_version', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value }),
+    });
+  }
+
+  it('accepts a bare version', async () => {
+    const configDb = new MockConfigDB();
+    const res = await put({ version: '0.2.21' }, configDb);
+    expect(res.status).toBe(200);
+
+    const get = await makeApp(configDb).request('/config');
+    expect(await get.json()).toEqual({ config: { min_version: { version: '0.2.21' } } });
+  });
+
+  it('accepts a version with a player-facing message', async () => {
+    const res = await put({ version: '0.2.21', message: 'Score submission is broken on this build.' });
+    expect(res.status).toBe(200);
+  });
+
+  // A bad floor here locks out every player, so the write-time check is strict.
+  it('rejects a partial or non-numeric version (400)', async () => {
+    for (const version of ['0.2', 'v0.2.21', 'latest', '>=0.2.21', '']) {
+      const res = await put({ version });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it('rejects a bare string instead of an object (400)', async () => {
+    const res = await put('0.2.21');
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a missing version (400)', async () => {
+    const res = await put({ message: 'please update' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects an over-long message (400)', async () => {
+    const res = await put({ version: '0.2.21', message: 'x'.repeat(201) });
+    expect(res.status).toBe(400);
+  });
+
+  it('can be lifted by deleting the key', async () => {
+    const configDb = new MockConfigDB();
+    expect((await put({ version: '9.9.9' }, configDb)).status).toBe(200);
+
+    const del = await makeApp(configDb).request('/config/min_version', { method: 'DELETE' });
+    expect(del.status).toBe(200);
+
+    const get = await makeApp(configDb).request('/config');
+    expect(await get.json()).toEqual({ config: {} });
+  });
+});

@@ -11,6 +11,7 @@ const SERVER_URL: string =
 
 let cached: AppConfig | null = null;
 let primePromise: Promise<void> | null = null;
+let fresh = false;
 
 /**
  * Fetch the global config map once at boot. Resolution order for each key:
@@ -37,6 +38,7 @@ export function primeConfig(): Promise<void> {
         const body = (await res.json()) as GetConfigResponse;
         if (body?.config) {
           cached = body.config;
+          fresh = true;
           setStoredRemoteConfig(body.config); // persist + ride the cloud save
         }
       }
@@ -69,6 +71,19 @@ export function hasConfig(): boolean {
   return cached !== null;
 }
 
+/**
+ * True only when the live cache came from a successful fetch *this launch* —
+ * false when it was warmed from last-known-good and the network never answered.
+ *
+ * Most config keys don't care (a stale ad cadence is fine). The update gate
+ * does: acting on a stale `min_version` would keep an offline player locked out
+ * even after the gate had been lifted server-side, and an offline player can't
+ * reach the store to update anyway. See src/systems/UpdateGate.ts.
+ */
+export function isConfigFresh(): boolean {
+  return fresh;
+}
+
 export function getConfigValue<T>(key: string): T | undefined {
   return cached?.[key] as T | undefined;
 }
@@ -77,4 +92,5 @@ export function getConfigValue<T>(key: string): T | undefined {
 export function resetConfigCacheForTests(): void {
   cached = null;
   primePromise = null;
+  fresh = false;
 }
