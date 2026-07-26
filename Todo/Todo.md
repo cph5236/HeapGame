@@ -94,6 +94,15 @@ network and D1, so a 5ms CPU delta is invisible. Only per-window CPU resolved it
   This also directly reduces KV delete spend, which is the tightest quota
   (1,000/day, account-wide, shared with prod).
 
+- **[HANDED OFF] Delta API + bounded polygon growth.** Brief written up at
+  `docs/superpowers/2026-07-26-heap-delta-api-handoff.md`, ready for
+  brainstorming → spec → plan. Supersedes the two items below, which are kept
+  for context. Root cause identified: the base polygon is append-only
+  (`newBaseVertices = [...existingBase, ...frozen]`) and never shrinks, so a
+  cheaper containment scan only delays hitting the CPU cap rather than
+  preventing it. Bounding growth via simplification at rollup is the primary
+  goal; the delta API is secondary but shares the same restructuring.
+
 - **Make `GET /heaps/:id` return a delta, not the whole polygon.** Peak-load
   egress went 8.1MB → 15MB between two runs purely because the heap grew. The
   endpoint returns the entire live zone, once per session, to every player — so
