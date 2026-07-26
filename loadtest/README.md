@@ -33,12 +33,26 @@ KV deletes are the tightest resource, not Workers requests — see
    (If you can't install it system-wide, a static release binary works fine
    from anywhere on disk; just make sure it resolves as `k6` or adjust the
    commands below to its full path.)
-2. **Staging deployed.** `[env.staging]` in `server/wrangler.toml`, its own 4
-   D1 databases, KV namespace, and `LOADTEST_SECRET` + `ADMIN_SECRET` vars —
-   see `docs/superpowers/runbooks/loadtest-staging.md` (Task 5 of
-   `docs/superpowers/plans/2026-07-24-load-testing.md`). Until that exists,
-   the local dry-run loop below is the only way to exercise this harness.
-3. **Fixtures seeded once**, against whichever `BASE_URL` you're pointing at:
+2. **Staging deployed** — done, at
+   `https://heap-server-staging.hanlinsoftwaresws.workers.dev`. Its
+   `[env.staging]` block, 4 D1 databases, KV namespace and secrets are
+   documented in `docs/superpowers/runbooks/loadtest-staging.md`.
+3. **Credentials in `.env`** (repo root, gitignored). Every `npm run loadtest*`
+   script loads it, so you don't have to prefix commands with env vars:
+
+   ```
+   BASE_URL=https://heap-server-staging.hanlinsoftwaresws.workers.dev
+   ADMIN_SECRET=<staging admin secret>
+   LOADTEST_SECRET=<staging load-test secret>
+   ```
+
+   No spaces around `=`. Cloudflare secrets cannot be read back after they're
+   set, so if you lose these, re-run `wrangler secret put` with new values.
+
+   `npm run loadtest:local` overrides `BASE_URL` to `http://localhost:8787` and
+   blanks `LOADTEST_SECRET`, so a `.env` pointing at staging can never cause a
+   "local" dry run to spend real quota.
+4. **Fixtures seeded once**, against whichever `BASE_URL` you're pointing at:
    ```bash
    BASE_URL=<staging-or-local-url> ADMIN_SECRET=<...> npm run loadtest:seed
    ```
