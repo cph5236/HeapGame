@@ -264,6 +264,7 @@ export function heapRoutes(
       row.version + 1,
       JSON.parse(row.live_zone) as Vertex[],
       row.freeze_y,
+      row.top_y,
       row.version,
     );
     return c.json({ ok: true });
@@ -315,7 +316,7 @@ export function heapRoutes(
     if (!row) return c.json({ error: 'Heap not found' }, 404);
 
     const previousVersion = row.version;
-    await db.updateHeap(id, row.base_id, 1, [], 0);
+    await db.updateHeap(id, row.base_id, 1, [], 0, row.top_y);
 
     let bodyParams: Partial<HeapParams> = {};
     try { bodyParams = await c.req.json<Partial<HeapParams>>(); } catch { /* no body */ }
@@ -548,10 +549,8 @@ export function heapRoutes(
       }
 
       const newVersion = row.version + 1;
-      const applied = await db.updateHeap(id, currentBaseId, newVersion, finalLiveZone, newFreezeY, row.version);
+      const applied = await db.updateHeap(id, currentBaseId, newVersion, finalLiveZone, newFreezeY, y, row.version);
       if (!applied) continue; // lost-update conflict — re-read and retry
-
-      await db.updateTopY(id, y);
 
       // Contribution tick: only for authenticated placements — guid + token
       // both present AND the auth gate actually ran (authDb wired) so the

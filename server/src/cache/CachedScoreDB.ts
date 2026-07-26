@@ -12,6 +12,8 @@
 // is then a single delete, keeping writes consistent.
 
 import type { ScoreDB, ScoreRow } from '../scoreDb';
+import type { Sink } from '../logging/Sink';
+import { captureServer } from '../logging/captureServerEvent';
 
 /** Cache the top this-many rows per heap; matches MAX_LIMIT in routes/scores.ts. */
 const CACHE_TOP_N = 50;
@@ -24,6 +26,9 @@ export class CachedScoreDB implements ScoreDB {
     private inner: ScoreDB,
     private kv: KVNamespace,
     private waitUntil: (p: Promise<unknown>) => void,
+    /** Optional telemetry sink — see CachedHeapDB for rationale. Optional so
+     *  tests can construct this class directly. */
+    private sink?: Sink,
   ) {}
 
   private topKey(heapId: string): string {
@@ -35,7 +40,7 @@ export class CachedScoreDB implements ScoreDB {
     if (limit > CACHE_TOP_N) return this.inner.getTopScores(heapId, limit);
 
     const key = this.topKey(heapId);
-    const hit = await this.kv.get<ScoreRow[]>(key, 'json');
+    const hit = await this.safeGet<ScoreRow[]>(key);
     if (hit) return hit.slice(0, limit);
 
     const top = await this.inner.getTopScores(heapId, CACHE_TOP_N);
@@ -47,13 +52,28 @@ export class CachedScoreDB implements ScoreDB {
 
   async upsertScore(heapId: string, playerId: string, score: number, now: string): Promise<boolean> {
     const changed = await this.inner.upsertScore(heapId, playerId, score, now);
-    if (changed) await this.kv.delete(this.topKey(heapId));
-    return changed;
+    if (!changed) return false;
+
+    // `changed` only means the player beat their OWN previous best, which says
+    // nothing about whether the leaderboard moved. Bust the cache only when the
+    // new score can actually appear in the cached window — trading a KV read
+    // (100k/day bucket) for a KV delete (1k/day bucket).
+    const key = this.topKey(heapId);
+    const cached = await this.safeGet<ScoreRow[]>(key);
+    if (!cached) return true;                         // nothing cached, nothing to bust
+    const boardNotFull = cached.length < CACHE_TOP_N; // any score would enter
+    if (boardNotFull || score >= cached[cached.length - 1].score) { // >= so ties invalidate
+      await this.safeDelete(key);
+    }
+    return true;
   }
 
   async pruneScores(heapId: string): Promise<void> {
+    // No invalidation: prune retains the top 1000 (see D1ScoreDB.pruneScores)
+    // while this cache holds only CACHE_TOP_N (50), so pruning can only ever
+    // remove rows that were never in the cached window. Revisit if either
+    // constant changes.
     await this.inner.pruneScores(heapId);
-    await this.kv.delete(this.topKey(heapId));
   }
 
   // ---- uncached delegation ----
@@ -76,5 +96,40 @@ export class CachedScoreDB implements ScoreDB {
 
   getPlayerScores(playerId: string): Promise<Array<{ heapId: string; name: string; score: number; rank: number }>> {
     return this.inner.getPlayerScores(playerId);
+  }
+
+  // ---- helpers ----
+
+  /** KV read that degrades to a cache miss on error, so callers fall through to D1. */
+  private async safeGet<T>(key: string): Promise<T | null> {
+    try {
+      return await this.kv.get<T>(key, 'json');
+    } catch (err) {
+      console.warn(`[cache] KV get failed key=${key}: ${err instanceof Error ? err.message : String(err)}`);
+      await this.reportKvFailure('get', key, err);
+      return null;
+    }
+  }
+
+  /** KV delete that never fails the request. The D1 write already committed;
+   *  staleness is bounded by SCORES_TTL. */
+  private async safeDelete(key: string): Promise<void> {
+    try {
+      await this.kv.delete(key);
+    } catch (err) {
+      console.warn(`[cache] KV delete failed key=${key}: ${err instanceof Error ? err.message : String(err)}`);
+      await this.reportKvFailure('delete', key, err);
+    }
+  }
+
+  /** Best-effort telemetry for a KV failure. Never throws — captureServer
+   *  already swallows sink errors internally, and the sink itself is optional. */
+  private async reportKvFailure(op: 'get' | 'delete', key: string, err: unknown): Promise<void> {
+    if (!this.sink) return;
+    await captureServer(this.sink, 'warn', 'cache:kv-failed', {
+      op,
+      key,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }

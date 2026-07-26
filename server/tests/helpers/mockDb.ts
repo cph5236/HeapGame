@@ -99,13 +99,20 @@ export class MockHeapDB implements HeapDB {
     version: number,
     liveZone: Vertex[],
     freezeY: number,
+    topYCandidate: number,
     expectedVersion?: number,
   ): Promise<boolean> {
     const existing = this.heaps.get(id);
     if (!existing) return false;
-    // Compare-and-swap: reject when the row moved on since it was read.
     if (expectedVersion !== undefined && existing.version !== expectedVersion) return false;
-    this.heaps.set(id, { ...existing, base_id: baseId, version, live_zone: JSON.stringify(liveZone), freeze_y: freezeY });
+    this.heaps.set(id, {
+      ...existing,
+      base_id: baseId,
+      version,
+      live_zone: JSON.stringify(liveZone),
+      freeze_y: freezeY,
+      top_y: Math.min(existing.top_y, topYCandidate),
+    });
     return true;
   }
 
@@ -192,12 +199,6 @@ export class MockHeapDB implements HeapDB {
 
   async upsertEnemyParams(heapId: string, params: HeapEnemyParams): Promise<void> {
     this.enemyParams.set(heapId, JSON.stringify(params));
-  }
-
-  async updateTopY(id: string, candidateY: number): Promise<void> {
-    const existing = this.heaps.get(id);
-    if (!existing) return;
-    this.heaps.set(id, { ...existing, top_y: Math.min(existing.top_y, candidateY) });
   }
 
   /** Test helper — seed enemy params directly. */

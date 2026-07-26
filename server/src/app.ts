@@ -29,6 +29,9 @@ export interface AppOptions {
   allowedOrigins?: string;
   /** When set, mutating heap routes require X-Admin-Secret: <value>. */
   adminSecret?: string;
+  /** Staging only — when set, a request presenting a matching X-LoadTest-Secret
+   *  header keys the rate limiter on X-LoadTest-Key instead of client IP. */
+  loadTestSecret?: string;
   /** Cloudflare Rate Limiting API bindings. Any unset = no limit on that bucket. */
   limiters?: {
     scores?: RateLimiter;
@@ -79,13 +82,13 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
       return list.includes(origin) ? origin : null;
     },
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'X-Admin-Secret', 'X-Player-Token'],
+    allowHeaders: ['Content-Type', 'X-Admin-Secret', 'X-Player-Token', 'X-LoadTest-Secret', 'X-LoadTest-Key'],
   }));
 
   // Rate limiting — global circuit breaker on all heap/score traffic
   const lim = opts.limiters ?? {};
   if (lim.global) {
-    const globalMw = rateLimit(lim.global, 'global');
+    const globalMw = rateLimit(lim.global, 'global', opts.loadTestSecret);
     app.use('/heaps',    globalMw);
     app.use('/heaps/*',  globalMw);
     app.use('/scores',   globalMw);
@@ -93,9 +96,9 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   }
 
   // Per-route limiters (mounted as POST handlers; fall through on success)
-  app.post('/scores',          rateLimit(lim.scores, 'scores-submit'));
-  app.post('/heaps/:id/place', rateLimit(lim.place,  'place-block'));
-  app.post('/log',             rateLimit(lim.log,    'log'));
+  app.post('/scores',          rateLimit(lim.scores, 'scores-submit', opts.loadTestSecret));
+  app.post('/heaps/:id/place', rateLimit(lim.place,  'place-block',   opts.loadTestSecret));
+  app.post('/log',             rateLimit(lim.log,    'log',           opts.loadTestSecret));
 
   // Admin gate on mutating heap routes
   const adminGate = requireAdminSecret(opts.adminSecret);
@@ -110,7 +113,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
 
   if (opts.codeDb) {
     // Player redeem endpoint — rate-limited, no admin gate.
-    app.post('/codes/redeem', rateLimit(lim.codes, 'codes-redeem'));
+    app.post('/codes/redeem', rateLimit(lim.codes, 'codes-redeem', opts.loadTestSecret));
     // Admin mint + list — behind the admin gate.
     app.post('/codes', adminGate);
     app.get ('/codes', adminGate);
@@ -119,13 +122,13 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
 
   if (opts.dailyDb) {
     // Player claim endpoint — rate-limited, no admin gate.
-    app.post('/daily/claim', rateLimit(lim.codes, 'daily-claim'));
+    app.post('/daily/claim', rateLimit(lim.codes, 'daily-claim', opts.loadTestSecret));
     app.route('/daily', dailyRoutes(opts.dailyDb, opts.configDb, () => opts.logSink, opts.playerAuthDb));
   }
 
   if (opts.feedbackDb) {
     // Public submit — rate-limited, no admin gate.
-    app.post('/feedback', rateLimit(lim.feedback, 'feedback'));
+    app.post('/feedback', rateLimit(lim.feedback, 'feedback', opts.loadTestSecret));
     // Admin read — behind the admin gate.
     app.get('/feedback', adminGate);
     app.route('/feedback', feedbackRoutes(opts.feedbackDb));
@@ -141,7 +144,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
 
   if (opts.customizationDb) {
     // Player loadout writes share the scores rate-limit bucket — they're debounced client-side.
-    app.put('/customization/:playerId', rateLimit(lim.scores, 'customization-put'));
+    app.put('/customization/:playerId', rateLimit(lim.scores, 'customization-put', opts.loadTestSecret));
     app.route('/customization', customizationRoutes(opts.customizationDb, () => opts.logSink, opts.playerAuthDb));
   }
 
@@ -153,7 +156,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
 
   if (opts.playerNameDb) {
     // Player rename writes share the scores rate-limit bucket — same pattern as customization.
-    app.put('/players/:playerId/name', rateLimit(lim.scores, 'players-rename'));
+    app.put('/players/:playerId/name', rateLimit(lim.scores, 'players-rename', opts.loadTestSecret));
     app.route('/players', playerRoutes(opts.playerNameDb, () => opts.logSink, opts.playerAuthDb));
   }
 
