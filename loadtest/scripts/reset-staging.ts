@@ -46,17 +46,46 @@ if (!looksLikeStaging(BASE_URL)) {
 
 interface Fixtures { smallHeapId: string; largeHeapId: string }
 
+/**
+ * The large fixture is expensive: building it costs ~400 placements, which is
+ * ~800 KV deletes out of an account-wide 1,000/day bucket shared with
+ * production. Resetting it throws that away and it cannot be rebuilt until the
+ * quota resets at 00:00 UTC.
+ *
+ * It also has no reason to be reset. Its entire purpose is to be a LARGE
+ * polygon — the control against which the small fixture is compared to test
+ * whether placement CPU scales with vertex count. Emptying its live zone
+ * destroys the only property that makes it useful.
+ *
+ * So it is opt-in. `npm run loadtest:reset` resets only the small fixture,
+ * which is the one that needs to return to a known state between runs.
+ */
+const RESET_LARGE = process.env.RESET_LARGE === 'true';
+
+async function resetHeap(id: string, label: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/heaps/${id}/reset`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': ADMIN_SECRET },
+  });
+  if (!res.ok) throw new Error(`reset ${label} (${id}) failed: ${res.status} ${await res.text()}`);
+  console.log(`reset ${label}: ${id}`);
+}
+
 async function main(): Promise<void> {
   const raw = readFileSync(new URL('../fixtures.json', import.meta.url), 'utf8');
   const { smallHeapId, largeHeapId } = JSON.parse(raw) as Fixtures;
 
-  for (const id of [smallHeapId, largeHeapId]) {
-    const res = await fetch(`${BASE_URL}/heaps/${id}/reset`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': ADMIN_SECRET },
-    });
-    if (!res.ok) throw new Error(`reset ${id} failed: ${res.status} ${await res.text()}`);
-    console.log(`reset ${id}`);
+  await resetHeap(smallHeapId, 'small');
+
+  if (RESET_LARGE) {
+    console.warn(
+      'RESET_LARGE=true — emptying the large fixture. Rebuilding it costs ~400 ' +
+      'placements (~800 KV deletes from a shared 1,000/day bucket) via ' +
+      '`LARGE_HEAP_ID=<id> npm run loadtest:seed`.',
+    );
+    await resetHeap(largeHeapId, 'large');
+  } else {
+    console.log(`kept large fixture intact: ${largeHeapId} (set RESET_LARGE=true to reset it too)`);
   }
 }
 

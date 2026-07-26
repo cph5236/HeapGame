@@ -118,10 +118,11 @@ obscenity = "./node_modules/obscenity"
 [env.staging]
 name = "heap-server-staging"
 
-# Wrangler environments do not inherit top-level config, so every binding,
-# var and alias is repeated below rather than merged from above.
-[env.staging.alias]
-obscenity = "./node_modules/obscenity"
+# Bindings (d1_databases, kv_namespaces, analytics_engine_datasets, ratelimits)
+# and vars do NOT inherit from the top level and are repeated below. The
+# top-level [alias] DOES apply to every environment — declaring an
+# [env.staging.alias] is rejected by wrangler as an unexpected field and is
+# unnecessary (verified: identical bundle size with and without it).
 
 [[env.staging.d1_databases]]
 binding = "DB_HEAP"

@@ -56,8 +56,23 @@ const JOURNEY_VUS = Math.min(50, SESSIONS);
 // iteration count AND the VU count down with MAX_PLACEMENTS (rather than
 // leaving them at fixed 30/15) keeps the per-VU budget (below) at >= 1 no
 // matter how small MAX_PLACEMENTS is set for a local dry run.
-const PLACEMENT_ITERATIONS = Math.max(1, Math.min(30, MAX_PLACEMENTS));
-const PLACEMENT_VUS = Math.max(1, Math.min(15, PLACEMENT_ITERATIONS));
+// Defaults cap at 30/15, which is the realistic-contention shape. Both are
+// overridable because measuring CPU per placement needs a different shape:
+// a bigger sample (the dashboard aggregates CPU per minute, so 30 placements
+// diluted among ~6,800 requests is invisible) and LOW concurrency (at 15 VUs
+// the CAS retry loop re-runs the polygon scan several times per request, which
+// conflates base cost with retry amplification).
+//
+//   base cost:        -e PLACEMENT_ITERATIONS=200 -e PLACEMENT_VUS=1
+//   under contention: -e PLACEMENT_ITERATIONS=200 -e PLACEMENT_VUS=15
+const PLACEMENT_ITERATIONS = Math.max(
+  1,
+  numEnv(__ENV.PLACEMENT_ITERATIONS, Math.min(30, MAX_PLACEMENTS)),
+);
+const PLACEMENT_VUS = Math.max(
+  1,
+  Math.min(numEnv(__ENV.PLACEMENT_VUS, 15), PLACEMENT_ITERATIONS),
+);
 
 const fixtures = new SharedArray('fixtures', () => [JSON.parse(open('../fixtures.json'))]);
 
@@ -87,16 +102,38 @@ export const options = {
       exec: 'limiterScenario',
     },
   },
+  // The default set omits p(99), which is where a cache miss or a CAS retry
+  // actually shows up — the interesting behaviour lives past p(95).
+  summaryTrendStats: ['min', 'med', 'avg', 'p(90)', 'p(95)', 'p(99)', 'max'],
+
   thresholds: {
     // Meaningful now that expected statuses are declared above: this reads
     // the real failure rate (genuine 4xx/5xx), not a metric pre-filtered
     // down to nothing.
     'http_req_failed':                         ['rate<0.01'],
+
+    // --- gating: these express real service expectations ---
     'http_req_duration{name:heaps-list}':      ['p(95)<500', 'p(99)<1500'],
     'http_req_duration{name:heap-get}':        ['p(95)<500', 'p(99)<1500'],
     'http_req_duration{name:scores-context}':  ['p(95)<500', 'p(99)<1500'],
     'http_req_duration{name:place}':           ['p(95)<1000'],
     'http_req_duration{name:place-contention}':['p(95)<1000'],
+
+    // --- observation only ---
+    // k6 materialises a tagged submetric ONLY when a threshold references it.
+    // Without these entries the other nine tagged endpoints emit data points
+    // that never surface in the summary at all — we tag 14 endpoints and saw
+    // 5. The bound is deliberately unreachable (60s) so these report without
+    // gating; tighten one into the block above once its budget is known.
+    'http_req_duration{name:config}':            ['p(99)<60000'],
+    'http_req_duration{name:daily-status}':      ['p(99)<60000'],
+    'http_req_duration{name:daily-claim}':       ['p(99)<60000'],
+    'http_req_duration{name:customization-get}': ['p(99)<60000'],
+    'http_req_duration{name:customization-put}': ['p(99)<60000'],
+    'http_req_duration{name:heap-base}':         ['p(99)<60000'],
+    'http_req_duration{name:score-submit}':      ['p(99)<60000'],
+    'http_req_duration{name:log}':               ['p(99)<60000'],
+    'http_req_duration{name:limiter-probe}':     ['p(99)<60000'],
   },
 };
 
@@ -118,9 +155,14 @@ const journeyBudget = createBudget({
   maxRequests:   Math.max(1, Math.ceil(10_000 / JOURNEY_VUS)),
   maxPlacements: Math.max(1, Math.ceil(MAX_PLACEMENTS / JOURNEY_VUS)),
 });
+// An explicit -e PLACEMENT_ITERATIONS must not be silently throttled by the
+// MAX_PLACEMENTS default: asking for 200 iterations is asking for 200
+// placements. The executor's `iterations` remains the authoritative bound, so
+// taking the larger of the two keeps this a backstop rather than a second,
+// conflicting limit that turns the excess into silent no-ops.
 const placementBudget = createBudget({
   maxRequests:   Math.max(1, Math.ceil(10_000 / PLACEMENT_VUS)),
-  maxPlacements: Math.max(1, Math.ceil(MAX_PLACEMENTS / PLACEMENT_VUS)),
+  maxPlacements: Math.max(1, Math.ceil(Math.max(MAX_PLACEMENTS, PLACEMENT_ITERATIONS) / PLACEMENT_VUS)),
 });
 
 export function journeyScenario()   { journey(fixtures[0], journeyBudget); }

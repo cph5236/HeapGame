@@ -39,6 +39,7 @@ at `/heaps`. Tests run via Vitest.
 - `adding-d1-migrations` — any schema change (4 domain DBs, two-file rule, remote apply)
 - `releasing-heap` — version bump + what pushing main triggers (Play/itch.io/Pages/D1)
 - `smoke-testing-heap` — live browser verification of gameplay/runtime changes
+- `load-testing-heap` — k6 load tests vs staging; measure CPU not latency, quotas are account-wide
 - `heap-scene-preview` — static scene screenshots at phone sizes (device table inside)
 - `triaging-crash-logs` / `triaging-player-feedback` — pull + file production reports
 

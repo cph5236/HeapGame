@@ -25,3 +25,6 @@ dpr-gate.png
 
 # Load-test fixtures — contains generated player secrets, regenerate with `npm run loadtest:seed`
 loadtest/fixtures.json
+
+# Load-test run summaries — regenerated on every run
+loadtest/results/

@@ -26,6 +26,125 @@ never point `BASE_URL` at production.
 KV deletes are the tightest resource, not Workers requests — see
 [Per-run budget](#per-run-budget) below.
 
+---
+
+## Quickstart
+
+### Command reference
+
+Run these from the repo root. All of them load `.env` automatically.
+
+```bash
+npm run loadtest                            # full run: 800 sessions, ~6,800 requests
+npm run loadtest -- -e SESSIONS=150         # smaller run, proportionally cheaper
+npm run loadtest -- -e PLACE_FIXTURE=large  # contention on the big polygon
+npm run loadtest:local                      # against local wrangler dev — FREE, no quota
+npm run loadtest:seed                       # one-off: build fixtures
+npm run loadtest:reset                      # small fixture back to empty between runs
+```
+
+Flags go after `--` so npm forwards them to k6. Combine freely:
+`npm run loadtest -- -e SESSIONS=300 -e PLACE_FIXTURE=large -e MAX_PLACEMENTS=60`
+
+### Zero to first result
+
+**1. Install k6.** Not an npm dependency — it's a standalone binary.
+
+```bash
+curl -sL https://github.com/grafana/k6/releases/download/v0.54.0/k6-v0.54.0-linux-amd64.tar.gz \
+  | tar xz -C /tmp
+mkdir -p ~/.local/bin && mv /tmp/k6-v0.54.0-linux-amd64/k6 ~/.local/bin/
+k6 version   # should print v0.54.0
+```
+
+`~/.local/bin` is on `PATH` by default on most distros and needs no sudo. If
+`k6 version` fails, either add it to `PATH` or drop the binary somewhere that
+already is.
+
+**2. Put credentials in `.env`** (repo root, gitignored). Three lines, **no
+spaces around `=`**:
+
+```
+BASE_URL=https://heap-server-staging.hanlinsoftwaresws.workers.dev
+ADMIN_SECRET=<staging admin secret>
+LOADTEST_SECRET=<staging load-test secret>
+```
+
+These are the secrets set on the staging Worker via `wrangler secret put`.
+**Cloudflare cannot show them to you again after they're set** — if they're
+lost, set new ones and update `.env` to match. See
+`docs/superpowers/runbooks/loadtest-staging.md`.
+
+`LOADTEST_SECRET` is what lets one machine simulate many players: it gives each
+virtual user its own rate-limit bucket. Without it the limiter keys on your IP
+and throttles the whole run to ~5 req/s, which measures the rate limiter rather
+than the game.
+
+**3. Rehearse locally first — this is free.** It catches payload and config
+mistakes without spending any quota.
+
+```bash
+# terminal 1
+cd server && npx wrangler dev
+
+# terminal 2
+BASE_URL=http://localhost:8787 ADMIN_SECRET=dev npm run loadtest:seed
+npm run loadtest:local
+```
+
+`loadtest:local` hard-overrides `BASE_URL` to localhost, so it cannot
+accidentally hit staging even with a staging `.env`. Expect zero unexpected
+4xx/5xx. Latency thresholds *will* trip — `wrangler dev`'s local D1 emulation is
+slow under concurrency. That's expected and not a finding.
+
+**4. Seed the staging fixtures.** One-off, ~400 placements (~800 KV deletes).
+Skip if `loadtest/fixtures.json` already exists.
+
+```bash
+npm run loadtest:seed
+# reuse a heap you already made in the admin UI instead of creating one:
+SMALL_HEAP_ID=<guid> npm run loadtest:seed
+```
+
+**5. Run it.**
+
+```bash
+npm run loadtest
+```
+
+Takes ~30s. Watch the server in another terminal:
+`cd server && npx wrangler tail --env staging`
+
+**6. Read the output** — see [Reading the results](#reading-the-results).
+`http_req_failed` and the latency thresholds decide pass/fail; 409 and 429 are
+declared expected and don't count as failures.
+
+### Recommended first session
+
+```bash
+npm run loadtest:local                       # free rehearsal
+npm run loadtest                             # baseline, small fixture
+npm run loadtest -- -e PLACE_FIXTURE=large -e MAX_PLACEMENTS=60
+```
+
+The third is the actual experiment — see
+[Leading hypothesis](#leading-hypothesis-placement-cpu-vs-polygon-size). Bump
+`MAX_PLACEMENTS` because the default 30 iterations gives a p95 from too small a
+sample to trust.
+
+### If something goes wrong
+
+| Symptom | Cause |
+|---|---|
+| `k6 not found on PATH` | Step 1 didn't take. `which k6`. |
+| `ENOENT ... fixtures.json` | Step 4 not run. |
+| Everything 401s | `ADMIN_SECRET` wrong or missing from `.env`. |
+| `rate_limited` far above ~5% | `LOADTEST_SECRET` doesn't match the Worker's. |
+| A 400 on every iteration | A payload drifted from `shared/`. See [If you hit a 400](#if-you-hit-a-400). |
+| `Refusing to seed…` | `BASE_URL` isn't staging or localhost. Working as intended. |
+
+---
+
 ## Prerequisites
 
 1. **k6** installed and on `PATH`. Not an npm dependency — the scripts below
@@ -198,6 +317,9 @@ wire the two most common ones):
 | `PLACE_RATE` | 0.15 | Probability a `journey` session attempts a placement. An explicit `-e PLACE_RATE=0` is honoured (disables placements from journey traffic entirely) rather than falling back to 0.15. |
 | `NEW_IDENTITY_RATE` | 0.05 | Fraction of sessions that mint a brand-new identity instead of drawing from the seeded pool. Set explicitly (`-e NEW_IDENTITY_RATE=0`) to pin a run entirely to the seeded pool — an explicit `0` is honoured, it does not fall back to the default. |
 | `PLACE_FIXTURE` | `small` | Which fixture heap the `placement` scenario hammers — `small` or `large`. See the [CPU-vs-polygon-size hypothesis](#leading-hypothesis-placement-cpu-vs-polygon-size) below. |
+| `PLACEMENT_ITERATIONS` | `min(30, MAX_PLACEMENTS)` | How many placements the `placement` scenario performs. Overriding it also raises that scenario's placement budget, so an explicit value isn't silently throttled by `MAX_PLACEMENTS`. |
+| `PLACEMENT_VUS` | `min(15, iterations)` | Concurrency of the `placement` scenario. Drop to 1 to remove CAS-retry amplification when measuring cost per placement. |
+| `PLACE_SLEEP_MS` | `0` | Think time after each placement. `0` means VUs fire as fast as the network allows (~12.5 placements/sec at 15 VUs), which is the right shape for finding the contention ceiling. Raise it to pace a run. |
 
 All numeric vars above (`SESSIONS`, `MAX_PLACEMENTS`, `PLACE_RATE`,
 `NEW_IDENTITY_RATE`) share one parsing rule (`numEnv` in `k6/lib/config.js`):
@@ -210,13 +332,38 @@ value someone setting `PLACE_RATE=0` or `NEW_IDENTITY_RATE=0` needs honoured.
 ## Reset between runs
 
 ```bash
-BASE_URL=<staging-or-local-url> ADMIN_SECRET=<...> npm run loadtest:reset
+npm run loadtest:reset                    # small fixture only (default)
+RESET_LARGE=true npm run loadtest:reset   # both — see the warning below
 ```
 
-Puts both fixture heaps' live zones back to empty so runs are repeatable.
-Identities in `fixtures.json` are deliberately **not** regenerated — reusing
-the same pool across runs is what keeps score-submit KV cost low (see the
+Puts the **small** fixture's live zone back to empty so runs are repeatable.
+
+**The large fixture is left intact by default, and you almost never want to
+reset it.** Its whole purpose is to *be* a large polygon — the control the
+small fixture is compared against when testing whether placement CPU scales
+with vertex count. Emptying it destroys the only property that makes it
+useful, and rebuilding costs ~400 placements (~800 KV deletes from an
+account-wide 1,000/day bucket shared with production), which cannot be
+recovered until 00:00 UTC.
+
+Identities in `fixtures.json` are likewise **not** regenerated — reusing the
+same pool across runs is what keeps score-submit KV cost low (see the
 identity-model rationale in the design spec).
+
+### Fixture drift
+
+Each run against the small fixture grows it, so the contrast between the two
+narrows over time. Measure before relying on a comparison:
+
+```bash
+curl -s "$BASE_URL/heaps/<id>/base" | jq length      # base vertices
+curl -s "$BASE_URL/heaps/<id>" | jq '.liveZone|length'  # live-zone vertices
+```
+
+Placement cost is driven by `base + liveZone` together — `POST /place` builds
+`[...base, ...liveZone]` and runs `isPointInside` over the whole polygon, up to
+5 times in the CAS retry loop. Reset the small fixture when the ratio gets too
+close to call.
 
 ## Watching the server
 
