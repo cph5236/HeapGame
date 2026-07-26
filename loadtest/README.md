@@ -317,6 +317,9 @@ wire the two most common ones):
 | `PLACE_RATE` | 0.15 | Probability a `journey` session attempts a placement. An explicit `-e PLACE_RATE=0` is honoured (disables placements from journey traffic entirely) rather than falling back to 0.15. |
 | `NEW_IDENTITY_RATE` | 0.05 | Fraction of sessions that mint a brand-new identity instead of drawing from the seeded pool. Set explicitly (`-e NEW_IDENTITY_RATE=0`) to pin a run entirely to the seeded pool — an explicit `0` is honoured, it does not fall back to the default. |
 | `PLACE_FIXTURE` | `small` | Which fixture heap the `placement` scenario hammers — `small` or `large`. See the [CPU-vs-polygon-size hypothesis](#leading-hypothesis-placement-cpu-vs-polygon-size) below. |
+| `PLACEMENT_ITERATIONS` | `min(30, MAX_PLACEMENTS)` | How many placements the `placement` scenario performs. Overriding it also raises that scenario's placement budget, so an explicit value isn't silently throttled by `MAX_PLACEMENTS`. |
+| `PLACEMENT_VUS` | `min(15, iterations)` | Concurrency of the `placement` scenario. Drop to 1 to remove CAS-retry amplification when measuring cost per placement. |
+| `PLACE_SLEEP_MS` | `0` | Think time after each placement. `0` means VUs fire as fast as the network allows (~12.5 placements/sec at 15 VUs), which is the right shape for finding the contention ceiling. Raise it to pace a run. |
 
 All numeric vars above (`SESSIONS`, `MAX_PLACEMENTS`, `PLACE_RATE`,
 `NEW_IDENTITY_RATE`) share one parsing rule (`numEnv` in `k6/lib/config.js`):

@@ -31,9 +31,9 @@
 // ~line 403 on for the authoritative checks).
 
 import http from 'k6/http';
-import { check } from 'k6';
+import { check, sleep } from 'k6';
 import { Counter } from 'k6/metrics';
-import { BASE_URL, loadTestHeaders } from '../lib/config.js';
+import { BASE_URL, loadTestHeaders, numEnv } from '../lib/config.js';
 import { pickIdentity } from '../lib/player.js';
 import { buildPlaceBody } from '../lib/payloads.js';
 
@@ -45,6 +45,20 @@ export const casAccepted  = new Counter('cas_accepted');
 /** Which fixture to hammer: 'small' (default) or 'large' to measure how
  *  placement cost scales with polygon size against the 10ms CPU cap. */
 const FIXTURE = __ENV.PLACE_FIXTURE || 'small';
+
+/**
+ * Think time after each placement, in ms. Default 0: VUs fire as fast as the
+ * network allows, which is what "contention" means and is the right shape for
+ * finding the CAS ceiling — the last full run managed ~12.5 placements/sec
+ * across 15 VUs.
+ *
+ * Raise it to control the rate when the goal is measuring cost per placement
+ * rather than behaviour under contention. Rate is roughly
+ * `PLACEMENT_VUS / (PLACE_SLEEP_MS/1000 + request time)` — at 1 VU and
+ * PLACE_SLEEP_MS=0 the placement's own ~600ms round trip already paces it to
+ * ~1.5/sec.
+ */
+const PLACE_SLEEP_MS = numEnv(__ENV.PLACE_SLEEP_MS, 0);
 
 // Mirror of server/src/routes/heap.ts's module-local placement-validation
 // constants (not exported, not in server/src/constants.ts — see journey.js's
@@ -140,4 +154,8 @@ export function placement(fixtures, budget) {
     'placement not 5xx': (r) => r.status < 500,
     'placement resolved': (r) => r.status === 200 || r.status === 409 || r.status === 400,
   });
+
+  // Placed after the request, not before, so it paces successive placements
+  // without delaying the first one.
+  if (PLACE_SLEEP_MS > 0) sleep(PLACE_SLEEP_MS / 1000);
 }

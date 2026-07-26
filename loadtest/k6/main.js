@@ -56,8 +56,23 @@ const JOURNEY_VUS = Math.min(50, SESSIONS);
 // iteration count AND the VU count down with MAX_PLACEMENTS (rather than
 // leaving them at fixed 30/15) keeps the per-VU budget (below) at >= 1 no
 // matter how small MAX_PLACEMENTS is set for a local dry run.
-const PLACEMENT_ITERATIONS = Math.max(1, Math.min(30, MAX_PLACEMENTS));
-const PLACEMENT_VUS = Math.max(1, Math.min(15, PLACEMENT_ITERATIONS));
+// Defaults cap at 30/15, which is the realistic-contention shape. Both are
+// overridable because measuring CPU per placement needs a different shape:
+// a bigger sample (the dashboard aggregates CPU per minute, so 30 placements
+// diluted among ~6,800 requests is invisible) and LOW concurrency (at 15 VUs
+// the CAS retry loop re-runs the polygon scan several times per request, which
+// conflates base cost with retry amplification).
+//
+//   base cost:        -e PLACEMENT_ITERATIONS=200 -e PLACEMENT_VUS=1
+//   under contention: -e PLACEMENT_ITERATIONS=200 -e PLACEMENT_VUS=15
+const PLACEMENT_ITERATIONS = Math.max(
+  1,
+  numEnv(__ENV.PLACEMENT_ITERATIONS, Math.min(30, MAX_PLACEMENTS)),
+);
+const PLACEMENT_VUS = Math.max(
+  1,
+  Math.min(numEnv(__ENV.PLACEMENT_VUS, 15), PLACEMENT_ITERATIONS),
+);
 
 const fixtures = new SharedArray('fixtures', () => [JSON.parse(open('../fixtures.json'))]);
 
@@ -118,9 +133,14 @@ const journeyBudget = createBudget({
   maxRequests:   Math.max(1, Math.ceil(10_000 / JOURNEY_VUS)),
   maxPlacements: Math.max(1, Math.ceil(MAX_PLACEMENTS / JOURNEY_VUS)),
 });
+// An explicit -e PLACEMENT_ITERATIONS must not be silently throttled by the
+// MAX_PLACEMENTS default: asking for 200 iterations is asking for 200
+// placements. The executor's `iterations` remains the authoritative bound, so
+// taking the larger of the two keeps this a backstop rather than a second,
+// conflicting limit that turns the excess into silent no-ops.
 const placementBudget = createBudget({
   maxRequests:   Math.max(1, Math.ceil(10_000 / PLACEMENT_VUS)),
-  maxPlacements: Math.max(1, Math.ceil(MAX_PLACEMENTS / PLACEMENT_VUS)),
+  maxPlacements: Math.max(1, Math.ceil(Math.max(MAX_PLACEMENTS, PLACEMENT_ITERATIONS) / PLACEMENT_VUS)),
 });
 
 export function journeyScenario()   { journey(fixtures[0], journeyBudget); }
