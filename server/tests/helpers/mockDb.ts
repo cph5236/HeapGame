@@ -3,7 +3,7 @@
 import type { HeapDB, HeapRow, HeapSummaryRow } from '../../src/db';
 import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
-import type { BandRow } from '../../../shared/heapPolygon/bandEnvelope';
+import { bandOf, type BandRow } from '../../../shared/heapPolygon/bandEnvelope';
 
 interface BaseRecord {
   heap_id: string;
@@ -308,6 +308,15 @@ export class MockHeapDB implements HeapDB {
     const existing = this.heaps.get(heapId);
     if (!existing) return;
     this.heaps.set(heapId, { ...existing, base_id: baseId, freeze_y: freezeY });
+    // Drop the rows the freeze line just buried, matching the D1 batch. The
+    // boundary is derived from freezeY exactly as it is there.
+    const m = this.bands.get(heapId);
+    if (m) {
+      const freezeBand = bandOf(freezeY);
+      for (const band of [...m.keys()]) {
+        if (band >= freezeBand) m.delete(band);
+      }
+    }
   }
 
   async clearBands(heapId: string): Promise<void> {

@@ -549,6 +549,8 @@ export function heapRoutes(
     // is the first FROZEN band, and the gate below is `y > liveZoneBottomY`, so subtracting 1
     // keeps a placement landing exactly on freeze_y from being admitted into frozen territory.
     // Pre-freeze (freeze_y === 0 sentinel), keep the original maxBand-derived floor unchanged.
+    // The freeze branch is why deleting frozen rows cannot break this gate: post-freeze
+    // maxBand covers only live bands, and post-freeze this expression never consults it.
     const liveZoneBottomY = row.freeze_y > 0
       ? row.freeze_y - 1
       : maxBand !== null
@@ -643,12 +645,19 @@ export function heapRoutes(
     // strictly-greater-than watermark filter.
     const newVersion = await db.commitPlacement(id, bandRows, y);
 
-    // Freeze: fold the bottom bands into the base. Minting a new baseId is
-    // mandatory — loadCachedBase keys localStorage on baseId with no TTL, so a
-    // stable id over changed base content strands every client on a stale base.
-    // Same freeze_y>0 sentinel as materialiseLiveZone and the full-response
-    // filter: `bandOf(0)` would be band 0, which is a real (if absurdly high)
-    // band index, not "nothing is frozen".
+    // Freeze: fold the bottom bands into the base, then drop them from
+    // heap_band (setFreeze does the deletion in the same transaction as the
+    // freeze-line advance — see its doc). Order matters: the base row must
+    // exist BEFORE setFreeze repoints the heap at it and deletes the rows,
+    // because those rows are the only other copy of that geometry.
+    //
+    // Minting a new baseId is mandatory — loadCachedBase keys localStorage on
+    // baseId with no TTL, so a stable id over changed base content strands
+    // every client on a stale base.
+    //
+    // Same freeze_y>0 sentinel as liveBandsOf and the full-response filter:
+    // `bandOf(0)` would be band 0, which is a real (if absurdly high) band
+    // index, not "nothing is frozen".
     const freezeBand = row.freeze_y > 0 ? bandOf(row.freeze_y) : Infinity;
     const freeze = checkFreezeBands(await db.getAllBands(id), freezeBand);
     if (freeze) {

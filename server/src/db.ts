@@ -1,7 +1,7 @@
 // server/src/db.ts
 
 import { HeapParams, Vertex, HeapEnemyParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
-import type { BandRow } from '../../shared/heapPolygon/bandEnvelope';
+import { bandOf, type BandRow } from '../../shared/heapPolygon/bandEnvelope';
 
 export interface HeapRow {
   id: string;
@@ -132,9 +132,27 @@ export interface HeapDB {
    */
   commitPlacement(heapId: string, rows: BandRow[], topYCandidate: number): Promise<number>;
   /**
-   * Repoint the heap at a freshly-minted base and advance the freeze line.
-   * Called after folding the bottom bands into a new base snapshot; bands at
-   * or above freezeY remain the live set.
+   * Complete a freeze: repoint the heap at the freshly-minted base, advance the
+   * freeze line to freezeY, and DELETE the band rows that line just buried —
+   * all in one transaction.
+   *
+   * The deletion is what keeps per-request cost bounded. A frozen band's
+   * geometry lives in the new base blob, which every client fetches by baseId
+   * and caches indefinitely, so the row is pure dead weight the moment freeze_y
+   * passes it: `getAllBands` still returns it on every read and `liveBandsOf`
+   * still filters it out. Left in place it accumulates forever — a staging
+   * fixture measured 283 frozen rows against 65 live ones, and the read path
+   * paid for all 348.
+   *
+   * One transaction, not three calls, because the freeze line and the rows it
+   * buries are one fact. The dangerous ordering is deleting rows without the
+   * freeze line landing: freeze_y would still admit placements into a region
+   * whose shape is now only in a base the heap does not point at, and that
+   * geometry is gone. A batch makes that unobservable — either both happen or
+   * neither does.
+   *
+   * The boundary is derived from freezeY here rather than passed in, so the
+   * deletion can never disagree with the freeze line it is supposed to match.
    */
   setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void>;
   /** Delete every band row for a heap. Used by reset — the fresh base absorbs
@@ -379,10 +397,16 @@ export class D1HeapDB implements HeapDB {
   }
 
   async setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void> {
-    await this.d1
-      .prepare('UPDATE heap SET base_id = ?1, freeze_y = ?2 WHERE id = ?3')
-      .bind(baseId, freezeY, heapId)
-      .run();
+    // One batch = one transaction. See the interface doc for why the row update
+    // and the row deletion cannot be separate calls.
+    await this.d1.batch([
+      this.d1
+        .prepare('UPDATE heap SET base_id = ?1, freeze_y = ?2 WHERE id = ?3')
+        .bind(baseId, freezeY, heapId),
+      this.d1
+        .prepare('DELETE FROM heap_band WHERE heap_id = ?1 AND band >= ?2')
+        .bind(heapId, bandOf(freezeY)),
+    ]);
   }
 
   async clearBands(heapId: string): Promise<void> {

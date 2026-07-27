@@ -195,8 +195,13 @@ export class CachedHeapDB implements HeapDB {
 
   async setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void> {
     await this.inner.setFreeze(heapId, baseId, freezeY);
-    // Changes base_id and freeze_y on the heap row — invalidate like every
-    // other write, or the cached row keeps pointing at the stale base.
+    // Changes base_id and freeze_y on the heap row AND deletes the band rows
+    // the new freeze line buries — invalidate like every other write, or the
+    // cached snapshot keeps pointing at the stale base while still serving rows
+    // that no longer exist. One invalidation covers both, because the inner
+    // call is one transaction. Freezes are rare (once per FREEZE_BATCH_BANDS of
+    // climb), so this pays the full two-key cost rather than the row-only
+    // shortcut commitPlacement takes.
     await this.invalidateHeap(heapId);
   }
 

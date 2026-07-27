@@ -17,7 +17,7 @@ import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { DEFAULT_HEAP_PARAMS, type PlaceResponse, type GetHeapResponse } from '../../shared/heapTypes';
 import { bandOf, verticesToEnvelope, BAND_SIZE_PX, wireToBands } from '../../shared/heapPolygon/bandEnvelope';
-import { LIVE_ZONE_MAX_BANDS } from '../src/polygon';
+import { LIVE_ZONE_MAX_BANDS, FREEZE_BATCH_BANDS } from '../src/polygon';
 
 const NOW = new Date().toISOString();
 
@@ -52,6 +52,12 @@ async function climb(db: MockHeapDB, fromIndex: number, count: number): Promise<
   }
 }
 
+/** Every band `climb` has touched after `count` placements from index 0 — the
+ *  ground truth the live rows and the base blob must partition between them. */
+function bandsEverPlaced(count: number): Set<number> {
+  return new Set(Array.from({ length: count }, (_, i) => bandOf(START_Y - i * BAND_SIZE_PX)));
+}
+
 async function driveToFreeze(): Promise<MockHeapDB> {
   const db = new MockHeapDB();
   await db.createHeap('h1', 'b1', [{ x: 480, y: START_Y }], 'hash', NOW, {
@@ -79,20 +85,28 @@ describe('freeze partition invariant', () => {
 
     const freezeBand = bandOf(row!.freeze_y);
     const allBands = await db.getAllBands('h1');
-    expect(allBands.length).toBe(PLACEMENT_COUNT); // freeze never deletes band rows
+    // Freeze DELETES the rows it buries, in the same transaction that advances
+    // the freeze line, so heap_band holds only the live set afterwards. One
+    // freeze shed exactly FREEZE_BATCH_BANDS rows.
+    expect(allBands.length).toBe(PLACEMENT_COUNT - FREEZE_BATCH_BANDS);
 
     const baseVertices = (await db.getBaseVerticesById(row!.base_id)) ?? [];
     const baseBands = verticesToEnvelope(baseVertices);
 
-    // The partition invariant itself: every band is in the live set
-    // (band < freezeBand) XOR present in the base envelope — never both,
-    // never neither. This is exactly the check whose absence let the
-    // three inverted/overbroad consumers survive undetected.
-    for (const b of allBands) {
-      const inLive = b.band < freezeBand;
-      const inBase = baseBands.has(b.band);
-      expect(inLive).toBe(!inBase);
-    }
+    // The partition invariant itself, now that the two halves live in two
+    // different places: every band the heap has ever recorded is a surviving
+    // row XOR present in the base envelope — never both, never neither.
+    // Checking it against `bandsEverPlaced` rather than against the rows alone
+    // is what makes deletion safe to assert: a delete that dropped geometry
+    // WITHOUT the base absorbing it leaves a band in neither set, and only the
+    // independent ground truth can see that.
+    const rowBands = new Set(allBands.map((b) => b.band));
+    for (const b of rowBands) expect(baseBands.has(b)).toBe(false);
+    expect(new Set([...rowBands, ...baseBands.keys()])).toEqual(bandsEverPlaced(PLACEMENT_COUNT));
+
+    // And the split falls exactly on the freeze line, in both directions.
+    for (const b of rowBands) expect(b).toBeLessThan(freezeBand);
+    for (const b of baseBands.keys()) expect(b).toBeGreaterThanOrEqual(freezeBand);
 
     // The live set must be non-empty and must contain the current summit
     // band — a future inversion that empties the live zone (freezing the
@@ -107,11 +121,10 @@ describe('freeze partition invariant', () => {
     // while one just above it (still live) is accepted. This is the
     // liveZoneBottomY consumer's own regression guard — a reverted -1 or a
     // reverted freeze_y>0 sentinel would admit writes into buried geometry.
-    // x=481, not 480: the frozen band at freeze_y already holds a point at
-    // x=480 from the climb loop, so a same-x replay would read accepted:false
-    // from the WIDTH check alone, masking a gate that wrongly let it through.
-    // Using a different x means the only way to see accepted:false here is a
-    // genuine 400 from the active-zone gate.
+    // Asserting on the status, not on accepted:false — the band at freeze_y no
+    // longer has a row (the freeze deleted it), so a gate that wrongly let this
+    // through would now WIDEN a resurrected frozen band and report
+    // accepted:true. Only the 400 proves the gate held.
     const intoFrozen = await place(db, 481, row!.freeze_y);
     expect(intoFrozen.status).toBe(400);
 
@@ -143,12 +156,25 @@ describe('freeze partition invariant', () => {
     // the end — so a freeze that stalls is caught at the placement it stalled
     // on rather than 100 placements later.
     const freezeLines: number[] = [first!.freeze_y];
-    for (let i = PLACEMENT_COUNT; i < PLACEMENT_COUNT + 4 * 38; i++) {
+    let placements = PLACEMENT_COUNT;
+    for (let i = PLACEMENT_COUNT; i < PLACEMENT_COUNT + 4 * FREEZE_BATCH_BANDS; i++) {
       await climb(db, i, 1);
+      placements++;
       const row = await db.getHeapFresh('h1');
       const freezeBand = row!.freeze_y > 0 ? bandOf(row!.freeze_y) : Infinity;
-      const live = (await db.getAllBands('h1')).filter((b) => b.band < freezeBand);
-      expect(live.length).toBeLessThanOrEqual(LIVE_ZONE_MAX_BANDS);
+      const allBands = await db.getAllBands('h1');
+      // The ROW COUNT is the bound that matters, and it is the one the CPU
+      // dashboard cares about: every read pays for every surviving row, so a
+      // live set that stays bounded while dead rows pile up behind it is not a
+      // bounded read path. Asserting on the unfiltered table — not on the
+      // filtered view — is what pins the deletion in place.
+      expect(allBands.length).toBeLessThanOrEqual(LIVE_ZONE_MAX_BANDS);
+      expect(allBands.filter((b) => b.band < freezeBand).length).toBe(allBands.length);
+      // Nothing is lost while the table shrinks: rows plus base still account
+      // for every band ever placed, after every single placement.
+      const baseBands = verticesToEnvelope((await db.getBaseVerticesById(row!.base_id)) ?? []);
+      expect(new Set([...allBands.map((b) => b.band), ...baseBands.keys()]))
+        .toEqual(bandsEverPlaced(placements));
       if (row!.freeze_y !== freezeLines[freezeLines.length - 1]) freezeLines.push(row!.freeze_y);
     }
 
@@ -173,12 +199,49 @@ describe('freeze partition invariant', () => {
     }
 
     // The base absorbed every band the successive freezes shed — nothing was
-    // dropped on the floor between epochs.
-    expect(baseBands.size).toBe(allBands.filter((b) => b.band >= freezeBand).length);
+    // dropped on the floor between epochs. Each epoch's base concatenates the
+    // previous one, so this counts across ALL four freezes, not just the last.
+    expect(baseBands.size).toBe(placements - allBands.length);
 
     // And the summit is still live and still reachable.
     const summitBand = bandOf(row!.top_y);
     expect(summitBand).toBeLessThan(freezeBand);
+  });
+
+  it('bounds what a read costs, not just what a read serves', async () => {
+    // The distinct property freeze-time deletion adds. Before it, freeze bounded
+    // the live SET while heap_band grew forever: a staging fixture ended a load
+    // test with 65 live rows and 283 frozen ones, and getAllBands returned all
+    // 348 on every request — 5.4x the necessary band data, carried through the
+    // KV snapshot and JSON-parsed per read, growing with heap age without limit.
+    // P99 CPU breached the 10ms free-tier cap at that size.
+    //
+    // The bound asserted here is on the unfiltered table, which is what the read
+    // path actually pays for. The other tests in this file would all still pass
+    // with the deletion reverted.
+    const db = await driveToFreeze();
+    for (let i = PLACEMENT_COUNT; i < PLACEMENT_COUNT + 5 * FREEZE_BATCH_BANDS; i++) {
+      await climb(db, i, 1);
+    }
+    const placements = PLACEMENT_COUNT + 5 * FREEZE_BATCH_BANDS;
+
+    const rows = await db.getAllBands('h1');
+    expect(rows.length).toBeLessThanOrEqual(LIVE_ZONE_MAX_BANDS);
+    // Two-sided: the table must be far smaller than the climb, or the assertion
+    // above could pass on a heap that simply never grew.
+    expect(placements).toBeGreaterThan(2 * LIVE_ZONE_MAX_BANDS);
+
+    // Every band the deletion removed is readable from the base blob instead —
+    // the geometry moved, it did not vanish.
+    const row = await db.getHeapFresh('h1');
+    const baseBands = verticesToEnvelope((await db.getBaseVerticesById(row!.base_id)) ?? []);
+    expect(new Set([...rows.map((b) => b.band), ...baseBands.keys()]))
+      .toEqual(bandsEverPlaced(placements));
+
+    // And the base the heap points at is the one holding them — a deletion that
+    // committed against a base the heap was never repointed to would satisfy
+    // every set assertion above while stranding the geometry.
+    expect(baseBands.size).toBeGreaterThan(0);
   });
 
   it('GET /heaps/:id serves a live zone with no frozen bands, through the real materialiseLiveZone path', async () => {
@@ -253,8 +316,11 @@ describe('freeze partition invariant', () => {
     expect(row!.freeze_y).toBeGreaterThan(0);
 
     const freezeBand = bandOf(row!.freeze_y);
-    const allBands = await db.getAllBands('h1');
-    const frozenBands = allBands.filter((b) => b.band >= freezeBand);
+    // Frozen bands come from the BASE now, not from a filter over heap_band —
+    // their rows are deleted at freeze time, so the old
+    // `getAllBands().filter(band >= freezeBand)` would be empty here and every
+    // assertion below it would pass vacuously.
+    const frozenBands = [...verticesToEnvelope((await db.getBaseVerticesById(row!.base_id)) ?? []).keys()];
     // Sanity on the fixture: at least one band must actually be frozen, or the
     // "no frozen band leaks through" assertion below would pass by omission.
     expect(frozenBands.length).toBeGreaterThan(0);
@@ -275,7 +341,7 @@ describe('freeze partition invariant', () => {
     // coincidentally absent from a served set that happened to include none of
     // the ones checked.
     for (const fb of frozenBands) {
-      expect(servedBandNumbers).not.toContain(fb.band);
+      expect(servedBandNumbers).not.toContain(fb);
     }
 
     // bands and liveZone must describe the SAME band set — the coherent
