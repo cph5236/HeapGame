@@ -50,7 +50,7 @@ describe('CachedHeapDB', () => {
     const fresh = await cached.getHeapFresh(HEAP_ID);
     expect(fresh?.version).toBe(7);
     // The stale cached value is untouched (fresh read never repopulates).
-    expect(JSON.parse(kv.store.get(`cache:heap:${HEAP_ID}`)!).version).toBe(1);
+    expect(JSON.parse(kv.store.get(`cache:heap:${HEAP_ID}`)!).row.version).toBe(1);
   });
 
   it('updateHeap (applied) invalidates both the heap row and the list cache', async () => {

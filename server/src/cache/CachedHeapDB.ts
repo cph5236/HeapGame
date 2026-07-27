@@ -22,6 +22,10 @@ const HEAP_TTL = 60;
 /** Base vertices are immutable once created → long TTL. */
 const BASE_TTL = 86_400;
 
+/** Heap row plus its full band set, cached as ONE entry. A delta's watermark must
+ *  never exceed the bands served beside it, so these two cannot be cached apart. */
+type HeapSnapshot = { row: HeapRow; bands: BandRow[] };
+
 export class CachedHeapDB implements HeapDB {
   constructor(
     private inner: HeapDB,
@@ -45,12 +49,7 @@ export class CachedHeapDB implements HeapDB {
   }
 
   async getHeap(id: string): Promise<HeapRow | null> {
-    const key = `cache:heap:${id}`;
-    const hit = await this.safeGet<HeapRow>(key);
-    if (hit) return hit;
-    const row = await this.inner.getHeap(id);
-    if (row) this.waitUntil(this.kv.put(key, JSON.stringify(row), { expirationTtl: HEAP_TTL }));
-    return row;
+    return (await this.snapshot(id))?.row ?? null;
   }
 
   // Bypass the cache entirely — the placement read-modify-write needs the
@@ -135,17 +134,34 @@ export class CachedHeapDB implements HeapDB {
     await this.inner.upsertEnemyParams(heapId, params);
   }
 
-  // ---- bands: deliberately uncached ----
+  // ---- bands: cached as one snapshot together with the heap row ----
 
-  // Bands are deliberately uncached here. The delta protocol requires that the
-  // version returned to a client never exceeds the bands it was sent alongside;
-  // caching bands independently of the heap row would inflate that watermark and
-  // silently lose bands forever. Task 11 caches the two together.
-  getBand(heapId: string, band: number) { return this.inner.getBand(heapId, band); }
-  getAllBands(heapId: string) { return this.inner.getAllBands(heapId); }
-  getBandsSince(heapId: string, version: number) { return this.inner.getBandsSince(heapId, version); }
-  getMaxBand(heapId: string) { return this.inner.getMaxBand(heapId); }
-  upsertBands(heapId: string, rows: BandRow[], version: number) { return this.inner.upsertBands(heapId, rows, version); }
+  async getAllBands(heapId: string): Promise<BandRow[]> {
+    return (await this.snapshot(heapId))?.bands ?? [];
+  }
+
+  async getBand(heapId: string, band: number): Promise<BandRow | null> {
+    // Placement containment must not run on a stale extent, or a buried vertex
+    // slips through — read through, mirroring getHeapFresh's reasoning.
+    return this.inner.getBand(heapId, band);
+  }
+
+  async getMaxBand(heapId: string): Promise<number | null> {
+    return this.inner.getMaxBand(heapId);
+  }
+
+  async getBandsSince(heapId: string, version: number): Promise<BandRow[]> {
+    // Read-through: fresher than the cached row's version, so a delta may
+    // over-send relative to the watermark. That direction is safe — the client
+    // merges with MIN/MAX, which is idempotent. The unsafe direction is a fresh
+    // row beside stale bands, which the shared snapshot above prevents.
+    return this.inner.getBandsSince(heapId, version);
+  }
+
+  async upsertBands(heapId: string, rows: BandRow[], version: number): Promise<void> {
+    await this.inner.upsertBands(heapId, rows, version);
+    await this.invalidateHeap(heapId);
+  }
 
   async clearBands(heapId: string): Promise<void> {
     await this.inner.clearBands(heapId);
@@ -171,6 +187,25 @@ export class CachedHeapDB implements HeapDB {
   }
 
   // ---- helpers ----
+
+  /** Cache-aside load of the heap row + its full band set as one snapshot, so a
+   *  client can never be handed a version newer than the bands it came with. */
+  private async snapshot(id: string): Promise<HeapSnapshot | null> {
+    const key = `cache:heap:${id}`;
+    const hit = await this.safeGet<HeapSnapshot>(key);
+    // Guard against the pre-migration bare-row shape: an entry written by the
+    // previous deploy has no `bands` at all. Without this check it would be
+    // trusted as-is and every heap would appear bandless for up to HEAP_TTL
+    // seconds after release. Anything that doesn't look like a full snapshot
+    // falls through to a fresh D1 read, which rewrites the entry correctly.
+    if (hit && hit.row && Array.isArray(hit.bands)) return hit;
+    const row = await this.inner.getHeap(id);
+    if (!row) return null;
+    const bands = await this.inner.getAllBands(id);
+    const snap: HeapSnapshot = { row, bands };
+    this.waitUntil(this.kv.put(key, JSON.stringify(snap), { expirationTtl: HEAP_TTL }));
+    return snap;
+  }
 
   /** Bust the per-heap row cache and the list cache. Synchronous (write path). */
   private async invalidateHeap(id: string): Promise<void> {
