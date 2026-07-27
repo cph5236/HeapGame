@@ -17,14 +17,16 @@
 // placement path ever silently disagree, this fails.
 //
 // SCOPE NOTE (carried from the original guard): a real, migration-backfilled
-// heap also has base-region bands (down at y < freeze_y) that the live-zone
-// blob never represents — materialiseLiveZone deliberately filters those out
-// (see its own comment). That's exactly why the "live bands" side here is
-// filtered to `band >= bandOf(freeze_y)` rather than compared against the full
-// heap_band table: this fixture's freeze_y stays 0 throughout (freeze is out
-// of scope until the next task), so the filter is a no-op here, but the
-// assertion is written to match materialiseLiveZone's own rule rather than to
-// assume freeze never runs.
+// heap also has base-region (frozen) bands that the live-zone blob never
+// represents — materialiseLiveZone deliberately filters those out (see its
+// own comment). That's exactly why the "live bands" side here is filtered to
+// `band < freezeBand` (with freeze_y === 0 treated as the "nothing frozen
+// yet" sentinel, matching materialiseLiveZone's own convention) rather than
+// compared against the full heap_band table: this fixture's freeze_y stays 0
+// throughout (freeze is out of scope here — see freezeInvariant.test.ts for
+// the fixture that drives a real freeze), so the filter is a no-op in this
+// file, but the assertion is written to match materialiseLiveZone's own rule
+// rather than to assume freeze never runs.
 
 import { describe, it, expect } from 'vitest';
 import { createApp } from '../src/app';
@@ -60,8 +62,15 @@ describe('served live_zone projects the live bands (post-Task-8)', () => {
     const servedRows = envelopeToRows(verticesToEnvelope(served.liveZone));
 
     const row = (await db.getHeap('h1'))!;
-    const freezeBand = bandOf(row.freeze_y);
-    const liveBandRows = (await db.getAllBands('h1')).filter((b) => b.band >= freezeBand);
+    // Same sentinel as materialiseLiveZone: freeze_y === 0 means nothing has
+    // ever frozen, so freezeBand is Infinity and every band is live. This was
+    // previously written as `band >= freezeBand` — the FROZEN direction, not
+    // the live one — which only matched here because freeze_y stays 0 in this
+    // fixture (both polarities agree when freezeBand is Infinity vs. 0-ish).
+    // Left uncorrected, this test would actively vouch for a reverted/broken
+    // materialiseLiveZone the moment anything in this file actually froze.
+    const freezeBand = row.freeze_y > 0 ? bandOf(row.freeze_y) : Infinity;
+    const liveBandRows = (await db.getAllBands('h1')).filter((b) => b.band < freezeBand);
 
     expect(servedRows).toEqual(liveBandRows);
     // Sanity: this traffic actually produced bands — an empty-vs-empty match
