@@ -4,22 +4,31 @@ Run 2026-07-27 against `heap-server-staging`, Worker version `6c73ef8b`
 (`feature/heap-delta-api`, PR #126). Baseline is the 2026-07-26 run set on the
 pre-change Worker, same harness and same config.
 
-## Windows for the CPU dashboard
+## Worker CPU — the primary signal
 
-**Worker CPU is the primary signal and is NOT in these JSON summaries** — read it
-per-minute from Cloudflare → Workers → `heap-server-staging` → Metrics. Latency
-below is secondary: run-to-run variance on an identical target is ~18%, which
-swallows the few ms of CPU this work moves. Each leg was separated by 95s so the
-dashboard's per-minute buckets stay readable.
+Read from the Cloudflare dashboard (EDT, UTC−4) and mapped to each leg's window.
+Latency further down is secondary: ~18% run-to-run variance on an identical
+target swallows the few ms of CPU this work moves. Legs were separated by 95s so
+the per-minute buckets stay readable.
 
-| Leg | Fixture | Start (UTC) | End (UTC) |
-|---|---|---|---|
-| 1 | small, 200 placements, 1 VU | 20:47:06 | 20:49:16 |
-| 2 | large, 200 placements, 1 VU | 20:51:28 | 20:54:27 |
-| 3 | full — 800 sessions, 15 concurrent placers | 20:56:22 | 20:57:00 |
+| Window (EDT) | Leg (UTC) | P50 | P90 | P99 | P999 |
+|---|---|---|---|---|---|
+| 16:45–46 | *reset — not a leg* | ~7 | ~7 | ~7 | ~19.8 |
+| 16:47–16:49 | small isolation (20:47:06–20:49:16) | ~2.2–3.5 | ~4–6.5 | **~6–10** | ~13.6–15.2 |
+| 16:51–16:54 | large isolation (20:51:28–20:54:27) | ~3.3–5.2 | ~6.3–8.3 | **~12–17.2** | ~13.4–**29** |
+| 16:56–16:57 | full, 184 req/s (20:56:22–20:57:00) | ~2 | ~4.3 | **~9** | ~18.4 |
 
-Known CPU baseline for reference: P99 ~5.6 ms at 238 polygon vertices, ~10.3 ms
-at 684. Free-tier cap is 10 ms/request.
+Aggregate across the whole 30-minute window: P50 3.38, P90 6.62, P99 10.4,
+P999 14.77 ms. Free-tier cap is **10 ms/request**; Cloudflare tolerates
+infrequent overruns and kills sustained ones with Error 1102. Prior known
+baseline: P99 ~5.6 ms at 238 polygon vertices, ~10.3 ms at 684.
+
+Memory is a non-issue: P999 27.79 MB, peaks ~50 MB, against a 128 MB cap.
+
+**The full run — the highest-throughput leg at 184 req/s — stayed under the cap
+at P99 ~9 ms.** The large-fixture isolation leg breached it, peaking ~17 ms P99
+with P999 ~29 ms. See the CPU finding below for why, which is the most actionable
+result of this whole exercise.
 
 ## Isolation legs — polygon size held constant, 1 placer
 
@@ -111,6 +120,54 @@ Whether ~45-60% is the right acceptance rate is a gameplay tuning question, not 
 correctness one — the levers are `ghostPointCount`, `GHOST_JITTER_RADIUS_PX`, and
 whether seeding stays on. Worth a play session before merge, since it is the
 difference between a tap that visibly grows the heap and one that does nothing.
+
+## Finding: bounded growth works, bounded CPU does not — yet
+
+This is the result worth acting on.
+
+**The live zone is genuinely bounded.** Freeze fired **four times** on the large
+fixture during leg 2 — four base epochs minted at 20:51:59, 20:52:01, 20:52:02
+and 20:52:52 — and left the live set at **65 bands**, comfortably under
+`LIVE_ZONE_MAX_BANDS` (77). That is the freeze fix from `9b25c27` doing exactly
+its job: under the pre-fix code freeze fired once per heap ever, and the live zone
+would have been all 348 bands and still climbing. The design's central claim
+holds.
+
+**Per-request CPU is still unbounded, for two reasons that are both frozen-side
+dead weight rather than live-zone growth:**
+
+| | large fixture, after leg 2 |
+|---|---|
+| total band rows | 348 |
+| **live** (`band < 249669`) | **65** |
+| **frozen** (`band >= 249669`) | **283** |
+
+1. `getAllBands` returns all **348** rows on every read, of which **283 are
+   frozen** and already folded into the base blob. That is 5.4× more band data
+   than needed, carried through the KV snapshot, JSON-parsed and filtered on
+   every single request — and it grows with heap age forever, because freeze
+   deletes no rows.
+2. The **base blob grows on every freeze**: 564 → 638 → 710 → 777 → 846 vertices
+   across those four freezes inside one minute. Each freeze also mints a new
+   `baseId`, forcing every client to refetch the whole larger blob, and
+   `createBase` reads the previous base to concatenate — so freeze cost itself
+   scales with heap age too.
+
+Against the prior baseline (P99 5.6 ms at 238 vertices, 10.3 ms at 684), the large
+fixture's ~846 base vertices plus 65 live bands extrapolates to ~13 ms, and we
+measured 12–17 ms. In other words the band envelope has **not yet produced a CPU
+win on a large heap** — the frozen dead weight on the read path offsets what
+bounding the live zone gained.
+
+Both causes are the two follow-ups already parked in the SDD ledger. The load test
+has now put a number on why they matter, and turned them from housekeeping into
+the thing standing between this branch and a heap that stays under the CPU cap as
+it ages. Deleting frozen rows at freeze time is the higher-value half: it cuts the
+per-request band read from 348 rows to 65 on this fixture, and a read audit
+already showed it is safe (post-freeze, `getMaxBand` is only consulted on the
+`freeze_y === 0` branch, `getBand`/`getBandRange` are only called for live bands,
+and frozen geometry already lives in the base blob every matching-`baseId` client
+has cached).
 
 ## Not covered
 
