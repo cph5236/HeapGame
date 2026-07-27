@@ -279,10 +279,24 @@ treated as cold. The delta merge is the same `MIN`/`MAX` upsert as the server.
 
 **One canonical materialisation.** There is exactly one function,
 `envelopeToVertices(bands): Vertex[]`, which emits, for each occupied band in
-ascending band order, a vertex at `(min_x, bandMidY)` and — only when
-`max_x !== min_x` — a second at `(max_x, bandMidY)`, where
+ascending band order, a vertex at `(min_x, bandMidY)` **and always** a second at
+`(max_x, bandMidY)` — even when the two extents are equal — where
 `bandMidY = band * BAND_SIZE_PX + BAND_SIZE_PX / 2`. Absent rows emit nothing.
 Its output is fed to the existing `reconstructPolygonFromPoints`, unchanged.
+
+Emitting the second extent unconditionally is deliberate, and the property test
+in §6 is what forced it. An earlier draft emitted one vertex when the extents
+matched, on the reasoning that the client's single-point-band rule keys on
+`bandMinX === bandMaxX` and a single point preserves that. It does — but
+`reconstructPolygonFromPoints` opens with `if (points.length < 2) return []`, so
+a heap whose whole point set is one equal-extent band materialised to a single
+vertex and rendered as nothing, while the original points rendered as a
+(zero-area, invisible) two-vertex ring. Visually identical, structurally not —
+and an invariant with an exception is one a later change will trip over.
+Duplicating the extent cannot change any rendered pixel, because the renderer
+derives only per-band min/max from these points and a duplicate cannot move a
+min or a max. The cost is one redundant vertex per equal-extent band, which is
+rare in real heaps.
 
 That last point is deliberate and is what keeps the losslessness guarantee real.
 The reconstruction has behaviour that the naive "bands are the edges" shortcut

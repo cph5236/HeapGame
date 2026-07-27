@@ -115,18 +115,22 @@ describe('envelopeToVertices', () => {
   it('emits both extents at band-mid-y, ascending by band', () => {
     const env = verticesToEnvelope([{ x: 300, y: 5 }, { x: 500, y: 12 }, { x: 250, y: 25 }]);
     expect(envelopeToVertices(env)).toEqual([
-      { x: 300, y: 10 }, { x: 500, y: 10 }, { x: 250, y: 30 },
+      { x: 300, y: 10 }, { x: 500, y: 10 }, { x: 250, y: 30 }, { x: 250, y: 30 },
     ]);
   });
 
-  it('emits a single vertex for a band whose extents are equal', () => {
+  it('emits both extents even when they are equal', () => {
+    // Never one vertex: reconstructPolygonFromPoints returns [] for < 2 points,
+    // so a single-band heap would render as nothing. See the design doc §5.
     const env = verticesToEnvelope([{ x: 250, y: 25 }]);
-    expect(envelopeToVertices(env)).toEqual([{ x: 250, y: 30 }]);
+    expect(envelopeToVertices(env)).toEqual([{ x: 250, y: 30 }, { x: 250, y: 30 }]);
   });
 
   it('emits nothing for absent bands rather than filling gaps', () => {
     const env = verticesToEnvelope([{ x: 300, y: 5 }, { x: 250, y: 65 }]);
-    expect(envelopeToVertices(env)).toEqual([{ x: 300, y: 10 }, { x: 250, y: 70 }]);
+    expect(envelopeToVertices(env)).toEqual([
+      { x: 300, y: 10 }, { x: 300, y: 10 }, { x: 250, y: 70 }, { x: 250, y: 70 },
+    ]);
   });
 });
 
@@ -241,10 +245,16 @@ export function verticesToEnvelope(vertices: Vertex[]): BandEnvelope {
 
 /**
  * Materialise an envelope back into the point set the renderer consumes.
- * Emits at band-mid-y, ascending by band, one vertex when the extents are equal
- * so the client's single-point-band rule still triggers, and nothing at all for
- * absent bands so the client's forward-fill still runs. Feed the output to
- * reconstructPolygonFromPoints — do not build edges from it directly.
+ * Emits at band-mid-y, ascending by band, ALWAYS both extents (even when equal),
+ * and nothing at all for absent bands so the client's forward-fill still runs.
+ * Feed the output to reconstructPolygonFromPoints — do not build edges from it
+ * directly.
+ *
+ * Both extents always, because reconstructPolygonFromPoints opens with
+ * `if (points.length < 2) return []`: a single-band heap materialised to one
+ * vertex would render as nothing while its original points rendered as a
+ * (zero-area) ring. The client's single-point-band rule still triggers, since it
+ * keys on bandMinX === bandMaxX, which a duplicate preserves.
  */
 export function envelopeToVertices(env: BandEnvelope): Vertex[] {
   const out: Vertex[] = [];
@@ -252,7 +262,7 @@ export function envelopeToVertices(env: BandEnvelope): Vertex[] {
     const { minX, maxX } = env.get(band)!;
     const y = bandMidY(band);
     out.push({ x: minX, y });
-    if (maxX !== minX) out.push({ x: maxX, y });
+    out.push({ x: maxX, y });
   }
   return out;
 }
