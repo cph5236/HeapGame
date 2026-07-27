@@ -3,7 +3,7 @@
 **Status:** ready for brainstorming → spec → plan. No code written.
 **Origin:** load testing, 2026-07-26. Results:
 `https://claude.ai/code/artifact/4579f8b6-423e-4a45-95d6-e522d3fd5518`
-**Related:** `Todo/Todo.md` § PERF, PR #123 (merged), PR #125 (open).
+**Related:** `Todo/Todo.md` § PERF, PR #123 (merged), PR #125 (merged).
 
 You are picking this up cold. Everything needed to design it is below, including
 the measurements that justify it and the structural traps that will bite an
