@@ -4,7 +4,11 @@ import { Hono } from 'hono';
 import type { HeapDB } from '../db';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
-import { isPointInside, checkFreeze, hashVertices } from '../polygon';
+import { checkFreeze, hashVertices } from '../polygon';
+import {
+  BAND_SIZE_PX, bandOf, extendsEnvelope, verticesToEnvelope, envelopeToRows,
+  type BandEnvelope, type BandRow,
+} from '../../../shared/heapPolygon/bandEnvelope';
 import { MAX_ID_LEN } from '../constants';
 import type { PlayerAuthDB } from '../playerAuthDb';
 import { enforcePlayerAuth, PLAYER_TOKEN_HEADER } from '../playerAuth';
@@ -476,10 +480,12 @@ export function heapRoutes(
 
       const liveZone: Vertex[] = JSON.parse(row.live_zone);
 
-      // Bottom of the live zone — placements below this aren't in the active band.
-      // Mirrors HeapClient.getLiveZoneBottomY: max y of live zone, or top_y + 300 (HEAP_TOP_ZONE_PX) for fresh heaps.
-      const liveZoneBottomY = liveZone.length > 0
-        ? liveZone.reduce((max, v) => v.y > max ? v.y : max, -Infinity)
+      // Active-zone floor from band granularity: the bottom edge of the highest
+      // occupied band. Replaces a scan over every live-zone vertex. Costs an
+      // O(log n) probe off the (heap_id, band) primary key.
+      const maxBand = await db.getMaxBand(id);
+      const liveZoneBottomY = maxBand !== null
+        ? (maxBand + 1) * BAND_SIZE_PX
         : row.top_y + HEAP_TOP_ZONE_PX;
       if (y > liveZoneBottomY) {
         console.warn(`[place] reject: y below active zone (${y} > liveZoneBottomY=${liveZoneBottomY}) heapId=${id}`);
@@ -501,33 +507,47 @@ export function heapRoutes(
       }
 
       const baseVertices: Vertex[] = (await db.getBaseVerticesById(row.base_id)) ?? [];
-      const fullPolygon = [...baseVertices, ...liveZone];
 
-      if (isPointInside({ x, y }, fullPolygon)) {
+      // Containment: a placement counts only if it widens its band. A point at or
+      // inside the extents cannot change the silhouette the client renders, so
+      // storing it would cost CPU and egress forever and draw nothing.
+      const band = bandOf(y);
+      const existing = await db.getBand(id, band);
+      const bandEnv: BandEnvelope = new Map(
+        existing ? [[existing.band, { minX: existing.minX, maxX: existing.maxX }]] : [],
+      );
+
+      if (!extendsEnvelope(bandEnv, x, y)) {
         return c.json({ accepted: false, version: row.version } satisfies PlaceResponse);
       }
 
-      // Insert sorted Y ascending (summit = lowest Y = front)
-      const newVertex: Vertex = { x, y };
-      const insertIdx = liveZone.findIndex((v) => v.y > y);
-      if (insertIdx === -1) {
-        liveZone.push(newVertex);
-      } else {
-        liveZone.splice(insertIdx, 0, newVertex);
-      }
-
-      // Ghost points: jitter near a random existing live zone vertex to keep heap shape organic
+      // Candidate vertices: the placement plus its ghost points. Ghosts that do
+      // not widen a band are dropped by the same MIN/MAX upsert — the same
+      // judgement as rejecting a placement.
+      const candidates: Vertex[] = [{ x, y }];
       const ghostCount = Math.max(0, Math.floor(row.ghost_point_count ?? 1));
       for (let i = 0; i < ghostCount; i++) {
-        const anchorIdx = Math.floor(Math.random() * liveZone.length);
-        const anchor = liveZone[anchorIdx];
+        const anchor = candidates[Math.floor(Math.random() * candidates.length)];
         const dx = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
         const dy = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
-        const gx = Math.max(PLACE_X_MIN, Math.min(PLACE_X_MAX, anchor.x + dx));
-        const gy = Math.max(row.top_y, Math.min(liveZoneBottomY, anchor.y + dy));
-        const gv: Vertex = { x: gx, y: gy };
-        const gIdx = liveZone.findIndex((v) => v.y > gy);
-        if (gIdx === -1) liveZone.push(gv); else liveZone.splice(gIdx, 0, gv);
+        candidates.push({
+          x: Math.max(PLACE_X_MIN, Math.min(PLACE_X_MAX, anchor.x + dx)),
+          y: Math.max(row.top_y, Math.min(liveZoneBottomY, anchor.y + dy)),
+        });
+      }
+
+      const bandRows: BandRow[] = envelopeToRows(verticesToEnvelope(candidates));
+
+      // The blob still needs the accepted vertices so the two representations
+      // agree while it remains authoritative (Phase 1). Insert sorted Y
+      // ascending (summit = lowest Y = front), exactly as before.
+      for (const v of candidates) {
+        const insertIdx = liveZone.findIndex((lv) => lv.y > v.y);
+        if (insertIdx === -1) {
+          liveZone.push(v);
+        } else {
+          liveZone.splice(insertIdx, 0, v);
+        }
       }
 
       const bonusCoins = y > row.top_y + OFF_PEAK_THRESHOLD_PX ? OFF_PEAK_BONUS_COINS : undefined;
@@ -551,6 +571,10 @@ export function heapRoutes(
       const newVersion = row.version + 1;
       const applied = await db.updateHeap(id, currentBaseId, newVersion, finalLiveZone, newFreezeY, y, row.version);
       if (!applied) continue; // lost-update conflict — re-read and retry
+
+      // Dual-write while the blob is still authoritative (Phase 1). Phase 2 makes
+      // bands the source of truth and drops the blob write.
+      await db.upsertBands(id, bandRows, newVersion);
 
       // Contribution tick: only for authenticated placements — guid + token
       // both present AND the auth gate actually ran (authDb wired) so the

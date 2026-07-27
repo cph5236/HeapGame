@@ -316,14 +316,15 @@ describe('POST /heaps/:id/place', () => {
     expect(body.version).toBe(2);
   });
 
-  it('rejects a point inside the polygon', async () => {
+  it('rejects a point that does not widen its band (was: inside the polygon)', async () => {
     const db = new MockHeapDB();
-    const square = [
-      { x: 200, y: 0 }, { x: 400, y: 0 },
-      { x: 400, y: 100 }, { x: 200, y: 100 },
-    ];
-    db.seedHeap('h1', 1, square, 'base-1');
+    db.seedHeap('h1', 1, [], 'base-1');
     db.seedBase('base-1', 'h1', []);
+    // Band 2 covers y in [40,60) with x extents [200,400]. A point strictly
+    // inside those extents cannot widen the band, so it's rejected — this
+    // replaces the old ray-cast-inside-a-square-polygon check with the
+    // band-envelope containment predicate the route now uses.
+    await db.upsertBands('h1', [{ band: 2, minX: 200, maxX: 400 }], 1);
     const res = await createApp(db, new MockScoreDB()).request('/heaps/h1/place', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1139,11 +1140,14 @@ describe('POST /heaps/:id/place coordinate clamp', () => {
     expect(res.status).toBe(200);
   });
 
-  it('rejects y below liveZoneBottomY on a heap with non-empty live zone', async () => {
+  it('rejects y below liveZoneBottomY on a heap with occupied bands', async () => {
     const db = new MockHeapDB();
-    // Seed a heap whose live zone has max y = 100; bottom is fixed regardless of top_y.
-    db.seedHeap('h1', 1, [{ x: 50, y: 50 }, { x: 50, y: 100 }], 'base-1');
+    // Seed a heap whose highest occupied band is 4 (y in [80,100)); liveZoneBottomY
+    // = (4+1)*20 = 100, fixed regardless of top_y — mirrors getMaxBand, which
+    // replaced the old scan over the live-zone blob's max y.
+    db.seedHeap('h1', 1, [], 'base-1');
     db.seedBase('base-1', 'h1', []);
+    await db.upsertBands('h1', [{ band: 4, minX: 40, maxX: 60 }], 1);
     const res = await createApp(db, new MockScoreDB()).request('/heaps/h1/place', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

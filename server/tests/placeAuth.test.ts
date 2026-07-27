@@ -141,18 +141,19 @@ describe('POST /heaps/:id/place auth', () => {
     expect(authDb!.rows.size).toBe(0);
   });
 
-  it('accepted:false (point inside polygon) + fresh guid+token: still claims (valid write attempt)', async () => {
-    // Intentional ordering: the duplicate-point check is a benign outcome of a
+  it('accepted:false (does not widen its band) + fresh guid+token: still claims (valid write attempt)', async () => {
+    // Intentional ordering: containment rejection is a benign outcome of a
     // fully valid, authenticated placement — not a validation failure — so the
-    // claim goes through even though nothing is placed.
+    // claim goes through even though nothing is placed. The write-auth block
+    // sits between the active-zone-floor check and the band-containment check,
+    // so this also exercises that ordering.
     const authDb = new MockPlayerAuthDB();
     const heapDb = new MockHeapDB();
-    const square = [
-      { x: 200, y: 0 }, { x: 400, y: 0 },
-      { x: 400, y: 100 }, { x: 200, y: 100 },
-    ];
-    heapDb.seedHeap(HEAP_ID, 1, square, 'base-1', 0, NO_GHOST_PARAMS);
+    heapDb.seedHeap(HEAP_ID, 1, [], 'base-1', 0, NO_GHOST_PARAMS);
     heapDb.seedBase('base-1', HEAP_ID, []);
+    // Band 2 covers y in [40,60) with x extents [200,400] — (300,50) sits
+    // strictly inside, so it cannot widen the band.
+    await heapDb.upsertBands(HEAP_ID, [{ band: 2, minX: 200, maxX: 400 }], 1);
     const app = createApp(heapDb, new MockScoreDB(), { playerAuthDb: authDb });
 
     const res = await place(app, { x: 300, y: 50, playerGuid: PLAYER }, SECRET);
