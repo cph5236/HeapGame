@@ -139,11 +139,12 @@ export async function materialiseLiveZone(db: HeapDB, row: HeapRow): Promise<Ver
   if (row.live_zone_version === row.version) {
     return JSON.parse(row.live_zone) as Vertex[];
   }
-  // Only bands at or below the freeze line have ever been represented in the
-  // blob — the base (frozen) portion is not part of the live zone. Including
-  // it would balloon the blob and change what old clients receive.
-  const freezeBand = bandOf(row.freeze_y);
-  const bands = (await db.getAllBands(row.id)).filter((b) => b.band >= freezeBand);
+  // freeze_y = 0 means no freeze has happened yet, so every band is still live.
+  // After a freeze, freeze_y is the TOP of the frozen region (frozen = band >= freezeBand),
+  // so the live set is strictly above it. Getting this comparison backwards serves the
+  // buried base as the live zone.
+  const freezeBand = row.freeze_y > 0 ? bandOf(row.freeze_y) : Infinity;
+  const bands = (await db.getAllBands(row.id)).filter((b) => b.band < freezeBand);
   const vertices = envelopeToVertices(mergeBands(new Map(), bands));
   await db.setLiveZoneBlob(row.id, vertices, row.version);
   return vertices;
@@ -498,9 +499,15 @@ export function heapRoutes(
     // occupied band. Replaces a scan over every live-zone vertex. Costs an
     // O(log n) probe off the (heap_id, band) primary key.
     const maxBand = await db.getMaxBand(id);
-    const liveZoneBottomY = maxBand !== null
-      ? (maxBand + 1) * BAND_SIZE_PX
-      : row.top_y + HEAP_TOP_ZONE_PX;
+    // After a freeze, the live region's floor is the freeze line itself: bandOf(row.freeze_y)
+    // is the first FROZEN band, and the gate below is `y > liveZoneBottomY`, so subtracting 1
+    // keeps a placement landing exactly on freeze_y from being admitted into frozen territory.
+    // Pre-freeze (freeze_y === 0 sentinel), keep the original maxBand-derived floor unchanged.
+    const liveZoneBottomY = row.freeze_y > 0
+      ? row.freeze_y - 1
+      : maxBand !== null
+        ? (maxBand + 1) * BAND_SIZE_PX
+        : row.top_y + HEAP_TOP_ZONE_PX;
     if (y > liveZoneBottomY) {
       console.warn(`[place] reject: y below active zone (${y} > liveZoneBottomY=${liveZoneBottomY}) heapId=${id}`);
       const sink = getSink();
@@ -545,10 +552,15 @@ export function heapRoutes(
     const candidates: Vertex[] = [{ x, y }];
     const ghostCount = Math.max(0, Math.floor(row.ghost_point_count ?? 1));
     const freezeBand = bandOf(row.freeze_y);
+    // Sample from the LIVE range only — summit band through the live floor.
+    // Sampling up to maxBand (which includes frozen bands after a freeze) would
+    // anchor ghosts on buried geometry the client never renders.
+    const summitBand = bandOf(row.top_y);
+    const liveBottomBand = bandOf(liveZoneBottomY);
     for (let i = 0; i < ghostCount; i++) {
       let anchor: Vertex = { x, y };
-      if (maxBand !== null && maxBand >= freezeBand) {
-        const sampledBand = freezeBand + Math.floor(Math.random() * (maxBand - freezeBand + 1));
+      if (summitBand <= liveBottomBand) {
+        const sampledBand = summitBand + Math.floor(Math.random() * (liveBottomBand - summitBand + 1));
         const sampledRow = await db.getBand(id, sampledBand);
         if (sampledRow) {
           anchor = {

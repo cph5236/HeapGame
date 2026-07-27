@@ -455,12 +455,15 @@ describe('POST /heaps/:id/place', () => {
     await db.upsertBands('h1', [{ band: EXISTING_BAND, minX: 600, maxX: 600 }], 1);
 
     // Deterministic Math.random() sequence (see placeEnvelope.test.ts's
-    // "anti-clustering regression" test for the derivation pattern). The one
+    // "anti-clustering regression" test for the derivation pattern). Ghosts
+    // sample from [summitBand, liveBottomBand] = [bandOf(top_y)=0,
+    // bandOf(liveZoneBottomY)=16] (freeze_y=0, maxBand=EXISTING_BAND=15, so
+    // liveZoneBottomY=(15+1)*20=320 -> band 16) — a range of 17 bands. The one
     // ghost draws 4 values in order: (1) sampledBand pick -> forces
-    // EXISTING_BAND, (2) minX-vs-maxX edge pick -> irrelevant, both are 600,
-    // (3) dx jitter -> +40 (visibly widens the band), (4) dy jitter -> 0
-    // (stays mid-band).
-    const sequence = [0.999, 0.9, 0.75, 0.5];
+    // EXISTING_BAND: floor(R*17)=15 <=> R in [15/17, 16/17), R=0.9, (2)
+    // minX-vs-maxX edge pick -> irrelevant, both are 600, (3) dx jitter -> +40
+    // (visibly widens the band), (4) dy jitter -> 0 (stays mid-band).
+    const sequence = [0.9, 0.9, 0.75, 0.5];
     let call = 0;
     const randomSpy = vi.spyOn(Math, 'random').mockImplementation(() => sequence[call++ % sequence.length]);
     try {

@@ -116,12 +116,18 @@ describe('POST /heaps/:id/place — envelope containment', () => {
     // (4) dy jitter. Force every ghost onto FAR_BAND's maxX edge with zero
     // jitter on y (stays mid-band) and +40px jitter on x (provably widens the
     // band rather than just re-touching its existing extent).
-    //   range = maxBand(2400) - freezeBand(0) + 1 = 2401
-    //   floor(R * 2401) = 2400  <=>  R in [2400/2401, 1)      -> R = 0.9999
-    //   R < 0.5 ? minX : maxX = maxX                          -> R = 0.9
-    //   dx = (R*2-1)*80 = 40                                  -> R = 0.75
-    //   dy = (R*2-1)*80 = 0                                   -> R = 0.5
-    const sequence = [0.9999, 0.9, 0.75, 0.5];
+    //
+    // Ghosts sample from [summitBand, liveBottomBand], not [freezeBand,
+    // maxBand] — the live range trails the summit, not the whole occupied
+    // history. summitBand = bandOf(top_y=47000) = 2350. freeze_y=0 so
+    // liveZoneBottomY falls back to the maxBand branch: maxBand=FAR_BAND=2400,
+    // so liveZoneBottomY=(2400+1)*20=48020 -> liveBottomBand=2401. Range size
+    // = 2401-2350+1 = 52.
+    //   floor(R * 52) = 50 (2400-2350)  <=>  R in [50/52, 51/52)   -> R = 0.97
+    //   R < 0.5 ? minX : maxX = maxX                                -> R = 0.9
+    //   dx = (R*2-1)*80 = 40                                        -> R = 0.75
+    //   dy = (R*2-1)*80 = 0                                          -> R = 0.5
+    const sequence = [0.97, 0.9, 0.75, 0.5];
     let call = 0;
     const randomSpy = vi.spyOn(Math, 'random').mockImplementation(() => sequence[call++ % sequence.length]);
     let res: Awaited<ReturnType<typeof place>>;
