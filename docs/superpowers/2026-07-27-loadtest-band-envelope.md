@@ -178,3 +178,63 @@ has cached).
   response path exclusively. The delta protocol — the thing this branch adds —
   was never measured. Testing it needs the harness to carry `version` + `baseId`
   across iterations.
+
+---
+
+# Leg 2 re-run: after frozen-row deletion (commit `44c32b4`)
+
+Staging version `7fd00b97` (was `6c73ef8b`). Same command as the original leg 2,
+same fixture, so the only deliberate difference is the deletion.
+
+| Window (UTC) | Window (EDT) | Leg |
+|---|---|---|
+| 23:40:23–23:43:21 | 19:40–19:43 | large isolation, 200 placements, `PLACEMENT_VUS=1`, `PLACE_RATE=0`, `SESSIONS=50` |
+
+## The read path shrank 85%
+
+Measured on the real staging `heap_core_staging` row, before and after the run:
+
+| | before | after |
+|---|---|---|
+| `heap_band` rows (what every read parses) | **348** | **53** |
+| live | 65 | 53 |
+| frozen (dead weight) | **283** | **0** |
+| freeze band | 249669 | 249548 |
+| base blob | 34,826 B | 42,810 B |
+| heap version | 618 | 755 |
+
+**The 283-row backlog cleaned itself up on the first freeze, with no migration.**
+That falls out of the deletion boundary rather than being designed in: the rule is
+`DELETE WHERE band >= bandOf(freezeY)`, and because the freeze line only ever
+advances toward the summit (lower band index), each new line's deletion range is a
+superset of every previous one. Any heap carrying frozen rows from before this
+commit sheds all of them the next time it freezes. No backfill needed anywhere.
+
+The `frozen = 0` cell is the load-bearing one: it is not "frozen rows grew more
+slowly", it is "the category no longer exists at rest".
+
+## What did NOT get fixed
+
+The base blob still grew, 34,826 → 42,810 bytes (+23%) across this run's ~3
+freezes. That is the second parked follow-up — re-envelope the base at freeze
+instead of concatenating — and it remains the last unbounded term on the read
+path. It is a much smaller term than the band rows were (bytes fetched once per
+`baseId` and cached indefinitely client-side, versus rows parsed on every
+request), but it is still monotonic in heap age.
+
+## Latency, recorded but not concluded from
+
+`place-contention` med 596→503 ms, p95 864→663 ms; `heap-get` med 223→187 ms.
+Directionally consistent with the row reduction and **not evidence** — run-to-run
+variance on an identical target is ~18%, which swamps this. `heap-base` med went
+the other way (163→355 ms), consistent with the larger base blob but equally
+inside the noise. The CPU dashboard remains the only signal that decides this.
+
+`cas_accepted` was 137/200, up from 119/200 on the same fixture pre-change. Not a
+goal of this commit and not read as one.
+
+## Still open
+
+CPU for the 23:40–23:43 UTC window has to be read off the dashboard. The D1
+evidence above establishes that the *cause* identified in the previous section is
+gone; it does not by itself establish that P99 is back under 10 ms.
