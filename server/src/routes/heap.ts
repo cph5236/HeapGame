@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import type { HeapDB, HeapRow } from '../db';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
-import { checkFreeze, hashVertices } from '../polygon';
+import { hashVertices } from '../polygon';
 import {
   BAND_SIZE_PX, bandOf, bandMidY, extendsEnvelope, verticesToEnvelope, envelopeToRows,
   envelopeToVertices, mergeBands,
