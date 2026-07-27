@@ -7,7 +7,7 @@ import { captureServer } from '../logging/captureServerEvent';
 import { hashVertices, checkFreezeBands } from '../polygon';
 import {
   BAND_SIZE_PX, bandOf, bandMidY, extendsEnvelope, verticesToEnvelope, envelopeToRows,
-  envelopeToVertices, mergeBands, bandsToWire,
+  envelopeToVertices, mergeBands, bandsToWire, seedNewBands,
   type BandEnvelope, type BandRow,
 } from '../../../shared/heapPolygon/bandEnvelope';
 import { MAX_ID_LEN } from '../constants';
@@ -613,7 +613,19 @@ export function heapRoutes(
       });
     }
 
-    const bandRows: BandRow[] = envelopeToRows(verticesToEnvelope(candidates));
+    // A candidate landing in an empty band knows only one x, so the band would
+    // be stored with minX === maxX and the renderer would forward-fill the other
+    // side from the previous band — the sawtooth. Seed the unknown side by
+    // interpolating between the nearest two-extent bands above and below, so the
+    // opposite edge gets a value belonging to this y. Only bands with a known
+    // neighbour on both sides are seeded (see interpolateBandSeed), so a new
+    // summit band still grows as a point rather than inheriting the width below
+    // it. Costs one extra read; the freeze check below deliberately re-reads
+    // after the commit rather than reusing this snapshot.
+    const bandRows: BandRow[] = seedNewBands(
+      envelopeToRows(verticesToEnvelope(candidates)),
+      mergeBands(new Map(), await db.getAllBands(id)),
+    );
 
     // Version is assigned inside the write — no expected-version compare, so no
     // way to lose a concurrent write. The blob is no longer touched here; it is

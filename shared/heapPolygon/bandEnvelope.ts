@@ -88,6 +88,71 @@ export function mergeBands(env: BandEnvelope, rows: BandRow[]): BandEnvelope {
   return out;
 }
 
+/**
+ * Seed the unknown side of a brand-new band by interpolating between the
+ * nearest bands above and below that have two distinct extents.
+ *
+ * A placement into an empty band knows one x, so the band is stored with
+ * minX === maxX. The renderer then assigns that lone point to whichever edge it
+ * is nearer and forward-fills the other from the previous band — which, when the
+ * previous band's extents are far away, yanks one edge across the heap and holds
+ * it there until a two-extent band snaps it back. That is the sawtooth.
+ * Interpolating gives the unknown side a value that belongs to this y instead of
+ * inheriting one that belongs to a different y.
+ *
+ * Deliberately requires a neighbour on BOTH sides — the band must be genuinely
+ * *between* two known ones. A new band above the summit has nothing above it, and
+ * seeding it from the band below alone would make every new summit band as wide
+ * as the one beneath it, growing the heap as a flat-topped column instead of a
+ * taper.
+ *
+ * Single-extent neighbours are skipped as seed sources: their own unknown side is
+ * a forward-filled guess, and interpolating from a guess propagates it.
+ *
+ * Returns null when there is no pair to interpolate between, meaning "store the
+ * point as-is".
+ */
+export function interpolateBandSeed(
+  env: BandEnvelope,
+  band: number,
+): { minX: number; maxX: number } | null {
+  let above: number | null = null; // nearest lower band index (smaller y, up-screen)
+  let below: number | null = null; // nearest higher band index
+  for (const [b, e] of env) {
+    if (e.minX === e.maxX || b === band) continue;
+    if (b < band) { if (above === null || b > above) above = b; }
+    else if (below === null || b < below) below = b;
+  }
+  if (above === null || below === null) return null;
+  const a = env.get(above)!;
+  const z = env.get(below)!;
+  const t = (band - above) / (below - above);
+  return {
+    minX: a.minX + (z.minX - a.minX) * t,
+    maxX: a.maxX + (z.maxX - a.maxX) * t,
+  };
+}
+
+/**
+ * Widen each row that lands in a currently-empty band with its interpolated
+ * seed, so the band records a plausible opposite side instead of a single point.
+ * The placed x always wins on the side it falls outside — seeding fills in the
+ * unknown side, it never overrides observed geometry. Rows for bands that
+ * already exist are returned untouched: those have real extents already.
+ */
+export function seedNewBands(rows: BandRow[], existing: BandEnvelope): BandRow[] {
+  return rows.map((r) => {
+    if (existing.has(r.band)) return r;
+    const seed = interpolateBandSeed(existing, r.band);
+    if (!seed) return r;
+    return {
+      band: r.band,
+      minX: Math.min(r.minX, seed.minX),
+      maxX: Math.max(r.maxX, seed.maxX),
+    };
+  });
+}
+
 export function envelopeToRows(env: BandEnvelope): BandRow[] {
   return [...env.keys()]
     .sort((a, b) => a - b)
