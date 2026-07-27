@@ -22,6 +22,7 @@ export interface HeapRow {
   positive_item_spawn_rate: number;
   negative_item_spawn_rate: number;
   locked_by_heap_id: string | null;
+  live_zone_version: number;
 }
 
 export interface HeapSummaryRow {
@@ -76,6 +77,8 @@ export interface HeapDB {
     expectedVersion?: number,
   ): Promise<boolean>;
   updateHeapParams(id: string, params: HeapParams): Promise<void>;
+  /** Store a rebuilt live_zone blob and the heap version it was built from. */
+  setLiveZoneBlob(heapId: string, liveZone: Vertex[], version: number): Promise<void>;
   deleteHeap(id: string): Promise<void>;
   getBaseVerticesById(baseId: string): Promise<Vertex[] | null>;
   createBase(id: string, heapId: string, vertices: Vertex[], vertexHash: string, now: string): Promise<void>;
@@ -111,7 +114,7 @@ export class D1HeapDB implements HeapDB {
   async getHeap(id: string): Promise<HeapRow | null> {
     const row = await this.d1
       .prepare(
-        'SELECT id, base_id, live_zone, freeze_y, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height, top_y, ghost_point_count, base_item_spawn_rate, positive_item_spawn_rate, negative_item_spawn_rate, locked_by_heap_id FROM heap WHERE id = ?1',
+        'SELECT id, base_id, live_zone, freeze_y, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height, top_y, ghost_point_count, base_item_spawn_rate, positive_item_spawn_rate, negative_item_spawn_rate, locked_by_heap_id, live_zone_version FROM heap WHERE id = ?1',
       )
       .bind(id)
       .first<HeapRow>();
@@ -194,6 +197,13 @@ export class D1HeapDB implements HeapDB {
       )
       .bind(params.name, params.difficulty, params.spawnRateMult, params.coinMult, params.scoreMult, params.worldHeight, ghostPointCount,
             params.baseItemSpawnRate, params.positiveItemSpawnRate, params.negativeItemSpawnRate, params.lockedByHeapId ?? null, id)
+      .run();
+  }
+
+  async setLiveZoneBlob(heapId: string, liveZone: Vertex[], version: number): Promise<void> {
+    await this.d1
+      .prepare('UPDATE heap SET live_zone = ?1, live_zone_version = ?2 WHERE id = ?3')
+      .bind(JSON.stringify(liveZone), version, heapId)
       .run();
   }
 

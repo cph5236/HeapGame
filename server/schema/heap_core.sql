@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS heap (
   base_item_spawn_rate     REAL NOT NULL DEFAULT 0.33,
   positive_item_spawn_rate REAL NOT NULL DEFAULT 0.15,
   negative_item_spawn_rate REAL NOT NULL DEFAULT 0.85,
-  locked_by_heap_id TEXT
+  locked_by_heap_id TEXT,
+  live_zone_version INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS heap_parameters (

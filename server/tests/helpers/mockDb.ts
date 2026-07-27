@@ -92,6 +92,7 @@ export class MockHeapDB implements HeapDB {
       positive_item_spawn_rate: params.positiveItemSpawnRate ?? DEFAULT_HEAP_PARAMS.positiveItemSpawnRate,
       negative_item_spawn_rate: params.negativeItemSpawnRate ?? DEFAULT_HEAP_PARAMS.negativeItemSpawnRate,
       locked_by_heap_id: params.lockedByHeapId ?? null,
+      live_zone_version: 0,
     });
   }
 
@@ -138,6 +139,16 @@ export class MockHeapDB implements HeapDB {
     });
   }
 
+  async setLiveZoneBlob(heapId: string, liveZone: Vertex[], version: number): Promise<void> {
+    const existing = this.heaps.get(heapId);
+    if (!existing) return;
+    this.heaps.set(heapId, {
+      ...existing,
+      live_zone: JSON.stringify(liveZone),
+      live_zone_version: version,
+    });
+  }
+
   async deleteHeap(id: string): Promise<void> {
     this.heaps.delete(id);
     for (const [baseId, base] of this.bases.entries()) {
@@ -159,13 +170,20 @@ export class MockHeapDB implements HeapDB {
     });
   }
 
-  /** Test helper — seed a heap row directly without going through createHeap. */
+  /**
+   * Test helper — seed a heap row directly without going through createHeap.
+   * Stamps live_zone_version = version: a directly-seeded blob is assumed to
+   * already be current for the state it describes. Tests that need to exercise
+   * the lazy-rebuild path do so explicitly via upsertBands + updateHeap, not
+   * seedHeap (see liveZoneRebuild.test.ts).
+   */
   seedHeap(id: string, version: number, liveZone: Vertex[], baseId = id, freezeY = 0, params: HeapParams = DEFAULT_HEAP_PARAMS): void {
     const ghostPointCount = (params as any).ghostPointCount ?? 1;
     this.heaps.set(id, {
       base_id: baseId,
       version,
       live_zone: JSON.stringify(liveZone),
+      live_zone_version: version,
       freeze_y: freezeY,
       created_at: '2026-01-01T00:00:00.000Z',
       name:            params.name,

@@ -1,10 +1,11 @@
 // server/tests/routes.test.ts
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createApp, type AppOptions } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockSink } from './helpers/mockSink';
+import { bandOf } from '../../shared/heapPolygon/bandEnvelope';
 import type {
   CreateHeapResponse,
   ListHeapsResponse,
@@ -436,38 +437,54 @@ describe('POST /heaps/:id/place', () => {
   });
 
   it('ghost points land within GHOST_JITTER_RADIUS_PX of an existing live zone vertex', async () => {
-    // Seed a heap with one existing vertex far from the placement point
+    // Seed a heap with one existing band far from the placement point. GET now
+    // rebuilds liveZone from bands whenever live_zone_version lags version (see
+    // materialiseLiveZone / liveZoneRebuild.test.ts), and any updateHeap call
+    // (including this placement's) advances version without touching
+    // live_zone_version — so the post-placement read below is always served
+    // from bands, not the raw dual-written blob. The existing vertex must be
+    // seeded into bands too (not just seedHeap's live_zone) to survive that
+    // rebuild, exactly as a real heap's Phase-1 dual-write would leave it.
+    const EXISTING_BAND = bandOf(300); // 15; bandMidY(15) = 310
     const db = new MockHeapDB();
     db.seedHeap('h1', 1, [{ x: 600, y: 300 }], 'base-1', 0, {
       ...DEFAULT_HEAP_PARAMS,
       ghostPointCount: 1,
     });
     db.seedBase('base-1', 'h1', []);
+    await db.upsertBands('h1', [{ band: EXISTING_BAND, minX: 600, maxX: 600 }], 1);
 
-    const app = createApp(db, new MockScoreDB());
-    await app.request('/heaps/h1/place', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ x: 400, y: 150 }),
-    });
+    // Deterministic Math.random() sequence (see placeEnvelope.test.ts's
+    // "anti-clustering regression" test for the derivation pattern). The one
+    // ghost draws 4 values in order: (1) sampledBand pick -> forces
+    // EXISTING_BAND, (2) minX-vs-maxX edge pick -> irrelevant, both are 600,
+    // (3) dx jitter -> +40 (visibly widens the band), (4) dy jitter -> 0
+    // (stays mid-band).
+    const sequence = [0.999, 0.9, 0.75, 0.5];
+    let call = 0;
+    const randomSpy = vi.spyOn(Math, 'random').mockImplementation(() => sequence[call++ % sequence.length]);
+    try {
+      const app = createApp(db, new MockScoreDB());
+      const placeRes = await app.request('/heaps/h1/place', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x: 400, y: 150 }),
+      });
+      expect(((await placeRes.json()) as PlaceResponse).accepted).toBe(true);
 
-    const heapRes = await app.request('/heaps/h1?version=0');
-    const heap = await heapRes.json() as Extract<GetHeapResponse, { changed: true }>;
-    // 1 existing + 1 player + 1 ghost = 3
-    expect(heap.liveZone).toHaveLength(3);
+      const heapRes = await app.request('/heaps/h1?version=0');
+      const heap = await heapRes.json() as Extract<GetHeapResponse, { changed: true }>;
 
-    const RADIUS = 80; // must match GHOST_JITTER_RADIUS_PX in heap.ts
-    // Possible anchors at the time ghost was inserted: existing (600,300) and player (400,150)
-    const anchors = [{ x: 600, y: 300 }, { x: 400, y: 150 }];
-    const ghostPoints = heap.liveZone.filter(
-      v => !(v.x === 400 && v.y === 150) && !(v.x === 600 && v.y === 300),
-    );
-    expect(ghostPoints).toHaveLength(1);
-    const ghost = ghostPoints[0];
-    const nearAnyAnchor = anchors.some(
-      a => Math.abs(ghost.x - a.x) <= RADIUS && Math.abs(ghost.y - a.y) <= RADIUS,
-    );
-    expect(nearAnyAnchor).toBe(true);
+      // player's own band (400,150) + existing band widened to [600,640] by
+      // the ghost = 3 points, band-ascending: player, then existing min, max.
+      expect(heap.liveZone).toEqual([
+        { x: 400, y: 150 },
+        { x: 600, y: 310 },
+        { x: 640, y: 310 },
+      ]);
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 });
 

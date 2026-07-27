@@ -105,6 +105,13 @@ export class CachedHeapDB implements HeapDB {
     await this.invalidateHeap(id);
   }
 
+  async setLiveZoneBlob(heapId: string, liveZone: Vertex[], version: number): Promise<void> {
+    await this.inner.setLiveZoneBlob(heapId, liveZone, version);
+    // Without this the cached row keeps reporting the old live_zone_version,
+    // and materialiseLiveZone rebuilds on every single read forever.
+    await this.invalidateHeap(heapId);
+  }
+
   async deleteHeap(id: string): Promise<void> {
     await this.inner.deleteHeap(id);
     await this.invalidateHeap(id);

@@ -1,12 +1,13 @@
 // server/src/routes/heap.ts
 
 import { Hono } from 'hono';
-import type { HeapDB } from '../db';
+import type { HeapDB, HeapRow } from '../db';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 import { checkFreeze, hashVertices } from '../polygon';
 import {
   BAND_SIZE_PX, bandOf, bandMidY, extendsEnvelope, verticesToEnvelope, envelopeToRows,
+  envelopeToVertices, mergeBands,
   type BandEnvelope, type BandRow,
 } from '../../../shared/heapPolygon/bandEnvelope';
 import { MAX_ID_LEN } from '../constants';
@@ -127,6 +128,25 @@ async function validateLockTarget(db: HeapDB, heapId: string, lockedByHeapId: st
     cursor = lockedBy.get(cursor) ?? null;
   }
   return null;
+}
+
+/**
+ * The live_zone blob is a derived cache of the band envelope, kept for clients
+ * on the `full` path that predate the band protocol. Rebuild it only when it
+ * lags the heap version; writes never pay for it.
+ */
+export async function materialiseLiveZone(db: HeapDB, row: HeapRow): Promise<Vertex[]> {
+  if (row.live_zone_version === row.version) {
+    return JSON.parse(row.live_zone) as Vertex[];
+  }
+  // Only bands at or below the freeze line have ever been represented in the
+  // blob — the base (frozen) portion is not part of the live zone. Including
+  // it would balloon the blob and change what old clients receive.
+  const freezeBand = bandOf(row.freeze_y);
+  const bands = (await db.getAllBands(row.id)).filter((b) => b.band >= freezeBand);
+  const vertices = envelopeToVertices(mergeBands(new Map(), bands));
+  await db.setLiveZoneBlob(row.id, vertices, row.version);
+  return vertices;
 }
 
 export function heapRoutes(
@@ -287,7 +307,7 @@ export function heapRoutes(
     }
 
     const [liveZone, enemyParams] = await Promise.all([
-      Promise.resolve(JSON.parse(row.live_zone) as Vertex[]),
+      materialiseLiveZone(db, row),
       db.getEnemyParams(id),
     ]);
 
