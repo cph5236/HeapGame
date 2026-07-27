@@ -88,6 +88,16 @@ export interface HeapDB {
   getBand(heapId: string, band: number): Promise<BandRow | null>;
   /** Every band of a heap, ascending. Used to materialise the full envelope. */
   getAllBands(heapId: string): Promise<BandRow[]>;
+  /**
+   * Bands in [fromBand, toBand] inclusive, ascending. A bounded range scan off
+   * the (heap_id, band) primary key. The placement path needs the band being
+   * placed into plus enough context around it to interpolate a new band's
+   * unknown side, which is a small window — reading the whole envelope for that
+   * would scale per-request work with heap height. Must read through any cache:
+   * the containment check decides whether a placement counts, so it cannot run
+   * on a stale snapshot.
+   */
+  getBandRange(heapId: string, fromBand: number, toBand: number): Promise<BandRow[]>;
   /** Bands whose last change is strictly newer than `version`, ascending. */
   getBandsSince(heapId: string, version: number): Promise<BandRow[]>;
   /** Highest occupied band, or null when the heap has none. O(log n) off the PK. */
@@ -291,6 +301,14 @@ export class D1HeapDB implements HeapDB {
     const res = await this.d1
       .prepare('SELECT band, min_x, max_x FROM heap_band WHERE heap_id = ?1 ORDER BY band')
       .bind(heapId)
+      .all<{ band: number; min_x: number; max_x: number }>();
+    return res.results.map((r) => ({ band: r.band, minX: r.min_x, maxX: r.max_x }));
+  }
+
+  async getBandRange(heapId: string, fromBand: number, toBand: number): Promise<BandRow[]> {
+    const res = await this.d1
+      .prepare('SELECT band, min_x, max_x FROM heap_band WHERE heap_id = ?1 AND band BETWEEN ?2 AND ?3 ORDER BY band')
+      .bind(heapId, fromBand, toBand)
       .all<{ band: number; min_x: number; max_x: number }>();
     return res.results.map((r) => ({ band: r.band, minX: r.min_x, maxX: r.max_x }));
   }

@@ -52,6 +52,15 @@ const OFF_PEAK_THRESHOLD_PX = 100; // px below top_y that earns off-peak bonus
 const OFF_PEAK_BONUS_COINS  = 10;  // flat coins awarded for off-peak placement
 const GHOST_JITTER_RADIUS_PX = 80;  // max px offset from anchor when placing ghost points
 
+// Furthest band a ghost can reach from the placement it anchors on.
+export const GHOST_SPREAD_BANDS = Math.ceil(GHOST_JITTER_RADIUS_PX / BAND_SIZE_PX);
+// How far past the candidate spread the placement window reaches, giving
+// interpolateBandSeed room to find a two-extent band on each side of a new band.
+// Beyond this the nearest neighbour is too far away for its extents to say
+// anything useful about this y, and no seed is better than a fabricated one.
+const SEED_SEARCH_BANDS = 16;
+const PLACE_WINDOW_BANDS = GHOST_SPREAD_BANDS + SEED_SEARCH_BANDS;
+
 function validateDifficulty(d: number): string | null {
   if (!Number.isFinite(d)) return 'difficulty must be a finite number';
   if (d < 1 || d > 5) return 'difficulty must be between 1 and 5';
@@ -563,16 +572,23 @@ export function heapRoutes(
       if (authRes) return authRes;
     }
 
+    // One bounded window read serves this whole handler: the containment check,
+    // and the seed sources for any new band. It replaces a point read plus a
+    // per-ghost read plus a full-envelope read — on a 4-ghost heap that is six
+    // queries collapsed into one, and unlike getAllBands its cost does not grow
+    // with heap height. Every candidate lands within GHOST_SPREAD_BANDS of this
+    // placement, so the window covers all of them with room to search outward
+    // for interpolation neighbours.
+    const band = bandOf(y);
+    const window = mergeBands(
+      new Map(),
+      await db.getBandRange(id, band - PLACE_WINDOW_BANDS, band + PLACE_WINDOW_BANDS),
+    );
+
     // Containment: a placement counts only if it widens its band. A point at or
     // inside the extents cannot change the silhouette the client renders, so
     // storing it would cost CPU and egress forever and draw nothing.
-    const band = bandOf(y);
-    const existing = await db.getBand(id, band);
-    const bandEnv: BandEnvelope = new Map(
-      existing ? [[existing.band, { minX: existing.minX, maxX: existing.maxX }]] : [],
-    );
-
-    if (!extendsEnvelope(bandEnv, x, y)) {
+    if (!extendsEnvelope(window, x, y)) {
       return c.json({ accepted: false, version: row.version } satisfies PlaceResponse);
     }
 
@@ -580,36 +596,25 @@ export function heapRoutes(
     // not widen a band are dropped by the same MIN/MAX upsert — the same
     // judgement as rejecting a placement.
     //
-    // Each ghost anchors on a random OCCUPIED band's edge, not this request's
-    // own placement/ghosts — otherwise growth clusters within jitter radius of
-    // wherever the player clicked instead of scattering across the live zone
-    // the way it does on main. Sampling a random band index and reading just
-    // that one band keeps this O(1) per ghost: one random pick + one point
-    // read, never a scan over the live zone.
+    // Every ghost anchors on THIS placement, so the heap thickens where the
+    // player actually built. Anchoring on a randomly sampled band across the
+    // whole live zone (what this did before, mirroring main) has two measured
+    // failures: it deposits the sampled band's x into a band up to
+    // GHOST_SPREAD_BANDS away, scrambling the silhouette into a sawtooth; and
+    // because a ghost anchors on a band's own extreme and jitters outward while
+    // the write is MIN/MAX, every band it touches steps monotonically wider and
+    // never narrows. With hits accumulating on every band for the heap's whole
+    // lifetime, that converges on a featureless full-width column. Anchoring
+    // locally bounds the hits any one band receives to the window the player
+    // spends near it, which is what keeps the shape stable.
     const candidates: Vertex[] = [{ x, y }];
     const ghostCount = Math.max(0, Math.floor(row.ghost_point_count ?? 1));
-    // Sample from the LIVE range only — summit band through the live floor.
-    // Sampling up to maxBand (which includes frozen bands after a freeze) would
-    // anchor ghosts on buried geometry the client never renders.
-    const summitBand = bandOf(row.top_y);
-    const liveBottomBand = bandOf(liveZoneBottomY);
     for (let i = 0; i < ghostCount; i++) {
-      let anchor: Vertex = { x, y };
-      if (summitBand <= liveBottomBand) {
-        const sampledBand = summitBand + Math.floor(Math.random() * (liveBottomBand - summitBand + 1));
-        const sampledRow = await db.getBand(id, sampledBand);
-        if (sampledRow) {
-          anchor = {
-            x: Math.random() < 0.5 ? sampledRow.minX : sampledRow.maxX,
-            y: bandMidY(sampledBand),
-          };
-        }
-      }
       const dx = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
       const dy = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
       candidates.push({
-        x: Math.max(PLACE_X_MIN, Math.min(PLACE_X_MAX, anchor.x + dx)),
-        y: Math.max(row.top_y, Math.min(liveZoneBottomY, anchor.y + dy)),
+        x: Math.max(PLACE_X_MIN, Math.min(PLACE_X_MAX, x + dx)),
+        y: Math.max(row.top_y, Math.min(liveZoneBottomY, y + dy)),
       });
     }
 
@@ -620,11 +625,10 @@ export function heapRoutes(
     // opposite edge gets a value belonging to this y. Only bands with a known
     // neighbour on both sides are seeded (see interpolateBandSeed), so a new
     // summit band still grows as a point rather than inheriting the width below
-    // it. Costs one extra read; the freeze check below deliberately re-reads
-    // after the commit rather than reusing this snapshot.
+    // it. Seeds come from the window read above — no additional query.
     const bandRows: BandRow[] = seedNewBands(
       envelopeToRows(verticesToEnvelope(candidates)),
-      mergeBands(new Map(), await db.getAllBands(id)),
+      window,
     );
 
     // Version is assigned inside the write — no expected-version compare, so no

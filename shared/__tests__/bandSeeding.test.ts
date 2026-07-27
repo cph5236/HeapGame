@@ -99,6 +99,14 @@ describe('seedNewBands', () => {
     expect(out.maxX).toBeGreaterThanOrEqual(162.5);
   });
 
+  it('leaves a new band alone when its own candidates already gave it two extents', () => {
+    // Several candidates landed in this new band, so both sides are observed.
+    // Widening it to the interpolated span would fabricate geometry past what
+    // was actually placed — there is no unknown side left to fill.
+    const rows: BandRow[] = [{ band: 2, minX: 100, maxX: 140 }];
+    expect(seedNewBands(rows, existing)).toEqual(rows);
+  });
+
   it('leaves rows for already-occupied bands untouched', () => {
     // Band 1 has real extents; seeding it would fabricate geometry over
     // observed geometry.

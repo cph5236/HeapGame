@@ -142,7 +142,10 @@ export function interpolateBandSeed(
  */
 export function seedNewBands(rows: BandRow[], existing: BandEnvelope): BandRow[] {
   return rows.map((r) => {
-    if (existing.has(r.band)) return r;
+    // Only a row that is genuinely one point needs a side invented. If several
+    // candidates landed in the same new band they already give it two extents,
+    // and widening that further would fabricate geometry past what was observed.
+    if (existing.has(r.band) || r.minX !== r.maxX) return r;
     const seed = interpolateBandSeed(existing, r.band);
     if (!seed) return r;
     return {

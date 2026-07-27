@@ -251,6 +251,15 @@ export class MockHeapDB implements HeapDB {
     }));
   }
 
+  async getBandRange(heapId: string, fromBand: number, toBand: number): Promise<BandRow[]> {
+    const m = this.bands.get(heapId);
+    if (!m) return [];
+    return [...m.keys()]
+      .filter((band) => band >= fromBand && band <= toBand)
+      .sort((a, b) => a - b)
+      .map((band) => ({ band, minX: m.get(band)!.minX, maxX: m.get(band)!.maxX }));
+  }
+
   async getBandsSince(heapId: string, version: number): Promise<BandRow[]> {
     const m = this.bands.get(heapId);
     if (!m) return [];

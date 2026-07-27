@@ -214,6 +214,48 @@ runtime guarantee no in-memory mock can simulate — see the honesty note atop
 Ghost points run the same band upsert. Ghosts that do not extend an envelope are
 dropped, which is now the same judgement as rejecting a placement.
 
+**Ghost anchoring is local, and that is load-bearing.** Every ghost anchors on
+its own placement, within `GHOST_JITTER_RADIUS_PX`. Anchoring instead on a
+randomly sampled band from across the live zone — which is what `main` did, via
+`liveZone[random]` — fails two ways, both measured on real heap data:
+
+1. It carries the *sampled* band's x into a band up to `GHOST_SPREAD_BANDS` away,
+   so a band's extents come from geometry belonging to a different y. Adjacent
+   bands then disagree by hundreds of px and the silhouette renders as a
+   sawtooth.
+2. A ghost anchors on a band's own extreme and jitters outward, while the write
+   is `MIN`/`MAX`. Only outward jitters survive, so every band a ghost touches
+   steps monotonically wider and can never narrow. Under whole-zone sampling
+   every band keeps accruing hits for the heap's entire lifetime, so all of them
+   converge on the `PLACE_X_MIN`/`PLACE_X_MAX` clamp: the heap becomes a
+   featureless full-width column. No choice of anchor rule avoids this — the
+   anchor sets the step size, never the direction. Local anchoring bounds the
+   hits any one band receives to the window the player spends near it, which is
+   what makes the shape stable rather than merely slow to degrade.
+
+The cost is that growth no longer spreads to parts of the heap nobody is
+climbing. That was an explicit trade, taken with the measurements above in hand.
+
+**New bands get an interpolated opposite side.** A candidate landing in an empty
+band knows one x, so the band would store `minX === maxX`, and
+`reconstructPolygonFromPoints` would assign that lone point to one edge and
+forward-fill the other from the previous band — reintroducing the sawtooth one
+band at a time. `interpolateBandSeed` supplies the unknown side from the nearest
+two-extent bands above and below. It requires a neighbour on *both* sides: a new
+summit band has nothing above it, and seeding from below alone would make every
+new summit band as wide as the one beneath it, growing a flat-topped column
+instead of a taper. Single-extent neighbours are skipped as seed sources, since
+their own opposite side is itself a forward-filled guess.
+
+**One bounded window read serves the whole placement.** Containment and seed
+lookup both read `getBandRange(id, band ± PLACE_WINDOW_BANDS)` — a range scan off
+the `(heap_id, band)` primary key. This replaces a point read for containment,
+one point read per ghost, and a full-envelope read for seed sources, so
+per-placement work stops scaling with either `ghostPointCount` or heap height.
+`getBandRange` must read through any cache, for the same reason `getBand` does:
+containment decides whether a placement counts, so it cannot run on a stale
+extent. `server/tests/bandSeedingRoute.test.ts` pins the read count.
+
 **Concurrency.** The `MIN`/`MAX` upsert is conflict-free: two placements in the
 same band both apply, and the handoff's open question about concurrent
 placements landing overlapping dissolves — both legitimately extend the

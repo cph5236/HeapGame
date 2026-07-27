@@ -150,6 +150,14 @@ export class CachedHeapDB implements HeapDB {
     return this.inner.getMaxBand(heapId);
   }
 
+  async getBandRange(heapId: string, fromBand: number, toBand: number): Promise<BandRow[]> {
+    // Read-through for the same reason as getBand: this window feeds the
+    // placement containment check, and a stale extent there lets a buried
+    // vertex through. Serving it from the cached snapshot would also make the
+    // window's freshness differ from getBand's, which is worse than either.
+    return this.inner.getBandRange(heapId, fromBand, toBand);
+  }
+
   async getBandsSince(heapId: string, version: number): Promise<BandRow[]> {
     // Read-through: fresher than the cached row's version, so a delta may
     // over-send relative to the watermark. That direction is safe — the client

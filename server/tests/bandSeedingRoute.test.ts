@@ -83,6 +83,38 @@ describe('write-time band seeding via POST /heaps/:id/place', () => {
     expect(summit).toMatchObject({ minX: 350, maxX: 350 });
   });
 
+  it('reads a bounded band window per placement, regardless of ghost count or heap height', async () => {
+    // The efficiency property this design rests on. Before local anchoring, a
+    // placement issued one point read for containment PLUS one per ghost for the
+    // sampled band, plus a full-envelope read for seed sources — so per-request
+    // work grew with both ghostPointCount and heap height. Now one bounded range
+    // read serves containment and seeding together. If this regresses, the CPU
+    // cost per placement silently starts scaling with the heap again.
+    const db = new MockHeapDB();
+    await db.createHeap('h1', 'b1', [{ x: 480, y: Y(B + 2) }], 'hash', NOW, {
+      ...DEFAULT_HEAP_PARAMS, worldHeight: 60000, ghostPointCount: 30,
+    });
+    for (const [x, band] of [[200, B + 2], [600, B + 2], [300, B], [500, B]] as const) {
+      await place(db, x, Y(band));
+    }
+
+    const calls: string[] = [];
+    for (const m of ['getBand', 'getBandRange', 'getAllBands', 'getMaxBand'] as const) {
+      const orig = db[m].bind(db);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (db as any)[m] = (...args: unknown[]) => { calls.push(m); return (orig as any)(...args); };
+    }
+    expect((await place(db, 350, Y(B + 1))).body.accepted).toBe(true);
+
+    const count = (m: string) => calls.filter((c) => c === m).length;
+    expect(count('getBandRange')).toBe(1);
+    // No per-ghost point reads, with 30 ghosts in flight.
+    expect(count('getBand')).toBe(0);
+    // Only the post-commit freeze check may scan the whole envelope.
+    expect(count('getAllBands')).toBe(1);
+    expect(calls.length).toBeLessThanOrEqual(3);
+  });
+
   it('does not touch a band that already has real geometry', async () => {
     const db = await heapWithTwoExtentNeighbours();
     // Band B already spans 300..500. A placement widening it must widen by

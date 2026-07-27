@@ -458,16 +458,14 @@ describe('POST /heaps/:id/place', () => {
     expect(body.bonusCoins).toBeUndefined();
   });
 
-  it('ghost points land within GHOST_JITTER_RADIUS_PX of an existing live zone vertex', async () => {
-    // Seed a heap with one existing band far from the placement point. GET now
-    // rebuilds liveZone from bands whenever live_zone_version lags version (see
-    // materialiseLiveZone / liveZoneRebuild.test.ts), and any updateHeap call
-    // (including this placement's) advances version without touching
-    // live_zone_version — so the post-placement read below is always served
-    // from bands, not the raw dual-written blob. The existing vertex must be
-    // seeded into bands too (not just seedHeap's live_zone) to survive that
-    // rebuild, exactly as a real heap's Phase-1 dual-write would leave it.
-    const EXISTING_BAND = bandOf(300); // 15; bandMidY(15) = 310
+  it('ghost points land within GHOST_JITTER_RADIUS_PX of the placement itself', async () => {
+    // Ghosts anchor on the placement, so they thicken the heap around where the
+    // player built. This test previously asserted the opposite — that a ghost
+    // reached an unrelated distant band it had sampled at random. That scatter
+    // was measured to both scramble the silhouette and inflate every band it
+    // touched monotonically toward the full column width, so it was replaced by
+    // local anchoring; see placeEnvelope.test.ts for the locality bound.
+    const EXISTING_BAND = bandOf(300);
     const db = new MockHeapDB();
     db.seedHeap('h1', 1, [{ x: 600, y: 300 }], 'base-1', 0, {
       ...DEFAULT_HEAP_PARAMS,
@@ -476,16 +474,10 @@ describe('POST /heaps/:id/place', () => {
     db.seedBase('base-1', 'h1', []);
     await db.upsertBands('h1', [{ band: EXISTING_BAND, minX: 600, maxX: 600 }], 1);
 
-    // Deterministic Math.random() sequence (see placeEnvelope.test.ts's
-    // "anti-clustering regression" test for the derivation pattern). Ghosts
-    // sample from [summitBand, liveBottomBand] = [bandOf(top_y)=0,
-    // bandOf(liveZoneBottomY)=16] (freeze_y=0, maxBand=EXISTING_BAND=15, so
-    // liveZoneBottomY=(15+1)*20=320 -> band 16) — a range of 17 bands. The one
-    // ghost draws 4 values in order: (1) sampledBand pick -> forces
-    // EXISTING_BAND: floor(R*17)=15 <=> R in [15/17, 16/17), R=0.9, (2)
-    // minX-vs-maxX edge pick -> irrelevant, both are 600, (3) dx jitter -> +40
-    // (visibly widens the band), (4) dy jitter -> 0 (stays mid-band).
-    const sequence = [0.9, 0.9, 0.75, 0.5];
+    // One ghost, two draws: dx then dy. dx = (0.75*2-1)*80 = +40, dy = 0 keeps
+    // it in the placement's own band, so the ghost widens that band to
+    // [400, 440] and the distant seeded band is left alone.
+    const sequence = [0.75, 0.5];
     let call = 0;
     const randomSpy = vi.spyOn(Math, 'random').mockImplementation(() => sequence[call++ % sequence.length]);
     try {
@@ -497,15 +489,14 @@ describe('POST /heaps/:id/place', () => {
       });
       expect(((await placeRes.json()) as PlaceResponse).accepted).toBe(true);
 
+      // The ghost widened the placement's OWN band (bandMidY(7) = 150), and the
+      // pre-existing band 15 is untouched at its single seeded extent.
       const heapRes = await app.request('/heaps/h1?version=0');
       const heap = await heapRes.json() as Extract<GetHeapResponse, { changed: true }>;
-
-      // player's own band (400,150) + existing band widened to [600,640] by
-      // the ghost = 3 points, band-ascending: player, then existing min, max.
       expect(heap.liveZone).toEqual([
         { x: 400, y: 150 },
+        { x: 440, y: 150 },
         { x: 600, y: 310 },
-        { x: 640, y: 310 },
       ]);
     } finally {
       randomSpy.mockRestore();
