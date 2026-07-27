@@ -279,24 +279,28 @@ treated as cold. The delta merge is the same `MIN`/`MAX` upsert as the server.
 
 **One canonical materialisation.** There is exactly one function,
 `envelopeToVertices(bands): Vertex[]`, which emits, for each occupied band in
-ascending band order, a vertex at `(min_x, bandMidY)` **and always** a second at
-`(max_x, bandMidY)` — even when the two extents are equal — where
+ascending band order, a vertex at `(min_x, bandMidY)` and — only when
+`max_x !== min_x` — a second at `(max_x, bandMidY)`, where
 `bandMidY = band * BAND_SIZE_PX + BAND_SIZE_PX / 2`. Absent rows emit nothing.
 Its output is fed to the existing `reconstructPolygonFromPoints`, unchanged.
 
-Emitting the second extent unconditionally is deliberate, and the property test
-in §6 is what forced it. An earlier draft emitted one vertex when the extents
-matched, on the reasoning that the client's single-point-band rule keys on
-`bandMinX === bandMaxX` and a single point preserves that. It does — but
-`reconstructPolygonFromPoints` opens with `if (points.length < 2) return []`, so
-a heap whose whole point set is one equal-extent band materialised to a single
-vertex and rendered as nothing, while the original points rendered as a
-(zero-area, invisible) two-vertex ring. Visually identical, structurally not —
-and an invariant with an exception is one a later change will trip over.
-Duplicating the extent cannot change any rendered pixel, because the renderer
-derives only per-band min/max from these points and a duplicate cannot move a
-min or a max. The cost is one redundant vertex per equal-extent band, which is
-rare in real heaps.
+**The invariant, stated precisely.** Exact array equality between
+`reconstruct(points)` and `reconstruct(envelopeToVertices(verticesToEnvelope(points)))`
+holds for every point set in which at least one band has two distinct x extents —
+which is every heap that can actually exist, since a heap always carries base
+vertices from a generated silhouette spanning many distinct x. Below that
+threshold the two sides may differ in array shape while both render nothing.
+
+This is not a hedge; it is forced. `reconstruct` opens with
+`if (points.length < 2) return []`, and `BandEnvelope` is
+`Map<band, {minX, maxX}>`, which discards how many points produced a band. So the
+materialiser cannot distinguish one real point from two points sharing an x, and
+**no emit rule can satisfy exact equality on both**: emitting one vertex for an
+equal-extent band diverges on the two-same-x input, and always emitting two
+diverges on the one-point input. Both divergences produce a zero-area ring on one
+side and an empty ring on the other — nothing drawn either way, which is why the
+visual guarantee is unaffected. Single-emit is kept because it is the cheaper rule
+in every payload and render path.
 
 That last point is deliberate and is what keeps the losslessness guarantee real.
 The reconstruction has behaviour that the naive "bands are the edges" shortcut

@@ -119,18 +119,14 @@ describe('envelopeToVertices', () => {
     ]);
   });
 
-  it('emits both extents even when they are equal', () => {
-    // Never one vertex: reconstructPolygonFromPoints returns [] for < 2 points,
-    // so a single-band heap would render as nothing. See the design doc §5.
+  it('emits a single vertex for a band whose extents are equal', () => {
     const env = verticesToEnvelope([{ x: 250, y: 25 }]);
-    expect(envelopeToVertices(env)).toEqual([{ x: 250, y: 30 }, { x: 250, y: 30 }]);
+    expect(envelopeToVertices(env)).toEqual([{ x: 250, y: 30 }]);
   });
 
   it('emits nothing for absent bands rather than filling gaps', () => {
     const env = verticesToEnvelope([{ x: 300, y: 5 }, { x: 250, y: 65 }]);
-    expect(envelopeToVertices(env)).toEqual([
-      { x: 300, y: 10 }, { x: 300, y: 10 }, { x: 250, y: 70 }, { x: 250, y: 70 },
-    ]);
+    expect(envelopeToVertices(env)).toEqual([{ x: 300, y: 10 }, { x: 250, y: 70 }]);
   });
 });
 
@@ -245,16 +241,16 @@ export function verticesToEnvelope(vertices: Vertex[]): BandEnvelope {
 
 /**
  * Materialise an envelope back into the point set the renderer consumes.
- * Emits at band-mid-y, ascending by band, ALWAYS both extents (even when equal),
- * and nothing at all for absent bands so the client's forward-fill still runs.
- * Feed the output to reconstructPolygonFromPoints — do not build edges from it
- * directly.
+ * Emits at band-mid-y, ascending by band, one vertex when the extents are equal
+ * so the client's single-point-band rule still triggers, and nothing at all for
+ * absent bands so the client's forward-fill still runs. Feed the output to
+ * reconstructPolygonFromPoints — do not build edges from it directly.
  *
- * Both extents always, because reconstructPolygonFromPoints opens with
- * `if (points.length < 2) return []`: a single-band heap materialised to one
- * vertex would render as nothing while its original points rendered as a
- * (zero-area) ring. The client's single-point-band rule still triggers, since it
- * keys on bandMinX === bandMaxX, which a duplicate preserves.
+ * Exact round-trip equality holds for any point set with two distinct extents in
+ * some band — i.e. every real heap. Below that it cannot: reconstruct returns []
+ * for fewer than 2 points, and this Map has already discarded the point count, so
+ * no emit rule distinguishes one point from two sharing an x. Both variants
+ * render nothing either way. See the design doc §5.
  */
 export function envelopeToVertices(env: BandEnvelope): Vertex[] {
   const out: Vertex[] = [];
@@ -262,7 +258,7 @@ export function envelopeToVertices(env: BandEnvelope): Vertex[] {
     const { minX, maxX } = env.get(band)!;
     const y = bandMidY(band);
     out.push({ x: minX, y });
-    out.push({ x: maxX, y });
+    if (maxX !== minX) out.push({ x: maxX, y });
   }
   return out;
 }
@@ -405,11 +401,10 @@ describe('band envelope losslessness', () => {
     }
   });
 
-  it('renders identically for degenerate inputs', () => {
+  it('renders identically for degenerate inputs that a heap can reach', () => {
     const cases: Vertex[][] = [
       [],                                                   // empty
       [{ x: 400, y: 100 }],                                 // single point
-      [{ x: 400, y: 100 }, { x: 400, y: 105 }],             // one band, equal x
       [{ x: 300, y: 100 }, { x: 500, y: 100 }],             // one band, two extents
       [{ x: 300, y: 100 }, { x: 500, y: 900 }],             // large gap, forward-fill
       [{ x: 300, y: 0 }, { x: 500, y: 19.999 }],            // band boundary
@@ -419,6 +414,25 @@ describe('band envelope losslessness', () => {
       const viaEnvelope = reconstructPolygonFromPoints(envelopeToVertices(verticesToEnvelope(pts)));
       expect(viaEnvelope, `case ${i}`).toEqual(direct);
     }
+  });
+
+  it('draws nothing on either side for a band with no distinct extents', () => {
+    // Two points sharing an x cannot round-trip to an equal ARRAY: the envelope
+    // has discarded the point count, so it materialises one vertex and reconstruct
+    // returns [] for fewer than two points. Both sides draw nothing, which is the
+    // guarantee that matters. No emit rule can fix both this and the single-point
+    // case — see the design doc §5.
+    const pts: Vertex[] = [{ x: 400, y: 100 }, { x: 400, y: 105 }];
+    const area = (p: Vertex[]): number =>
+      p.length < 3 ? 0 : Math.abs(p.reduce((s, v, i) => {
+        const w = p[(i + 1) % p.length];
+        return s + v.x * w.y - w.x * v.y;
+      }, 0) / 2);
+
+    const direct = reconstructPolygonFromPoints(pts);
+    const viaEnvelope = reconstructPolygonFromPoints(envelopeToVertices(verticesToEnvelope(pts)));
+    expect(area(direct)).toBe(0);
+    expect(area(viaEnvelope)).toBe(0);
   });
 
   it('bounds the point count by band coverage, not by placement count', () => {
