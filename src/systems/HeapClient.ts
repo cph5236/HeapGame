@@ -179,14 +179,19 @@ export class HeapClient {
       }
 
       if (data.changed && data.mode === 'delta') {
-        if (!cache || cache.bands.length === 0) {
-          // A delta with nothing usable to merge into would otherwise silently
-          // render an empty polygon — a blank heap with no error. This should
-          // be unreachable (the server only sends deltas to a baseId it was
-          // just echoed), but if it ever happens, fail loud and self-heal
-          // rather than render nothing.
+        if (!cache) {
+          // A delta with NO cache at all has nothing to merge into — rendering
+          // it would otherwise silently produce an empty polygon (a blank heap
+          // with no error). This is a safety net, not a real scenario we expect
+          // to hit: a cache-less client never sends `baseId`, so the server's
+          // own sameGeneration check should never route it to the delta
+          // branch. If it somehow does, self-heal by forcing a full refetch
+          // rather than rendering nothing. Note an EMPTY-but-present band
+          // cache (`bands: []`, e.g. a freshly created heap's first update) is
+          // NOT this case — mergeBands handles an empty envelope fine, so that
+          // merges normally below instead of paying this extra round-trip.
           console.warn(
-            `[HeapClient] Heap ${heapId} received mode:'delta' with no usable cached bands to merge into. Clearing cache and retrying with version=0.`,
+            `[HeapClient] Heap ${heapId} received mode:'delta' with no cache to merge into. Clearing cache and retrying with version=0.`,
           );
           clearCache(heapId);
           if (!_retry) return this.load(heapId, true);

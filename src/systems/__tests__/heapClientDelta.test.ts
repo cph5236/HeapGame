@@ -136,4 +136,55 @@ describe('HeapClient delta protocol', () => {
     expect(cache.baseId).toBe('b2');
     expect(cache.bands).toEqual([20, 100, 200]);   // NOT merged with band 10
   });
+
+  it('self-heals a delta received with no cache at all: forces a full refetch instead of rendering empty', async () => {
+    // Simulates the safety-net case: a cache-less client (no baseId sent, so
+    // this should be unreachable via the server's own sameGeneration check)
+    // somehow receives mode:'delta' back. It must not silently return [].
+    const deltaWithNoCache = {
+      changed: true, mode: 'delta', version: 6, baseId: 'b1', freezeY: 0,
+      bands: [10, 400, 500], params: {}, enemyParams: {},
+    };
+    const { urls } = stubFetch([deltaWithNoCache, fullResponse]);
+
+    const polygon = await new HeapClient().load('h1');
+
+    const heapQueryUrls = urls.filter((u) => !u.includes('/base'));
+    // Exactly two /heaps/:id requests — the original (unexpected delta) and
+    // the forced retry — never a third. Proves the _retry guard bounds the
+    // self-heal to one attempt rather than looping.
+    expect(heapQueryUrls).toHaveLength(2);
+    expect(heapQueryUrls[1]).toContain('version=0');
+    expect(heapQueryUrls[1]).not.toContain('baseId');
+
+    // Self-healed to the full response rather than silently rendering empty.
+    expect(polygon.length).toBeGreaterThan(0);
+    const cache = JSON.parse(localStorage.getItem(CACHE_KEY)!);
+    expect(cache.bands).toEqual(fullResponse.bands);
+    expect(cache.version).toBe(fullResponse.version);
+  });
+
+  it('merges a delta into a cache with empty-but-present bands without retriggering a refetch', async () => {
+    // Narrowed-guard companion: a freshly created heap's first cache has
+    // bands: [] (nothing placed yet) — that is a valid, mergeable envelope,
+    // not "no usable cache". It must merge normally, not pay the self-heal's
+    // extra round-trip.
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ shape: 2, version: 5, baseId: 'b1', bands: [] }));
+    localStorage.setItem('heap_base_b1', JSON.stringify([{ x: 480, y: 50000 }]));
+
+    const { urls } = stubFetch([{
+      changed: true, mode: 'delta', version: 6, baseId: 'b1', freezeY: 0,
+      bands: [10, 400, 500], params: {}, enemyParams: {},
+    }]);
+
+    await new HeapClient().load('h1');
+
+    // Only the single heap query — no self-heal retry, and no base fetch
+    // (already cached) — proving the empty-bands cache was treated as
+    // mergeable, not discarded.
+    expect(urls).toHaveLength(1);
+    const cache = JSON.parse(localStorage.getItem(CACHE_KEY)!);
+    expect(cache.bands).toEqual([10, 400, 500]);
+    expect(cache.version).toBe(6);
+  });
 });
