@@ -6,7 +6,7 @@ import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 import { checkFreeze, hashVertices } from '../polygon';
 import {
-  BAND_SIZE_PX, bandOf, extendsEnvelope, verticesToEnvelope, envelopeToRows,
+  BAND_SIZE_PX, bandOf, bandMidY, extendsEnvelope, verticesToEnvelope, envelopeToRows,
   type BandEnvelope, type BandRow,
 } from '../../../shared/heapPolygon/bandEnvelope';
 import { MAX_ID_LEN } from '../constants';
@@ -524,10 +524,28 @@ export function heapRoutes(
       // Candidate vertices: the placement plus its ghost points. Ghosts that do
       // not widen a band are dropped by the same MIN/MAX upsert — the same
       // judgement as rejecting a placement.
+      //
+      // Each ghost anchors on a random OCCUPIED band's edge, not this request's
+      // own placement/ghosts — otherwise growth clusters within jitter radius of
+      // wherever the player clicked instead of scattering across the live zone
+      // the way it does on main. Sampling a random band index and reading just
+      // that one band keeps this O(1) per ghost: one random pick + one point
+      // read, never a scan over the live zone.
       const candidates: Vertex[] = [{ x, y }];
       const ghostCount = Math.max(0, Math.floor(row.ghost_point_count ?? 1));
+      const freezeBand = bandOf(row.freeze_y);
       for (let i = 0; i < ghostCount; i++) {
-        const anchor = candidates[Math.floor(Math.random() * candidates.length)];
+        let anchor: Vertex = { x, y };
+        if (maxBand !== null && maxBand >= freezeBand) {
+          const sampledBand = freezeBand + Math.floor(Math.random() * (maxBand - freezeBand + 1));
+          const sampledRow = await db.getBand(id, sampledBand);
+          if (sampledRow) {
+            anchor = {
+              x: Math.random() < 0.5 ? sampledRow.minX : sampledRow.maxX,
+              y: bandMidY(sampledBand),
+            };
+          }
+        }
         const dx = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
         const dy = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
         candidates.push({

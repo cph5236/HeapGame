@@ -4,7 +4,7 @@
 // predicate the client renders by. Replaces the whole-polygon ray cast, which
 // tested a y-sorted zigzag ring that did not describe the rendered shape.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createApp } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
@@ -86,5 +86,60 @@ describe('POST /heaps/:id/place — envelope containment', () => {
     expect(inZone.status).toBe(200);
     const belowZone = await place(db, { x: 380, y: 47021 });
     expect(belowZone.status).toBe(400);
+  });
+
+  it('scatters a ghost into a band far from the placement (anti-clustering regression)', async () => {
+    // Ghosts must anchor on a random OCCUPIED band's edge, not on this
+    // request's own placement/earlier ghosts — otherwise growth clusters
+    // within GHOST_JITTER_RADIUS_PX of wherever the player clicked instead of
+    // scattering across the live zone the way it does on main. This proves a
+    // ghost can land many bands away from the placement's own band.
+    const db = new MockHeapDB();
+    await db.createHeap('h1', 'b1', [{ x: 480, y: 50000 }], 'hash', NOW, {
+      ...DEFAULT_HEAP_PARAMS,
+      worldHeight: 50000,
+      ghostPointCount: 8,
+    });
+    // freeze_y = 0 -> freezeBand = 0, the bottom of the sampling range.
+    await db.updateHeap('h1', 'b1', 1, [], 0, 47000);
+
+    // One occupied band at the TOP of the live range (maxBand), far from
+    // where we're about to place.
+    const FAR_BAND = 2400; // y in [48000, 48020)
+    await db.upsertBands('h1', [{ band: FAR_BAND, minX: 400, maxX: 500 }], 1);
+
+    const PLACEMENT_BAND = 2350; // y in [47000, 47020) -- 50 bands below FAR_BAND
+    const placementY = PLACEMENT_BAND * 20 + 10;
+
+    // Deterministic Math.random() sequence. Each ghost draws 4 values in
+    // order: (1) sampledBand pick, (2) minX-vs-maxX edge pick, (3) dx jitter,
+    // (4) dy jitter. Force every ghost onto FAR_BAND's maxX edge with zero
+    // jitter on y (stays mid-band) and +40px jitter on x (provably widens the
+    // band rather than just re-touching its existing extent).
+    //   range = maxBand(2400) - freezeBand(0) + 1 = 2401
+    //   floor(R * 2401) = 2400  <=>  R in [2400/2401, 1)      -> R = 0.9999
+    //   R < 0.5 ? minX : maxX = maxX                          -> R = 0.9
+    //   dx = (R*2-1)*80 = 40                                  -> R = 0.75
+    //   dy = (R*2-1)*80 = 0                                   -> R = 0.5
+    const sequence = [0.9999, 0.9, 0.75, 0.5];
+    let call = 0;
+    const randomSpy = vi.spyOn(Math, 'random').mockImplementation(() => sequence[call++ % sequence.length]);
+    let res: Awaited<ReturnType<typeof place>>;
+    try {
+      res = await place(db, { x: 450, y: placementY });
+    } finally {
+      randomSpy.mockRestore(); // always restore, even if the request throws
+    }
+
+    expect(((await res.json()) as PlaceResponse).accepted).toBe(true);
+
+    // FAR_BAND's maxX must have widened from the seeded 500 to 540 — proof a
+    // ghost actually landed there, not just that the pre-seeded row exists.
+    expect(await db.getBand('h1', FAR_BAND)).toEqual({ band: FAR_BAND, minX: 400, maxX: 540 });
+
+    // And FAR_BAND is unambiguously far from the placement's own band, well
+    // outside the "own band ± 2" neighborhood the old vertex-anchored
+    // implementation was confined to.
+    expect(Math.abs(FAR_BAND - PLACEMENT_BAND)).toBeGreaterThan(2);
   });
 });
