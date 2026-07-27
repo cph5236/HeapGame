@@ -155,6 +155,13 @@ export class CachedHeapDB implements HeapDB {
     return newVersion;
   }
 
+  async setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void> {
+    await this.inner.setFreeze(heapId, baseId, freezeY);
+    // Changes base_id and freeze_y on the heap row — invalidate like every
+    // other write, or the cached row keeps pointing at the stale base.
+    await this.invalidateHeap(heapId);
+  }
+
   // ---- helpers ----
 
   /** Bust the per-heap row cache and the list cache. Synchronous (write path). */

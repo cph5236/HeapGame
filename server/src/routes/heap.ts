@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import type { HeapDB, HeapRow } from '../db';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
-import { hashVertices } from '../polygon';
+import { hashVertices, checkFreezeBands } from '../polygon';
 import {
   BAND_SIZE_PX, bandOf, bandMidY, extendsEnvelope, verticesToEnvelope, envelopeToRows,
   envelopeToVertices, mergeBands,
@@ -465,9 +465,7 @@ export function heapRoutes(
     // MIN/MAX band writes are conflict-free: two placements landing in the same
     // band both widen it regardless of arrival order, so there is nothing left
     // to compare-and-swap. This is a straight-line handler now — one read, one
-    // write. Freeze is NOT run here — that logic moves to Task 9, so until it
-    // lands this handler never freezes the base (deliberate, temporary gap; see
-    // commit body).
+    // write, then a freeze check.
     const row = await db.getHeapFresh(id);
     if (!row) return c.json({ error: 'Heap not found' }, 404);
 
@@ -574,6 +572,21 @@ export function heapRoutes(
     // a derived cache rebuilt lazily by materialiseLiveZone (Task 7).
     const newVersion = await db.bumpVersion(id, y);
     await db.upsertBands(id, bandRows, newVersion);
+
+    // Freeze: fold the bottom bands into the base. Minting a new baseId is
+    // mandatory — loadCachedBase keys localStorage on baseId with no TTL, so a
+    // stable id over changed base content strands every client on a stale base.
+    const freeze = checkFreezeBands(await db.getAllBands(id), freezeBand);
+    if (freeze) {
+      const existingBase = (await db.getBaseVerticesById(row.base_id)) ?? [];
+      const baseVertices = [
+        ...existingBase,
+        ...envelopeToVertices(mergeBands(new Map(), freeze.frozen)),
+      ];
+      const newBaseId = crypto.randomUUID();
+      await db.createBase(newBaseId, id, baseVertices, hashVertices(baseVertices), new Date().toISOString());
+      await db.setFreeze(id, newBaseId, freeze.newFreezeBand * BAND_SIZE_PX);
+    }
 
     const bonusCoins = y > row.top_y + OFF_PEAK_THRESHOLD_PX ? OFF_PEAK_BONUS_COINS : undefined;
 

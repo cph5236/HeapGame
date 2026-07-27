@@ -284,4 +284,10 @@ export class MockHeapDB implements HeapDB {
     row.top_y = Math.min(row.top_y, topYCandidate);
     return row.version;
   }
+
+  async setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void> {
+    const existing = this.heaps.get(heapId);
+    if (!existing) return;
+    this.heaps.set(heapId, { ...existing, base_id: baseId, freeze_y: freezeY });
+  }
 }

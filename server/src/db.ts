@@ -103,6 +103,12 @@ export interface HeapDB {
    * equals commit order — which is what makes a delta watermark sound.
    */
   bumpVersion(heapId: string, topYCandidate: number): Promise<number>;
+  /**
+   * Repoint the heap at a freshly-minted base and advance the freeze line.
+   * Called after folding the bottom bands into a new base snapshot; bands at
+   * or above freezeY remain the live set.
+   */
+  setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void>;
 }
 
 export class D1HeapDB implements HeapDB {
@@ -315,5 +321,12 @@ export class D1HeapDB implements HeapDB {
       .first<{ version: number }>();
     if (!row) throw new Error(`bumpVersion: heap ${heapId} not found`);
     return row.version;
+  }
+
+  async setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void> {
+    await this.d1
+      .prepare('UPDATE heap SET base_id = ?1, freeze_y = ?2 WHERE id = ?3')
+      .bind(baseId, freezeY, heapId)
+      .run();
   }
 }
