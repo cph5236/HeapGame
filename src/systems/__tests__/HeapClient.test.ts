@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { reconstructPolygonFromPoints } from '../HeapPolygonLoader';
+import { mergeBands, wireToBands, envelopeToVertices } from '../../../shared/heapPolygon/bandEnvelope';
 
 vi.mock('../authToken', () => ({
   authHeaders: () => ({ 'X-Player-Token': 'secret-test' }),
@@ -9,6 +10,12 @@ vi.mock('../authToken', () => ({
 // HeapClient reads SERVER_URL at module evaluation time from import.meta.env,
 // so we need to stub the global before importing.
 const BASE = 'http://localhost:8787';
+
+/** Decode a wire [band, minX, maxX, ...] triple array the same way HeapClient
+ * does internally, for building expected-polygon assertions in these tests. */
+function wireToVertices(wire: number[]) {
+  return envelopeToVertices(mergeBands(new Map(), wireToBands(wire)));
+}
 
 // Minimal localStorage stub
 function makeLocalStorage(): Storage {
@@ -76,16 +83,17 @@ describe('HeapClient.list', () => {
 // ── load() ────────────────────────────────────────────────────────────────────
 
 describe('HeapClient.load', () => {
-  it('fetches GET /heaps/:id with version=0 on cold cache and returns base + liveZone', async () => {
+  it('fetches GET /heaps/:id with version=0 and no baseId on cold cache, returns base + bands', async () => {
     const heapId = 'heap-guid-001';
     const baseId = 'base-guid-001';
     const baseVertices = [{ x: 100, y: 400 }, { x: 300, y: 600 }, { x: 500, y: 400 }];
-    const liveZone = [{ x: 200, y: 350 }];
+    // band 17 -> mid-y 350, single point (minX === maxX)
+    const bandsWire = [17, 200, 200];
 
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ changed: true, mode: 'full', version: 3, baseId, liveZone }),
+        json: async () => ({ changed: true, mode: 'full', version: 3, baseId, bands: bandsWire, liveZone: [], params: {}, enemyParams: {} }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -98,19 +106,20 @@ describe('HeapClient.load', () => {
     const fetchMock = vi.mocked(fetch);
     expect(fetchMock).toHaveBeenNthCalledWith(1, `${BASE}/heaps/${heapId}?version=0`);
     expect(fetchMock).toHaveBeenNthCalledWith(2, `${BASE}/heaps/${heapId}/base`);
-    expect(polygon).toEqual(reconstructPolygonFromPoints([...baseVertices, ...liveZone]));
+    expect(polygon).toEqual(reconstructPolygonFromPoints([...baseVertices, ...wireToVertices(bandsWire)]));
   });
 
-  it('sends cached version in query param on warm cache', async () => {
+  it('sends cached version AND baseId in query params on warm cache (delta opt-in)', async () => {
     const heapId = 'heap-guid-002';
     const baseId = 'base-guid-002';
     const cachedBase = [{ x: 0, y: 500 }, { x: 100, y: 500 }, { x: 50, y: 300 }];
-    const cachedLive = [{ x: 60, y: 280 }];
+    // band 14 -> mid-y 290, single point
+    const cachedBandsWire = [14, 60, 60];
 
-    // Prime the cache
+    // Prime the cache in the new (shape: 2) form
     localStorageStub.setItem(
       `heap_cache_${heapId}`,
-      JSON.stringify({ version: 7, baseId, liveZone: cachedLive }),
+      JSON.stringify({ shape: 2, version: 7, baseId, bands: cachedBandsWire }),
     );
     localStorageStub.setItem(
       `heap_base_${baseId}`,
@@ -125,10 +134,12 @@ describe('HeapClient.load', () => {
     const polygon = await HeapClient.load(heapId);
 
     const fetchMock = vi.mocked(fetch);
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/heaps/${heapId}?version=7`);
+    // A warm cache now opts into deltas by echoing BOTH version and baseId —
+    // this is the request-shape change this task exists to make.
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/heaps/${heapId}?version=7&baseId=${baseId}`);
     // base should NOT be re-fetched — cached
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(polygon).toEqual(reconstructPolygonFromPoints([...cachedBase, ...cachedLive]));
+    expect(polygon).toEqual(reconstructPolygonFromPoints([...cachedBase, ...wireToVertices(cachedBandsWire)]));
   });
 
   it('re-fetches base from GET /heaps/:id/base when baseId changes after freeze', async () => {
@@ -137,12 +148,13 @@ describe('HeapClient.load', () => {
     const newBaseId = 'base-new';
     const oldBase = [{ x: 0, y: 600 }, { x: 200, y: 800 }, { x: 400, y: 600 }];
     const newBase = [{ x: 0, y: 600 }, { x: 200, y: 800 }, { x: 400, y: 600 }, { x: 200, y: 350 }];
-    const newLive = [{ x: 210, y: 340 }];
+    // band 17 -> mid-y 350, single point
+    const newBandsWire = [17, 210, 210];
 
-    // Cache has the old baseId
+    // Cache has the old baseId, no bands yet (nothing placed pre-freeze)
     localStorageStub.setItem(
       `heap_cache_${heapId}`,
-      JSON.stringify({ version: 5, baseId: oldBaseId, liveZone: [] }),
+      JSON.stringify({ shape: 2, version: 5, baseId: oldBaseId, bands: [] }),
     );
     localStorageStub.setItem(
       `heap_base_${oldBaseId}`,
@@ -152,7 +164,7 @@ describe('HeapClient.load', () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ changed: true, mode: 'full', version: 10, baseId: newBaseId, liveZone: newLive }),
+        json: async () => ({ changed: true, mode: 'full', version: 10, baseId: newBaseId, bands: newBandsWire, liveZone: [], params: {}, enemyParams: {} }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -164,18 +176,19 @@ describe('HeapClient.load', () => {
 
     const fetchMock = vi.mocked(fetch);
     expect(fetchMock).toHaveBeenNthCalledWith(2, `${BASE}/heaps/${heapId}/base`);
-    expect(polygon).toEqual(reconstructPolygonFromPoints([...newBase, ...newLive]));
+    expect(polygon).toEqual(reconstructPolygonFromPoints([...newBase, ...wireToVertices(newBandsWire)]));
   });
 
   it('falls back to cached polygon on network error', async () => {
     const heapId = 'heap-guid-004';
     const baseId = 'base-guid-004';
     const base = [{ x: 0, y: 400 }, { x: 100, y: 600 }, { x: 200, y: 400 }];
-    const live = [{ x: 110, y: 390 }];
+    // band 19 -> mid-y 390, single point
+    const liveBandsWire = [19, 110, 110];
 
     localStorageStub.setItem(
       `heap_cache_${heapId}`,
-      JSON.stringify({ version: 2, baseId, liveZone: live }),
+      JSON.stringify({ shape: 2, version: 2, baseId, bands: liveBandsWire }),
     );
     localStorageStub.setItem(
       `heap_base_${baseId}`,
@@ -186,7 +199,7 @@ describe('HeapClient.load', () => {
 
     const polygon = await HeapClient.load(heapId);
 
-    expect(polygon).toEqual(reconstructPolygonFromPoints([...base, ...live]));
+    expect(polygon).toEqual(reconstructPolygonFromPoints([...base, ...wireToVertices(liveBandsWire)]));
   });
 });
 
@@ -223,7 +236,7 @@ describe('HeapClient.append', () => {
 
     localStorageStub.setItem(
       `heap_cache_${heapId}`,
-      JSON.stringify({ version: 8, baseId, liveZone: [] }),
+      JSON.stringify({ shape: 2, version: 8, baseId, bands: [] }),
     );
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
@@ -234,7 +247,7 @@ describe('HeapClient.append', () => {
     await HeapClient.append(heapId, 150, 300);
 
     // Version must stay at 8 — we don't have the server's v9 data yet.
-    // load() will send ?version=8, receive the real liveZone, then save v9.
+    // load() will send ?version=8, receive the real bands, then save v9.
     const stored = JSON.parse(localStorageStub.getItem(`heap_cache_${heapId}`)!);
     expect(stored.version).toBe(8);
   });
@@ -299,15 +312,16 @@ describe('HeapClient.append', () => {
 
 describe('HeapClient workflow: append then load', () => {
   it('load() after accepted append sends bumped version and returns server-fresh polygon', async () => {
-    const heapId = 'heap-guid-009';
+    const heapId = 'heap-guid-009b';
     const baseId = 'base-guid-009';
     const base = [{ x: 0, y: 600 }, { x: 300, y: 800 }, { x: 600, y: 600 }];
-    const liveAfterPlace = [{ x: 150, y: 550 }];
+    // band 27 -> mid-y 550, single point
+    const bandsAfterPlace = [27, 150, 150];
 
     // Warm cache at version 5
     localStorageStub.setItem(
       `heap_cache_${heapId}`,
-      JSON.stringify({ version: 5, baseId, liveZone: [] }),
+      JSON.stringify({ shape: 2, version: 5, baseId, bands: [] }),
     );
     localStorageStub.setItem(`heap_base_${baseId}`, JSON.stringify(base));
 
@@ -317,10 +331,10 @@ describe('HeapClient workflow: append then load', () => {
         ok: true,
         json: async () => ({ accepted: true, version: 6 }),
       })
-      // load GET → server returns changed data at version 6 with new live zone
+      // load GET → server returns changed data at version 6 with new bands
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ changed: true, mode: 'full', version: 6, baseId, liveZone: liveAfterPlace }),
+        json: async () => ({ changed: true, mode: 'full', version: 6, baseId, bands: bandsAfterPlace, liveZone: [], params: {}, enemyParams: {} }),
       }),
     );
 
@@ -328,9 +342,10 @@ describe('HeapClient workflow: append then load', () => {
     const polygon = await HeapClient.load(heapId);
 
     const fetchMock = vi.mocked(fetch);
-    // load() must send the PRE-append version (5, not 6) — we don't have v6 data yet
-    expect(fetchMock).toHaveBeenNthCalledWith(2, `${BASE}/heaps/${heapId}?version=5`);
-    expect(polygon).toEqual(reconstructPolygonFromPoints([...base, ...liveAfterPlace]));
+    // load() must send the PRE-append version (5, not 6) — we don't have v6 data yet.
+    // Cache is warm (baseId known), so it also echoes baseId to opt into deltas.
+    expect(fetchMock).toHaveBeenNthCalledWith(2, `${BASE}/heaps/${heapId}?version=5&baseId=${baseId}`);
+    expect(polygon).toEqual(reconstructPolygonFromPoints([...base, ...wireToVertices(bandsAfterPlace)]));
   });
 });
 
@@ -341,7 +356,6 @@ describe('HeapClient.getEnemyParams', () => {
     const heapId = 'heap-enemy-params-001';
     const baseId = 'base-enemy-params-001';
     const baseVertices = [{ x: 0, y: 500 }, { x: 100, y: 700 }, { x: 200, y: 500 }];
-    const liveZone: { x: number; y: number }[] = [];
     const enemyParams = {
       percher: { spawnStartPxAboveFloor: 0, spawnEndPxAboveFloor: -1, spawnRampPxAboveFloor: 12000, spawnChanceMin: 0.2, spawnChanceMax: 0.5 },
     };
@@ -349,7 +363,7 @@ describe('HeapClient.getEnemyParams', () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ changed: true, mode: 'full', version: 1, baseId, liveZone, params: {}, enemyParams }),
+        json: async () => ({ changed: true, mode: 'full', version: 1, baseId, bands: [], liveZone: [], params: {}, enemyParams }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -373,25 +387,24 @@ describe('HeapClient.getLiveZoneBottomY', () => {
     expect(HeapClient.getLiveZoneBottomY('no-such-id')).toBeNull();
   });
 
-  it('returns null when cached liveZone is empty', () => {
+  it('returns null when cached bands are empty', () => {
     localStorageStub.setItem(
       'heap_cache_abc',
-      JSON.stringify({ version: 1, baseId: 'b1', liveZone: [] }),
+      JSON.stringify({ shape: 2, version: 1, baseId: 'b1', bands: [] }),
     );
     expect(HeapClient.getLiveZoneBottomY('abc')).toBeNull();
   });
 
-  it('returns the maximum Y value from a populated liveZone', () => {
+  it('returns (highest band + 1) * BAND_SIZE_PX derived from the cached bands', () => {
+    // Bands 10, 25, 39 present (order in the wire deliberately not sorted) — the
+    // highest band is 39, so the bottom edge is (39 + 1) * 20 = 800.
     localStorageStub.setItem(
       'heap_cache_xyz',
       JSON.stringify({
+        shape: 2,
         version: 3,
         baseId: 'b2',
-        liveZone: [
-          { x: 100, y: 200 },
-          { x: 150, y: 800 },
-          { x: 120, y: 500 },
-        ],
+        bands: [10, 100, 100, 39, 150, 150, 25, 120, 120],
       }),
     );
     expect(HeapClient.getLiveZoneBottomY('xyz')).toBe(800);
@@ -425,16 +438,17 @@ describe('HeapClient.primeEnemyParams', () => {
     expect(HeapClient.getEnemyParams(HEAP)).toBeNull();
   });
 
-  it('merges enemyParams into an existing cache without clobbering liveZone/baseId', async () => {
+  it('merges enemyParams into an existing cache without clobbering bands/baseId', async () => {
     localStorageStub.setItem(
       `heap_cache_${HEAP}`,
-      JSON.stringify({ version: 5, baseId: 'b1', liveZone: [{ x: 1, y: 2 }] }),
+      JSON.stringify({ shape: 2, version: 5, baseId: 'b1', bands: [1, 5, 6] }),
     );
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => PARAMS }));
     await HeapClient.primeEnemyParams(HEAP);
     const cache = JSON.parse(localStorageStub.getItem(`heap_cache_${HEAP}`)!);
+    expect(cache.shape).toBe(2);
     expect(cache.baseId).toBe('b1');
-    expect(cache.liveZone).toEqual([{ x: 1, y: 2 }]);
+    expect(cache.bands).toEqual([1, 5, 6]);
     expect(cache.enemyParams).toEqual(PARAMS);
   });
 });
