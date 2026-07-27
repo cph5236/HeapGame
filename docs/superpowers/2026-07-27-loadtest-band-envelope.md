@@ -238,3 +238,52 @@ goal of this commit and not read as one.
 CPU for the 23:40–23:43 UTC window has to be read off the dashboard. The D1
 evidence above establishes that the *cause* identified in the previous section is
 gone; it does not by itself establish that P99 is back under 10 ms.
+
+## CPU: the fix lands, and the run contains its own before/after
+
+Window aggregate (19:38–19:45 EDT): **P50 3.68 / P90 5.83 / P99 9.53 / P999 16.71 ms.**
+
+The three freezes in this run are timestamped in `heap_base`, and the first one is
+what swept the 283-row backlog:
+
+| freeze | UTC | EDT |
+|---|---|---|
+| 1 (sweeps the backlog) | 23:41:23.544 | 19:41:23 |
+| 2 | 23:42:00.792 | 19:42:00 |
+| 3 | 23:42:57.434 | 19:42:57 |
+
+So the per-minute series straddles the transition: 19:40 ran entirely at 348 rows,
+and everything from 19:41:23 on ran at ~53–90.
+
+| minute (EDT) | rows in play | P50 | P90 | P99 | P999 |
+|---|---|---|---|---|---|
+| 19:40 | 348 (pre-sweep) | ~3.7 | ~7.9 | **~12.6** | ~18.5 |
+| 19:41 | mixed, sweep at :23 | 3.77 | 5.33 | 8.36 | 23.65 |
+| 19:42 | post-sweep | ~3.5 | ~5.0 | ~9.8 | ~16 |
+| 19:43 | post-sweep, no freeze | ~3.8 | ~5.1 | **~7.4** | ~9 |
+
+Compared with the same leg before the change (16:51–16:54 EDT, P99 ~12–17.2 ms
+per minute), the placement-only minutes moved from **12–17 ms to 7.4–9.8 ms** and
+the window P99 is **9.53 ms, under the 10 ms cap**. The 19:40 row agrees with the
+old numbers, which is the expected result for a minute that still had all 348 rows.
+
+One confound, stated rather than smoothed over: 19:40 also contains the 50-VU
+journey burst (`journey` completes in 6.2 s at run start), so that minute is not a
+clean band-rows measurement. The load-bearing comparison is the placement-only
+minutes, which are directly comparable between the two runs because the traffic
+shape is identical.
+
+### The remaining tail is the freeze operation, not the read path
+
+P999 still peaks over the cap: 23.65 ms at 19:41, ~16 at 19:42, but ~9 at 19:43.
+The two elevated minutes are exactly the minutes containing freezes, and the quiet
+minute is the one without one. A freeze reads the previous base, concatenates, and
+writes a larger blob — cost that grows with heap age and is unaffected by this
+commit. This is the same term as the base-blob growth noted above, and it is now
+the whole of what remains: the steady-state read path is inside budget, and the
+outliers are the freeze requests themselves. That makes re-enveloping the base at
+freeze the natural next piece of work, and it is a tail-latency fix rather than a
+throughput one.
+
+P999 over the cap on ~1 request in 1085 is not an `Error 1102` risk — Cloudflare
+kills sustained overruns, not infrequent ones.
