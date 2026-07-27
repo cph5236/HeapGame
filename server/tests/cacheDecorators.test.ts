@@ -84,6 +84,24 @@ describe('CachedHeapDB', () => {
     expect(kv.has(`cache:heap:${HEAP_ID}`)).toBe(true);
   });
 
+  it('bumpVersion invalidates both the heap row and the list cache', async () => {
+    const { inner, kv, cached } = setup();
+    inner.seedHeap(HEAP_ID, 1, []);
+    await cached.getHeap(HEAP_ID);
+    await cached.listHeaps();
+    expect(kv.has(`cache:heap:${HEAP_ID}`)).toBe(true);
+    expect(kv.has('cache:heap:list')).toBe(true);
+
+    const newVersion = await cached.bumpVersion(HEAP_ID, 0);
+    expect(newVersion).toBe(2);
+    expect(kv.deletes).toContain(`cache:heap:${HEAP_ID}`);
+    expect(kv.deletes).toContain('cache:heap:list');
+    expect(kv.has(`cache:heap:${HEAP_ID}`)).toBe(false);
+
+    // Next read reflects the bumped version — proves the stale cache was busted.
+    expect((await cached.getHeap(HEAP_ID))?.version).toBe(2);
+  });
+
   it('getBaseVerticesById is cache-aside; createBase pre-populates it', async () => {
     const { kv, cached } = setup();
     const verts = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 5, y: 10 }];

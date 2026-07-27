@@ -97,6 +97,12 @@ export interface HeapDB {
    * concurrent callers targeting the same band both apply, so this needs no CAS.
    */
   upsertBands(heapId: string, rows: BandRow[], version: number): Promise<void>;
+  /**
+   * Atomically increment the heap version and lower top_y toward the summit,
+   * returning the new version. Assigned inside the write, so version order
+   * equals commit order — which is what makes a delta watermark sound.
+   */
+  bumpVersion(heapId: string, topYCandidate: number): Promise<number>;
 }
 
 export class D1HeapDB implements HeapDB {
@@ -300,5 +306,14 @@ export class D1HeapDB implements HeapDB {
           .bind(heapId, r.band, r.minX, r.maxX, version),
       ),
     );
+  }
+
+  async bumpVersion(heapId: string, topYCandidate: number): Promise<number> {
+    const row = await this.d1
+      .prepare('UPDATE heap SET version = version + 1, top_y = MIN(top_y, ?1) WHERE id = ?2 RETURNING version')
+      .bind(topYCandidate, heapId)
+      .first<{ version: number }>();
+    if (!row) throw new Error(`bumpVersion: heap ${heapId} not found`);
+    return row.version;
   }
 }

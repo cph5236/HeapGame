@@ -276,4 +276,12 @@ export class MockHeapDB implements HeapDB {
         : { minX: r.minX, maxX: r.maxX, version });
     }
   }
+
+  async bumpVersion(heapId: string, topYCandidate: number): Promise<number> {
+    const row = this.heaps.get(heapId);
+    if (!row) throw new Error(`bumpVersion: heap ${heapId} not found`);
+    row.version += 1;
+    row.top_y = Math.min(row.top_y, topYCandidate);
+    return row.version;
+  }
 }
