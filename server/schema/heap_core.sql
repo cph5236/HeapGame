@@ -52,3 +52,17 @@ CREATE TABLE IF NOT EXISTS app_config (
 INSERT OR IGNORE INTO app_config (key, value, updated_at) VALUES (
   'ad_cadence', '{"min":40,"max":50}', datetime('now')
 );
+
+-- Band envelope: for each 20px vertical band, the leftmost and rightmost x.
+-- The heap's authoritative shape going forward (see migrations/heap_core/0004).
+CREATE TABLE IF NOT EXISTS heap_band (
+  heap_id TEXT    NOT NULL,
+  band    INTEGER NOT NULL,
+  min_x   REAL    NOT NULL,
+  max_x   REAL    NOT NULL,
+  version INTEGER NOT NULL,
+  PRIMARY KEY (heap_id, band)
+);
+
+-- Deltas select bands changed since a client's version.
+CREATE INDEX IF NOT EXISTS idx_heap_band_version ON heap_band(heap_id, version);
