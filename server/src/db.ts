@@ -6,6 +6,9 @@ import type { BandRow } from '../../shared/heapPolygon/bandEnvelope';
 export interface HeapRow {
   id: string;
   base_id: string;
+  /** Legacy: the pre-band-protocol vertex blob. heap_band is authoritative now;
+   *  the GET path derives `liveZone` from bands per request and never writes this
+   *  back, so it is frozen at whatever migration 0004 backfilled from. */
   live_zone: string;
   freeze_y: number;
   version: number;
@@ -22,6 +25,11 @@ export interface HeapRow {
   positive_item_spawn_rate: number;
   negative_item_spawn_rate: number;
   locked_by_heap_id: string | null;
+  /** Vestigial. Was the watermark telling the GET path whether live_zone needed
+   *  rebuilding; that rebuild-and-persist cost a D1 write plus two KV deletes per
+   *  placement, so `liveZone` is now derived per request instead. The column stays
+   *  because migration 0005 is already applied remotely — dropping it from the repo
+   *  would diverge from deployed schema for no gain. */
   live_zone_version: number;
 }
 
@@ -77,8 +85,6 @@ export interface HeapDB {
     expectedVersion?: number,
   ): Promise<boolean>;
   updateHeapParams(id: string, params: HeapParams): Promise<void>;
-  /** Store a rebuilt live_zone blob and the heap version it was built from. */
-  setLiveZoneBlob(heapId: string, liveZone: Vertex[], version: number): Promise<void>;
   deleteHeap(id: string): Promise<void>;
   getBaseVerticesById(baseId: string): Promise<Vertex[] | null>;
   createBase(id: string, heapId: string, vertices: Vertex[], vertexHash: string, now: string): Promise<void>;
@@ -234,13 +240,6 @@ export class D1HeapDB implements HeapDB {
       )
       .bind(params.name, params.difficulty, params.spawnRateMult, params.coinMult, params.scoreMult, params.worldHeight, ghostPointCount,
             params.baseItemSpawnRate, params.positiveItemSpawnRate, params.negativeItemSpawnRate, params.lockedByHeapId ?? null, id)
-      .run();
-  }
-
-  async setLiveZoneBlob(heapId: string, liveZone: Vertex[], version: number): Promise<void> {
-    await this.d1
-      .prepare('UPDATE heap SET live_zone = ?1, live_zone_version = ?2 WHERE id = ?3')
-      .bind(JSON.stringify(liveZone), version, heapId)
       .run();
   }
 

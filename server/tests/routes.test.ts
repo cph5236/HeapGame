@@ -175,7 +175,11 @@ describe('GET /heaps/:id', () => {
 
   it('returns changed:true with liveZone and baseId when client version is behind', async () => {
     const db = new MockHeapDB();
-    db.seedHeap('h1', 3, [{ x: 10, y: 20 }], 'base-guid-1');
+    db.seedHeap('h1', 3, [], 'base-guid-1');
+    // liveZone is derived from heap_band per request, not read from the
+    // heap.live_zone blob, so the band is what makes it non-empty. Seeding a
+    // blob alone would now produce liveZone: [] — see liveZoneKvCost.test.ts.
+    await db.upsertBands('h1', [{ band: 1, minX: 10, maxX: 40 }], 3);
     const res = await createApp(db, new MockScoreDB()).request('/heaps/h1?version=0');
     expect(res.status).toBe(200);
     const body = await res.json() as GetHeapResponse;
@@ -183,7 +187,7 @@ describe('GET /heaps/:id', () => {
     if (body.changed) {
       expect(body.version).toBe(3);
       expect(body.baseId).toBe('base-guid-1');
-      expect(body.liveZone).toEqual([{ x: 10, y: 20 }]);
+      expect(body.liveZone).toEqual([{ x: 10, y: 30 }, { x: 40, y: 30 }]);
     }
   });
 

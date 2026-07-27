@@ -104,13 +104,6 @@ export class CachedHeapDB implements HeapDB {
     await this.invalidateHeap(id);
   }
 
-  async setLiveZoneBlob(heapId: string, liveZone: Vertex[], version: number): Promise<void> {
-    await this.inner.setLiveZoneBlob(heapId, liveZone, version);
-    // Without this the cached row keeps reporting the old live_zone_version,
-    // and materialiseLiveZone rebuilds on every single read forever.
-    await this.invalidateHeap(heapId);
-  }
-
   async deleteHeap(id: string): Promise<void> {
     await this.inner.deleteHeap(id);
     await this.invalidateHeap(id);
@@ -188,7 +181,15 @@ export class CachedHeapDB implements HeapDB {
     // not-yet-written bands — a version served with fewer bands than it
     // actually carries, permanently under-claimed by any client that then
     // records it as a watermark.
-    await this.invalidateHeap(heapId);
+    // Row key only. The list summary carries version and topY, both of which
+    // this write changes, but nothing reads them for correctness: /place itself
+    // reads through getHeapFresh, and the only client consumer is the height
+    // label on HeapSelectScene. Letting those go up to HEAP_TTL stale is what a
+    // 60s cache means, and it halves the KV deletes on the hottest write path —
+    // deletes being the tightest Cloudflare quota at 1,000/day, account-wide.
+    // Structural writes (create/delete/reset/params) still bust both, because
+    // those change list MEMBERSHIP or params, which is not stale-but-equivalent.
+    await this.invalidateHeapRow(heapId);
     return newVersion;
   }
 
@@ -226,6 +227,16 @@ export class CachedHeapDB implements HeapDB {
       this.safeDelete(`cache:heap:${id}`),
       this.safeDelete('cache:heap:list'),
     ]);
+  }
+
+  /**
+   * Bust only the per-heap snapshot, leaving the list summary to expire on its
+   * own TTL. For writes that change a heap's contents but not the list's
+   * membership, and whose staleness in the list is cosmetic. One KV delete
+   * instead of two.
+   */
+  private async invalidateHeapRow(id: string): Promise<void> {
+    await this.safeDelete(`cache:heap:${id}`);
   }
 
   /** KV read that degrades to a cache miss on error, so callers fall through to D1. */

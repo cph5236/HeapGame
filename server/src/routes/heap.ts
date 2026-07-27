@@ -140,23 +140,15 @@ async function validateLockTarget(db: HeapDB, heapId: string, lockedByHeapId: st
 }
 
 /**
- * The live_zone blob is a derived cache of the band envelope, kept for clients
- * on the `full` path that predate the band protocol. Rebuild it only when it
- * lags the heap version; writes never pay for it.
+ * The live set of bands: everything above the freeze line. freeze_y = 0 means no
+ * freeze has happened yet, so every band is still live. After a freeze, freeze_y
+ * is the TOP of the frozen region (frozen = band >= freezeBand), so the live set
+ * is strictly above it — getting this comparison backwards serves the buried base
+ * as the live zone.
  */
-export async function materialiseLiveZone(db: HeapDB, row: HeapRow): Promise<Vertex[]> {
-  if (row.live_zone_version === row.version) {
-    return JSON.parse(row.live_zone) as Vertex[];
-  }
-  // freeze_y = 0 means no freeze has happened yet, so every band is still live.
-  // After a freeze, freeze_y is the TOP of the frozen region (frozen = band >= freezeBand),
-  // so the live set is strictly above it. Getting this comparison backwards serves the
-  // buried base as the live zone.
+export function liveBandsOf(row: HeapRow, allBands: BandRow[]): BandRow[] {
   const freezeBand = row.freeze_y > 0 ? bandOf(row.freeze_y) : Infinity;
-  const bands = (await db.getAllBands(row.id)).filter((b) => b.band < freezeBand);
-  const vertices = envelopeToVertices(mergeBands(new Map(), bands));
-  await db.setLiveZoneBlob(row.id, vertices, row.version);
-  return vertices;
+  return allBands.filter((b) => b.band < freezeBand);
 }
 
 export function heapRoutes(
@@ -350,18 +342,26 @@ export function heapRoutes(
       } satisfies GetHeapResponse);
     }
 
-    const [allBands, liveZone, enemyParams] = await Promise.all([
+    const [allBands, enemyParams] = await Promise.all([
       db.getAllBands(id),
-      materialiseLiveZone(db, row),
       db.getEnemyParams(id),
     ]);
     // Frozen bands are already folded into the base blob (fetched separately
     // and cached indefinitely by baseId) — resending them here would ship the
     // same geometry twice on every full response, growing with heap height.
-    // Same freeze_y===0 -> Infinity sentinel as materialiseLiveZone, so
-    // `bands` and `liveZone` describe the same band set.
-    const freezeBand = row.freeze_y > 0 ? bandOf(row.freeze_y) : Infinity;
-    const liveBands = allBands.filter((b) => b.band < freezeBand);
+    const liveBands = liveBandsOf(row, allBands);
+    // `liveZone` is the legacy field for clients that predate the band protocol.
+    // Derived here from the same array `bands` is built from, so the two describe
+    // the same band set by construction rather than by test.
+    //
+    // It is deliberately NOT persisted. It used to be written back to
+    // heap.live_zone behind a live_zone_version watermark, which cost a D1 write
+    // plus a KV cache invalidation (two deletes) on the first full GET after
+    // every placement — and KV deletes are the tightest Cloudflare quota at
+    // 1,000/day, account-wide. Recomputing is a map over ~77 live bands, far
+    // cheaper than the round trip it replaces, and it also removes a second
+    // getAllBands call that ran inside the old rebuild.
+    const liveZone = envelopeToVertices(mergeBands(new Map(), liveBands));
     return c.json({
       changed: true, mode: 'full',
       version: row.version, baseId: row.base_id, freezeY: row.freeze_y,

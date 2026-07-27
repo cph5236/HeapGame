@@ -84,7 +84,7 @@ describe('CachedHeapDB', () => {
     expect(kv.has(`cache:heap:${HEAP_ID}`)).toBe(true);
   });
 
-  it('commitPlacement invalidates both the heap row and the list cache, exactly once', async () => {
+  it('commitPlacement invalidates the heap row exactly once, and NOT the list cache', async () => {
     const { inner, kv, cached } = setup();
     inner.seedHeap(HEAP_ID, 1, []);
     await cached.getHeap(HEAP_ID);
@@ -99,7 +99,13 @@ describe('CachedHeapDB', () => {
     // concurrent read lands between them and observes a bumped version beside
     // not-yet-written bands.
     expect(kv.deletes.filter((k) => k === `cache:heap:${HEAP_ID}`)).toHaveLength(1);
-    expect(kv.deletes.filter((k) => k === 'cache:heap:list')).toHaveLength(1);
+    // The list key is deliberately NOT busted here. It carries version and topY,
+    // which a placement does change, but nothing reads them for correctness:
+    // /place reads through getHeapFresh, and the only client consumer is the
+    // height label on HeapSelectScene. Letting it age out on HEAP_TTL halves the
+    // KV deletes on the hottest write path — deletes being the tightest
+    // Cloudflare quota at 1,000/day, account-wide.
+    expect(kv.deletes.filter((k) => k === 'cache:heap:list')).toHaveLength(0);
     expect(kv.has(`cache:heap:${HEAP_ID}`)).toBe(false);
 
     // Next read reflects the bumped version AND the band stamped by the same

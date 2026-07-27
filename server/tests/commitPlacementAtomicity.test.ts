@@ -112,11 +112,12 @@ describe('CachedHeapDB.commitPlacement — invalidation timing', () => {
       100,
     );
 
-    // Exactly one delete for the heap-row key, and one for the list key — not
-    // two-per-key, which is what a split bumpVersion()+upsertBands() call pair
-    // (each invalidating on its own) would have produced.
+    // Exactly one delete for the heap-row key — not two, which is what a split
+    // bumpVersion()+upsertBands() call pair (each invalidating on its own) would
+    // have produced. The list key is deliberately untouched on placement; see
+    // liveZoneKvCost.test.ts for why that is safe.
     expect(kv.deletes.filter((k) => k === 'cache:heap:h1')).toHaveLength(1);
-    expect(kv.deletes.filter((k) => k === 'cache:heap:list')).toHaveLength(1);
+    expect(kv.deletes.filter((k) => k === 'cache:heap:list')).toHaveLength(0);
 
     // The snapshot rebuilt after invalidation must show the version and the
     // band together — never the bumped version beside a still-stale band set.

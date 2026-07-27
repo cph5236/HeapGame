@@ -139,16 +139,6 @@ export class MockHeapDB implements HeapDB {
     });
   }
 
-  async setLiveZoneBlob(heapId: string, liveZone: Vertex[], version: number): Promise<void> {
-    const existing = this.heaps.get(heapId);
-    if (!existing) return;
-    this.heaps.set(heapId, {
-      ...existing,
-      live_zone: JSON.stringify(liveZone),
-      live_zone_version: version,
-    });
-  }
-
   async deleteHeap(id: string): Promise<void> {
     this.heaps.delete(id);
     for (const [baseId, base] of this.bases.entries()) {
