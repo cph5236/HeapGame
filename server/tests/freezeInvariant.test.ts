@@ -43,6 +43,15 @@ const PLACEMENT_COUNT = LIVE_ZONE_MAX_BANDS + 1; // 78 — the minimum to force 
  * freeze genuinely fires on the final placement. ghostPointCount: 0 isolates
  * band creation to exactly one band per placement, no ghost noise.
  */
+async function climb(db: MockHeapDB, fromIndex: number, count: number): Promise<void> {
+  for (let i = fromIndex; i < fromIndex + count; i++) {
+    const y = START_Y - i * BAND_SIZE_PX;
+    const res = await place(db, 480, y);
+    const body = (await res.json()) as PlaceResponse;
+    expect(body.accepted).toBe(true);
+  }
+}
+
 async function driveToFreeze(): Promise<MockHeapDB> {
   const db = new MockHeapDB();
   await db.createHeap('h1', 'b1', [{ x: 480, y: START_Y }], 'hash', NOW, {
@@ -50,12 +59,7 @@ async function driveToFreeze(): Promise<MockHeapDB> {
     worldHeight: 60000,
     ghostPointCount: 0,
   });
-  for (let i = 0; i < PLACEMENT_COUNT; i++) {
-    const y = START_Y - i * BAND_SIZE_PX;
-    const res = await place(db, 480, y);
-    const body = (await res.json()) as PlaceResponse;
-    expect(body.accepted).toBe(true);
-  }
+  await climb(db, 0, PLACEMENT_COUNT);
   return db;
 }
 
@@ -118,6 +122,63 @@ describe('freeze partition invariant', () => {
     const stillLive = await place(db, 481, row!.freeze_y - BAND_SIZE_PX);
     const liveBody = (await stillLive.json()) as PlaceResponse;
     expect(liveBody.accepted).toBe(true);
+  });
+
+  it('freezes repeatedly, keeping the live band count bounded forever', async () => {
+    // The guard for the bug every other test in this file missed: they all
+    // drive exactly ONE freeze, and the first freeze fires correctly under
+    // either comparison direction (freeze_y is still 0, so the sentinel admits
+    // every band whichever way the filter points). checkFreezeBands takes
+    // *every* recorded band — freeze deletes no rows — so an inverted filter
+    // selects the already-frozen batch instead of the live set, whose count
+    // can never exceed the limit. Freeze then fires exactly once per heap for
+    // its entire lifetime while the live zone grows without bound, which is
+    // the one thing this whole feature exists to prevent.
+    const db = await driveToFreeze();
+    const first = await db.getHeapFresh('h1');
+    expect(first!.freeze_y).toBeGreaterThan(0);
+
+    // Keep climbing well past the point where a second, third and fourth
+    // freeze are due, asserting the bound after EVERY placement — not just at
+    // the end — so a freeze that stalls is caught at the placement it stalled
+    // on rather than 100 placements later.
+    const freezeLines: number[] = [first!.freeze_y];
+    for (let i = PLACEMENT_COUNT; i < PLACEMENT_COUNT + 4 * 38; i++) {
+      await climb(db, i, 1);
+      const row = await db.getHeapFresh('h1');
+      const freezeBand = row!.freeze_y > 0 ? bandOf(row!.freeze_y) : Infinity;
+      const live = (await db.getAllBands('h1')).filter((b) => b.band < freezeBand);
+      expect(live.length).toBeLessThanOrEqual(LIVE_ZONE_MAX_BANDS);
+      if (row!.freeze_y !== freezeLines[freezeLines.length - 1]) freezeLines.push(row!.freeze_y);
+    }
+
+    // Freeze fired more than once, and each line advanced toward the summit
+    // (lower y) — the frozen region only ever grows downward-inclusive.
+    expect(freezeLines.length).toBeGreaterThanOrEqual(4);
+    for (let i = 1; i < freezeLines.length; i++) {
+      expect(freezeLines[i]).toBeLessThan(freezeLines[i - 1]);
+    }
+
+    // Every freeze minted a fresh baseId (loadCachedBase caches base vertices
+    // by baseId with no TTL, so a reused id strands clients on a stale base),
+    // and the partition stays exact after all of them.
+    const row = await db.getHeapFresh('h1');
+    expect(row!.base_id).not.toBe(first!.base_id);
+
+    const freezeBand = bandOf(row!.freeze_y);
+    const allBands = await db.getAllBands('h1');
+    const baseBands = verticesToEnvelope((await db.getBaseVerticesById(row!.base_id)) ?? []);
+    for (const b of allBands) {
+      expect(b.band < freezeBand).toBe(!baseBands.has(b.band));
+    }
+
+    // The base absorbed every band the successive freezes shed — nothing was
+    // dropped on the floor between epochs.
+    expect(baseBands.size).toBe(allBands.filter((b) => b.band >= freezeBand).length);
+
+    // And the summit is still live and still reachable.
+    const summitBand = bandOf(row!.top_y);
+    expect(summitBand).toBeLessThan(freezeBand);
   });
 
   it('GET /heaps/:id serves a live zone with no frozen bands, through the real materialiseLiveZone path', async () => {

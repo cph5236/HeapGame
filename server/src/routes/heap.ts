@@ -588,7 +588,6 @@ export function heapRoutes(
     // read, never a scan over the live zone.
     const candidates: Vertex[] = [{ x, y }];
     const ghostCount = Math.max(0, Math.floor(row.ghost_point_count ?? 1));
-    const freezeBand = bandOf(row.freeze_y);
     // Sample from the LIVE range only — summit band through the live floor.
     // Sampling up to maxBand (which includes frozen bands after a freeze) would
     // anchor ghosts on buried geometry the client never renders.
@@ -631,6 +630,10 @@ export function heapRoutes(
     // Freeze: fold the bottom bands into the base. Minting a new baseId is
     // mandatory — loadCachedBase keys localStorage on baseId with no TTL, so a
     // stable id over changed base content strands every client on a stale base.
+    // Same freeze_y>0 sentinel as materialiseLiveZone and the full-response
+    // filter: `bandOf(0)` would be band 0, which is a real (if absurdly high)
+    // band index, not "nothing is frozen".
+    const freezeBand = row.freeze_y > 0 ? bandOf(row.freeze_y) : Infinity;
     const freeze = checkFreezeBands(await db.getAllBands(id), freezeBand);
     if (freeze) {
       const existingBase = (await db.getBaseVerticesById(row.base_id)) ?? [];

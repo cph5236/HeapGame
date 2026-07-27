@@ -20,12 +20,22 @@ export const FREEZE_BATCH_BANDS = 38;
  * HIGHEST band indices, since y grows downward. Frozen bands are immutable:
  * placement is gated to y <= liveZoneBottomY, so nothing writes below the freeze
  * line again. Returns null when no freeze is due.
+ *
+ * `allBands` is every band the heap has ever recorded — freeze never deletes
+ * rows — so the live set must be carved out here with the SAME predicate every
+ * other consumer uses: LIVE is `band < freezeBand`. Callers pass `Infinity` for
+ * the pre-freeze sentinel (`freeze_y === 0`), never `bandOf(0)`.
+ *
+ * The direction matters beyond the first freeze. Filtering `band >= freezeBand`
+ * instead selects the already-frozen bands, whose count can never exceed
+ * FREEZE_BATCH_BANDS — so freeze fires exactly once per heap and the live zone
+ * then grows without bound, defeating the whole point of freezing.
  */
 export function checkFreezeBands(
-  liveBands: BandRow[],
+  allBands: BandRow[],
   freezeBand: number,
 ): { newFreezeBand: number; frozen: BandRow[] } | null {
-  const live = liveBands.filter((b) => b.band >= freezeBand).sort((a, b) => a.band - b.band);
+  const live = allBands.filter((b) => b.band < freezeBand).sort((a, b) => a.band - b.band);
   if (live.length <= LIVE_ZONE_MAX_BANDS) return null;
   const frozen = live.slice(-FREEZE_BATCH_BANDS);
   return { newFreezeBand: frozen[0].band, frozen };
