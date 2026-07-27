@@ -7,7 +7,7 @@ import { captureServer } from '../logging/captureServerEvent';
 import { hashVertices, checkFreezeBands } from '../polygon';
 import {
   BAND_SIZE_PX, bandOf, bandMidY, extendsEnvelope, verticesToEnvelope, envelopeToRows,
-  envelopeToVertices, mergeBands,
+  envelopeToVertices, mergeBands, bandsToWire,
   type BandEnvelope, type BandRow,
 } from '../../../shared/heapPolygon/bandEnvelope';
 import { MAX_ID_LEN } from '../constants';
@@ -295,42 +295,63 @@ export function heapRoutes(
     return c.json({ ok: true });
   });
 
-  // GET /heaps/:id?version=N — read heap state (delta-aware)
+  // GET /heaps/:id?version=N&baseId=B — read heap state (delta-aware)
   app.get('/:id', async (c) => {
     const id = c.req.param('id');
     const clientVersion = parseInt(c.req.query('version') ?? '0') || 0;
+    const clientBaseId = c.req.query('baseId');
 
     const row = await db.getHeap(id);
     if (!row) return c.json({ error: 'Heap not found' }, 404);
 
-    if (clientVersion === row.version) {
+    // A client opts into deltas by echoing the baseId it holds. A mismatch means
+    // its cache spans a different generation (reset) or an older base (freeze),
+    // so it must take a full response.
+    const optedIn = typeof clientBaseId === 'string' && clientBaseId.length > 0;
+    const sameGeneration = optedIn && clientBaseId === row.base_id;
+
+    if (sameGeneration && clientVersion === row.version) {
+      return c.json({ changed: false, version: row.version } satisfies GetHeapResponse);
+    }
+    // Old clients send no baseId and rely on version alone.
+    if (!optedIn && clientVersion === row.version) {
       return c.json({ changed: false, version: row.version } satisfies GetHeapResponse);
     }
 
-    const [liveZone, enemyParams] = await Promise.all([
+    const params = {
+      name: row.name, difficulty: row.difficulty,
+      spawnRateMult: row.spawn_rate_mult, coinMult: row.coin_mult, scoreMult: row.score_mult,
+      worldHeight: row.world_height, ghostPointCount: row.ghost_point_count,
+      baseItemSpawnRate: row.base_item_spawn_rate,
+      positiveItemSpawnRate: row.positive_item_spawn_rate,
+      negativeItemSpawnRate: row.negative_item_spawn_rate,
+      lockedByHeapId: row.locked_by_heap_id ?? null,
+    };
+
+    if (sameGeneration) {
+      const [changedBands, enemyParams] = await Promise.all([
+        db.getBandsSince(id, clientVersion),
+        db.getEnemyParams(id),
+      ]);
+      return c.json({
+        changed: true, mode: 'delta',
+        version: row.version, baseId: row.base_id, freezeY: row.freeze_y,
+        bands: bandsToWire(changedBands),
+        params, enemyParams,
+      } satisfies GetHeapResponse);
+    }
+
+    const [allBands, liveZone, enemyParams] = await Promise.all([
+      db.getAllBands(id),
       materialiseLiveZone(db, row),
       db.getEnemyParams(id),
     ]);
-
     return c.json({
-      changed: true,
-      version: row.version,
-      baseId: row.base_id,
+      changed: true, mode: 'full',
+      version: row.version, baseId: row.base_id, freezeY: row.freeze_y,
+      bands: bandsToWire(allBands),
       liveZone,
-      params: {
-        name:            row.name,
-        difficulty:      row.difficulty,
-        spawnRateMult:   row.spawn_rate_mult,
-        coinMult:        row.coin_mult,
-        scoreMult:       row.score_mult,
-        worldHeight:     row.world_height,
-        ghostPointCount: row.ghost_point_count,
-        baseItemSpawnRate:     row.base_item_spawn_rate,
-        positiveItemSpawnRate: row.positive_item_spawn_rate,
-        negativeItemSpawnRate: row.negative_item_spawn_rate,
-        lockedByHeapId:  row.locked_by_heap_id ?? null,
-      },
-      enemyParams,
+      params, enemyParams,
     } satisfies GetHeapResponse);
   });
 
@@ -341,7 +362,16 @@ export function heapRoutes(
     if (!row) return c.json({ error: 'Heap not found' }, 404);
 
     const previousVersion = row.version;
-    await db.updateHeap(id, row.base_id, 1, [], 0, row.top_y);
+    // Reset mints a fresh baseId. loadCachedBase keys localStorage on baseId
+    // with no TTL, so a stable id over changed base content strands every
+    // client on stale geometry — the id change is what tells a client to
+    // discard its bands and take a full response. Copy the current base
+    // vertices onto the new row so the mountain below the freeze line survives.
+    const newBaseId = crypto.randomUUID();
+    const baseVertices = (await db.getBaseVerticesById(row.base_id)) ?? [];
+    await db.createBase(newBaseId, id, baseVertices, hashVertices(baseVertices), new Date().toISOString());
+    await db.clearBands(id);
+    await db.updateHeap(id, newBaseId, 1, [], 0, row.top_y);
 
     let bodyParams: Partial<HeapParams> = {};
     try { bodyParams = await c.req.json<Partial<HeapParams>>(); } catch { /* no body */ }

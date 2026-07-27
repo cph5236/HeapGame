@@ -85,7 +85,7 @@ describe('HeapClient.load', () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ changed: true, version: 3, baseId, liveZone }),
+        json: async () => ({ changed: true, mode: 'full', version: 3, baseId, liveZone }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -152,7 +152,7 @@ describe('HeapClient.load', () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ changed: true, version: 10, baseId: newBaseId, liveZone: newLive }),
+        json: async () => ({ changed: true, mode: 'full', version: 10, baseId: newBaseId, liveZone: newLive }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -320,7 +320,7 @@ describe('HeapClient workflow: append then load', () => {
       // load GET → server returns changed data at version 6 with new live zone
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ changed: true, version: 6, baseId, liveZone: liveAfterPlace }),
+        json: async () => ({ changed: true, mode: 'full', version: 6, baseId, liveZone: liveAfterPlace }),
       }),
     );
 
@@ -349,7 +349,7 @@ describe('HeapClient.getEnemyParams', () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ changed: true, version: 1, baseId, liveZone, params: {}, enemyParams }),
+        json: async () => ({ changed: true, mode: 'full', version: 1, baseId, liveZone, params: {}, enemyParams }),
       })
       .mockResolvedValueOnce({
         ok: true,

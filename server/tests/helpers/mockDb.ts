@@ -290,4 +290,8 @@ export class MockHeapDB implements HeapDB {
     if (!existing) return;
     this.heaps.set(heapId, { ...existing, base_id: baseId, freeze_y: freezeY });
   }
+
+  async clearBands(heapId: string): Promise<void> {
+    this.bands.delete(heapId);
+  }
 }

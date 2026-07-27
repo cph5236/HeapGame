@@ -281,12 +281,19 @@ describe('PUT /heaps/:id/reset', () => {
     expect(row?.freeze_y).toBe(0);
   });
 
-  it('preserves base_id on reset', async () => {
+  it('mints a new base_id on reset but preserves the base vertices', async () => {
+    // A stable base_id over changed content would strand clients on stale
+    // localStorage geometry (loadCachedBase caches by baseId with no TTL) —
+    // reset must mint a fresh id while carrying the pre-reset base shape
+    // (the mountain below the freeze line) onto the new row.
     const db = new MockHeapDB();
-    db.seedHeap('h1', 10, [{ x: 5, y: 5 }], 'base-preserved');
+    const baseVertices = [{ x: 5, y: 5 }, { x: 15, y: 25 }];
+    db.seedBase('base-old', 'h1', baseVertices);
+    db.seedHeap('h1', 10, [{ x: 5, y: 5 }], 'base-old');
     await createApp(db, new MockScoreDB()).request('/heaps/h1/reset', { method: 'PUT' });
     const row = await db.getHeap('h1');
-    expect(row?.base_id).toBe('base-preserved');
+    expect(row?.base_id).not.toBe('base-old');
+    expect(await db.getBaseVerticesById(row!.base_id)).toEqual(baseVertices);
   });
 });
 

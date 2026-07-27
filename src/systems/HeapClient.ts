@@ -127,7 +127,7 @@ export class HeapClient {
         }
       }
 
-      if (data.changed) {
+      if (data.changed && data.mode === 'full') {
         // Fetch base BEFORE saving cache, so we never persist a cache pointing
         // at a baseId we couldn't actually retrieve.
         const base = await fetchBase(heapId, data.baseId);

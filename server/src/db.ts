@@ -109,6 +109,9 @@ export interface HeapDB {
    * or above freezeY remain the live set.
    */
   setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void>;
+  /** Delete every band row for a heap. Used by reset — the fresh base absorbs
+   *  the live zone's shape, so the band table starts empty again. */
+  clearBands(heapId: string): Promise<void>;
 }
 
 export class D1HeapDB implements HeapDB {
@@ -327,6 +330,13 @@ export class D1HeapDB implements HeapDB {
     await this.d1
       .prepare('UPDATE heap SET base_id = ?1, freeze_y = ?2 WHERE id = ?3')
       .bind(baseId, freezeY, heapId)
+      .run();
+  }
+
+  async clearBands(heapId: string): Promise<void> {
+    await this.d1
+      .prepare('DELETE FROM heap_band WHERE heap_id = ?1')
+      .bind(heapId)
       .run();
   }
 }

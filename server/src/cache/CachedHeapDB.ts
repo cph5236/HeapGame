@@ -147,6 +147,14 @@ export class CachedHeapDB implements HeapDB {
   getMaxBand(heapId: string) { return this.inner.getMaxBand(heapId); }
   upsertBands(heapId: string, rows: BandRow[], version: number) { return this.inner.upsertBands(heapId, rows, version); }
 
+  async clearBands(heapId: string): Promise<void> {
+    await this.inner.clearBands(heapId);
+    // A write to heap_band — invalidate like every other write, even though
+    // bands themselves aren't cached, so any dependent heap-row cache entry
+    // (e.g. the list summary) doesn't linger stale past a reset.
+    await this.invalidateHeap(heapId);
+  }
+
   async bumpVersion(heapId: string, topYCandidate: number): Promise<number> {
     const newVersion = await this.inner.bumpVersion(heapId, topYCandidate);
     // Changes version and top_y on the heap row — invalidate exactly like every

@@ -92,9 +92,36 @@ export interface ListHeapsResponse {
 
 // ── Read (delta-aware) ───────────────────────────────────────────────────────
 
+export type GetHeapFullResponse = {
+  changed: true;
+  mode: 'full';
+  version: number;
+  baseId: string;
+  freezeY: number;
+  /** Flat [band, minX, maxX, ...] triples — the whole envelope. */
+  bands: number[];
+  /** Materialised vertex list, for clients that predate the band protocol. */
+  liveZone: Vertex[];
+  params: HeapParams;
+  enemyParams: HeapEnemyParams;
+};
+
+export type GetHeapDeltaResponse = {
+  changed: true;
+  mode: 'delta';
+  version: number;
+  baseId: string;
+  freezeY: number;
+  /** Flat triples for bands changed since the client's version. */
+  bands: number[];
+  params: HeapParams;
+  enemyParams: HeapEnemyParams;
+};
+
 export type GetHeapResponse =
   | { changed: false; version: number }
-  | { changed: true; version: number; baseId: string; liveZone: Vertex[]; params: HeapParams; enemyParams: HeapEnemyParams };
+  | GetHeapFullResponse
+  | GetHeapDeltaResponse;
 
 // ── Place ─────────────────────────────────────────────────────────────────────
 
