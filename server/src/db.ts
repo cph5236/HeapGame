@@ -1,6 +1,7 @@
 // server/src/db.ts
 
 import { HeapParams, Vertex, HeapEnemyParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
+import type { BandRow } from '../../shared/heapPolygon/bandEnvelope';
 
 export interface HeapRow {
   id: string;
@@ -80,6 +81,19 @@ export interface HeapDB {
   createBase(id: string, heapId: string, vertices: Vertex[], vertexHash: string, now: string): Promise<void>;
   getEnemyParams(heapId: string): Promise<HeapEnemyParams>;
   upsertEnemyParams(heapId: string, params: HeapEnemyParams): Promise<void>;
+  /** One band's extents, or null when the band is empty. Point read on the PK. */
+  getBand(heapId: string, band: number): Promise<BandRow | null>;
+  /** Every band of a heap, ascending. Used to materialise the full envelope. */
+  getAllBands(heapId: string): Promise<BandRow[]>;
+  /** Bands whose last change is strictly newer than `version`, ascending. */
+  getBandsSince(heapId: string, version: number): Promise<BandRow[]>;
+  /** Highest occupied band, or null when the heap has none. O(log n) off the PK. */
+  getMaxBand(heapId: string): Promise<number | null>;
+  /**
+   * Widen bands with MIN/MAX and stamp them with `version`. Conflict-free: two
+   * concurrent callers targeting the same band both apply, so this needs no CAS.
+   */
+  upsertBands(heapId: string, rows: BandRow[], version: number): Promise<void>;
 }
 
 export class D1HeapDB implements HeapDB {
@@ -226,5 +240,55 @@ export class D1HeapDB implements HeapDB {
       )
       .bind(heapId, JSON.stringify(params))
       .run();
+  }
+
+  async getBand(heapId: string, band: number): Promise<BandRow | null> {
+    const row = await this.d1
+      .prepare('SELECT band, min_x, max_x FROM heap_band WHERE heap_id = ?1 AND band = ?2')
+      .bind(heapId, band)
+      .first<{ band: number; min_x: number; max_x: number }>();
+    return row ? { band: row.band, minX: row.min_x, maxX: row.max_x } : null;
+  }
+
+  async getAllBands(heapId: string): Promise<BandRow[]> {
+    const res = await this.d1
+      .prepare('SELECT band, min_x, max_x FROM heap_band WHERE heap_id = ?1 ORDER BY band')
+      .bind(heapId)
+      .all<{ band: number; min_x: number; max_x: number }>();
+    return res.results.map((r) => ({ band: r.band, minX: r.min_x, maxX: r.max_x }));
+  }
+
+  async getBandsSince(heapId: string, version: number): Promise<BandRow[]> {
+    const res = await this.d1
+      .prepare('SELECT band, min_x, max_x FROM heap_band WHERE heap_id = ?1 AND version > ?2 ORDER BY band')
+      .bind(heapId, version)
+      .all<{ band: number; min_x: number; max_x: number }>();
+    return res.results.map((r) => ({ band: r.band, minX: r.min_x, maxX: r.max_x }));
+  }
+
+  async getMaxBand(heapId: string): Promise<number | null> {
+    const row = await this.d1
+      .prepare('SELECT MAX(band) AS m FROM heap_band WHERE heap_id = ?1')
+      .bind(heapId)
+      .first<{ m: number | null }>();
+    return row?.m ?? null;
+  }
+
+  async upsertBands(heapId: string, rows: BandRow[], version: number): Promise<void> {
+    if (rows.length === 0) return;
+    await this.d1.batch(
+      rows.map((r) =>
+        this.d1
+          .prepare(
+            `INSERT INTO heap_band (heap_id, band, min_x, max_x, version)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(heap_id, band) DO UPDATE SET
+               min_x   = MIN(min_x, excluded.min_x),
+               max_x   = MAX(max_x, excluded.max_x),
+               version = excluded.version`,
+          )
+          .bind(heapId, r.band, r.minX, r.maxX, version),
+      ),
+    );
   }
 }

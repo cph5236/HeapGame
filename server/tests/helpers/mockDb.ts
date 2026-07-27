@@ -3,6 +3,7 @@
 import type { HeapDB, HeapRow, HeapSummaryRow } from '../../src/db';
 import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
+import type { BandRow } from '../../../shared/heapPolygon/bandEnvelope';
 
 interface BaseRecord {
   heap_id: string;
@@ -16,6 +17,7 @@ export class MockHeapDB implements HeapDB {
   private heaps = new Map<string, Omit<HeapRow, 'id'>>();
   private bases = new Map<string, BaseRecord>();
   private enemyParams = new Map<string, string>();
+  private bands = new Map<string, Map<number, { minX: number; maxX: number; version: number }>>();
 
   constructor() {
     const SENTINEL = '00000000-0000-0000-0000-000000000000';
@@ -216,5 +218,44 @@ export class MockHeapDB implements HeapDB {
     const existing = this.heaps.get(id);
     if (!existing) return;
     this.heaps.set(id, { ...existing, top_y: value });
+  }
+
+  async getBand(heapId: string, band: number): Promise<BandRow | null> {
+    const cur = this.bands.get(heapId)?.get(band);
+    return cur ? { band, minX: cur.minX, maxX: cur.maxX } : null;
+  }
+
+  async getAllBands(heapId: string): Promise<BandRow[]> {
+    const m = this.bands.get(heapId);
+    if (!m) return [];
+    return [...m.keys()].sort((a, b) => a - b).map((band) => ({
+      band, minX: m.get(band)!.minX, maxX: m.get(band)!.maxX,
+    }));
+  }
+
+  async getBandsSince(heapId: string, version: number): Promise<BandRow[]> {
+    const m = this.bands.get(heapId);
+    if (!m) return [];
+    return [...m.entries()]
+      .filter(([, v]) => v.version > version)
+      .sort((a, b) => a[0] - b[0])
+      .map(([band, v]) => ({ band, minX: v.minX, maxX: v.maxX }));
+  }
+
+  async getMaxBand(heapId: string): Promise<number | null> {
+    const m = this.bands.get(heapId);
+    if (!m || m.size === 0) return null;
+    return Math.max(...m.keys());
+  }
+
+  async upsertBands(heapId: string, rows: BandRow[], version: number): Promise<void> {
+    let m = this.bands.get(heapId);
+    if (!m) { m = new Map(); this.bands.set(heapId, m); }
+    for (const r of rows) {
+      const cur = m.get(r.band);
+      m.set(r.band, cur
+        ? { minX: Math.min(cur.minX, r.minX), maxX: Math.max(cur.maxX, r.maxX), version }
+        : { minX: r.minX, maxX: r.maxX, version });
+    }
   }
 }

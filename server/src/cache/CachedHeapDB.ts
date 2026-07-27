@@ -13,6 +13,7 @@
 
 import type { HeapDB, HeapRow, HeapSummaryRow } from '../db';
 import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
+import type { BandRow } from '../../../shared/heapPolygon/bandEnvelope';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 
@@ -126,6 +127,18 @@ export class CachedHeapDB implements HeapDB {
   async upsertEnemyParams(heapId: string, params: HeapEnemyParams): Promise<void> {
     await this.inner.upsertEnemyParams(heapId, params);
   }
+
+  // ---- bands: deliberately uncached ----
+
+  // Bands are deliberately uncached here. The delta protocol requires that the
+  // version returned to a client never exceeds the bands it was sent alongside;
+  // caching bands independently of the heap row would inflate that watermark and
+  // silently lose bands forever. Task 11 caches the two together.
+  getBand(heapId: string, band: number) { return this.inner.getBand(heapId, band); }
+  getAllBands(heapId: string) { return this.inner.getAllBands(heapId); }
+  getBandsSince(heapId: string, version: number) { return this.inner.getBandsSince(heapId, version); }
+  getMaxBand(heapId: string) { return this.inner.getMaxBand(heapId); }
+  upsertBands(heapId: string, rows: BandRow[], version: number) { return this.inner.upsertBands(heapId, rows, version); }
 
   // ---- helpers ----
 
