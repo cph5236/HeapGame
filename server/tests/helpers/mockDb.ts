@@ -277,12 +277,32 @@ export class MockHeapDB implements HeapDB {
     }
   }
 
-  async bumpVersion(heapId: string, topYCandidate: number): Promise<number> {
+  /**
+   * NOTE: this mock has no internal `await` between the version bump and the
+   * band writes below — it cannot simulate a real concurrent interleaving, so
+   * it proves nothing about D1 batch atomicity. What it CAN and does enforce
+   * is the invariant atomicity is meant to guarantee: the version returned is
+   * exactly the version every row band-touched by this call gets stamped
+   * with.
+   */
+  async commitPlacement(heapId: string, rows: BandRow[], topYCandidate: number): Promise<number> {
     const row = this.heaps.get(heapId);
-    if (!row) throw new Error(`bumpVersion: heap ${heapId} not found`);
+    if (!row) throw new Error(`commitPlacement: heap ${heapId} not found`);
     row.version += 1;
     row.top_y = Math.min(row.top_y, topYCandidate);
-    return row.version;
+    const newVersion = row.version;
+
+    if (rows.length > 0) {
+      let m = this.bands.get(heapId);
+      if (!m) { m = new Map(); this.bands.set(heapId, m); }
+      for (const r of rows) {
+        const cur = m.get(r.band);
+        m.set(r.band, cur
+          ? { minX: Math.min(cur.minX, r.minX), maxX: Math.max(cur.maxX, r.maxX), version: newVersion }
+          : { minX: r.minX, maxX: r.maxX, version: newVersion });
+      }
+    }
+    return newVersion;
   }
 
   async setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void> {

@@ -165,14 +165,22 @@ vertices cannot move it.
 band  = floor(y / BAND_SIZE_PX)
 read    the one band row + heap row            -- point reads, no scan
 accept  iff band is empty  or  x < min_x  or  x > max_x
-write   one D1 batch:
+write   one D1 batch (HeapDB.commitPlacement):
   UPDATE heap SET version = version + 1, top_y = MIN(top_y, ?) WHERE id = ? RETURNING version
-  INSERT INTO heap_band (heap_id, band, min_x, max_x, version) VALUES (...)
+  INSERT INTO heap_band (heap_id, band, min_x, max_x, version)
+    VALUES (?, ?, ?, ?, (SELECT version FROM heap WHERE id = ?))
     ON CONFLICT(heap_id, band) DO UPDATE SET
       min_x   = MIN(min_x, excluded.min_x),
       max_x   = MAX(max_x, excluded.max_x),
       version = excluded.version
 ```
+
+The `INSERT`'s version comes from a scalar subquery, not a JS value carried over
+from the `UPDATE`'s `RETURNING`: `d1.batch([...])` prepares every statement's
+bind params up front, before any of them run, so the first statement's result is
+not available to bind into the others. The subquery instead reads the row as of
+its own point in the same transaction — i.e. after the bump — so it always
+resolves to the version the `UPDATE` just wrote.
 
 Removed: the whole-polygon ray cast, the `JSON.parse` of the live zone per
 attempt, the 5-attempt CAS loop, and the 409 path. All existing bounds checks
@@ -190,6 +198,19 @@ blob and the bands disagreeing. The dual-write phase (PR 1) is where blob/envelo
 equivalence is verified, by asserting `envelope(parse(live_zone))` equals the band
 rows for every heap after backfill.
 
+This one-batch shape is load-bearing, not incidental, and it drifted once
+already: an earlier revision of `/place` issued the bump and the band upserts as
+two separate awaited `HeapDB` calls (`bumpVersion()` then `upsertBands()`),
+which is NOT one transaction — a concurrent `GET` landing between the two calls
+could rebuild its cached snapshot from a heap row that already carried the
+bumped version but a `heap_band` table that did not yet carry the write that
+bumped it. `HeapDB.commitPlacement` is what actually closes that window, by
+making the bump and the band writes a single `d1.batch([...])` call (D1HeapDB),
+with `CachedHeapDB` invalidating its snapshot exactly once, only after that
+batch resolves. This is not unit-testable end to end — D1 batch atomicity is a
+runtime guarantee no in-memory mock can simulate — see the honesty note atop
+`server/tests/commitPlacementAtomicity.test.ts`.
+
 Ghost points run the same band upsert. Ghosts that do not extend an envelope are
 dropped, which is now the same judgement as rejecting a placement.
 
@@ -206,11 +227,15 @@ arriving in sequence. The same applies to ghost points, which can widen a band a
 player did not target — already true today, and unchanged.
 
 **Why the version watermark is sound.** `version = version + 1` is an atomic
-increment in the same transaction as the band write, so version order equals
-commit order: a reader that sees version 12 is guaranteed to see the band
-stamped 11. That is what makes "send me bands with version > N" correct without
-sequence numbers or re-sorting. It assumes no read-replica lag, so authoritative
-reads must keep `getHeapFresh`'s cache bypass.
+increment in the same transaction (`commitPlacement`'s D1 batch) as the band
+write, so version order equals commit order: a placement that bumps the heap to
+version 12 stamps every band it widens with 12 in that same transaction, so a
+reader that observes version 12 is guaranteed to also observe those bands. That
+is what makes "send me bands with version > N" correct without sequence numbers
+or re-sorting — and it is exactly the guarantee that broke when the bump and the
+band write were two separate calls instead of one batch (see the note above).
+It assumes no read-replica lag, so authoritative reads must keep
+`getHeapFresh`'s cache bypass.
 
 ## 4. Delta API
 

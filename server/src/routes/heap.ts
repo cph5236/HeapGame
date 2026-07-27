@@ -346,10 +346,17 @@ export function heapRoutes(
       materialiseLiveZone(db, row),
       db.getEnemyParams(id),
     ]);
+    // Frozen bands are already folded into the base blob (fetched separately
+    // and cached indefinitely by baseId) — resending them here would ship the
+    // same geometry twice on every full response, growing with heap height.
+    // Same freeze_y===0 -> Infinity sentinel as materialiseLiveZone, so
+    // `bands` and `liveZone` describe the same band set.
+    const freezeBand = row.freeze_y > 0 ? bandOf(row.freeze_y) : Infinity;
+    const liveBands = allBands.filter((b) => b.band < freezeBand);
     return c.json({
       changed: true, mode: 'full',
       version: row.version, baseId: row.base_id, freezeY: row.freeze_y,
-      bands: bandsToWire(allBands),
+      bands: bandsToWire(liveBands),
       liveZone,
       params, enemyParams,
     } satisfies GetHeapResponse);
@@ -612,8 +619,14 @@ export function heapRoutes(
     // Version is assigned inside the write — no expected-version compare, so no
     // way to lose a concurrent write. The blob is no longer touched here; it is
     // a derived cache rebuilt lazily by materialiseLiveZone (Task 7).
-    const newVersion = await db.bumpVersion(id, y);
-    await db.upsertBands(id, bandRows, newVersion);
+    //
+    // commitPlacement bumps the version and widens bandRows in ONE D1 batch
+    // (one transaction), not two separate calls — a version bump and a band
+    // write issued as independent round-trips leaves a window where a
+    // concurrent GET can observe the new version before the band it belongs
+    // to has landed, permanently losing that band to a delta client's
+    // strictly-greater-than watermark filter.
+    const newVersion = await db.commitPlacement(id, bandRows, y);
 
     // Freeze: fold the bottom bands into the base. Minting a new baseId is
     // mandatory — loadCachedBase keys localStorage on baseId with no TTL, so a

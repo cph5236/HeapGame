@@ -5,13 +5,16 @@
 // widen it; the result is indistinguishable from them arriving in sequence.
 //
 // HONESTY NOTE: this test drives concurrent requests with Promise.all, but
-// MockHeapDB.upsertBands (and bumpVersion) contain no `await` internally, so
-// under JavaScript's run-to-completion semantics these calls do NOT actually
+// MockHeapDB.upsertBands (and commitPlacement) contain no `await` internally,
+// so under JavaScript's run-to-completion semantics these calls do NOT actually
 // interleave — each request's synchronous-looking mutation completes before the
 // next one's microtask runs. This proves the MIN/MAX widen math is correct and
 // that the route never emits a 409, but it does NOT demonstrate real concurrent
 // writes racing against each other. Genuine concurrency evidence comes only
 // from the k6 load test against staging (D1), not from these mock-backed tests.
+// The same limitation applies to commitPlacement's atomicity specifically (see
+// server/tests/commitPlacementAtomicity.test.ts) — true single-transaction
+// atomicity rests on D1's batch semantics and is not provable by a mock.
 
 import { describe, it, expect } from 'vitest';
 import { createApp } from '../src/app';

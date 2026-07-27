@@ -16,7 +16,7 @@ import { createApp } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { DEFAULT_HEAP_PARAMS, type PlaceResponse, type GetHeapResponse } from '../../shared/heapTypes';
-import { bandOf, verticesToEnvelope, BAND_SIZE_PX } from '../../shared/heapPolygon/bandEnvelope';
+import { bandOf, verticesToEnvelope, BAND_SIZE_PX, wireToBands } from '../../shared/heapPolygon/bandEnvelope';
 import { LIVE_ZONE_MAX_BANDS } from '../src/polygon';
 
 const NOW = new Date().toISOString();
@@ -174,5 +174,54 @@ describe('freeze partition invariant', () => {
     // this pins down that the frozen band is actively excluded, not just
     // that none of the ones we checked matched.
     expect(servedBands).not.toContain(aFrozenBand);
+  });
+
+  it('a full response never resends frozen bands, and bands/liveZone describe the same band set', async () => {
+    // Regression guard: the full response used to build its `bands` field from
+    // db.getAllBands() unfiltered — every band ever recorded, including bands
+    // already folded into the base blob at freeze time. Since the client caches
+    // that base blob indefinitely by baseId, frozen geometry was traveling
+    // twice: once in the base, once in every subsequent full response's
+    // `bands`. This asserts `bands` is filtered to the live set exactly like
+    // `liveZone` already is.
+    const db = await driveToFreeze();
+    const row = await db.getHeapFresh('h1');
+    expect(row).not.toBeNull();
+    // Freeze must have genuinely fired before trusting anything below, or this
+    // test would pass vacuously (freezeBand === Infinity admits everything).
+    expect(row!.freeze_y).toBeGreaterThan(0);
+
+    const freezeBand = bandOf(row!.freeze_y);
+    const allBands = await db.getAllBands('h1');
+    const frozenBands = allBands.filter((b) => b.band >= freezeBand);
+    // Sanity on the fixture: at least one band must actually be frozen, or the
+    // "no frozen band leaks through" assertion below would pass by omission.
+    expect(frozenBands.length).toBeGreaterThan(0);
+
+    const getRes = await getHeap(db);
+    expect(getRes.status).toBe(200);
+    const body = (await getRes.json()) as Extract<GetHeapResponse, { changed: true }>;
+    expect(body.changed).toBe(true);
+    expect(body.mode).toBe('full');
+    if (!(body.changed && body.mode === 'full')) throw new Error('expected a full response');
+
+    const servedBandNumbers = wireToBands(body.bands).map((b) => b.band);
+    // No frozen band may appear in `bands`.
+    for (const b of servedBandNumbers) {
+      expect(b).toBeLessThan(freezeBand);
+    }
+    // ...AND at least one genuinely-frozen band is actively excluded, not just
+    // coincidentally absent from a served set that happened to include none of
+    // the ones checked.
+    for (const fb of frozenBands) {
+      expect(servedBandNumbers).not.toContain(fb.band);
+    }
+
+    // bands and liveZone must describe the SAME band set — the coherent
+    // contract this fix establishes. liveZone is band-mid-y vertices; recover
+    // each vertex's band and compare the two sets (order-independent).
+    const liveZoneBandNumbers = [...new Set(body.liveZone.map((v) => bandOf(v.y)))].sort((a, b) => a - b);
+    const servedBandSet = [...new Set(servedBandNumbers)].sort((a, b) => a - b);
+    expect(servedBandSet).toEqual(liveZoneBandNumbers);
   });
 });

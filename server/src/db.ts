@@ -95,14 +95,26 @@ export interface HeapDB {
   /**
    * Widen bands with MIN/MAX and stamp them with `version`. Conflict-free: two
    * concurrent callers targeting the same band both apply, so this needs no CAS.
+   * Used directly by tests to seed band state; the placement path itself goes
+   * through `commitPlacement` so the stamp and the version bump land together.
    */
   upsertBands(heapId: string, rows: BandRow[], version: number): Promise<void>;
   /**
-   * Atomically increment the heap version and lower top_y toward the summit,
-   * returning the new version. Assigned inside the write, so version order
-   * equals commit order — which is what makes a delta watermark sound.
+   * The placement write: atomically increment the heap version, lower top_y
+   * toward the summit, and widen `rows` with MIN/MAX — all stamped with the
+   * SAME version, in one transaction. Returns the new version.
+   *
+   * This one-transaction requirement is not cosmetic: a version bump and a
+   * band write issued as two separate calls leaves a window where a concurrent
+   * reader can observe the bumped version before the band write lands (or vice
+   * versa under a cache that invalidates between the two). Since a delta
+   * client filters strictly on `version > watermark`, a band under-stamped
+   * relative to the version served beside it is lost to that client forever —
+   * `getBandsSince` will never surface it again. `commitPlacement` closes that
+   * window by construction: whatever the caller observes, either both writes
+   * are visible or neither is.
    */
-  bumpVersion(heapId: string, topYCandidate: number): Promise<number>;
+  commitPlacement(heapId: string, rows: BandRow[], topYCandidate: number): Promise<number>;
   /**
    * Repoint the heap at a freshly-minted base and advance the freeze line.
    * Called after folding the bottom bands into a new base snapshot; bands at
@@ -317,13 +329,36 @@ export class D1HeapDB implements HeapDB {
     );
   }
 
-  async bumpVersion(heapId: string, topYCandidate: number): Promise<number> {
-    const row = await this.d1
+  async commitPlacement(heapId: string, rows: BandRow[], topYCandidate: number): Promise<number> {
+    // One batch = one D1 transaction, statements run sequentially inside it.
+    // The band upserts read `version` back via a scalar subquery rather than
+    // a JS value threaded from the first statement's result — a batch's
+    // statements are all prepared (and their bind params fixed) before any of
+    // them run, so the first statement's RETURNING value is not available to
+    // bind into the others. The subquery reads the row as of ITS point in the
+    // same transaction, which is after the bump, so it always resolves to the
+    // version the first statement just wrote — never the one before it.
+    const bumpStmt = this.d1
       .prepare('UPDATE heap SET version = version + 1, top_y = MIN(top_y, ?1) WHERE id = ?2 RETURNING version')
-      .bind(topYCandidate, heapId)
-      .first<{ version: number }>();
-    if (!row) throw new Error(`bumpVersion: heap ${heapId} not found`);
-    return row.version;
+      .bind(topYCandidate, heapId);
+
+    const bandStmts = rows.map((r) =>
+      this.d1
+        .prepare(
+          `INSERT INTO heap_band (heap_id, band, min_x, max_x, version)
+           VALUES (?1, ?2, ?3, ?4, (SELECT version FROM heap WHERE id = ?1))
+           ON CONFLICT(heap_id, band) DO UPDATE SET
+             min_x   = MIN(min_x, excluded.min_x),
+             max_x   = MAX(max_x, excluded.max_x),
+             version = excluded.version`,
+        )
+        .bind(heapId, r.band, r.minX, r.maxX),
+    );
+
+    const results = await this.d1.batch<{ version: number }>([bumpStmt, ...bandStmts]);
+    const newVersion = results[0]?.results?.[0]?.version;
+    if (newVersion === undefined) throw new Error(`commitPlacement: heap ${heapId} not found`);
+    return newVersion;
   }
 
   async setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void> {

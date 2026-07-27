@@ -71,15 +71,25 @@ describe('band cache consistency', () => {
     expect(kv.deletes).toContain('cache:heap:h1');
   });
 
-  it('invalidates the snapshot on bumpVersion, setFreeze and clearBands', async () => {
+  it('invalidates the snapshot on commitPlacement, setFreeze and clearBands', async () => {
     const inner = await seeded();
     const kv = new MockKV();
     const cached = new CachedHeapDB(inner, kv.asKV(), noWait);
 
     await cached.getHeap('h1');
-    await cached.bumpVersion('h1', 90);
+    await cached.commitPlacement('h1', [{ band: 12, minX: 100, maxX: 200 }], 90);
     expect(kv.deletes).toContain('cache:heap:h1');
-    expect((await cached.getHeap('h1'))!.version).toBe(3);
+    // Only ONE invalidation round for the whole placement — proves the
+    // snapshot cannot be re-read between the version bump and the band write
+    // (the split bumpVersion()+upsertBands() call pair used to invalidate
+    // twice, opening exactly that window).
+    expect(kv.deletes.filter((k) => k === 'cache:heap:h1')).toHaveLength(1);
+    const row = (await cached.getHeap('h1'))!;
+    expect(row.version).toBe(3);
+    expect(await cached.getAllBands('h1')).toEqual([
+      { band: 10, minX: 400, maxX: 500 },
+      { band: 12, minX: 100, maxX: 200 },
+    ]);
 
     kv.deletes.length = 0;
     await cached.clearBands('h1');

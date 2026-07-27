@@ -171,10 +171,15 @@ export class CachedHeapDB implements HeapDB {
     await this.invalidateHeap(heapId);
   }
 
-  async bumpVersion(heapId: string, topYCandidate: number): Promise<number> {
-    const newVersion = await this.inner.bumpVersion(heapId, topYCandidate);
-    // Changes version and top_y on the heap row — invalidate exactly like every
-    // other write, or the cached row keeps serving the pre-bump version forever.
+  async commitPlacement(heapId: string, rows: BandRow[], topYCandidate: number): Promise<number> {
+    const newVersion = await this.inner.commitPlacement(heapId, rows, topYCandidate);
+    // Invalidate ONCE, after the whole batch has committed. Invalidating
+    // between the version bump and the band writes (as a split
+    // bumpVersion()+upsertBands() call pair used to) is exactly the window
+    // that let a concurrent GET rebuild its snapshot from a bumped row beside
+    // not-yet-written bands — a version served with fewer bands than it
+    // actually carries, permanently under-claimed by any client that then
+    // records it as a watermark.
     await this.invalidateHeap(heapId);
     return newVersion;
   }

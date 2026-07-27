@@ -84,7 +84,7 @@ describe('CachedHeapDB', () => {
     expect(kv.has(`cache:heap:${HEAP_ID}`)).toBe(true);
   });
 
-  it('bumpVersion invalidates both the heap row and the list cache', async () => {
+  it('commitPlacement invalidates both the heap row and the list cache, exactly once', async () => {
     const { inner, kv, cached } = setup();
     inner.seedHeap(HEAP_ID, 1, []);
     await cached.getHeap(HEAP_ID);
@@ -92,14 +92,20 @@ describe('CachedHeapDB', () => {
     expect(kv.has(`cache:heap:${HEAP_ID}`)).toBe(true);
     expect(kv.has('cache:heap:list')).toBe(true);
 
-    const newVersion = await cached.bumpVersion(HEAP_ID, 0);
+    const newVersion = await cached.commitPlacement(HEAP_ID, [{ band: 3, minX: 10, maxX: 20 }], 0);
     expect(newVersion).toBe(2);
-    expect(kv.deletes).toContain(`cache:heap:${HEAP_ID}`);
-    expect(kv.deletes).toContain('cache:heap:list');
+    // Exactly one invalidation round per key — a split bumpVersion+upsertBands
+    // call pair would invalidate twice, reopening the window where a
+    // concurrent read lands between them and observes a bumped version beside
+    // not-yet-written bands.
+    expect(kv.deletes.filter((k) => k === `cache:heap:${HEAP_ID}`)).toHaveLength(1);
+    expect(kv.deletes.filter((k) => k === 'cache:heap:list')).toHaveLength(1);
     expect(kv.has(`cache:heap:${HEAP_ID}`)).toBe(false);
 
-    // Next read reflects the bumped version — proves the stale cache was busted.
+    // Next read reflects the bumped version AND the band stamped by the same
+    // call — proves the stale cache was busted and the two never diverge.
     expect((await cached.getHeap(HEAP_ID))?.version).toBe(2);
+    expect(await cached.getAllBands(HEAP_ID)).toEqual([{ band: 3, minX: 10, maxX: 20 }]);
   });
 
   it('getBaseVerticesById is cache-aside; createBase pre-populates it', async () => {
