@@ -678,6 +678,16 @@ export function heapRoutes(
       // are monotonic, so any row written after the read above carries a higher
       // one and survives the DELETE rather than being buried into a base that
       // never saw it.
+      //
+      // An empty `buried` yields -Infinity here, and that is deliberately not
+      // guarded: the value can never reach a batch that commits. The decision
+      // above saw rows at `band >= newFreezeBand`, so for the fresh read to
+      // find none, a concurrent freeze must have deleted them — which moved
+      // freeze_y off `row.freeze_y` and makes this request's CAS fail. The one
+      // exception is a concurrent reset (freeze_y back to 0) racing a heap
+      // whose freeze_y was already 0; there the CAS passes, but a watermark
+      // nothing can be <= only makes the DELETE match zero rows, which is the
+      // safe direction. See the reset-path note in freezeAtomic.
       const versionWatermark = Math.max(...buried.map((b) => b.version));
 
       const existingBase = (await db.getBaseVerticesById(row.base_id)) ?? [];

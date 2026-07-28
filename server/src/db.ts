@@ -206,6 +206,13 @@ export interface HeapDB {
    * The delete boundary is derived from newFreezeY here rather than passed in,
    * so the deletion can never disagree with the freeze line it is supposed to
    * match.
+   *
+   * Known gap, pre-existing and narrowed rather than introduced here: reset
+   * puts freeze_y back to 0 without a guard, so a freeze that read freeze_y=0
+   * before a reset can still satisfy this CAS afterwards and repoint the heap
+   * at a base built from pre-reset geometry. The window is a heap's first
+   * freeze only. The old unguarded setFreeze was strictly worse — it landed at
+   * any freeze_y.
    */
   freezeAtomic(args: FreezeArgs): Promise<boolean>;
   /** Delete every band row for a heap. Used by reset — the fresh base absorbs
