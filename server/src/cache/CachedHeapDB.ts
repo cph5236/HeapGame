@@ -11,7 +11,7 @@
 //   cache:heap:list     — listHeaps() summary     (short TTL; any heap mutation busts it)
 //   cache:base:{baseId} — base vertices           (immutable; long TTL)
 
-import type { HeapDB, HeapRow, HeapSummaryRow } from '../db';
+import type { HeapDB, HeapRow, HeapSummaryRow, VersionedBandRow } from '../db';
 import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
 import type { BandRow } from '../../../shared/heapPolygon/bandEnvelope';
 import type { Sink } from '../logging/Sink';
@@ -131,6 +131,15 @@ export class CachedHeapDB implements HeapDB {
 
   async getAllBands(heapId: string): Promise<BandRow[]> {
     return (await this.snapshot(heapId))?.bands ?? [];
+  }
+
+  async getAllBandsVersioned(heapId: string): Promise<VersionedBandRow[]> {
+    // Read-through, deliberately. The cached snapshot can lag, and the freeze
+    // path uses this read to decide which rows it is safe to DELETE — a stale
+    // row set there means burying geometry the new base never captured, which
+    // is the exact loss this whole path exists to prevent. Rare enough (once
+    // per freeze) that skipping the cache costs nothing measurable.
+    return this.inner.getAllBandsVersioned(heapId);
   }
 
   async getBand(heapId: string, band: number): Promise<BandRow | null> {

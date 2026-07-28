@@ -3,6 +3,9 @@
 import { HeapParams, Vertex, HeapEnemyParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { bandOf, type BandRow } from '../../shared/heapPolygon/bandEnvelope';
 
+/** A band row carrying the version it was last widened at. */
+export type VersionedBandRow = BandRow & { version: number };
+
 export interface HeapRow {
   id: string;
   base_id: string;
@@ -94,6 +97,19 @@ export interface HeapDB {
   getBand(heapId: string, band: number): Promise<BandRow | null>;
   /** Every band of a heap, ascending. Used to materialise the full envelope. */
   getAllBands(heapId: string): Promise<BandRow[]>;
+  /**
+   * Every band of a heap, ascending, WITH the version each row was last
+   * widened at. Separate from getAllBands because BandRow deliberately carries
+   * no version — the client's envelope maths has no use for one — and because
+   * this must never be served from a cached snapshot.
+   *
+   * The freeze path is the only caller: it needs the versions to compute the
+   * watermark that bounds its DELETE, and a stale watermark would let it bury
+   * a row the new base never captured. Called only when a freeze is actually
+   * due (once per FREEZE_BATCH_BANDS of climb), so the read cost does not land
+   * on the placement hot path.
+   */
+  getAllBandsVersioned(heapId: string): Promise<VersionedBandRow[]>;
   /**
    * Bands in [fromBand, toBand] inclusive, ascending. A bounded range scan off
    * the (heap_id, band) primary key. The placement path needs the band being
@@ -320,6 +336,14 @@ export class D1HeapDB implements HeapDB {
       .bind(heapId)
       .all<{ band: number; min_x: number; max_x: number }>();
     return res.results.map((r) => ({ band: r.band, minX: r.min_x, maxX: r.max_x }));
+  }
+
+  async getAllBandsVersioned(heapId: string): Promise<VersionedBandRow[]> {
+    const res = await this.d1
+      .prepare('SELECT band, min_x, max_x, version FROM heap_band WHERE heap_id = ?1 ORDER BY band')
+      .bind(heapId)
+      .all<{ band: number; min_x: number; max_x: number; version: number }>();
+    return res.results.map((r) => ({ band: r.band, minX: r.min_x, maxX: r.max_x, version: r.version }));
   }
 
   async getBandRange(heapId: string, fromBand: number, toBand: number): Promise<BandRow[]> {

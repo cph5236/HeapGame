@@ -1,6 +1,6 @@
 // server/tests/helpers/mockDb.ts
 
-import type { HeapDB, HeapRow, HeapSummaryRow } from '../../src/db';
+import type { HeapDB, HeapRow, HeapSummaryRow, VersionedBandRow } from '../../src/db';
 import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
 import { bandOf, type BandRow } from '../../../shared/heapPolygon/bandEnvelope';
@@ -238,6 +238,14 @@ export class MockHeapDB implements HeapDB {
     if (!m) return [];
     return [...m.keys()].sort((a, b) => a - b).map((band) => ({
       band, minX: m.get(band)!.minX, maxX: m.get(band)!.maxX,
+    }));
+  }
+
+  async getAllBandsVersioned(heapId: string): Promise<VersionedBandRow[]> {
+    const m = this.bands.get(heapId);
+    if (!m) return [];
+    return [...m.keys()].sort((a, b) => a - b).map((band) => ({
+      band, minX: m.get(band)!.minX, maxX: m.get(band)!.maxX, version: m.get(band)!.version,
     }));
   }
 
