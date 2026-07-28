@@ -6,6 +6,21 @@ import { bandOf, type BandRow } from '../../shared/heapPolygon/bandEnvelope';
 /** A band row carrying the version it was last widened at. */
 export type VersionedBandRow = BandRow & { version: number };
 
+/** Inputs to a single guarded freeze. See HeapDB.freezeAtomic. */
+export interface FreezeArgs {
+  heapId: string;
+  /** The heap's freeze_y as READ before the freeze decision — never recomputed,
+   *  so the REAL-column equality compares an exact round-tripped value. */
+  expectedFreezeY: number;
+  newBaseId: string;
+  baseVertices: Vertex[];
+  baseHash: string;
+  newFreezeY: number;
+  /** Max version among the band rows the caller captured into baseVertices. */
+  versionWatermark: number;
+  now: string;
+}
+
 export interface HeapRow {
   id: string;
   base_id: string;
@@ -148,29 +163,51 @@ export interface HeapDB {
    */
   commitPlacement(heapId: string, rows: BandRow[], topYCandidate: number): Promise<number>;
   /**
-   * Complete a freeze: repoint the heap at the freshly-minted base, advance the
-   * freeze line to freezeY, and DELETE the band rows that line just buried —
-   * all in one transaction.
+   * Complete a freeze in ONE transaction: mint the new base, repoint the heap at
+   * it, advance the freeze line, and DELETE the band rows that line buries.
+   * Returns false when the guard fails, in which case NOTHING was written — no
+   * base row, no line advance, no deletion.
+   *
+   * Every statement is guarded on `expectedFreezeY`, the freeze line the caller
+   * read before deciding. This is a compare-and-swap, and it has to be, even
+   * though placement itself needs none: MIN/MAX band widening is conflict-free,
+   * but a freeze is a destructive repoint-and-delete. Two placements crossing
+   * the threshold together both read the same pre-freeze base_id and both build
+   * a new base from it; without the guard the loser's bands are removed by its
+   * own DELETE while surviving only in its orphaned base, which the heap no
+   * longer points at. That geometry is unrecoverable — the bug this method
+   * exists to close.
+   *
+   * The guard cannot live in JS between the statements: a D1 batch fixes every
+   * statement's bind params before any of them run and executes all of them
+   * regardless of what the others did. So the condition is a correlated
+   * subquery inside each statement, resolving against the transaction's own
+   * state. The INSERT uses SELECT..WHERE so a loser mints no orphan base; the
+   * DELETE keys off whether the heap now points at OUR base, which is a
+   * stronger test than re-checking the freeze line — two racers can legitimately
+   * compute the same line, and base_id is unique per attempt.
+   *
+   * `versionWatermark` bounds the deletion to rows the new base actually
+   * captured. Heap versions are monotonic and heap_band.version is stamped only
+   * when a row widens, so a row written after the caller's read provably carries
+   * a version above the watermark and survives as a straggler — invisible below
+   * the freeze line, but present, and folded into the base by the next freeze.
+   * Without it, a placement landing in the frozen slice mid-freeze is deleted
+   * having never reached any base.
    *
    * The deletion is what keeps per-request cost bounded. A frozen band's
    * geometry lives in the new base blob, which every client fetches by baseId
    * and caches indefinitely, so the row is pure dead weight the moment freeze_y
-   * passes it: `getAllBands` still returns it on every read and `liveBandsOf`
-   * still filters it out. Left in place it accumulates forever — a staging
-   * fixture measured 283 frozen rows against 65 live ones, and the read path
-   * paid for all 348.
+   * passes it: getAllBands still returns it on every read and liveBandsOf still
+   * filters it out. Left in place it accumulates forever — a staging fixture
+   * measured 283 frozen rows against 65 live ones, and the read path paid for
+   * all 348.
    *
-   * One transaction, not three calls, because the freeze line and the rows it
-   * buries are one fact. The dangerous ordering is deleting rows without the
-   * freeze line landing: freeze_y would still admit placements into a region
-   * whose shape is now only in a base the heap does not point at, and that
-   * geometry is gone. A batch makes that unobservable — either both happen or
-   * neither does.
-   *
-   * The boundary is derived from freezeY here rather than passed in, so the
-   * deletion can never disagree with the freeze line it is supposed to match.
+   * The delete boundary is derived from newFreezeY here rather than passed in,
+   * so the deletion can never disagree with the freeze line it is supposed to
+   * match.
    */
-  setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void>;
+  freezeAtomic(args: FreezeArgs): Promise<boolean>;
   /** Delete every band row for a heap. Used by reset — the fresh base absorbs
    *  the live zone's shape, so the band table starts empty again. */
   clearBands(heapId: string): Promise<void>;
@@ -434,17 +471,33 @@ export class D1HeapDB implements HeapDB {
     return newVersion;
   }
 
-  async setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void> {
-    // One batch = one transaction. See the interface doc for why the row update
-    // and the row deletion cannot be separate calls.
-    await this.d1.batch([
+  async freezeAtomic(args: FreezeArgs): Promise<boolean> {
+    const { heapId, expectedFreezeY, newBaseId, baseVertices, baseHash, newFreezeY, versionWatermark, now } = args;
+    const results = await this.d1.batch([
+      // 1. Mint the base — only if the line we read is still the line. A losing
+      //    racer inserts nothing, so there is no orphan to clean up.
       this.d1
-        .prepare('UPDATE heap SET base_id = ?1, freeze_y = ?2 WHERE id = ?3')
-        .bind(baseId, freezeY, heapId),
+        .prepare(
+          `INSERT INTO heap_base (id, heap_id, vertices, vertex_hash, created_at)
+           SELECT ?1, ?2, ?3, ?4, ?5
+            WHERE (SELECT freeze_y FROM heap WHERE id = ?2) = ?6`,
+        )
+        .bind(newBaseId, heapId, JSON.stringify(baseVertices), baseHash, now, expectedFreezeY),
+      // 2. CAS the heap onto it. This statement's changes count IS the verdict.
       this.d1
-        .prepare('DELETE FROM heap_band WHERE heap_id = ?1 AND band >= ?2')
-        .bind(heapId, bandOf(freezeY)),
+        .prepare('UPDATE heap SET base_id = ?1, freeze_y = ?2 WHERE id = ?3 AND freeze_y = ?4')
+        .bind(newBaseId, newFreezeY, heapId, expectedFreezeY),
+      // 3. Bury rows — only ones the new base captured (version watermark), and
+      //    only if statement 2 landed (the heap now points at OUR base).
+      this.d1
+        .prepare(
+          `DELETE FROM heap_band
+            WHERE heap_id = ?1 AND band >= ?2 AND version <= ?3
+              AND (SELECT base_id FROM heap WHERE id = ?1) = ?4`,
+        )
+        .bind(heapId, bandOf(newFreezeY), versionWatermark, newBaseId),
     ]);
+    return results[1].meta.changes > 0;
   }
 
   async clearBands(heapId: string): Promise<void> {
