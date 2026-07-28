@@ -19,6 +19,12 @@ jobs:
     #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
 
     runs-on: ubuntu-latest
+    # Read-only on purpose. The review posts ONE summary comment, and that comment
+    # goes through the GitHub App token the action mints via OIDC — not through
+    # this block — so `pull-requests: read` is enough for it. Bumping to
+    # `pull-requests: write` would only buy inline line-level comments, which on a
+    # 40-file PR is more noise than signal. If inline comments are ever wanted,
+    # that is the one line to change.
     permissions:
       contents: read
       pull-requests: read
@@ -29,7 +35,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          # 0, not 1: the review diffs the PR against origin/main, which needs
+          # main's history present. At depth 1 the reviewer can only read files
+          # at HEAD and has no way to see what the PR actually changed.
+          fetch-depth: 0
 
       - name: Run Claude Code Review
         id: claude-review
@@ -52,6 +61,25 @@ jobs:
               suggested fix), in addition to any inline comments.
             - If you found NO issues, post a brief note saying the review found no problems
               (e.g. "✅ Reviewed the diff — no issues found.").
+          # The tool allowlist must be spelled out IN FULL here, not as a delta.
+          # The action emits its own `--allowedTools "<base>"` and then appends
+          # whatever is in claude_args, so a second --allowedTools flag is
+          # last-wins: passing just `Task` would silently REPLACE the base set and
+          # strip Read/Grep/Glob, leaving the reviewer unable to read anything.
+          # Listing everything is also correct if the CLI ever merges the two
+          # flags instead — the list is then a harmless superset.
+          #
+          # Task is the fix. `/code-review:code-review` works by dispatching
+          # parallel reviewer subagents; without Task every dispatch is denied and
+          # the run ends early with an unfinished tracking comment and no findings
+          # (observed on PR #126: permission_denials_count 6, 2 of 7 todos done).
+          #
+          # git diff/log let the reviewer see the diff rather than just the files
+          # at HEAD. Deliberately NOT granted: git add/commit/rm/push. A reviewer
+          # has no business writing to the branch, and the action's base set
+          # includes those only because it shares a tool list with fix-it mode.
+          claude_args: >-
+            --allowedTools "Glob,Grep,LS,Read,Task,Bash(git diff:*),Bash(git log:*),Bash(git show:*),mcp__github_comment__update_claude_comment"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
