@@ -63,6 +63,11 @@ export function activeStreakDay(status: DailyStatusResponse, claimedDay: number 
   return claimedDay ?? status.nextClaimDay;
 }
 
+/** Day 7 is the payoff day — the can goes golden and gains a glow. */
+export function isGoldenDay(day: number): boolean {
+  return day === 7;
+}
+
 /** Preview line for one grant. Item grants are randomized from `pool` at
  *  claim time server-side, so a locked-icon preview shows the whole pool
  *  rather than a single (not-yet-decided) item. */

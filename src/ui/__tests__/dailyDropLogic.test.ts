@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dailyIconState, shouldAutoShowPopup, streakChips, activeStreakDay, grantPreviewText, dailyRewardPreview, COIN_COLOR, burstColorsForRewards } from '../dailyDropLogic';
+import { dailyIconState, shouldAutoShowPopup, streakChips, activeStreakDay, isGoldenDay, grantPreviewText, dailyRewardPreview, COIN_COLOR, burstColorsForRewards } from '../dailyDropLogic';
 import { ACCENT_COLORS } from '../../data/itemAccents';
 import type { DailyStatusResponse, DailyGrant } from '../../../shared/dailyTypes';
 import type { RewardPayload } from '../../../shared/codeTypes';
@@ -66,6 +66,19 @@ describe('activeStreakDay', () => {
   it('follows the granted day after a reset (start over grants day 1)', () => {
     const lapsed: DailyStatusResponse = { ...base, streakDay: 4, nextClaimDay: 1 };
     expect(activeStreakDay(lapsed, 1)).toBe(1);
+  });
+});
+
+describe('isGoldenDay', () => {
+  it('only day 7 is golden', () => {
+    expect([1, 2, 3, 4, 5, 6].map(isGoldenDay)).toEqual(Array(6).fill(false));
+    expect(isGoldenDay(7)).toBe(true);
+  });
+
+  it('a repair from day 6 goes golden even though the status predicted day 1', () => {
+    const lapsed: DailyStatusResponse = { ...base, streakDay: 6, nextClaimDay: 1 };
+    expect(isGoldenDay(activeStreakDay(lapsed, null))).toBe(false);  // grey while undecided
+    expect(isGoldenDay(activeStreakDay(lapsed, 7))).toBe(true);      // golden once day 7 pays out
   });
 });
 

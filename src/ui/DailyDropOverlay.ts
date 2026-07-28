@@ -14,7 +14,7 @@ import Phaser from 'phaser';
 import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { claimDaily } from '../systems/DailyDropClient';
 import { AdClient } from '../systems/ads/AdClient';
-import { streakChips, activeStreakDay, dailyRewardPreview, burstColorsForRewards } from './dailyDropLogic';
+import { streakChips, activeStreakDay, isGoldenDay, dailyRewardPreview, burstColorsForRewards } from './dailyDropLogic';
 import { ITEM_DEFS } from '../data/itemDefs';
 import type { DailyStatusResponse } from '../../shared/dailyTypes';
 import type { RewardPayload } from '../../shared/codeTypes';
@@ -122,29 +122,35 @@ export function openDailyDropOverlay(
     }).setOrigin(0.5));
   }
 
-  // Procedural trash can (day 7 goes golden).
-  const golden = day === 7;
+  // Procedural trash can (day 7 goes golden). Repaintable for the same reason
+  // the strip is: a repair can land on day 7 after the status predicted day 1.
+  // The glow is built once and toggled — it must stay behind the can, so its
+  // draw order can't depend on when we learn the day.
   const canY = panelTop + 200;
+  const glow = scene.add.graphics();
+  glow.fillStyle(ACCENT, 0.18);
+  glow.fillCircle(cx, canY, 70);
+  root.add(glow);
   const can = scene.add.container(cx, canY);
   const body = scene.add.graphics();
-  const bodyColor = golden ? GOLD : 0x8d96ad;
-  const ridgeColor = golden ? 0xd9a743 : 0x6f7890;
-  body.fillStyle(bodyColor, 1);
-  body.fillRoundedRect(-34, -30, 68, 62, 6);
-  body.fillStyle(ridgeColor, 1);
-  for (let i = -22; i <= 22; i += 11) body.fillRect(i - 2, -26, 4, 54);
   const lid = scene.add.graphics();
-  lid.fillStyle(golden ? 0xffe1a8 : 0xaab3c9, 1);
-  lid.fillRoundedRect(-38, -44, 76, 12, 6);
-  lid.fillRoundedRect(-10, -50, 20, 7, 3);
   can.add([body, lid]);
   root.add(can);
-  if (golden) {
-    const glow = scene.add.graphics();
-    glow.fillStyle(ACCENT, 0.18);
-    glow.fillCircle(cx, canY, 70);
-    root.addAt(glow, root.getIndex(can));
-  }
+  // Only the fills are repainted — the lid's position/angle are container
+  // props, so this is safe to call mid pop-off tween.
+  const paintCan = (golden: boolean): void => {
+    body.clear();
+    body.fillStyle(golden ? GOLD : 0x8d96ad, 1);
+    body.fillRoundedRect(-34, -30, 68, 62, 6);
+    body.fillStyle(golden ? 0xd9a743 : 0x6f7890, 1);
+    for (let i = -22; i <= 22; i += 11) body.fillRect(i - 2, -26, 4, 54);
+    lid.clear();
+    lid.fillStyle(golden ? 0xffe1a8 : 0xaab3c9, 1);
+    lid.fillRoundedRect(-38, -44, 76, 12, 6);
+    lid.fillRoundedRect(-10, -50, 20, 7, 3);
+    glow.setVisible(golden);
+  };
+  paintCan(isGoldenDay(activeStreakDay(status, null)));
 
   const hint = scene.add.text(cx, panelTop + 262, locked ? 'Finish a run to open' : 'TAP THE CAN!', {
     fontSize: '15px', color: '#ffce8a', fontStyle: 'bold',
@@ -167,8 +173,11 @@ export function openDailyDropOverlay(
     claimed = true;
     // The granted day can differ from the one the status predicted (a repaired
     // streak pays the repairable day, not the day-1 the lapsed status showed),
-    // so the strip follows the payout.
-    renderStrip(activeStreakDay(status, streakDay));
+    // so both day indicators follow the payout: repairing from day 6 opens a
+    // golden can, and starting over from a day-7 preview drops back to grey.
+    const grantedDay = activeStreakDay(status, streakDay);
+    renderStrip(grantedDay);
+    paintCan(isGoldenDay(grantedDay));
     wiggle?.stop();
     can.setAngle(0);
     // The hint has done its job — drop it (the modal closes via ✕ / backdrop
