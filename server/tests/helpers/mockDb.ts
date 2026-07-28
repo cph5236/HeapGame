@@ -270,8 +270,14 @@ export class MockHeapDB implements HeapDB {
     if (!m) { m = new Map(); this.bands.set(heapId, m); }
     for (const r of rows) {
       const cur = m.get(r.band);
+      // Mirrors the D1 CASE: a row that does not widen keeps its old version,
+      // so it stays below a delta client's watermark.
       m.set(r.band, cur
-        ? { minX: Math.min(cur.minX, r.minX), maxX: Math.max(cur.maxX, r.maxX), version }
+        ? {
+            minX: Math.min(cur.minX, r.minX),
+            maxX: Math.max(cur.maxX, r.maxX),
+            version: r.minX < cur.minX || r.maxX > cur.maxX ? version : cur.version,
+          }
         : { minX: r.minX, maxX: r.maxX, version });
     }
   }
@@ -296,8 +302,13 @@ export class MockHeapDB implements HeapDB {
       if (!m) { m = new Map(); this.bands.set(heapId, m); }
       for (const r of rows) {
         const cur = m.get(r.band);
+        // Same widen-gate as upsertBands and the D1 CASE.
         m.set(r.band, cur
-          ? { minX: Math.min(cur.minX, r.minX), maxX: Math.max(cur.maxX, r.maxX), version: newVersion }
+          ? {
+              minX: Math.min(cur.minX, r.minX),
+              maxX: Math.max(cur.maxX, r.maxX),
+              version: r.minX < cur.minX || r.maxX > cur.maxX ? newVersion : cur.version,
+            }
           : { minX: r.minX, maxX: r.maxX, version: newVersion });
       }
     }

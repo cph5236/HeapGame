@@ -54,6 +54,38 @@ describe('GET /heaps/:id — delta protocol', () => {
     }
   });
 
+  it('never offers a rejected placement to a delta client', async () => {
+    // A placement that does not extend the envelope returns accepted:false from
+    // the containment gate BEFORE commitPlacement, so it writes nothing at all —
+    // not the band, and not the heap version either. Worth pinning: if that gate
+    // ever moved below the write, every rejected placement would churn the
+    // version and wake up every polling client for no geometry change.
+    const db = new MockHeapDB();
+    await db.createHeap('h1', 'b1', [{ x: 480, y: 50000 }], 'h', new Date().toISOString(), {
+      ...DEFAULT_HEAP_PARAMS, worldHeight: 60000, ghostPointCount: 0,
+    });
+    await db.upsertBands('h1', [{ band: 2500, minX: 300, maxX: 700 }], 1);
+    await db.updateHeap('h1', 'b1', 1, [], 0, 50000);
+
+    const app = createApp(db, new MockScoreDB());
+    const place = (x: number, y: number) => app.request('/heaps/h1/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x, y }),
+    });
+
+    const inside = await place(500, 50010); // within 300..700 — cannot widen
+    expect(((await inside.json()) as { accepted: boolean }).accepted).toBe(false);
+    expect((await db.getHeap('h1'))!.version).toBe(1);
+    expect(await db.getBandsSince('h1', 1)).toEqual([]);
+
+    // Two-sided: a placement that DOES widen must surface, or the assertion
+    // above would pass on a delta path that never reports anything.
+    const outside = await place(250, 50010);
+    expect(((await outside.json()) as { accepted: boolean }).accepted).toBe(true);
+    expect((await db.getBandsSince('h1', 1)).map((b) => b.band)).toEqual([2500]);
+  });
+
   it('sends every intervening band to a client several versions behind', async () => {
     const db = await heap();
     await db.upsertBands('h1', [{ band: 2352, minX: 200, maxX: 700 }], 6);

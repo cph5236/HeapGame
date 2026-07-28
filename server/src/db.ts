@@ -357,7 +357,8 @@ export class D1HeapDB implements HeapDB {
              ON CONFLICT(heap_id, band) DO UPDATE SET
                min_x   = MIN(min_x, excluded.min_x),
                max_x   = MAX(max_x, excluded.max_x),
-               version = excluded.version`,
+               version = CASE WHEN excluded.min_x < min_x OR excluded.max_x > max_x
+                              THEN excluded.version ELSE version END`,
           )
           .bind(heapId, r.band, r.minX, r.maxX, version),
       ),
@@ -380,12 +381,25 @@ export class D1HeapDB implements HeapDB {
     const bandStmts = rows.map((r) =>
       this.d1
         .prepare(
+          // version is stamped only when the row actually WIDENS. A candidate
+          // landing inside the stored extent — which most ghost points do —
+          // leaves min_x/max_x untouched, and stamping it anyway would put a
+          // band with unchanged geometry above every delta client's watermark,
+          // so getBandsSince would re-send it for nothing. Each placement
+          // touches up to ghostPointCount+1 candidates spread over
+          // GHOST_SPREAD_BANDS, so the waste is per-placement and compounds for
+          // any client more than a few versions behind.
+          //
+          // All right-hand sides in a DO UPDATE see the row as it was BEFORE
+          // this statement, so the CASE and the MIN/MAX above read the same
+          // pre-update min_x/max_x and cannot disagree about whether it widened.
           `INSERT INTO heap_band (heap_id, band, min_x, max_x, version)
            VALUES (?1, ?2, ?3, ?4, (SELECT version FROM heap WHERE id = ?1))
            ON CONFLICT(heap_id, band) DO UPDATE SET
              min_x   = MIN(min_x, excluded.min_x),
              max_x   = MAX(max_x, excluded.max_x),
-             version = excluded.version`,
+             version = CASE WHEN excluded.min_x < min_x OR excluded.max_x > max_x
+                            THEN excluded.version ELSE version END`,
         )
         .bind(heapId, r.band, r.minX, r.maxX),
     );

@@ -82,6 +82,40 @@ describe('commitPlacement — version/band stamp invariant', () => {
     expect(await db.getBand('h1', 5)).toEqual({ band: 5, minX: 100, maxX: 700 });
   });
 
+  it('stamps the new version ONLY on bands the placement actually widened', async () => {
+    // A placement writes one row per band its candidate set touches — the placed
+    // point plus every ghost. A ghost landing inside a band's stored extent
+    // changes no geometry, and stamping it anyway would lift an unchanged band
+    // above every delta client's watermark, so getBandsSince would re-send it
+    // for nothing. The spec states the contract as "stamps every band it
+    // WIDENS"; before this gate the SQL stamped every band it touched.
+    //
+    // Tested here rather than through /place because the candidate set is the
+    // only way to reach a non-widening write, and ghost positions are random —
+    // this is the deterministic form of the same write.
+    const db = await seeded();
+    await db.commitPlacement('h1', [
+      { band: 20, minX: 300, maxX: 700 },
+      { band: 21, minX: 300, maxX: 700 },
+    ], 100);
+    const v1 = (await db.getHeap('h1'))!.version;
+
+    // band 20 widens on the left; band 21 lands strictly inside.
+    const v2 = await db.commitPlacement('h1', [
+      { band: 20, minX: 250, maxX: 600 },
+      { band: 21, minX: 400, maxX: 600 },
+    ], 100);
+
+    // The heap version always bumps — the placement did happen.
+    expect(v2).toBe(v1 + 1);
+    // ...but only the widened band is offered to a client sitting at v1.
+    expect((await db.getBandsSince('h1', v1)).map((b) => b.band)).toEqual([20]);
+
+    // Geometry is still correct for both: 20 widened, 21 untouched by MIN/MAX.
+    expect(await db.getBand('h1', 20)).toEqual({ band: 20, minX: 250, maxX: 700 });
+    expect(await db.getBand('h1', 21)).toEqual({ band: 21, minX: 300, maxX: 700 });
+  });
+
   it('lowers top_y toward the summit exactly like the old bumpVersion did', async () => {
     const db = await seeded();
     const initialTopY = (await db.getHeap('h1'))!.top_y;
