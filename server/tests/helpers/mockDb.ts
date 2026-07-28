@@ -1,6 +1,6 @@
 // server/tests/helpers/mockDb.ts
 
-import type { HeapDB, HeapRow, HeapSummaryRow } from '../../src/db';
+import type { HeapDB, HeapRow, HeapSummaryRow, VersionedBandRow, FreezeArgs } from '../../src/db';
 import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
 import { bandOf, type BandRow } from '../../../shared/heapPolygon/bandEnvelope';
@@ -241,6 +241,14 @@ export class MockHeapDB implements HeapDB {
     }));
   }
 
+  async getAllBandsVersioned(heapId: string): Promise<VersionedBandRow[]> {
+    const m = this.bands.get(heapId);
+    if (!m) return [];
+    return [...m.keys()].sort((a, b) => a - b).map((band) => ({
+      band, minX: m.get(band)!.minX, maxX: m.get(band)!.maxX, version: m.get(band)!.version,
+    }));
+  }
+
   async getBandRange(heapId: string, fromBand: number, toBand: number): Promise<BandRow[]> {
     const m = this.bands.get(heapId);
     if (!m) return [];
@@ -315,19 +323,32 @@ export class MockHeapDB implements HeapDB {
     return newVersion;
   }
 
-  async setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void> {
-    const existing = this.heaps.get(heapId);
-    if (!existing) return;
-    this.heaps.set(heapId, { ...existing, base_id: baseId, freeze_y: freezeY });
-    // Drop the rows the freeze line just buried, matching the D1 batch. The
-    // boundary is derived from freezeY exactly as it is there.
-    const m = this.bands.get(heapId);
+  async freezeAtomic(args: FreezeArgs): Promise<boolean> {
+    const existing = this.heaps.get(args.heapId);
+    if (!existing) return false;
+    // Mirrors the D1 CAS: a stale expectedFreezeY means another request froze
+    // first, and NOTHING is written — no base, no line advance, no deletion.
+    if (existing.freeze_y !== args.expectedFreezeY) return false;
+
+    this.bases.set(args.newBaseId, {
+      heap_id: args.heapId,
+      vertices: JSON.stringify(args.baseVertices),
+      vertex_hash: args.baseHash,
+      created_at: args.now,
+    });
+    this.heaps.set(args.heapId, { ...existing, base_id: args.newBaseId, freeze_y: args.newFreezeY });
+
+    // Drop the rows the freeze line just buried, matching the D1 batch: the
+    // boundary is derived from newFreezeY exactly as it is there, and the
+    // version watermark spares any row written after the caller's read.
+    const m = this.bands.get(args.heapId);
     if (m) {
-      const freezeBand = bandOf(freezeY);
-      for (const band of [...m.keys()]) {
-        if (band >= freezeBand) m.delete(band);
+      const freezeBand = bandOf(args.newFreezeY);
+      for (const [band, row] of [...m.entries()]) {
+        if (band >= freezeBand && row.version <= args.versionWatermark) m.delete(band);
       }
     }
+    return true;
   }
 
   async clearBands(heapId: string): Promise<void> {

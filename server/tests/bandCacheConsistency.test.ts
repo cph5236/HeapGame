@@ -13,6 +13,7 @@ import { MockKV } from './helpers/mockKv';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 
 const noWait = (_p: Promise<unknown>) => {};
+const NOW = '2026-07-28T00:00:00.000Z';
 
 async function seeded() {
   const inner = new MockHeapDB();
@@ -71,7 +72,7 @@ describe('band cache consistency', () => {
     expect(kv.deletes).toContain('cache:heap:h1');
   });
 
-  it('invalidates the snapshot on commitPlacement, setFreeze and clearBands', async () => {
+  it('invalidates the snapshot on commitPlacement, freezeAtomic and clearBands', async () => {
     const inner = await seeded();
     const kv = new MockKV();
     const cached = new CachedHeapDB(inner, kv.asKV(), noWait);
@@ -90,6 +91,19 @@ describe('band cache consistency', () => {
       { band: 10, minX: 400, maxX: 500 },
       { band: 12, minX: 100, maxX: 200 },
     ]);
+
+    kv.deletes.length = 0;
+    // Freeze invalidates unconditionally, and busts BOTH keys rather than
+    // taking commitPlacement's row-only shortcut: it changes base_id, so a
+    // stale list summary would point at a base that no longer exists.
+    const applied = await cached.freezeAtomic({
+      heapId: 'h1', expectedFreezeY: 0, newBaseId: 'b2',
+      baseVertices: [{ x: 400, y: 210 }], baseHash: 'hash-b2',
+      newFreezeY: 200, versionWatermark: 0, now: NOW,
+    });
+    expect(applied).toBe(true);
+    expect(kv.deletes).toContain('cache:heap:h1');
+    expect((await cached.getHeap('h1'))!.base_id).toBe('b2');
 
     kv.deletes.length = 0;
     await cached.clearBands('h1');

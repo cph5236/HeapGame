@@ -351,4 +351,41 @@ describe('freeze partition invariant', () => {
     const servedBandSet = [...new Set(servedBandNumbers)].sort((a, b) => a - b);
     expect(servedBandSet).toEqual(liveZoneBandNumbers);
   });
+
+  it('folds a straggler into the base on the next freeze', async () => {
+    // A straggler is a band the previous freeze deliberately spared: written
+    // concurrently, so stamped above that freeze's watermark, so excluded from
+    // the DELETE because the base it was building never captured it. It sits
+    // below the freeze line — invisible to every live filter — and would be
+    // stranded there forever if the next freeze only ever folded in its own
+    // fresh slice. The base source is `band >= newFreezeBand`, deliberately
+    // wider than the frozen slice, precisely to collect it.
+    const db = await driveToFreeze();
+    const afterFirst = (await db.getHeapFresh('h1'))!;
+    expect(afterFirst.freeze_y).toBeGreaterThan(0); // freeze genuinely fired
+
+    // Inject exactly what a concurrent mid-freeze placement leaves behind: a row
+    // below the freeze line, stamped at the current heap version (which is above
+    // the watermark that freeze captured).
+    const firstFreezeBand = bandOf(afterFirst.freeze_y);
+    const stragglerBand = firstFreezeBand + 5;
+    await db.upsertBands('h1', [{ band: stragglerBand, minX: 100, maxX: 900 }], afterFirst.version);
+
+    // It is genuinely invisible: below the line, so no live consumer sees it.
+    expect((await db.getAllBands('h1')).some((b) => b.band === stragglerBand)).toBe(true);
+    expect(stragglerBand).toBeGreaterThanOrEqual(firstFreezeBand);
+
+    // Climb until a SECOND freeze fires.
+    await climb(db, PLACEMENT_COUNT, FREEZE_BATCH_BANDS + 1);
+    const afterSecond = (await db.getHeapFresh('h1'))!;
+    expect(afterSecond.freeze_y).toBeLessThan(afterFirst.freeze_y); // line advanced
+    expect(afterSecond.base_id).not.toBe(afterFirst.base_id);
+
+    // The straggler's geometry is now in the base, at its real extents...
+    const baseBands = verticesToEnvelope((await db.getBaseVerticesById(afterSecond.base_id)) ?? []);
+    expect(baseBands.get(stragglerBand)).toMatchObject({ minX: 100, maxX: 900 });
+
+    // ...and its row is gone, because this freeze's watermark DID capture it.
+    expect((await db.getAllBands('h1')).some((b) => b.band === stragglerBand)).toBe(false);
+  });
 });

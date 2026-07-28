@@ -11,7 +11,7 @@
 //   cache:heap:list     — listHeaps() summary     (short TTL; any heap mutation busts it)
 //   cache:base:{baseId} — base vertices           (immutable; long TTL)
 
-import type { HeapDB, HeapRow, HeapSummaryRow } from '../db';
+import type { HeapDB, HeapRow, HeapSummaryRow, VersionedBandRow, FreezeArgs } from '../db';
 import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
 import type { BandRow } from '../../../shared/heapPolygon/bandEnvelope';
 import type { Sink } from '../logging/Sink';
@@ -133,6 +133,15 @@ export class CachedHeapDB implements HeapDB {
     return (await this.snapshot(heapId))?.bands ?? [];
   }
 
+  async getAllBandsVersioned(heapId: string): Promise<VersionedBandRow[]> {
+    // Read-through, deliberately. The cached snapshot can lag, and the freeze
+    // path uses this read to decide which rows it is safe to DELETE — a stale
+    // row set there means burying geometry the new base never captured, which
+    // is the exact loss this whole path exists to prevent. Rare enough (once
+    // per freeze) that skipping the cache costs nothing measurable.
+    return this.inner.getAllBandsVersioned(heapId);
+  }
+
   async getBand(heapId: string, band: number): Promise<BandRow | null> {
     // Placement containment must not run on a stale extent, or a buried vertex
     // slips through — read through, mirroring getHeapFresh's reasoning.
@@ -193,16 +202,27 @@ export class CachedHeapDB implements HeapDB {
     return newVersion;
   }
 
-  async setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void> {
-    await this.inner.setFreeze(heapId, baseId, freezeY);
-    // Changes base_id and freeze_y on the heap row AND deletes the band rows
-    // the new freeze line buries — invalidate like every other write, or the
-    // cached snapshot keeps pointing at the stale base while still serving rows
-    // that no longer exist. One invalidation covers both, because the inner
-    // call is one transaction. Freezes are rare (once per FREEZE_BATCH_BANDS of
-    // climb), so this pays the full two-key cost rather than the row-only
+  async freezeAtomic(args: FreezeArgs): Promise<boolean> {
+    const applied = await this.inner.freezeAtomic(args);
+    // Changes base_id and freeze_y on the heap row AND deletes the band rows the
+    // new freeze line buries — invalidate like every other write, or the cached
+    // snapshot keeps pointing at the stale base while still serving rows that no
+    // longer exist. One invalidation covers both, because the inner call is one
+    // transaction.
+    //
+    // Unconditional, win or lose. A losing freeze wrote nothing, so this
+    // invalidation is redundant — but freezes are rare (once per
+    // FREEZE_BATCH_BANDS of climb) and a redundant KV delete costs less than a
+    // branch whose correctness depends on freezeAtomic's return value being
+    // right. Freezes also pay the full two-key cost rather than the row-only
     // shortcut commitPlacement takes.
-    await this.invalidateHeap(heapId);
+    await this.invalidateHeap(args.heapId);
+    if (applied) {
+      // Base vertices are immutable — safe to populate on write, mirroring
+      // createBase. Only on a win: a loser's base row does not exist.
+      this.waitUntil(this.kv.put(`cache:base:${args.newBaseId}`, JSON.stringify(args.baseVertices), { expirationTtl: BASE_TTL }));
+    }
+    return applied;
   }
 
   // ---- helpers ----

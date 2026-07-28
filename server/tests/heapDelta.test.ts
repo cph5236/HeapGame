@@ -109,8 +109,11 @@ describe('GET /heaps/:id — delta protocol', () => {
   it('falls back to full after a freeze, because freeze mints a new baseId', async () => {
     const db = await heap();
     // Simulate what the freeze path does: new base row, heap repointed at it.
-    await db.createBase('b2', 'h1', [{ x: 480, y: 50000 }], 'h2', new Date().toISOString());
-    await db.setFreeze('h1', 'b2', 47000);
+    await db.freezeAtomic({
+      heapId: 'h1', expectedFreezeY: 0, newBaseId: 'b2',
+      baseVertices: [{ x: 480, y: 50000 }], baseHash: 'h2',
+      newFreezeY: 47000, versionWatermark: 0, now: new Date().toISOString(),
+    });
     const body = (await (await get(db, '?version=5&baseId=b1')).json()) as GetHeapResponse;
     expect(body).toMatchObject({ changed: true, mode: 'full', baseId: 'b2' });
   });

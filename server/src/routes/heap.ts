@@ -646,10 +646,9 @@ export function heapRoutes(
     const newVersion = await db.commitPlacement(id, bandRows, y);
 
     // Freeze: fold the bottom bands into the base, then drop them from
-    // heap_band (setFreeze does the deletion in the same transaction as the
-    // freeze-line advance — see its doc). Order matters: the base row must
-    // exist BEFORE setFreeze repoints the heap at it and deletes the rows,
-    // because those rows are the only other copy of that geometry.
+    // heap_band. All of it is ONE guarded transaction inside freezeAtomic —
+    // see its doc for why a compare-and-swap is mandatory here even though the
+    // placement write above needs none.
     //
     // Minting a new baseId is mandatory — loadCachedBase keys localStorage on
     // baseId with no TTL, so a stable id over changed base content strands
@@ -661,14 +660,58 @@ export function heapRoutes(
     const freezeBand = row.freeze_y > 0 ? bandOf(row.freeze_y) : Infinity;
     const freeze = checkFreezeBands(await db.getAllBands(id), freezeBand);
     if (freeze) {
+      // Re-read WITH versions, and read through the cache. The decision above
+      // can safely run on a cached snapshot — a stale one can only under-report
+      // bands, which defers the freeze to the next placement — but the set we
+      // are about to DELETE cannot. This read costs a D1 query once per
+      // FREEZE_BATCH_BANDS of climb, never on the placement hot path.
+      const versioned = await db.getAllBandsVersioned(id);
+
+      // Everything at or below the new line: the freshly frozen slice PLUS any
+      // straggler an earlier freeze spared because it was written mid-freeze.
+      // Widening the base source is the entire straggler-collection mechanism —
+      // the DELETE below already covers `band >= newFreezeBand`, so a straggler
+      // is captured and buried in the same pass.
+      const buried = versioned.filter((b) => b.band >= freeze.newFreezeBand);
+
+      // The watermark is the max version we actually captured. Heap versions
+      // are monotonic, so any row written after the read above carries a higher
+      // one and survives the DELETE rather than being buried into a base that
+      // never saw it.
+      //
+      // An empty `buried` yields -Infinity here, and that is deliberately not
+      // guarded: the value can never reach a batch that commits. The decision
+      // above saw rows at `band >= newFreezeBand`, so for the fresh read to
+      // find none, a concurrent freeze must have deleted them — which moved
+      // freeze_y off `row.freeze_y` and makes this request's CAS fail. The one
+      // exception is a concurrent reset (freeze_y back to 0) racing a heap
+      // whose freeze_y was already 0; there the CAS passes, but a watermark
+      // nothing can be <= only makes the DELETE match zero rows, which is the
+      // safe direction. See the reset-path note in freezeAtomic.
+      const versionWatermark = Math.max(...buried.map((b) => b.version));
+
       const existingBase = (await db.getBaseVerticesById(row.base_id)) ?? [];
       const baseVertices = [
         ...existingBase,
-        ...envelopeToVertices(mergeBands(new Map(), freeze.frozen)),
+        ...envelopeToVertices(mergeBands(new Map(), buried)),
       ];
-      const newBaseId = crypto.randomUUID();
-      await db.createBase(newBaseId, id, baseVertices, hashVertices(baseVertices), new Date().toISOString());
-      await db.setFreeze(id, newBaseId, freeze.newFreezeBand * BAND_SIZE_PX);
+      // row.base_id was read before commitPlacement, so a losing racer builds
+      // its base from a stale one. Harmless: the guard makes its whole batch a
+      // no-op, base row included.
+      await db.freezeAtomic({
+        heapId: id,
+        expectedFreezeY: row.freeze_y,
+        newBaseId: crypto.randomUUID(),
+        baseVertices,
+        baseHash: hashVertices(baseVertices),
+        newFreezeY: freeze.newFreezeBand * BAND_SIZE_PX,
+        versionWatermark,
+        now: new Date().toISOString(),
+      });
+      // Return value deliberately ignored. A lost CAS means another request
+      // froze first; the placement itself already committed and succeeded, and
+      // freeze is opportunistic — the next placement re-evaluates it against
+      // fresh state. Nothing to retry and nothing to report.
     }
 
     const bonusCoins = y > row.top_y + OFF_PEAK_THRESHOLD_PX ? OFF_PEAK_BONUS_COINS : undefined;

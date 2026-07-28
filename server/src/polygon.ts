@@ -21,10 +21,13 @@ export const FREEZE_BATCH_BANDS = 38;
  * placement is gated to y <= liveZoneBottomY, so nothing writes below the freeze
  * line again. Returns null when no freeze is due.
  *
- * `allBands` is every band the heap has ever recorded — freeze never deletes
- * rows — so the live set must be carved out here with the SAME predicate every
- * other consumer uses: LIVE is `band < freezeBand`. Callers pass `Infinity` for
- * the pre-freeze sentinel (`freeze_y === 0`), never `bandOf(0)`.
+ * `allBands` is every band row the heap currently has: the live set plus any
+ * straggler a freeze spared because it was written mid-freeze (see
+ * HeapDB.freezeAtomic). Frozen rows are otherwise deleted, so this is NOT the
+ * heap's whole history. The live set must still be carved out here with the
+ * SAME predicate every other consumer uses: LIVE is `band < freezeBand`.
+ * Callers pass `Infinity` for the pre-freeze sentinel (`freeze_y === 0`), never
+ * `bandOf(0)`.
  *
  * The direction matters beyond the first freeze. Filtering `band >= freezeBand`
  * instead selects the already-frozen bands, whose count can never exceed
