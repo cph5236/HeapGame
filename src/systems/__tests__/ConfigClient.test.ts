@@ -14,7 +14,7 @@ vi.mock('../SaveData', () => ({
   setStoredRemoteConfig: (c: unknown) => setStoredRemoteConfig(c),
 }));
 
-import { primeConfig, configReady, getConfigValue, hasConfig, resetConfigCacheForTests } from '../ConfigClient';
+import { primeConfig, configReady, getConfigValue, hasConfig, isConfigFresh, resetConfigCacheForTests } from '../ConfigClient';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -134,5 +134,46 @@ describe('ConfigClient', () => {
     fetchWithLog.mockResolvedValue(jsonResponse(200, { config: {} }));
     primeConfig();
     await expect(configReady()).resolves.toBeUndefined();
+  });
+
+  // Freshness is what the update gate keys on: it must never treat a value that
+  // only came from last-known-good as authority to lock a player out.
+  describe('isConfigFresh', () => {
+    it('is false before any fetch has landed', () => {
+      expect(isConfigFresh()).toBe(false);
+    });
+
+    it('is false when only last-known-good warmed the cache', () => {
+      vi.useFakeTimers();
+      try {
+        getStoredRemoteConfig.mockReturnValue({ ad_cadence: { min: 3, max: 7 } });
+        fetchWithLog.mockReturnValue(new Promise(() => { /* never resolves */ }));
+        primeConfig();
+        expect(hasConfig()).toBe(true);   // usable…
+        expect(isConfigFresh()).toBe(false); // …but not authoritative
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('is true after a successful fetch', async () => {
+      fetchWithLog.mockResolvedValue(jsonResponse(200, { config: { ad_cadence: { min: 1, max: 2 } } }));
+      await primeConfig();
+      expect(isConfigFresh()).toBe(true);
+    });
+
+    it('stays false when the fetch fails and last-known-good is serving', async () => {
+      getStoredRemoteConfig.mockReturnValue({ ad_cadence: { min: 3, max: 7 } });
+      fetchWithLog.mockRejectedValue(new Error('offline'));
+      await primeConfig();
+      expect(hasConfig()).toBe(true);
+      expect(isConfigFresh()).toBe(false);
+    });
+
+    it('stays false on a non-ok response', async () => {
+      fetchWithLog.mockResolvedValue(jsonResponse(500, { error: 'boom' }));
+      await primeConfig();
+      expect(isConfigFresh()).toBe(false);
+    });
   });
 });

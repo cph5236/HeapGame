@@ -3,6 +3,8 @@ import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMe
 import { loadGameAssets } from './loadGameAssets';
 import { preloadProgress, preloadComplete } from '../systems/infinitePreload';
 import { configReady, hasConfig } from '../systems/ConfigClient';
+import { isUpdateRequired, shouldConfirmUpdateGate } from '../systems/UpdateGate';
+import { paintSkyGradient } from '../ui/skyGradient';
 import { MENU_LOADING_MIN_MS } from '../constants';
 
 // Themed boot loading screen. Blocks MenuScene/TutorialScene until the game's
@@ -13,14 +15,7 @@ import { MENU_LOADING_MIN_MS } from '../constants';
 //
 // Palette matches InfiniteLoadingOverlay (earthy dirt + gold) so the two loaders
 // read as one system. Authored in logical (CSS-pixel) coords via setupUiCamera.
-
-// Night-sky → sunset gradient stops sampled from MenuScene.createSkyGradient, so
-// the loader and the menu it precedes share one sky. [position 0..1, 0xRRGGBB].
-const SKY_STOPS: [number, number][] = [
-  [0.00, 0x0a0818], [0.16, 0x161c3a], [0.33, 0x222d55], [0.50, 0x37415e],
-  [0.60, 0x5c4840], [0.70, 0x7d5228], [0.78, 0x8a5520], [0.86, 0x7a4a1a],
-  [0.93, 0x5e3a14], [1.00, 0x3e280e],
-];
+// The sky itself lives in ui/skyGradient.ts, shared with UpdateRequiredScene.
 
 const MOUND_BACK     = 0x1c130c; // dark heap silhouetted against the warm horizon
 const MOUND_FRONT    = 0x281b10;
@@ -37,27 +32,6 @@ const CAPTIONS = [
   'Stacking the pile',
   'Digging through the junk',
 ];
-
-/** Colour of the sky gradient at normalized vertical position p (0=top, 1=bottom). */
-function skyColorAt(p: number): number {
-  const t = Math.max(0, Math.min(1, p));
-  for (let i = 1; i < SKY_STOPS.length; i++) {
-    const [p0, c0] = SKY_STOPS[i - 1];
-    const [p1, c1] = SKY_STOPS[i];
-    if (t <= p1) return mix(c0, c1, (t - p0) / (p1 - p0));
-  }
-  return SKY_STOPS[SKY_STOPS.length - 1][1];
-}
-
-/** Linear blend of two 0xRRGGBB colours; k=0 → a, k=1 → b. */
-function mix(a: number, b: number, k: number): number {
-  const t = Math.max(0, Math.min(1, k));
-  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
-  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
-  return (Math.round(ar + (br - ar) * t) << 16)
-       | (Math.round(ag + (bg - ag) * t) << 8)
-       |  Math.round(ab + (bb - ab) * t);
-}
 
 /** Points along a smooth sine-bump hill, left→crest→right, at height H. */
 function hillPoints(cx: number, baseY: number, halfW: number, height: number, steps = 24): Phaser.Types.Math.Vector2Like[] {
@@ -116,21 +90,8 @@ export class LoadingScene extends Phaser.Scene {
     const h = logicalHeight(this);
     this.cx = w / 2;
 
-    // ── Backdrop: the game's night-sky → sunset gradient ──────────────────────
-    const bg = this.add.graphics();
-    const steps = 48;
-    for (let i = 0; i < steps; i++) {
-      bg.fillStyle(skyColorAt(i / (steps - 1)), 1);
-      bg.fillRect(0, Math.floor((h * i) / steps), w, Math.ceil(h / steps) + 1);
-    }
-
-    // Faint stars in the upper night portion, echoing the menu sky.
-    const starG = this.add.graphics();
-    for (let i = 0; i < 40; i++) {
-      const roll = Phaser.Math.Between(0, 9);
-      starG.fillStyle(0xffffff, roll < 6 ? 0.8 : roll < 9 ? 0.45 : 0.2);
-      starG.fillCircle(Phaser.Math.Between(0, w), Phaser.Math.Between(0, h * 0.5), roll < 6 ? 0.7 : roll < 9 ? 1.2 : 1.8);
-    }
+    // ── Backdrop: the game's night-sky → sunset gradient, plus faint stars ────
+    paintSkyGradient(this, w, h);
 
     this.baseY      = h;               // heap grows up from the very bottom of the screen
     this.moundMaxH  = Math.min(h * 0.5, w * 0.7);
@@ -195,7 +156,12 @@ export class LoadingScene extends Phaser.Scene {
     // usable value is live — open the menu now and let the fetch refresh the
     // cache in the background rather than stalling up to CONFIG_FETCH_TIMEOUT_MS
     // on a flaky connection. Dev preview (freeze) never transitions, so skip it.
-    if (this.freeze !== null || hasConfig()) {
+    //
+    // The one case that overrides the shortcut: last-known-good already says
+    // this build is below the update floor. A block must never fire on stale
+    // config, so we spend the wait to confirm it against the server — if the
+    // fetch fails the gate simply doesn't fire and the menu opens as usual.
+    if (this.freeze !== null || (hasConfig() && !shouldConfirmUpdateGate())) {
       this.configSettled = true;
     } else {
       void configReady().then(() => { this.configSettled = true; });
@@ -246,8 +212,12 @@ export class LoadingScene extends Phaser.Scene {
     if (this.configSettled && preloadComplete(!this.loaderDone, elapsed, MENU_LOADING_MIN_MS) && this.shownFrac > 0.995) {
       this.transitioning = true;
       this.cameras.main.fadeOut(200, 0, 0, 0);
+      // A confirmed update gate replaces the menu entirely — this build is below
+      // the floor the server published, so there is nowhere useful to let the
+      // player go. isUpdateRequired() is false unless config landed this launch.
+      const target = isUpdateRequired() ? 'UpdateRequiredScene' : this.nextScene;
       this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-        this.scene.start(this.nextScene);
+        this.scene.start(target);
       });
     }
   }

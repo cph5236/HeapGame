@@ -13,6 +13,7 @@ import { InfiniteGameScene } from './scenes/InfiniteGameScene';
 import { LeaderboardScene } from './scenes/LeaderboardScene';
 import { TutorialScene } from './scenes/TutorialScene';
 import { PauseScene } from './scenes/PauseScene';
+import { UpdateRequiredScene } from './scenes/UpdateRequiredScene';
 import { WORLD_GRAVITY_Y } from './constants';
 import { installAudioFocusGuard } from './systems/AudioFocusGuard';
 import { InputManager } from './systems/InputManager';
@@ -84,7 +85,7 @@ const config: Phaser.Types.Core.GameConfig = {
     target: 60,
     smoothStep: true,
   },
-  scene: [BootScene, LoadingScene, MenuScene, HeapSelectScene, GameScene, ScoreScene, UpgradeScene, StoreScene, CustomizationScene, InfiniteGameScene, TexturePreviewScene, LeaderboardScene, TutorialScene, PauseScene],
+  scene: [BootScene, LoadingScene, MenuScene, HeapSelectScene, GameScene, ScoreScene, UpgradeScene, StoreScene, CustomizationScene, InfiniteGameScene, TexturePreviewScene, LeaderboardScene, TutorialScene, PauseScene, UpdateRequiredScene],
   parent: 'game',
 };
 

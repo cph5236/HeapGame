@@ -3,6 +3,7 @@
 import { Hono } from 'hono';
 import type { ConfigDB } from '../configDb';
 import { sanitizeRewardTable } from '../../../shared/dailyDrop';
+import { parseMinVersionConfig, MIN_VERSION_KEY, MAX_GATE_MESSAGE_LENGTH } from '../../../shared/versionGate';
 
 const KEY_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
 const MAX_VALUE_LENGTH = 8192;
@@ -55,6 +56,16 @@ function validateKnownKeyShape(key: string, value: unknown): string | null {
     // sanitizeRewardTable returns its input by identity iff well-formed.
     if (sanitizeRewardTable(value) !== value) {
       return 'value must be a 7-entry array of non-empty grant arrays';
+    }
+  }
+  if (key === MIN_VERSION_KEY) {
+    // Hard gate — a bad value here locks every player out of the game, so this
+    // is the one key where a strict write-time check really matters. The client
+    // fails open on anything malformed, but that only limits the blast radius;
+    // it doesn't make a typo harmless (a too-high version blocks everyone).
+    if (parseMinVersionConfig(value) === null) {
+      return `value must be { version: "major.minor.patch", message?: string } `
+           + `with message at most ${MAX_GATE_MESSAGE_LENGTH} characters`;
     }
   }
   return null;
