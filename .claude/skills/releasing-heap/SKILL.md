@@ -15,8 +15,13 @@ A release is a **version-bump commit on `main`** (message `V<version>`, e.g.
 | `deploy.yml` | web build → GitHub Pages |
 | `migrate-d1.yml` | remote D1 migrations (only if `server/migrations/**` changed) |
 
-The Cloudflare Worker is **not** in that fan-out — deploy it manually when server
-code changed: `cd server && npx wrangler deploy`.
+The Cloudflare Worker rides along too, but **not** through GitHub Actions — no
+workflow here runs `wrangler deploy`. It deploys off `main` through Cloudflare's
+own Git integration (Workers Builds: repo `cph5236/HeapGame`, root directory
+`/server/`, deploy command `npx wrangler deploy`, watch paths `*`). Non-production
+branches build too, which is the `cloudflare-workers-and-pages` bot you see on PRs.
+
+**Never tell the user to run `wrangler deploy` by hand.** It is automatic.
 
 ## Procedure
 
@@ -30,12 +35,13 @@ code changed: `cd server && npx wrangler deploy`.
    `versionCode`/`versionName` together — never edit these by hand or they drift.
 3. **Commit** exactly those two files with message `V<new version>` (e.g. `V0.2.17`).
 4. **Stop — do not push.** The user reviews and pushes `main` themselves
-   (release = production publish). Tell them what the push will trigger, and
-   whether a manual `wrangler deploy` and/or pending remote migration is also needed.
+   (release = production publish). Tell them what the push will trigger, including
+   any pending remote migration.
 
 ## Checks before handing off
 
-- Server changed since last release? → flag manual `npx wrangler deploy`.
+- Server changed since last release? → say so, so they know the Worker redeploys
+  as part of this push. Nothing manual to do.
 - New migrations in the release? → confirm `migrate-d1.yml` will pick them up, and
   whether the worker must wait for it (schema-dependent code).
 - `git log <last V tag/commit>..HEAD --oneline` — sanity-scan what's shipping.
