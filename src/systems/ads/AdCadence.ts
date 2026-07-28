@@ -19,6 +19,19 @@ function currentRange(): { min: number; max: number } {
   return { min: AD_CADENCE_MIN, max: AD_CADENCE_MAX };
 }
 
+/**
+ * True when a stored target could still have been drawn from the live range.
+ * A target is persisted across runs, so without this check one drawn under an
+ * old range outlives a remote-config change: lowering `ad_cadence` to 1-3 left
+ * existing installs counting toward a stored 40-50 target, and the new range
+ * only took effect after the *next* ad fired — roughly 45 runs later.
+ */
+function isTargetCurrent(target: number): boolean {
+  if (target <= 0) return false;   // never seeded (or a degenerate min:0 config)
+  const { min, max } = currentRange();
+  return target >= min && target <= max;
+}
+
 /** Random target in the inclusive range [AD_CADENCE_MIN, AD_CADENCE_MAX] (or remote config if present). */
 export function rollTarget(rand: () => number = Math.random): number {
   const { min, max } = currentRange();
@@ -49,7 +62,9 @@ export function decideAdRun(
 export function registerRun(enabled: boolean, rand: () => number = Math.random): boolean {
   if (!enabled) return false;
   const raw   = getAdRunState();
-  const state: AdRunState = raw.target > 0 ? raw : { runsSinceLast: 0, target: rollTarget(rand) };
+  const state: AdRunState = isTargetCurrent(raw.target)
+    ? raw
+    : { runsSinceLast: raw.runsSinceLast, target: rollTarget(rand) };
   const { next, isAdRun } = decideAdRun(state, rand);
   setAdRunState(next);
   return isAdRun;

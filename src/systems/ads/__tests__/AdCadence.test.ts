@@ -74,8 +74,9 @@ describe('registerRun', () => {
   });
 
   it('fires on the run that reaches the target', () => {
-    setAdRunState({ runsSinceLast: 1, target: 2 });
-    expect(registerRun(true, () => 0)).toBe(true);           // 1->2 reaches target -> ad run
+    // Target must sit inside the live range or it is treated as stale and redrawn.
+    setAdRunState({ runsSinceLast: AD_CADENCE_MIN - 1, target: AD_CADENCE_MIN });
+    expect(registerRun(true, () => 0)).toBe(true);           // 39->40 reaches target -> ad run
     expect(getAdRunState()).toEqual({ runsSinceLast: 0, target: AD_CADENCE_MIN });
   });
 });
@@ -94,5 +95,47 @@ describe('rollTarget with remote config', () => {
     mockGetConfigValue.mockReturnValue(undefined);
     expect(rollTarget(() => 0)).toBe(AD_CADENCE_MIN);
     expect(rollTarget(() => 0.999)).toBe(AD_CADENCE_MAX);
+  });
+});
+
+describe('registerRun re-rolls a stale target when the remote range moves', () => {
+  const mockGetConfigValue = vi.mocked(getConfigValue);
+
+  beforeEach(() => { mockGetConfigValue.mockReset(); });
+
+  // The bug: a target drawn from the old hardcoded 40-50 range stayed stored
+  // forever, so lowering ad_cadence to 1-3 in prod had no effect on an existing
+  // install until the *next* ad fired — which needed ~45 more runs to happen.
+  it('redraws a target that sits above the current range', () => {
+    mockGetConfigValue.mockReturnValue({ min: 1, max: 3 });
+    setAdRunState({ runsSinceLast: 0, target: 47 });   // stale, from the 40-50 era
+
+    // rand=0.9 draws the top of 1-3, so the redraw is visible rather than firing at once.
+    expect(registerRun(true, () => 0.9)).toBe(false);
+    expect(getAdRunState()).toEqual({ runsSinceLast: 1, target: 3 });
+  });
+
+  it('redraws a target that sits below the current range', () => {
+    mockGetConfigValue.mockReturnValue({ min: 40, max: 50 });
+    setAdRunState({ runsSinceLast: 0, target: 2 });
+
+    expect(registerRun(true, () => 0)).toBe(false);
+    expect(getAdRunState()).toEqual({ runsSinceLast: 1, target: 40 });
+  });
+
+  it('fires immediately when the backlog already exceeds the redrawn target', () => {
+    mockGetConfigValue.mockReturnValue({ min: 1, max: 3 });
+    setAdRunState({ runsSinceLast: 20, target: 47 });  // 20 runs banked under the old range
+
+    expect(registerRun(true, () => 0)).toBe(true);
+    expect(getAdRunState()).toEqual({ runsSinceLast: 0, target: 1 });
+  });
+
+  it('leaves an in-range target alone so the cadence is not reset every run', () => {
+    mockGetConfigValue.mockReturnValue({ min: 1, max: 3 });
+    setAdRunState({ runsSinceLast: 0, target: 3 });
+
+    expect(registerRun(true, () => 0)).toBe(false);
+    expect(getAdRunState()).toEqual({ runsSinceLast: 1, target: 3 }); // still 3, not redrawn to 1
   });
 });
