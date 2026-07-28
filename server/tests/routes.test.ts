@@ -1,10 +1,11 @@
 // server/tests/routes.test.ts
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createApp, type AppOptions } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockSink } from './helpers/mockSink';
+import { bandOf } from '../../shared/heapPolygon/bandEnvelope';
 import type {
   CreateHeapResponse,
   ListHeapsResponse,
@@ -174,7 +175,11 @@ describe('GET /heaps/:id', () => {
 
   it('returns changed:true with liveZone and baseId when client version is behind', async () => {
     const db = new MockHeapDB();
-    db.seedHeap('h1', 3, [{ x: 10, y: 20 }], 'base-guid-1');
+    db.seedHeap('h1', 3, [], 'base-guid-1');
+    // liveZone is derived from heap_band per request, not read from the
+    // heap.live_zone blob, so the band is what makes it non-empty. Seeding a
+    // blob alone would now produce liveZone: [] — see liveZoneKvCost.test.ts.
+    await db.upsertBands('h1', [{ band: 1, minX: 10, maxX: 40 }], 3);
     const res = await createApp(db, new MockScoreDB()).request('/heaps/h1?version=0');
     expect(res.status).toBe(200);
     const body = await res.json() as GetHeapResponse;
@@ -182,7 +187,7 @@ describe('GET /heaps/:id', () => {
     if (body.changed) {
       expect(body.version).toBe(3);
       expect(body.baseId).toBe('base-guid-1');
-      expect(body.liveZone).toEqual([{ x: 10, y: 20 }]);
+      expect(body.liveZone).toEqual([{ x: 10, y: 30 }, { x: 40, y: 30 }]);
     }
   });
 
@@ -280,12 +285,34 @@ describe('PUT /heaps/:id/reset', () => {
     expect(row?.freeze_y).toBe(0);
   });
 
-  it('preserves base_id on reset', async () => {
+  it('mints a new base_id on reset but preserves the base vertices, and clears only that heap\'s bands', async () => {
+    // A stable base_id over changed content would strand clients on stale
+    // localStorage geometry (loadCachedBase caches by baseId with no TTL) —
+    // reset must mint a fresh id while carrying the pre-reset base shape
+    // (the mountain below the freeze line) onto the new row. Reset also
+    // clears heap_band via db.clearBands — asserted here by seeding real
+    // rows first (so the test cannot pass vacuously by having nothing to
+    // clear) and by seeding a second heap's bands to prove the clear is
+    // scoped to the target heap, not a blanket wipe.
     const db = new MockHeapDB();
-    db.seedHeap('h1', 10, [{ x: 5, y: 5 }], 'base-preserved');
+    const baseVertices = [{ x: 5, y: 5 }, { x: 15, y: 25 }];
+    db.seedBase('base-old', 'h1', baseVertices);
+    db.seedHeap('h1', 10, [{ x: 5, y: 5 }], 'base-old');
+    await db.upsertBands('h1', [{ band: 3, minX: 10, maxX: 20 }], 10);
+    expect(await db.getAllBands('h1')).not.toEqual([]);
+
+    db.seedHeap('h2', 10, [{ x: 5, y: 5 }], 'base-h2');
+    await db.upsertBands('h2', [{ band: 7, minX: 30, maxX: 40 }], 10);
+    expect(await db.getAllBands('h2')).not.toEqual([]);
+
     await createApp(db, new MockScoreDB()).request('/heaps/h1/reset', { method: 'PUT' });
+
     const row = await db.getHeap('h1');
-    expect(row?.base_id).toBe('base-preserved');
+    expect(row?.base_id).not.toBe('base-old');
+    expect(await db.getBaseVerticesById(row!.base_id)).toEqual(baseVertices);
+    expect(await db.getAllBands('h1')).toEqual([]);
+    // h2 was never reset — its bands must survive untouched.
+    expect(await db.getAllBands('h2')).toEqual([{ band: 7, minX: 30, maxX: 40 }]);
   });
 });
 
@@ -316,14 +343,15 @@ describe('POST /heaps/:id/place', () => {
     expect(body.version).toBe(2);
   });
 
-  it('rejects a point inside the polygon', async () => {
+  it('rejects a point that does not widen its band (was: inside the polygon)', async () => {
     const db = new MockHeapDB();
-    const square = [
-      { x: 200, y: 0 }, { x: 400, y: 0 },
-      { x: 400, y: 100 }, { x: 200, y: 100 },
-    ];
-    db.seedHeap('h1', 1, square, 'base-1');
+    db.seedHeap('h1', 1, [], 'base-1');
     db.seedBase('base-1', 'h1', []);
+    // Band 2 covers y in [40,60) with x extents [200,400]. A point strictly
+    // inside those extents cannot widen the band, so it's rejected — this
+    // replaces the old ray-cast-inside-a-square-polygon check with the
+    // band-envelope containment predicate the route now uses.
+    await db.upsertBands('h1', [{ band: 2, minX: 200, maxX: 400 }], 1);
     const res = await createApp(db, new MockScoreDB()).request('/heaps/h1/place', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -434,39 +462,49 @@ describe('POST /heaps/:id/place', () => {
     expect(body.bonusCoins).toBeUndefined();
   });
 
-  it('ghost points land within GHOST_JITTER_RADIUS_PX of an existing live zone vertex', async () => {
-    // Seed a heap with one existing vertex far from the placement point
+  it('ghost points land within GHOST_JITTER_RADIUS_PX of the placement itself', async () => {
+    // Ghosts anchor on the placement, so they thicken the heap around where the
+    // player built. This test previously asserted the opposite — that a ghost
+    // reached an unrelated distant band it had sampled at random. That scatter
+    // was measured to both scramble the silhouette and inflate every band it
+    // touched monotonically toward the full column width, so it was replaced by
+    // local anchoring; see placeEnvelope.test.ts for the locality bound.
+    const EXISTING_BAND = bandOf(300);
     const db = new MockHeapDB();
     db.seedHeap('h1', 1, [{ x: 600, y: 300 }], 'base-1', 0, {
       ...DEFAULT_HEAP_PARAMS,
       ghostPointCount: 1,
     });
     db.seedBase('base-1', 'h1', []);
+    await db.upsertBands('h1', [{ band: EXISTING_BAND, minX: 600, maxX: 600 }], 1);
 
-    const app = createApp(db, new MockScoreDB());
-    await app.request('/heaps/h1/place', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ x: 400, y: 150 }),
-    });
+    // One ghost, two draws: dx then dy. dx = (0.75*2-1)*80 = +40, dy = 0 keeps
+    // it in the placement's own band, so the ghost widens that band to
+    // [400, 440] and the distant seeded band is left alone.
+    const sequence = [0.75, 0.5];
+    let call = 0;
+    const randomSpy = vi.spyOn(Math, 'random').mockImplementation(() => sequence[call++ % sequence.length]);
+    try {
+      const app = createApp(db, new MockScoreDB());
+      const placeRes = await app.request('/heaps/h1/place', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x: 400, y: 150 }),
+      });
+      expect(((await placeRes.json()) as PlaceResponse).accepted).toBe(true);
 
-    const heapRes = await app.request('/heaps/h1?version=0');
-    const heap = await heapRes.json() as Extract<GetHeapResponse, { changed: true }>;
-    // 1 existing + 1 player + 1 ghost = 3
-    expect(heap.liveZone).toHaveLength(3);
-
-    const RADIUS = 80; // must match GHOST_JITTER_RADIUS_PX in heap.ts
-    // Possible anchors at the time ghost was inserted: existing (600,300) and player (400,150)
-    const anchors = [{ x: 600, y: 300 }, { x: 400, y: 150 }];
-    const ghostPoints = heap.liveZone.filter(
-      v => !(v.x === 400 && v.y === 150) && !(v.x === 600 && v.y === 300),
-    );
-    expect(ghostPoints).toHaveLength(1);
-    const ghost = ghostPoints[0];
-    const nearAnyAnchor = anchors.some(
-      a => Math.abs(ghost.x - a.x) <= RADIUS && Math.abs(ghost.y - a.y) <= RADIUS,
-    );
-    expect(nearAnyAnchor).toBe(true);
+      // The ghost widened the placement's OWN band (bandMidY(7) = 150), and the
+      // pre-existing band 15 is untouched at its single seeded extent.
+      const heapRes = await app.request('/heaps/h1?version=0');
+      const heap = await heapRes.json() as Extract<GetHeapResponse, { changed: true }>;
+      expect(heap.liveZone).toEqual([
+        { x: 400, y: 150 },
+        { x: 440, y: 150 },
+        { x: 600, y: 310 },
+      ]);
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 });
 
@@ -1139,11 +1177,14 @@ describe('POST /heaps/:id/place coordinate clamp', () => {
     expect(res.status).toBe(200);
   });
 
-  it('rejects y below liveZoneBottomY on a heap with non-empty live zone', async () => {
+  it('rejects y below liveZoneBottomY on a heap with occupied bands', async () => {
     const db = new MockHeapDB();
-    // Seed a heap whose live zone has max y = 100; bottom is fixed regardless of top_y.
-    db.seedHeap('h1', 1, [{ x: 50, y: 50 }, { x: 50, y: 100 }], 'base-1');
+    // Seed a heap whose highest occupied band is 4 (y in [80,100)); liveZoneBottomY
+    // = (4+1)*20 = 100, fixed regardless of top_y — mirrors getMaxBand, which
+    // replaced the old scan over the live-zone blob's max y.
+    db.seedHeap('h1', 1, [], 'base-1');
     db.seedBase('base-1', 'h1', []);
+    await db.upsertBands('h1', [{ band: 4, minX: 40, maxX: 60 }], 1);
     const res = await createApp(db, new MockScoreDB()).request('/heaps/h1/place', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

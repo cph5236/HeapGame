@@ -13,6 +13,7 @@
 
 import type { HeapDB, HeapRow, HeapSummaryRow } from '../db';
 import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
+import type { BandRow } from '../../../shared/heapPolygon/bandEnvelope';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 
@@ -20,6 +21,10 @@ import { captureServer } from '../logging/captureServerEvent';
 const HEAP_TTL = 60;
 /** Base vertices are immutable once created → long TTL. */
 const BASE_TTL = 86_400;
+
+/** Heap row plus its full band set, cached as ONE entry. A delta's watermark must
+ *  never exceed the bands served beside it, so these two cannot be cached apart. */
+type HeapSnapshot = { row: HeapRow; bands: BandRow[] };
 
 export class CachedHeapDB implements HeapDB {
   constructor(
@@ -44,12 +49,7 @@ export class CachedHeapDB implements HeapDB {
   }
 
   async getHeap(id: string): Promise<HeapRow | null> {
-    const key = `cache:heap:${id}`;
-    const hit = await this.safeGet<HeapRow>(key);
-    if (hit) return hit;
-    const row = await this.inner.getHeap(id);
-    if (row) this.waitUntil(this.kv.put(key, JSON.stringify(row), { expirationTtl: HEAP_TTL }));
-    return row;
+    return (await this.snapshot(id))?.row ?? null;
   }
 
   // Bypass the cache entirely — the placement read-modify-write needs the
@@ -127,7 +127,104 @@ export class CachedHeapDB implements HeapDB {
     await this.inner.upsertEnemyParams(heapId, params);
   }
 
+  // ---- bands: cached as one snapshot together with the heap row ----
+
+  async getAllBands(heapId: string): Promise<BandRow[]> {
+    return (await this.snapshot(heapId))?.bands ?? [];
+  }
+
+  async getBand(heapId: string, band: number): Promise<BandRow | null> {
+    // Placement containment must not run on a stale extent, or a buried vertex
+    // slips through — read through, mirroring getHeapFresh's reasoning.
+    return this.inner.getBand(heapId, band);
+  }
+
+  async getMaxBand(heapId: string): Promise<number | null> {
+    return this.inner.getMaxBand(heapId);
+  }
+
+  async getBandRange(heapId: string, fromBand: number, toBand: number): Promise<BandRow[]> {
+    // Read-through for the same reason as getBand: this window feeds the
+    // placement containment check, and a stale extent there lets a buried
+    // vertex through. Serving it from the cached snapshot would also make the
+    // window's freshness differ from getBand's, which is worse than either.
+    return this.inner.getBandRange(heapId, fromBand, toBand);
+  }
+
+  async getBandsSince(heapId: string, version: number): Promise<BandRow[]> {
+    // Read-through: fresher than the cached row's version, so a delta may
+    // over-send relative to the watermark. That direction is safe — the client
+    // merges with MIN/MAX, which is idempotent. The unsafe direction is a fresh
+    // row beside stale bands, which the shared snapshot above prevents.
+    return this.inner.getBandsSince(heapId, version);
+  }
+
+  async upsertBands(heapId: string, rows: BandRow[], version: number): Promise<void> {
+    await this.inner.upsertBands(heapId, rows, version);
+    await this.invalidateHeap(heapId);
+  }
+
+  async clearBands(heapId: string): Promise<void> {
+    await this.inner.clearBands(heapId);
+    // A write to heap_band — invalidate like every other write, even though
+    // bands themselves aren't cached, so any dependent heap-row cache entry
+    // (e.g. the list summary) doesn't linger stale past a reset.
+    await this.invalidateHeap(heapId);
+  }
+
+  async commitPlacement(heapId: string, rows: BandRow[], topYCandidate: number): Promise<number> {
+    const newVersion = await this.inner.commitPlacement(heapId, rows, topYCandidate);
+    // Invalidate ONCE, after the whole batch has committed. Invalidating
+    // between the version bump and the band writes (as a split
+    // bumpVersion()+upsertBands() call pair used to) is exactly the window
+    // that let a concurrent GET rebuild its snapshot from a bumped row beside
+    // not-yet-written bands — a version served with fewer bands than it
+    // actually carries, permanently under-claimed by any client that then
+    // records it as a watermark.
+    // Row key only. The list summary carries version and topY, both of which
+    // this write changes, but nothing reads them for correctness: /place itself
+    // reads through getHeapFresh, and the only client consumer is the height
+    // label on HeapSelectScene. Letting those go up to HEAP_TTL stale is what a
+    // 60s cache means, and it halves the KV deletes on the hottest write path —
+    // deletes being the tightest Cloudflare quota at 1,000/day, account-wide.
+    // Structural writes (create/delete/reset/params) still bust both, because
+    // those change list MEMBERSHIP or params, which is not stale-but-equivalent.
+    await this.invalidateHeapRow(heapId);
+    return newVersion;
+  }
+
+  async setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void> {
+    await this.inner.setFreeze(heapId, baseId, freezeY);
+    // Changes base_id and freeze_y on the heap row AND deletes the band rows
+    // the new freeze line buries — invalidate like every other write, or the
+    // cached snapshot keeps pointing at the stale base while still serving rows
+    // that no longer exist. One invalidation covers both, because the inner
+    // call is one transaction. Freezes are rare (once per FREEZE_BATCH_BANDS of
+    // climb), so this pays the full two-key cost rather than the row-only
+    // shortcut commitPlacement takes.
+    await this.invalidateHeap(heapId);
+  }
+
   // ---- helpers ----
+
+  /** Cache-aside load of the heap row + its full band set as one snapshot, so a
+   *  client can never be handed a version newer than the bands it came with. */
+  private async snapshot(id: string): Promise<HeapSnapshot | null> {
+    const key = `cache:heap:${id}`;
+    const hit = await this.safeGet<HeapSnapshot>(key);
+    // Guard against the pre-migration bare-row shape: an entry written by the
+    // previous deploy has no `bands` at all. Without this check it would be
+    // trusted as-is and every heap would appear bandless for up to HEAP_TTL
+    // seconds after release. Anything that doesn't look like a full snapshot
+    // falls through to a fresh D1 read, which rewrites the entry correctly.
+    if (hit && hit.row && Array.isArray(hit.bands)) return hit;
+    const row = await this.inner.getHeap(id);
+    if (!row) return null;
+    const bands = await this.inner.getAllBands(id);
+    const snap: HeapSnapshot = { row, bands };
+    this.waitUntil(this.kv.put(key, JSON.stringify(snap), { expirationTtl: HEAP_TTL }));
+    return snap;
+  }
 
   /** Bust the per-heap row cache and the list cache. Synchronous (write path). */
   private async invalidateHeap(id: string): Promise<void> {
@@ -135,6 +232,16 @@ export class CachedHeapDB implements HeapDB {
       this.safeDelete(`cache:heap:${id}`),
       this.safeDelete('cache:heap:list'),
     ]);
+  }
+
+  /**
+   * Bust only the per-heap snapshot, leaving the list summary to expire on its
+   * own TTL. For writes that change a heap's contents but not the list's
+   * membership, and whose staleness in the list is cosmetic. One KV delete
+   * instead of two.
+   */
+  private async invalidateHeapRow(id: string): Promise<void> {
+    await this.safeDelete(`cache:heap:${id}`);
   }
 
   /** KV read that degrades to a cache miss on error, so callers fall through to D1. */

@@ -3,6 +3,7 @@
 import type { HeapDB, HeapRow, HeapSummaryRow } from '../../src/db';
 import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
+import { bandOf, type BandRow } from '../../../shared/heapPolygon/bandEnvelope';
 
 interface BaseRecord {
   heap_id: string;
@@ -16,6 +17,7 @@ export class MockHeapDB implements HeapDB {
   private heaps = new Map<string, Omit<HeapRow, 'id'>>();
   private bases = new Map<string, BaseRecord>();
   private enemyParams = new Map<string, string>();
+  private bands = new Map<string, Map<number, { minX: number; maxX: number; version: number }>>();
 
   constructor() {
     const SENTINEL = '00000000-0000-0000-0000-000000000000';
@@ -90,6 +92,7 @@ export class MockHeapDB implements HeapDB {
       positive_item_spawn_rate: params.positiveItemSpawnRate ?? DEFAULT_HEAP_PARAMS.positiveItemSpawnRate,
       negative_item_spawn_rate: params.negativeItemSpawnRate ?? DEFAULT_HEAP_PARAMS.negativeItemSpawnRate,
       locked_by_heap_id: params.lockedByHeapId ?? null,
+      live_zone_version: 0,
     });
   }
 
@@ -157,13 +160,20 @@ export class MockHeapDB implements HeapDB {
     });
   }
 
-  /** Test helper — seed a heap row directly without going through createHeap. */
+  /**
+   * Test helper — seed a heap row directly without going through createHeap.
+   * Stamps live_zone_version = version: a directly-seeded blob is assumed to
+   * already be current for the state it describes. Tests that need to exercise
+   * the lazy-rebuild path do so explicitly via upsertBands + updateHeap, not
+   * seedHeap (see liveZoneRebuild.test.ts).
+   */
   seedHeap(id: string, version: number, liveZone: Vertex[], baseId = id, freezeY = 0, params: HeapParams = DEFAULT_HEAP_PARAMS): void {
     const ghostPointCount = (params as any).ghostPointCount ?? 1;
     this.heaps.set(id, {
       base_id: baseId,
       version,
       live_zone: JSON.stringify(liveZone),
+      live_zone_version: version,
       freeze_y: freezeY,
       created_at: '2026-01-01T00:00:00.000Z',
       name:            params.name,
@@ -216,5 +226,111 @@ export class MockHeapDB implements HeapDB {
     const existing = this.heaps.get(id);
     if (!existing) return;
     this.heaps.set(id, { ...existing, top_y: value });
+  }
+
+  async getBand(heapId: string, band: number): Promise<BandRow | null> {
+    const cur = this.bands.get(heapId)?.get(band);
+    return cur ? { band, minX: cur.minX, maxX: cur.maxX } : null;
+  }
+
+  async getAllBands(heapId: string): Promise<BandRow[]> {
+    const m = this.bands.get(heapId);
+    if (!m) return [];
+    return [...m.keys()].sort((a, b) => a - b).map((band) => ({
+      band, minX: m.get(band)!.minX, maxX: m.get(band)!.maxX,
+    }));
+  }
+
+  async getBandRange(heapId: string, fromBand: number, toBand: number): Promise<BandRow[]> {
+    const m = this.bands.get(heapId);
+    if (!m) return [];
+    return [...m.keys()]
+      .filter((band) => band >= fromBand && band <= toBand)
+      .sort((a, b) => a - b)
+      .map((band) => ({ band, minX: m.get(band)!.minX, maxX: m.get(band)!.maxX }));
+  }
+
+  async getBandsSince(heapId: string, version: number): Promise<BandRow[]> {
+    const m = this.bands.get(heapId);
+    if (!m) return [];
+    return [...m.entries()]
+      .filter(([, v]) => v.version > version)
+      .sort((a, b) => a[0] - b[0])
+      .map(([band, v]) => ({ band, minX: v.minX, maxX: v.maxX }));
+  }
+
+  async getMaxBand(heapId: string): Promise<number | null> {
+    const m = this.bands.get(heapId);
+    if (!m || m.size === 0) return null;
+    return Math.max(...m.keys());
+  }
+
+  async upsertBands(heapId: string, rows: BandRow[], version: number): Promise<void> {
+    let m = this.bands.get(heapId);
+    if (!m) { m = new Map(); this.bands.set(heapId, m); }
+    for (const r of rows) {
+      const cur = m.get(r.band);
+      // Mirrors the D1 CASE: a row that does not widen keeps its old version,
+      // so it stays below a delta client's watermark.
+      m.set(r.band, cur
+        ? {
+            minX: Math.min(cur.minX, r.minX),
+            maxX: Math.max(cur.maxX, r.maxX),
+            version: r.minX < cur.minX || r.maxX > cur.maxX ? version : cur.version,
+          }
+        : { minX: r.minX, maxX: r.maxX, version });
+    }
+  }
+
+  /**
+   * NOTE: this mock has no internal `await` between the version bump and the
+   * band writes below — it cannot simulate a real concurrent interleaving, so
+   * it proves nothing about D1 batch atomicity. What it CAN and does enforce
+   * is the invariant atomicity is meant to guarantee: the version returned is
+   * exactly the version every row band-touched by this call gets stamped
+   * with.
+   */
+  async commitPlacement(heapId: string, rows: BandRow[], topYCandidate: number): Promise<number> {
+    const row = this.heaps.get(heapId);
+    if (!row) throw new Error(`commitPlacement: heap ${heapId} not found`);
+    row.version += 1;
+    row.top_y = Math.min(row.top_y, topYCandidate);
+    const newVersion = row.version;
+
+    if (rows.length > 0) {
+      let m = this.bands.get(heapId);
+      if (!m) { m = new Map(); this.bands.set(heapId, m); }
+      for (const r of rows) {
+        const cur = m.get(r.band);
+        // Same widen-gate as upsertBands and the D1 CASE.
+        m.set(r.band, cur
+          ? {
+              minX: Math.min(cur.minX, r.minX),
+              maxX: Math.max(cur.maxX, r.maxX),
+              version: r.minX < cur.minX || r.maxX > cur.maxX ? newVersion : cur.version,
+            }
+          : { minX: r.minX, maxX: r.maxX, version: newVersion });
+      }
+    }
+    return newVersion;
+  }
+
+  async setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void> {
+    const existing = this.heaps.get(heapId);
+    if (!existing) return;
+    this.heaps.set(heapId, { ...existing, base_id: baseId, freeze_y: freezeY });
+    // Drop the rows the freeze line just buried, matching the D1 batch. The
+    // boundary is derived from freezeY exactly as it is there.
+    const m = this.bands.get(heapId);
+    if (m) {
+      const freezeBand = bandOf(freezeY);
+      for (const band of [...m.keys()]) {
+        if (band >= freezeBand) m.delete(band);
+      }
+    }
+  }
+
+  async clearBands(heapId: string): Promise<void> {
+    this.bands.delete(heapId);
   }
 }

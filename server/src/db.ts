@@ -1,10 +1,14 @@
 // server/src/db.ts
 
 import { HeapParams, Vertex, HeapEnemyParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
+import { bandOf, type BandRow } from '../../shared/heapPolygon/bandEnvelope';
 
 export interface HeapRow {
   id: string;
   base_id: string;
+  /** Legacy: the pre-band-protocol vertex blob. heap_band is authoritative now;
+   *  the GET path derives `liveZone` from bands per request and never writes this
+   *  back, so it is frozen at whatever migration 0004 backfilled from. */
   live_zone: string;
   freeze_y: number;
   version: number;
@@ -21,6 +25,12 @@ export interface HeapRow {
   positive_item_spawn_rate: number;
   negative_item_spawn_rate: number;
   locked_by_heap_id: string | null;
+  /** Vestigial. Was the watermark telling the GET path whether live_zone needed
+   *  rebuilding; that rebuild-and-persist cost a D1 write plus two KV deletes per
+   *  placement, so `liveZone` is now derived per request instead. The column stays
+   *  because migration 0005 is already applied remotely — dropping it from the repo
+   *  would diverge from deployed schema for no gain. */
+  live_zone_version: number;
 }
 
 export interface HeapSummaryRow {
@@ -80,6 +90,74 @@ export interface HeapDB {
   createBase(id: string, heapId: string, vertices: Vertex[], vertexHash: string, now: string): Promise<void>;
   getEnemyParams(heapId: string): Promise<HeapEnemyParams>;
   upsertEnemyParams(heapId: string, params: HeapEnemyParams): Promise<void>;
+  /** One band's extents, or null when the band is empty. Point read on the PK. */
+  getBand(heapId: string, band: number): Promise<BandRow | null>;
+  /** Every band of a heap, ascending. Used to materialise the full envelope. */
+  getAllBands(heapId: string): Promise<BandRow[]>;
+  /**
+   * Bands in [fromBand, toBand] inclusive, ascending. A bounded range scan off
+   * the (heap_id, band) primary key. The placement path needs the band being
+   * placed into plus enough context around it to interpolate a new band's
+   * unknown side, which is a small window — reading the whole envelope for that
+   * would scale per-request work with heap height. Must read through any cache:
+   * the containment check decides whether a placement counts, so it cannot run
+   * on a stale snapshot.
+   */
+  getBandRange(heapId: string, fromBand: number, toBand: number): Promise<BandRow[]>;
+  /** Bands whose last change is strictly newer than `version`, ascending. */
+  getBandsSince(heapId: string, version: number): Promise<BandRow[]>;
+  /** Highest occupied band, or null when the heap has none. O(log n) off the PK. */
+  getMaxBand(heapId: string): Promise<number | null>;
+  /**
+   * Widen bands with MIN/MAX and stamp them with `version`. Conflict-free: two
+   * concurrent callers targeting the same band both apply, so this needs no CAS.
+   * Used directly by tests to seed band state; the placement path itself goes
+   * through `commitPlacement` so the stamp and the version bump land together.
+   */
+  upsertBands(heapId: string, rows: BandRow[], version: number): Promise<void>;
+  /**
+   * The placement write: atomically increment the heap version, lower top_y
+   * toward the summit, and widen `rows` with MIN/MAX — all stamped with the
+   * SAME version, in one transaction. Returns the new version.
+   *
+   * This one-transaction requirement is not cosmetic: a version bump and a
+   * band write issued as two separate calls leaves a window where a concurrent
+   * reader can observe the bumped version before the band write lands (or vice
+   * versa under a cache that invalidates between the two). Since a delta
+   * client filters strictly on `version > watermark`, a band under-stamped
+   * relative to the version served beside it is lost to that client forever —
+   * `getBandsSince` will never surface it again. `commitPlacement` closes that
+   * window by construction: whatever the caller observes, either both writes
+   * are visible or neither is.
+   */
+  commitPlacement(heapId: string, rows: BandRow[], topYCandidate: number): Promise<number>;
+  /**
+   * Complete a freeze: repoint the heap at the freshly-minted base, advance the
+   * freeze line to freezeY, and DELETE the band rows that line just buried —
+   * all in one transaction.
+   *
+   * The deletion is what keeps per-request cost bounded. A frozen band's
+   * geometry lives in the new base blob, which every client fetches by baseId
+   * and caches indefinitely, so the row is pure dead weight the moment freeze_y
+   * passes it: `getAllBands` still returns it on every read and `liveBandsOf`
+   * still filters it out. Left in place it accumulates forever — a staging
+   * fixture measured 283 frozen rows against 65 live ones, and the read path
+   * paid for all 348.
+   *
+   * One transaction, not three calls, because the freeze line and the rows it
+   * buries are one fact. The dangerous ordering is deleting rows without the
+   * freeze line landing: freeze_y would still admit placements into a region
+   * whose shape is now only in a base the heap does not point at, and that
+   * geometry is gone. A batch makes that unobservable — either both happen or
+   * neither does.
+   *
+   * The boundary is derived from freezeY here rather than passed in, so the
+   * deletion can never disagree with the freeze line it is supposed to match.
+   */
+  setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void>;
+  /** Delete every band row for a heap. Used by reset — the fresh base absorbs
+   *  the live zone's shape, so the band table starts empty again. */
+  clearBands(heapId: string): Promise<void>;
 }
 
 export class D1HeapDB implements HeapDB {
@@ -97,7 +175,7 @@ export class D1HeapDB implements HeapDB {
   async getHeap(id: string): Promise<HeapRow | null> {
     const row = await this.d1
       .prepare(
-        'SELECT id, base_id, live_zone, freeze_y, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height, top_y, ghost_point_count, base_item_spawn_rate, positive_item_spawn_rate, negative_item_spawn_rate, locked_by_heap_id FROM heap WHERE id = ?1',
+        'SELECT id, base_id, live_zone, freeze_y, version, created_at, name, difficulty, spawn_rate_mult, coin_mult, score_mult, world_height, top_y, ghost_point_count, base_item_spawn_rate, positive_item_spawn_rate, negative_item_spawn_rate, locked_by_heap_id, live_zone_version FROM heap WHERE id = ?1',
       )
       .bind(id)
       .first<HeapRow>();
@@ -225,6 +303,130 @@ export class D1HeapDB implements HeapDB {
          ON CONFLICT (heap_id) DO UPDATE SET enemy_params = excluded.enemy_params`,
       )
       .bind(heapId, JSON.stringify(params))
+      .run();
+  }
+
+  async getBand(heapId: string, band: number): Promise<BandRow | null> {
+    const row = await this.d1
+      .prepare('SELECT band, min_x, max_x FROM heap_band WHERE heap_id = ?1 AND band = ?2')
+      .bind(heapId, band)
+      .first<{ band: number; min_x: number; max_x: number }>();
+    return row ? { band: row.band, minX: row.min_x, maxX: row.max_x } : null;
+  }
+
+  async getAllBands(heapId: string): Promise<BandRow[]> {
+    const res = await this.d1
+      .prepare('SELECT band, min_x, max_x FROM heap_band WHERE heap_id = ?1 ORDER BY band')
+      .bind(heapId)
+      .all<{ band: number; min_x: number; max_x: number }>();
+    return res.results.map((r) => ({ band: r.band, minX: r.min_x, maxX: r.max_x }));
+  }
+
+  async getBandRange(heapId: string, fromBand: number, toBand: number): Promise<BandRow[]> {
+    const res = await this.d1
+      .prepare('SELECT band, min_x, max_x FROM heap_band WHERE heap_id = ?1 AND band BETWEEN ?2 AND ?3 ORDER BY band')
+      .bind(heapId, fromBand, toBand)
+      .all<{ band: number; min_x: number; max_x: number }>();
+    return res.results.map((r) => ({ band: r.band, minX: r.min_x, maxX: r.max_x }));
+  }
+
+  async getBandsSince(heapId: string, version: number): Promise<BandRow[]> {
+    const res = await this.d1
+      .prepare('SELECT band, min_x, max_x FROM heap_band WHERE heap_id = ?1 AND version > ?2 ORDER BY band')
+      .bind(heapId, version)
+      .all<{ band: number; min_x: number; max_x: number }>();
+    return res.results.map((r) => ({ band: r.band, minX: r.min_x, maxX: r.max_x }));
+  }
+
+  async getMaxBand(heapId: string): Promise<number | null> {
+    const row = await this.d1
+      .prepare('SELECT MAX(band) AS m FROM heap_band WHERE heap_id = ?1')
+      .bind(heapId)
+      .first<{ m: number | null }>();
+    return row?.m ?? null;
+  }
+
+  async upsertBands(heapId: string, rows: BandRow[], version: number): Promise<void> {
+    if (rows.length === 0) return;
+    await this.d1.batch(
+      rows.map((r) =>
+        this.d1
+          .prepare(
+            `INSERT INTO heap_band (heap_id, band, min_x, max_x, version)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(heap_id, band) DO UPDATE SET
+               min_x   = MIN(min_x, excluded.min_x),
+               max_x   = MAX(max_x, excluded.max_x),
+               version = CASE WHEN excluded.min_x < min_x OR excluded.max_x > max_x
+                              THEN excluded.version ELSE version END`,
+          )
+          .bind(heapId, r.band, r.minX, r.maxX, version),
+      ),
+    );
+  }
+
+  async commitPlacement(heapId: string, rows: BandRow[], topYCandidate: number): Promise<number> {
+    // One batch = one D1 transaction, statements run sequentially inside it.
+    // The band upserts read `version` back via a scalar subquery rather than
+    // a JS value threaded from the first statement's result — a batch's
+    // statements are all prepared (and their bind params fixed) before any of
+    // them run, so the first statement's RETURNING value is not available to
+    // bind into the others. The subquery reads the row as of ITS point in the
+    // same transaction, which is after the bump, so it always resolves to the
+    // version the first statement just wrote — never the one before it.
+    const bumpStmt = this.d1
+      .prepare('UPDATE heap SET version = version + 1, top_y = MIN(top_y, ?1) WHERE id = ?2 RETURNING version')
+      .bind(topYCandidate, heapId);
+
+    const bandStmts = rows.map((r) =>
+      this.d1
+        .prepare(
+          // version is stamped only when the row actually WIDENS. A candidate
+          // landing inside the stored extent — which most ghost points do —
+          // leaves min_x/max_x untouched, and stamping it anyway would put a
+          // band with unchanged geometry above every delta client's watermark,
+          // so getBandsSince would re-send it for nothing. Each placement
+          // touches up to ghostPointCount+1 candidates spread over
+          // GHOST_SPREAD_BANDS, so the waste is per-placement and compounds for
+          // any client more than a few versions behind.
+          //
+          // All right-hand sides in a DO UPDATE see the row as it was BEFORE
+          // this statement, so the CASE and the MIN/MAX above read the same
+          // pre-update min_x/max_x and cannot disagree about whether it widened.
+          `INSERT INTO heap_band (heap_id, band, min_x, max_x, version)
+           VALUES (?1, ?2, ?3, ?4, (SELECT version FROM heap WHERE id = ?1))
+           ON CONFLICT(heap_id, band) DO UPDATE SET
+             min_x   = MIN(min_x, excluded.min_x),
+             max_x   = MAX(max_x, excluded.max_x),
+             version = CASE WHEN excluded.min_x < min_x OR excluded.max_x > max_x
+                            THEN excluded.version ELSE version END`,
+        )
+        .bind(heapId, r.band, r.minX, r.maxX),
+    );
+
+    const results = await this.d1.batch<{ version: number }>([bumpStmt, ...bandStmts]);
+    const newVersion = results[0]?.results?.[0]?.version;
+    if (newVersion === undefined) throw new Error(`commitPlacement: heap ${heapId} not found`);
+    return newVersion;
+  }
+
+  async setFreeze(heapId: string, baseId: string, freezeY: number): Promise<void> {
+    // One batch = one transaction. See the interface doc for why the row update
+    // and the row deletion cannot be separate calls.
+    await this.d1.batch([
+      this.d1
+        .prepare('UPDATE heap SET base_id = ?1, freeze_y = ?2 WHERE id = ?3')
+        .bind(baseId, freezeY, heapId),
+      this.d1
+        .prepare('DELETE FROM heap_band WHERE heap_id = ?1 AND band >= ?2')
+        .bind(heapId, bandOf(freezeY)),
+    ]);
+  }
+
+  async clearBands(heapId: string): Promise<void> {
+    await this.d1
+      .prepare('DELETE FROM heap_band WHERE heap_id = ?1')
+      .bind(heapId)
       .run();
   }
 }

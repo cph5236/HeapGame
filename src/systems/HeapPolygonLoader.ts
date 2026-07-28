@@ -1,4 +1,5 @@
 import { CHUNK_BAND_HEIGHT, MOCK_HEAP_HEIGHT_PX } from '../constants';
+import { BAND_SIZE_PX } from '../../shared/heapPolygon/bandEnvelope';
 import type { Vertex } from './HeapPolygon';
 import { simplifyPolygon } from './HeapPolygon';
 import type { HeapGenerator } from './HeapGenerator';
@@ -103,9 +104,10 @@ export function reconstructPolygonFromPoints(points: Vertex[]): Vertex[] {
   const minY = sorted[0].y;
   const maxY = sorted[sorted.length - 1].y;
 
-  // Smaller band = more shape detail. CHUNK_BAND_HEIGHT/10 = 50px is a good default.
-  // Decrease (e.g. /20 = 25px) for more fidelity; increase (e.g. /5 = 100px) for smoother silhouette.
-  const bandSize = CHUNK_BAND_HEIGHT / 25;
+  // Band height is shared with the server (server stores the envelope at exactly
+  // this resolution), so it must come from one constant. Changing it changes the
+  // stored shape of every heap — see the band envelope design doc.
+  const bandSize = BAND_SIZE_PX;
   const firstBand = Math.floor(minY / bandSize) * bandSize;
 
   const leftEdge: Vertex[] = [];

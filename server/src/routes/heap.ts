@@ -1,10 +1,15 @@
 // server/src/routes/heap.ts
 
 import { Hono } from 'hono';
-import type { HeapDB } from '../db';
+import type { HeapDB, HeapRow } from '../db';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
-import { isPointInside, checkFreeze, hashVertices } from '../polygon';
+import { hashVertices, checkFreezeBands } from '../polygon';
+import {
+  BAND_SIZE_PX, bandOf, bandMidY, extendsEnvelope, verticesToEnvelope, envelopeToRows,
+  envelopeToVertices, mergeBands, bandsToWire, seedNewBands,
+  type BandEnvelope, type BandRow,
+} from '../../../shared/heapPolygon/bandEnvelope';
 import { MAX_ID_LEN } from '../constants';
 import type { PlayerAuthDB } from '../playerAuthDb';
 import { enforcePlayerAuth, PLAYER_TOKEN_HEADER } from '../playerAuth';
@@ -46,6 +51,15 @@ const HEAP_TOP_ZONE_PX = 300;
 const OFF_PEAK_THRESHOLD_PX = 100; // px below top_y that earns off-peak bonus
 const OFF_PEAK_BONUS_COINS  = 10;  // flat coins awarded for off-peak placement
 const GHOST_JITTER_RADIUS_PX = 80;  // max px offset from anchor when placing ghost points
+
+// Furthest band a ghost can reach from the placement it anchors on.
+export const GHOST_SPREAD_BANDS = Math.ceil(GHOST_JITTER_RADIUS_PX / BAND_SIZE_PX);
+// How far past the candidate spread the placement window reaches, giving
+// interpolateBandSeed room to find a two-extent band on each side of a new band.
+// Beyond this the nearest neighbour is too far away for its extents to say
+// anything useful about this y, and no seed is better than a fabricated one.
+const SEED_SEARCH_BANDS = 16;
+const PLACE_WINDOW_BANDS = GHOST_SPREAD_BANDS + SEED_SEARCH_BANDS;
 
 function validateDifficulty(d: number): string | null {
   if (!Number.isFinite(d)) return 'difficulty must be a finite number';
@@ -123,6 +137,18 @@ async function validateLockTarget(db: HeapDB, heapId: string, lockedByHeapId: st
     cursor = lockedBy.get(cursor) ?? null;
   }
   return null;
+}
+
+/**
+ * The live set of bands: everything above the freeze line. freeze_y = 0 means no
+ * freeze has happened yet, so every band is still live. After a freeze, freeze_y
+ * is the TOP of the frozen region (frozen = band >= freezeBand), so the live set
+ * is strictly above it — getting this comparison backwards serves the buried base
+ * as the live zone.
+ */
+export function liveBandsOf(row: HeapRow, allBands: BandRow[]): BandRow[] {
+  const freezeBand = row.freeze_y > 0 ? bandOf(row.freeze_y) : Infinity;
+  return allBands.filter((b) => b.band < freezeBand);
 }
 
 export function heapRoutes(
@@ -270,42 +296,78 @@ export function heapRoutes(
     return c.json({ ok: true });
   });
 
-  // GET /heaps/:id?version=N — read heap state (delta-aware)
+  // GET /heaps/:id?version=N&baseId=B — read heap state (delta-aware)
   app.get('/:id', async (c) => {
     const id = c.req.param('id');
     const clientVersion = parseInt(c.req.query('version') ?? '0') || 0;
+    const clientBaseId = c.req.query('baseId');
 
     const row = await db.getHeap(id);
     if (!row) return c.json({ error: 'Heap not found' }, 404);
 
-    if (clientVersion === row.version) {
+    // A client opts into deltas by echoing the baseId it holds. A mismatch means
+    // its cache spans a different generation (reset) or an older base (freeze),
+    // so it must take a full response.
+    const optedIn = typeof clientBaseId === 'string' && clientBaseId.length > 0;
+    const sameGeneration = optedIn && clientBaseId === row.base_id;
+
+    if (sameGeneration && clientVersion === row.version) {
+      return c.json({ changed: false, version: row.version } satisfies GetHeapResponse);
+    }
+    // Old clients send no baseId and rely on version alone.
+    if (!optedIn && clientVersion === row.version) {
       return c.json({ changed: false, version: row.version } satisfies GetHeapResponse);
     }
 
-    const [liveZone, enemyParams] = await Promise.all([
-      Promise.resolve(JSON.parse(row.live_zone) as Vertex[]),
+    const params = {
+      name: row.name, difficulty: row.difficulty,
+      spawnRateMult: row.spawn_rate_mult, coinMult: row.coin_mult, scoreMult: row.score_mult,
+      worldHeight: row.world_height, ghostPointCount: row.ghost_point_count,
+      baseItemSpawnRate: row.base_item_spawn_rate,
+      positiveItemSpawnRate: row.positive_item_spawn_rate,
+      negativeItemSpawnRate: row.negative_item_spawn_rate,
+      lockedByHeapId: row.locked_by_heap_id ?? null,
+    };
+
+    if (sameGeneration) {
+      const [changedBands, enemyParams] = await Promise.all([
+        db.getBandsSince(id, clientVersion),
+        db.getEnemyParams(id),
+      ]);
+      return c.json({
+        changed: true, mode: 'delta',
+        version: row.version, baseId: row.base_id, freezeY: row.freeze_y,
+        bands: bandsToWire(changedBands),
+        params, enemyParams,
+      } satisfies GetHeapResponse);
+    }
+
+    const [allBands, enemyParams] = await Promise.all([
+      db.getAllBands(id),
       db.getEnemyParams(id),
     ]);
-
+    // Frozen bands are already folded into the base blob (fetched separately
+    // and cached indefinitely by baseId) — resending them here would ship the
+    // same geometry twice on every full response, growing with heap height.
+    const liveBands = liveBandsOf(row, allBands);
+    // `liveZone` is the legacy field for clients that predate the band protocol.
+    // Derived here from the same array `bands` is built from, so the two describe
+    // the same band set by construction rather than by test.
+    //
+    // It is deliberately NOT persisted. It used to be written back to
+    // heap.live_zone behind a live_zone_version watermark, which cost a D1 write
+    // plus a KV cache invalidation (two deletes) on the first full GET after
+    // every placement — and KV deletes are the tightest Cloudflare quota at
+    // 1,000/day, account-wide. Recomputing is a map over ~77 live bands, far
+    // cheaper than the round trip it replaces, and it also removes a second
+    // getAllBands call that ran inside the old rebuild.
+    const liveZone = envelopeToVertices(mergeBands(new Map(), liveBands));
     return c.json({
-      changed: true,
-      version: row.version,
-      baseId: row.base_id,
+      changed: true, mode: 'full',
+      version: row.version, baseId: row.base_id, freezeY: row.freeze_y,
+      bands: bandsToWire(liveBands),
       liveZone,
-      params: {
-        name:            row.name,
-        difficulty:      row.difficulty,
-        spawnRateMult:   row.spawn_rate_mult,
-        coinMult:        row.coin_mult,
-        scoreMult:       row.score_mult,
-        worldHeight:     row.world_height,
-        ghostPointCount: row.ghost_point_count,
-        baseItemSpawnRate:     row.base_item_spawn_rate,
-        positiveItemSpawnRate: row.positive_item_spawn_rate,
-        negativeItemSpawnRate: row.negative_item_spawn_rate,
-        lockedByHeapId:  row.locked_by_heap_id ?? null,
-      },
-      enemyParams,
+      params, enemyParams,
     } satisfies GetHeapResponse);
   });
 
@@ -316,7 +378,16 @@ export function heapRoutes(
     if (!row) return c.json({ error: 'Heap not found' }, 404);
 
     const previousVersion = row.version;
-    await db.updateHeap(id, row.base_id, 1, [], 0, row.top_y);
+    // Reset mints a fresh baseId. loadCachedBase keys localStorage on baseId
+    // with no TTL, so a stable id over changed base content strands every
+    // client on stale geometry — the id change is what tells a client to
+    // discard its bands and take a full response. Copy the current base
+    // vertices onto the new row so the mountain below the freeze line survives.
+    const newBaseId = crypto.randomUUID();
+    const baseVertices = (await db.getBaseVerticesById(row.base_id)) ?? [];
+    await db.createBase(newBaseId, id, baseVertices, hashVertices(baseVertices), new Date().toISOString());
+    await db.clearBands(id);
+    await db.updateHeap(id, newBaseId, 1, [], 0, row.top_y);
 
     let bodyParams: Partial<HeapParams> = {};
     try { bodyParams = await c.req.json<Partial<HeapParams>>(); } catch { /* no body */ }
@@ -438,147 +509,188 @@ export function heapRoutes(
       }
     }
 
-    // Read-modify-write under compare-and-swap. The heap is the shared,
-    // community-grown structure, so concurrent placements are expected. Each
-    // attempt re-reads the authoritative (uncached) row and only commits if the
-    // version is still what we read; on a lost-update conflict we re-read and
-    // retry instead of silently clobbering the other placement.
-    const PLACE_MAX_ATTEMPTS = 5;
-    let authDone = false;
-    for (let attempt = 0; attempt < PLACE_MAX_ATTEMPTS; attempt++) {
-      const row = await db.getHeapFresh(id);
-      if (!row) return c.json({ error: 'Heap not found' }, 404);
+    // MIN/MAX band writes are conflict-free: two placements landing in the same
+    // band both widen it regardless of arrival order, so there is nothing left
+    // to compare-and-swap. This is a straight-line handler now — one read, one
+    // write, then a freeze check.
+    const row = await db.getHeapFresh(id);
+    if (!row) return c.json({ error: 'Heap not found' }, 404);
 
-      if (x < PLACE_X_MIN || x > PLACE_X_MAX) {
-        console.warn(`[place] reject: x out of center zone (${x}) heapId=${id}`);
-        const sink = getSink();
-        if (sink) {
-          await captureServer(sink, 'warn', 'place:rejected', { reason: 'x out of center zone', heapId: id, x, min: PLACE_X_MIN, max: PLACE_X_MAX });
-        }
-        return c.json({ error: 'invalid placement' }, 400);
+    if (x < PLACE_X_MIN || x > PLACE_X_MAX) {
+      console.warn(`[place] reject: x out of center zone (${x}) heapId=${id}`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'place:rejected', { reason: 'x out of center zone', heapId: id, x, min: PLACE_X_MIN, max: PLACE_X_MAX });
       }
-      if (y < 0 || y > row.world_height) {
-        console.warn(`[place] reject: y out of world bounds (${y}, world_height=${row.world_height}) heapId=${id}`);
-        const sink = getSink();
-        if (sink) {
-          await captureServer(sink, 'warn', 'place:rejected', { reason: 'y out of world bounds', heapId: id, y, worldHeight: row.world_height });
-        }
-        return c.json({ error: 'invalid placement' }, 400);
+      return c.json({ error: 'invalid placement' }, 400);
+    }
+    if (y < 0 || y > row.world_height) {
+      console.warn(`[place] reject: y out of world bounds (${y}, world_height=${row.world_height}) heapId=${id}`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'place:rejected', { reason: 'y out of world bounds', heapId: id, y, worldHeight: row.world_height });
       }
-      if (y < row.top_y - PLACE_HEIGHT_GRACE_PX) {
-        console.warn(`[place] reject: y above summit + grace (${y}, top_y=${row.top_y}, grace=${PLACE_HEIGHT_GRACE_PX}) heapId=${id}`);
-        const sink = getSink();
-        if (sink) {
-          await captureServer(sink, 'warn', 'place:rejected', { reason: 'y above summit + grace', heapId: id, y, topY: row.top_y, grace: PLACE_HEIGHT_GRACE_PX });
-        }
-        return c.json({ error: 'invalid placement' }, 400);
+      return c.json({ error: 'invalid placement' }, 400);
+    }
+    if (y < row.top_y - PLACE_HEIGHT_GRACE_PX) {
+      console.warn(`[place] reject: y above summit + grace (${y}, top_y=${row.top_y}, grace=${PLACE_HEIGHT_GRACE_PX}) heapId=${id}`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'place:rejected', { reason: 'y above summit + grace', heapId: id, y, topY: row.top_y, grace: PLACE_HEIGHT_GRACE_PX });
       }
+      return c.json({ error: 'invalid placement' }, 400);
+    }
 
-      const liveZone: Vertex[] = JSON.parse(row.live_zone);
-
-      // Bottom of the live zone — placements below this aren't in the active band.
-      // Mirrors HeapClient.getLiveZoneBottomY: max y of live zone, or top_y + 300 (HEAP_TOP_ZONE_PX) for fresh heaps.
-      const liveZoneBottomY = liveZone.length > 0
-        ? liveZone.reduce((max, v) => v.y > max ? v.y : max, -Infinity)
+    // Active-zone floor from band granularity: the bottom edge of the highest
+    // occupied band. Replaces a scan over every live-zone vertex. Costs an
+    // O(log n) probe off the (heap_id, band) primary key.
+    const maxBand = await db.getMaxBand(id);
+    // After a freeze, the live region's floor is the freeze line itself: bandOf(row.freeze_y)
+    // is the first FROZEN band, and the gate below is `y > liveZoneBottomY`, so subtracting 1
+    // keeps a placement landing exactly on freeze_y from being admitted into frozen territory.
+    // Pre-freeze (freeze_y === 0 sentinel), keep the original maxBand-derived floor unchanged.
+    // The freeze branch is why deleting frozen rows cannot break this gate: post-freeze
+    // maxBand covers only live bands, and post-freeze this expression never consults it.
+    const liveZoneBottomY = row.freeze_y > 0
+      ? row.freeze_y - 1
+      : maxBand !== null
+        ? (maxBand + 1) * BAND_SIZE_PX
         : row.top_y + HEAP_TOP_ZONE_PX;
-      if (y > liveZoneBottomY) {
-        console.warn(`[place] reject: y below active zone (${y} > liveZoneBottomY=${liveZoneBottomY}) heapId=${id}`);
+    if (y > liveZoneBottomY) {
+      console.warn(`[place] reject: y below active zone (${y} > liveZoneBottomY=${liveZoneBottomY}) heapId=${id}`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'place:rejected', { reason: 'y below active zone', heapId: id, y, liveZoneBottomY });
+      }
+      return c.json({ error: 'invalid placement' }, 400);
+    }
+
+    // Write-auth: verify-or-claim only after the heap exists and the placement
+    // passed every bounds check, mirroring the /scores ordering — a request
+    // that is going to be rejected must never claim a playerGuid as a side
+    // effect. No retry loop any more, so this simply runs once.
+    if (playerGuid !== undefined) {
+      const authRes = await enforcePlayerAuth(c, authDb, playerGuid, getSink, 'heaps:place');
+      if (authRes) return authRes;
+    }
+
+    // One bounded window read serves this whole handler: the containment check,
+    // and the seed sources for any new band. It replaces a point read plus a
+    // per-ghost read plus a full-envelope read — on a 4-ghost heap that is six
+    // queries collapsed into one, and unlike getAllBands its cost does not grow
+    // with heap height. Every candidate lands within GHOST_SPREAD_BANDS of this
+    // placement, so the window covers all of them with room to search outward
+    // for interpolation neighbours.
+    const band = bandOf(y);
+    const window = mergeBands(
+      new Map(),
+      await db.getBandRange(id, band - PLACE_WINDOW_BANDS, band + PLACE_WINDOW_BANDS),
+    );
+
+    // Containment: a placement counts only if it widens its band. A point at or
+    // inside the extents cannot change the silhouette the client renders, so
+    // storing it would cost CPU and egress forever and draw nothing.
+    if (!extendsEnvelope(window, x, y)) {
+      return c.json({ accepted: false, version: row.version } satisfies PlaceResponse);
+    }
+
+    // Candidate vertices: the placement plus its ghost points. Ghosts that do
+    // not widen a band are dropped by the same MIN/MAX upsert — the same
+    // judgement as rejecting a placement.
+    //
+    // Every ghost anchors on THIS placement, so the heap thickens where the
+    // player actually built. Anchoring on a randomly sampled band across the
+    // whole live zone (what this did before, mirroring main) has two measured
+    // failures: it deposits the sampled band's x into a band up to
+    // GHOST_SPREAD_BANDS away, scrambling the silhouette into a sawtooth; and
+    // because a ghost anchors on a band's own extreme and jitters outward while
+    // the write is MIN/MAX, every band it touches steps monotonically wider and
+    // never narrows. With hits accumulating on every band for the heap's whole
+    // lifetime, that converges on a featureless full-width column. Anchoring
+    // locally bounds the hits any one band receives to the window the player
+    // spends near it, which is what keeps the shape stable.
+    const candidates: Vertex[] = [{ x, y }];
+    const ghostCount = Math.max(0, Math.floor(row.ghost_point_count ?? 1));
+    for (let i = 0; i < ghostCount; i++) {
+      const dx = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
+      const dy = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
+      candidates.push({
+        x: Math.max(PLACE_X_MIN, Math.min(PLACE_X_MAX, x + dx)),
+        y: Math.max(row.top_y, Math.min(liveZoneBottomY, y + dy)),
+      });
+    }
+
+    // A candidate landing in an empty band knows only one x, so the band would
+    // be stored with minX === maxX and the renderer would forward-fill the other
+    // side from the previous band — the sawtooth. Seed the unknown side by
+    // interpolating between the nearest two-extent bands above and below, so the
+    // opposite edge gets a value belonging to this y. Only bands with a known
+    // neighbour on both sides are seeded (see interpolateBandSeed), so a new
+    // summit band still grows as a point rather than inheriting the width below
+    // it. Seeds come from the window read above — no additional query.
+    const bandRows: BandRow[] = seedNewBands(
+      envelopeToRows(verticesToEnvelope(candidates)),
+      window,
+    );
+
+    // Version is assigned inside the write — no expected-version compare, so no
+    // way to lose a concurrent write. The blob is no longer touched here; it is
+    // a derived cache rebuilt lazily by materialiseLiveZone (Task 7).
+    //
+    // commitPlacement bumps the version and widens bandRows in ONE D1 batch
+    // (one transaction), not two separate calls — a version bump and a band
+    // write issued as independent round-trips leaves a window where a
+    // concurrent GET can observe the new version before the band it belongs
+    // to has landed, permanently losing that band to a delta client's
+    // strictly-greater-than watermark filter.
+    const newVersion = await db.commitPlacement(id, bandRows, y);
+
+    // Freeze: fold the bottom bands into the base, then drop them from
+    // heap_band (setFreeze does the deletion in the same transaction as the
+    // freeze-line advance — see its doc). Order matters: the base row must
+    // exist BEFORE setFreeze repoints the heap at it and deletes the rows,
+    // because those rows are the only other copy of that geometry.
+    //
+    // Minting a new baseId is mandatory — loadCachedBase keys localStorage on
+    // baseId with no TTL, so a stable id over changed base content strands
+    // every client on a stale base.
+    //
+    // Same freeze_y>0 sentinel as liveBandsOf and the full-response filter:
+    // `bandOf(0)` would be band 0, which is a real (if absurdly high) band
+    // index, not "nothing is frozen".
+    const freezeBand = row.freeze_y > 0 ? bandOf(row.freeze_y) : Infinity;
+    const freeze = checkFreezeBands(await db.getAllBands(id), freezeBand);
+    if (freeze) {
+      const existingBase = (await db.getBaseVerticesById(row.base_id)) ?? [];
+      const baseVertices = [
+        ...existingBase,
+        ...envelopeToVertices(mergeBands(new Map(), freeze.frozen)),
+      ];
+      const newBaseId = crypto.randomUUID();
+      await db.createBase(newBaseId, id, baseVertices, hashVertices(baseVertices), new Date().toISOString());
+      await db.setFreeze(id, newBaseId, freeze.newFreezeBand * BAND_SIZE_PX);
+    }
+
+    const bonusCoins = y > row.top_y + OFF_PEAK_THRESHOLD_PX ? OFF_PEAK_BONUS_COINS : undefined;
+
+    // Contribution tick: only for authenticated placements — guid + token
+    // both present AND the auth gate actually ran (authDb wired) so the
+    // token is proven verified/claimed, not merely present. Never fails
+    // the placement.
+    if (contributionDb && authDb && playerGuid && c.req.header(PLAYER_TOKEN_HEADER)) {
+      try {
+        await contributionDb.increment(id, playerGuid, new Date().toISOString());
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        console.warn(`[place] contribution increment failed heapId=${id}: ${detail}`);
         const sink = getSink();
         if (sink) {
-          await captureServer(sink, 'warn', 'place:rejected', { reason: 'y below active zone', heapId: id, y, liveZoneBottomY });
-        }
-        return c.json({ error: 'invalid placement' }, 400);
-      }
-
-      // Write-auth: verify-or-claim only after the heap exists and the placement
-      // passed every bounds check, mirroring the /scores ordering — a request
-      // that is going to be rejected must never claim a playerGuid as a side
-      // effect. Runs once; CAS retries must not re-claim.
-      if (playerGuid !== undefined && !authDone) {
-        const authRes = await enforcePlayerAuth(c, authDb, playerGuid, getSink, 'heaps:place');
-        if (authRes) return authRes;
-        authDone = true;
-      }
-
-      const baseVertices: Vertex[] = (await db.getBaseVerticesById(row.base_id)) ?? [];
-      const fullPolygon = [...baseVertices, ...liveZone];
-
-      if (isPointInside({ x, y }, fullPolygon)) {
-        return c.json({ accepted: false, version: row.version } satisfies PlaceResponse);
-      }
-
-      // Insert sorted Y ascending (summit = lowest Y = front)
-      const newVertex: Vertex = { x, y };
-      const insertIdx = liveZone.findIndex((v) => v.y > y);
-      if (insertIdx === -1) {
-        liveZone.push(newVertex);
-      } else {
-        liveZone.splice(insertIdx, 0, newVertex);
-      }
-
-      // Ghost points: jitter near a random existing live zone vertex to keep heap shape organic
-      const ghostCount = Math.max(0, Math.floor(row.ghost_point_count ?? 1));
-      for (let i = 0; i < ghostCount; i++) {
-        const anchorIdx = Math.floor(Math.random() * liveZone.length);
-        const anchor = liveZone[anchorIdx];
-        const dx = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
-        const dy = (Math.random() * 2 - 1) * GHOST_JITTER_RADIUS_PX;
-        const gx = Math.max(PLACE_X_MIN, Math.min(PLACE_X_MAX, anchor.x + dx));
-        const gy = Math.max(row.top_y, Math.min(liveZoneBottomY, anchor.y + dy));
-        const gv: Vertex = { x: gx, y: gy };
-        const gIdx = liveZone.findIndex((v) => v.y > gy);
-        if (gIdx === -1) liveZone.push(gv); else liveZone.splice(gIdx, 0, gv);
-      }
-
-      const bonusCoins = y > row.top_y + OFF_PEAK_THRESHOLD_PX ? OFF_PEAK_BONUS_COINS : undefined;
-
-      let currentBaseId = row.base_id;
-      let newFreezeY = row.freeze_y;
-      let finalLiveZone = liveZone;
-
-      const freeze = checkFreeze(liveZone, baseVertices);
-      if (freeze) {
-        // Freeze is rare; on a CAS miss the new base row is orphaned (referenced
-        // by no heap) and harmless — the retry creates a fresh one.
-        const newBaseId = crypto.randomUUID();
-        const now = new Date().toISOString();
-        await db.createBase(newBaseId, id, freeze.newBaseVertices, freeze.newBaseVertexHash, now);
-        currentBaseId = newBaseId;
-        newFreezeY = freeze.newFreezeY;
-        finalLiveZone = freeze.newLiveZone;
-      }
-
-      const newVersion = row.version + 1;
-      const applied = await db.updateHeap(id, currentBaseId, newVersion, finalLiveZone, newFreezeY, y, row.version);
-      if (!applied) continue; // lost-update conflict — re-read and retry
-
-      // Contribution tick: only for authenticated placements — guid + token
-      // both present AND the auth gate actually ran (authDb wired) so the
-      // token is proven verified/claimed, not merely present. Never fails
-      // the placement.
-      if (contributionDb && authDb && playerGuid && c.req.header(PLAYER_TOKEN_HEADER)) {
-        try {
-          await contributionDb.increment(id, playerGuid, new Date().toISOString());
-        } catch (err) {
-          const detail = err instanceof Error ? err.message : String(err);
-          console.warn(`[place] contribution increment failed heapId=${id}: ${detail}`);
-          const sink = getSink();
-          if (sink) {
-            await captureServer(sink, 'warn', 'place:contribution-failed', { heapId: id, playerId: playerGuid, error: detail });
-          }
+          await captureServer(sink, 'warn', 'place:contribution-failed', { heapId: id, playerId: playerGuid, error: detail });
         }
       }
-
-      return c.json({ accepted: true, version: newVersion, bonusCoins } satisfies PlaceResponse);
     }
 
-    // Exhausted retries under sustained contention — let the client resync via load().
-    console.warn(`[place] reject: version conflict after ${PLACE_MAX_ATTEMPTS} attempts heapId=${id}`);
-    const sink = getSink();
-    if (sink) {
-      await captureServer(sink, 'warn', 'place:rejected', { reason: 'version conflict', heapId: id, attempts: PLACE_MAX_ATTEMPTS });
-    }
-    return c.json({ error: 'placement conflict' }, 409);
+    return c.json({ accepted: true, version: newVersion, bonusCoins } satisfies PlaceResponse);
   });
 
   // DELETE /heaps/:id — remove heap and all its base snapshots

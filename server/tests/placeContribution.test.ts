@@ -81,18 +81,17 @@ describe('POST /heaps/:id/place contribution tick', () => {
     expect(await (contributionDb as MockContributionDB).getCount(HEAP_ID, PLAYER)).toBe(0);
   });
 
-  it('accepted:false (point inside existing polygon) → no tick', async () => {
-    // Seed the live zone as a closed square (mirrors routes.test.ts's
-    // "rejects a point inside the polygon" pattern) so a single placement
-    // request lands inside it deterministically — no reliance on a prior
+  it('accepted:false (does not widen its band) → no tick', async () => {
+    // Seed a band envelope directly (mirrors routes.test.ts's "rejects a point
+    // that does not widen its band" pattern) so a single placement request
+    // lands strictly inside it deterministically — no reliance on a prior
     // accepted placement or ghost-point jitter.
-    const square = [
-      { x: 200, y: 0 }, { x: 400, y: 0 },
-      { x: 400, y: 100 }, { x: 200, y: 100 },
-    ];
     const heapDb = new MockHeapDB();
-    heapDb.seedHeap(HEAP_ID, 1, square, 'base-1', 0, NO_GHOST_PARAMS);
+    heapDb.seedHeap(HEAP_ID, 1, [], 'base-1', 0, NO_GHOST_PARAMS);
     heapDb.seedBase('base-1', HEAP_ID, []);
+    // Band 2 covers y in [40,60) with x extents [200,400] — (300,50) sits
+    // strictly inside, so it cannot widen the band.
+    await heapDb.upsertBands(HEAP_ID, [{ band: 2, minX: 200, maxX: 400 }], 1);
     const contributionDb = new MockContributionDB();
     const app = createApp(heapDb, new MockScoreDB(), {
       playerAuthDb: new MockPlayerAuthDB(),
