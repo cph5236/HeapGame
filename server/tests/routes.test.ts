@@ -400,20 +400,38 @@ describe('POST /heaps/:id/place', () => {
     db.seedHeap('h1', 1, [], 'base-1', 0, params);
     db.seedBase('base-1', 'h1', []);
 
-    const app = createApp(db, new MockScoreDB());
-    const res = await app.request('/heaps/h1/place', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ x: 300, y: 150 }),
-    });
-    expect(res.status).toBe(200);
-    const body = await res.json() as PlaceResponse;
-    expect(body.accepted).toBe(true);
+    // Two ghosts, two draws each: dx then dy. Unstubbed, this asserted 3 points
+    // against a random process and failed ~3% of runs — a band emits ONE vertex
+    // when minX === maxX and TWO when they differ, so ghosts landing in the
+    // placement's own band (dy within ±10 of 0, ~12.5% per ghost) collapse the
+    // count to 2. Pin the draws so each point owns a distinct band.
+    //   ghost 1: dx = 0, dy = (0*2-1)*80    = -80 -> y  70, band 3
+    //   ghost 2: dx = 0, dy = (0.25*2-1)*80 = -40 -> y 110, band 5
+    const sequence = [0.5, 0, 0.5, 0.25];
+    let call = 0;
+    const randomSpy = vi.spyOn(Math, 'random').mockImplementation(() => sequence[call++ % sequence.length]);
+    try {
+      const app = createApp(db, new MockScoreDB());
+      const res = await app.request('/heaps/h1/place', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x: 300, y: 150 }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as PlaceResponse;
+      expect(body.accepted).toBe(true);
 
-    // Fetch the heap and verify liveZone has 1 player + 2 ghost = 3 points
-    const heapRes = await app.request('/heaps/h1?version=0');
-    const heap = await heapRes.json() as Extract<GetHeapResponse, { changed: true }>;
-    expect(heap.liveZone).toHaveLength(3);
+      // 1 player + 2 ghosts, each alone in its band at bandMidY.
+      const heapRes = await app.request('/heaps/h1?version=0');
+      const heap = await heapRes.json() as Extract<GetHeapResponse, { changed: true }>;
+      expect(heap.liveZone).toEqual([
+        { x: 300, y: 70 },
+        { x: 300, y: 110 },
+        { x: 300, y: 150 },
+      ]);
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 
   it('inserts zero ghost points when ghostPointCount is 0', async () => {
