@@ -71,7 +71,6 @@ freezeAtomic(args: {
   baseVertices: Vertex[];
   baseHash: string;
   newFreezeY: number;
-  newFreezeBand: number;
   versionWatermark: number;
   now: string;
 }): Promise<boolean>;
@@ -112,6 +111,11 @@ the winner unambiguously.
 `expectedFreezeY` is the value read back out of the row, never a recomputed one,
 so the REAL-column equality compares an exact round-tripped value.
 
+The delete boundary `?8` is derived inside the method as `bandOf(newFreezeY)`
+rather than passed in — carried over verbatim from the `setFreeze` doc it
+replaces, and for the same reason: one input means the deletion can never
+disagree with the freeze line it is supposed to match.
+
 ### 2. The version watermark makes it lossless
 
 CAS alone still leaves a smaller loss: a band written by a concurrent placement
@@ -131,15 +135,21 @@ present in `heap_band` and therefore not lost.
 
 Stragglers are collected by the next freeze, which widens its base source by one
 predicate — everything at or below the new line, not just the freshly frozen
-slice:
+slice.
+
+`BandRow` is `{ band, minX, maxX }` and `getAllBands` does not select `version`,
+so the watermark needs a second read. It is a **new read-through method**,
+`getAllBandsVersioned`, called only when a freeze is actually due — once per 38
+bands of climb — so the hot path keeps the cheap cached `getAllBands` it has
+today and pays nothing:
 
 ```ts
-const allBands  = await db.getAllBands(id);
-const freeze    = checkFreezeBands(allBands, freezeBand);
+const freeze = checkFreezeBands(await db.getAllBands(id), freezeBand);  // cached, unchanged
 if (freeze) {
+  const versioned = await db.getAllBandsVersioned(id);   // read-through, rare
   // frozen slice PLUS any straggler a previous freeze left behind
-  const buried    = allBands.filter(b => b.band >= freeze.newFreezeBand);
-  const watermark = Math.max(newVersion, ...buried.map(b => b.version));
+  const buried    = versioned.filter(b => b.band >= freeze.newFreezeBand);
+  const watermark = Math.max(...buried.map(b => b.version));
   const baseVertices = [
     ...(await db.getBaseVerticesById(row.base_id)) ?? [],
     ...envelopeToVertices(mergeBands(new Map(), buried)),
@@ -147,6 +157,13 @@ if (freeze) {
   ...
 }
 ```
+
+The freeze *decision* running on the possibly-stale cached snapshot is safe: a
+stale snapshot can only under-report bands, which delays a freeze to the next
+placement. What must be fresh is the set actually buried, and that comes from
+`getAllBandsVersioned`. The watermark is the max version among the rows that
+read returned, so any row written after it provably sits above the watermark and
+survives — which is the whole guarantee.
 
 The `DELETE` already covers `band >= newFreezeBand`, so stragglers are folded
 into the base and cleaned up in the same pass. Re-including a band that the
@@ -178,11 +195,20 @@ that SQL proves nothing about it, and the suite currently has no way to execute
 real SQL: every DB test runs against `MockHeapDB`.
 
 **New test harness** — `server/tests/helpers/d1Sqlite.ts`: a test-only
-`D1Database` implementation over `better-sqlite3` (new devDependency), covering
-the subset the server uses: `prepare`, `bind`, `all`, `first`, `run`, `batch`,
-`meta.changes`, and batch-as-single-transaction. Built from the real
-`server/schema/heap_core.sql` so it cannot drift from production DDL. Reusable
-for every future D1 SQL change.
+`D1Database` implementation over **`node:sqlite`** (`DatabaseSync`), covering the
+subset the server uses: `prepare`, `bind`, `all`, `first`, `run`, `batch`,
+`meta.changes`, and batch-as-single-transaction (`BEGIN`/`COMMIT`). Built from
+the real `server/schema/heap_core.sql` so it cannot drift from production DDL.
+Reusable for every future D1 SQL change.
+
+`node:sqlite` replaces the `better-sqlite3` devDependency named in the approved
+design: it ships with Node, so there is no native build in CI, and it is
+available on both the local toolchain (v22.23) and CI (v24). It emits an
+experimental warning on v22, which is noise only.
+
+The guarded batch above was prototyped against `node:sqlite` before this spec was
+finalised: winner applies, loser writes nothing at all (no `heap_base` row), and
+a band stamped above the watermark survives the delete.
 
 **New tests** — `server/tests/freezeRace.test.ts`, against real SQLite:
 
@@ -214,9 +240,10 @@ being changed and misleads exactly the reasoning this fix depends on.
 
 ## Files touched
 
-- `server/src/db.ts` — `HeapDB` interface: drop `setFreeze`, add `freezeAtomic`;
-  `D1HeapDB` implementation.
-- `server/src/cache/CachedHeapDB.ts` — decorator for `freezeAtomic`.
+- `server/src/db.ts` — `HeapDB` interface: drop `setFreeze`, add `freezeAtomic`
+  and `getAllBandsVersioned`; `D1HeapDB` implementations.
+- `server/src/cache/CachedHeapDB.ts` — decorators for `freezeAtomic` (invalidate)
+  and `getAllBandsVersioned` (read-through).
 - `server/src/routes/heap.ts` — freeze block: `buried` filter, watermark,
   single `freezeAtomic` call; update the surrounding comment block.
 - `server/src/polygon.ts` — stale doc comment.
@@ -225,4 +252,3 @@ being changed and misleads exactly the reasoning this fix depends on.
 - `server/tests/freezeRace.test.ts` — new.
 - `server/tests/heapDelta.test.ts`, `server/tests/bandCacheConsistency.test.ts` —
   call-site updates.
-- `server/package.json` — `better-sqlite3` devDependency.
