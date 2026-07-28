@@ -287,3 +287,99 @@ throughput one.
 
 P999 over the cap on ~1 request in 1085 is not an `Error 1102` risk — Cloudflare
 kills sustained overruns, not infrequent ones.
+
+---
+
+# Full run, all endpoints (2026-07-27 23:55:52–23:56:33 UTC / 19:55–19:56 EDT)
+
+Staging `7fd00b97`. `npm run loadtest` defaults: 800 journey sessions, 30 contention
+placements, 20 limiter probes. 6,836 requests at 167 req/s, 40.8 s wall. All 2,586
+checks passed; `http_req_failed` 0.02 % (2 of 6,836); `rate_limited` 4.32 %
+(291 of 6,726).
+
+Comparison artifact covering all eight runs:
+<https://claude.ai/code/artifact/d7f6086f-221d-457d-b5ff-21ff5d824bc7>
+
+## CPU: a null result, correctly
+
+| | P50 | P90 | P99 | P999 |
+|---|---|---|---|---|
+| CPU time (ms) | 2.40 | 5.31 | **9.16** | 13.79 |
+| Memory (MB) | 16.92 | 31.24 | 33.21 | 34.27 |
+
+Under the cap, and statistically identical to the ~9 ms this leg posted before the
+deletion. **That is the expected outcome.** The full run's placements target the
+*small* fixture, which sits at 45 band rows and has never frozen (`freeze_y = 0`),
+so there was no frozen backlog for the deletion to sweep. Only the large fixture
+simulates an aged heap, which is why it is the leg that moved.
+
+## The ratio that decides how to optimise endpoints
+
+| | P50 | P90 | P99 | P999 |
+|---|---|---|---|---|
+| CPU time (ms) | 2.40 | 5.31 | 9.16 | 13.79 |
+| Wall time (ms) | 123.72 | 551.11 | 1,220 | 1,540 |
+| compute share | 1.9 % | 1.0 % | **0.8 %** | 0.9 % |
+
+At P99 the Worker burns 9 ms of CPU inside a 1,220 ms request; the other 1,211 ms is
+blocked on D1, KV, or the network. The two budgets are independent and want opposite
+work: staying under the CPU cap means cutting per-request *work* (rows parsed, blob
+size, JSON), while making an endpoint feel faster means cutting *round trips*.
+Micro-optimising any handler's code cannot recover more than its ~1 % share.
+
+## Per-endpoint, sorted by P99 (ms)
+
+| endpoint | med | p95 | p99 | spread | read |
+|---|---|---|---|---|---|
+| `daily-claim` | 203 | 1412 | 2357 | 11.6× | **target** |
+| `score-submit` | 490 | 1093 | 1983 | 4.0× | polluted by 429s |
+| `daily-status` | 108 | 682 | 1802 | 16.7× | **target** |
+| `place` | 571 | 1370 | 1794 | 3.1× | **target** |
+| `place-contention` | 677 | 1722 | 1734 | 2.6× | by design (15 VUs, CAS) |
+| `limiter-probe` | 160 | 368 | 1470 | 9.2× | ramp artifact |
+| `config` | 73 | 287 | 1364 | 18.7× | ramp artifact |
+| `heaps-list` | 79 | 287 | 1363 | 17.3× | ramp artifact |
+| `heap-get` | 215 | 798 | 802 | 3.7× | **target** |
+| `customization-get` | 95 | 445 | 714 | 7.5× | ok |
+| `scores-context` | 213 | 615 | 683 | 3.2× | ok |
+| `heap-base` | 461 | 463 | 463 | 1.0× | too few samples (min 458, max 463) |
+| `customization-put` | 146 | 289 | 343 | 2.3× | ok |
+| `log` | 26 | 39 | 53 | 2.0× | fastest path |
+
+**Three of those tails are one tail.** `config`, `heaps-list` and `limiter-probe`
+land at P99 1364 / 1363 / 1470 ms while their medians sit at 73 / 79 / 160. Three
+unrelated handlers arriving at nearly the same P99 is a shared cause, not three
+coincidences: the 50-VU ramp at run start, with connection setup and TLS inside it
+(`http_req_blocked` max 381 ms, `http_req_tls_handshaking` max 201 ms). Optimising
+those handlers would move nothing.
+
+`daily-claim` and `daily-status` are the genuine targets — the worst spreads in the
+run, on day-boundary paths that players hit the moment they open the game, and
+unrelated to this branch. Given the 1 % compute share, the thing to look for is
+sequential awaits that could be one batch, not expensive code.
+
+## Cross-run endpoint latency is unusable, demonstrated
+
+Comparing the two full runs endpoint-by-endpoint appears to show a broad regression.
+It does not — the endpoints that *cannot* have been affected moved as much as the
+ones that could:
+
+| endpoint | touches `heap_band`? | med 16:56 | med 19:55 | change |
+|---|---|---|---|---|
+| `config` | no | 31 | 73 | +135 % |
+| `heaps-list` | no | 35 | 79 | +126 % |
+| `limiter-probe` | no | 86 | 160 | +86 % |
+| `daily-status` | no | 60 | 108 | +80 % |
+| `place` | yes | 225 | 571 | +154 % |
+| `heap-get` | yes | 99 | 215 | +117 % |
+| `log` | no | 25 | 26 | +4 % |
+
+Reading a heap's bands cannot have made `config` — one row from a different
+database — 135 % slower. The whole environment was slower for the second run
+(167 req/s against 184). The one endpoint that barely moved, `log`, is the one doing
+no read on its hot path, which fits the same explanation.
+
+Within a single run the endpoint ranking is sound: every endpoint faced the same
+conditions. Across runs, only CPU decides anything. This is the failure mode the
+runbook warns about, and it has produced confidently wrong answers in this project
+before.
