@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dailyIconState, shouldAutoShowPopup, streakChips, grantPreviewText, dailyRewardPreview, COIN_COLOR, burstColorsForRewards } from '../dailyDropLogic';
+import { dailyIconState, shouldAutoShowPopup, streakChips, activeStreakDay, grantPreviewText, dailyRewardPreview, COIN_COLOR, burstColorsForRewards } from '../dailyDropLogic';
 import { ACCENT_COLORS } from '../../data/itemAccents';
 import type { DailyStatusResponse, DailyGrant } from '../../../shared/dailyTypes';
 import type { RewardPayload } from '../../../shared/codeTypes';
@@ -46,6 +46,26 @@ describe('streakChips', () => {
   });
   it('day 7 is all done but the last', () => {
     expect(streakChips(7)).toEqual(['done', 'done', 'done', 'done', 'done', 'done', 'now']);
+  });
+});
+
+describe('activeStreakDay', () => {
+  it('follows the status before a claim resolves', () => {
+    expect(activeStreakDay(base, null)).toBe(3);
+  });
+
+  it('follows the granted day after a streak repair, not the lapsed status', () => {
+    // Lapsed streak: status says the next claim is day 1, but repairing via
+    // the ad grants day 2 — the strip must highlight the day actually paid out.
+    const lapsed: DailyStatusResponse = { ...base, streakDay: 1, nextClaimDay: 1 };
+    expect(activeStreakDay(lapsed, 2)).toBe(2);
+    expect(streakChips(activeStreakDay(lapsed, 2)))
+      .toEqual(['done', 'now', 'todo', 'todo', 'todo', 'todo', 'todo']);
+  });
+
+  it('follows the granted day after a reset (start over grants day 1)', () => {
+    const lapsed: DailyStatusResponse = { ...base, streakDay: 4, nextClaimDay: 1 };
+    expect(activeStreakDay(lapsed, 1)).toBe(1);
   });
 });
 

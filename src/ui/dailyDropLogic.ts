@@ -55,6 +55,14 @@ export function streakChips(nextDay: number): StreakChip[] {
     i + 1 < nextDay ? 'done' : i + 1 === nextDay ? 'now' : 'todo');
 }
 
+/** Day the 7-day strip highlights. Until a claim resolves that is the day the
+ *  next claim would grant; afterwards it is the day actually granted. The two
+ *  differ on a lapsed streak: status reports day 1, but repairing via the ad
+ *  pays out the repairable day, and the strip must follow the payout. */
+export function activeStreakDay(status: DailyStatusResponse, claimedDay: number | null): number {
+  return claimedDay ?? status.nextClaimDay;
+}
+
 /** Preview line for one grant. Item grants are randomized from `pool` at
  *  claim time server-side, so a locked-icon preview shows the whole pool
  *  rather than a single (not-yet-decided) item. */

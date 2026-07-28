@@ -14,7 +14,7 @@ import Phaser from 'phaser';
 import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { claimDaily } from '../systems/DailyDropClient';
 import { AdClient } from '../systems/ads/AdClient';
-import { streakChips, dailyRewardPreview, burstColorsForRewards } from './dailyDropLogic';
+import { streakChips, activeStreakDay, dailyRewardPreview, burstColorsForRewards } from './dailyDropLogic';
 import { ITEM_DEFS } from '../data/itemDefs';
 import type { DailyStatusResponse } from '../../shared/dailyTypes';
 import type { RewardPayload } from '../../shared/codeTypes';
@@ -87,26 +87,32 @@ export function openDailyDropOverlay(
   closeBtn.on('pointerup', () => { if (!busy) close(); });
   root.add(closeBtn);
 
-  // 7-day streak strip.
-  const chips = streakChips(day);
+  // 7-day streak strip. Redrawable: a streak repair grants a different day
+  // than the status predicted, so the strip re-renders once the claim lands.
   const stripY = panelTop + 70;
   // Chip spacing shrinks only if the (clamped) panel is too narrow for the
   // 7-wide strip at the design gap; centered on cx either way.
   const chipGap = Math.min(44, (panelW - 44) / 6);
-  chips.forEach((chip, i) => {
-    const x = cx + (i - 3) * chipGap;
-    const g = scene.add.graphics();
-    const fill = chip === 'done' ? ACCENT_DARK : chip === 'now' ? ACCENT : 0x0e1124;
-    g.fillStyle(fill, 1);
-    g.fillRoundedRect(x - 16, stripY - 16, 32, 32, 8);
-    g.lineStyle(1, 0xffffff, chip === 'now' ? 0.8 : 0.15);
-    g.strokeRoundedRect(x - 16, stripY - 16, 32, 32, 8);
-    root.add(g);
-    const label = chip === 'done' ? '✓' : String(i + 1);
-    root.add(scene.add.text(x, stripY, label, {
-      fontSize: '14px', color: chip === 'now' ? '#1a0f00' : '#e9e4d8', fontStyle: 'bold',
-    }).setOrigin(0.5));
-  });
+  const strip = scene.add.container(0, 0);
+  root.add(strip);
+  const renderStrip = (activeDay: number): void => {
+    strip.removeAll(true);
+    streakChips(activeDay).forEach((chip, i) => {
+      const x = cx + (i - 3) * chipGap;
+      const g = scene.add.graphics();
+      const fill = chip === 'done' ? ACCENT_DARK : chip === 'now' ? ACCENT : 0x0e1124;
+      g.fillStyle(fill, 1);
+      g.fillRoundedRect(x - 16, stripY - 16, 32, 32, 8);
+      g.lineStyle(1, 0xffffff, chip === 'now' ? 0.8 : 0.15);
+      g.strokeRoundedRect(x - 16, stripY - 16, 32, 32, 8);
+      strip.add(g);
+      const label = chip === 'done' ? '✓' : String(i + 1);
+      strip.add(scene.add.text(x, stripY, label, {
+        fontSize: '14px', color: chip === 'now' ? '#1a0f00' : '#e9e4d8', fontStyle: 'bold',
+      }).setOrigin(0.5));
+    });
+  };
+  renderStrip(activeStreakDay(status, null));
 
   // Locked preview: no claim yet today, so show today's reward instead of
   // waiting for a claim result to reveal it.
@@ -159,6 +165,10 @@ export function openDailyDropOverlay(
 
   const showRewards = (messages: string[], streakDay: number, rewards: RewardPayload[]): void => {
     claimed = true;
+    // The granted day can differ from the one the status predicted (a repaired
+    // streak pays the repairable day, not the day-1 the lapsed status showed),
+    // so the strip follows the payout.
+    renderStrip(activeStreakDay(status, streakDay));
     wiggle?.stop();
     can.setAngle(0);
     // The hint has done its job — drop it (the modal closes via ✕ / backdrop
