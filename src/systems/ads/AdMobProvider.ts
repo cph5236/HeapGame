@@ -8,9 +8,6 @@ import type { AdProvider } from './AdProvider';
 import { normalizeAdId } from './adId';
 import { getLogger } from '../../logging';
 
-const INTERSTITIAL_ID = normalizeAdId(import.meta.env.VITE_ADMOB_INTERSTITIAL_ID as string);
-const REWARDED_ID     = normalizeAdId(import.meta.env.VITE_ADMOB_REWARDED_ID as string);
-
 function reason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -24,6 +21,22 @@ function warn(message: string, context: Record<string, unknown>): void {
 
 export class AdMobProvider implements AdProvider {
   readonly enabled = true;
+
+  private readonly _interstitialId: string;
+  private readonly _rewardedId:     string;
+
+  /**
+   * IDs are injectable purely so the normalization above can be exercised
+   * without build-time env — `.env` is untracked, so `import.meta.env.VITE_*`
+   * is empty in CI. Production always constructs with the defaults.
+   */
+  constructor(
+    interstitialId: string | undefined = import.meta.env.VITE_ADMOB_INTERSTITIAL_ID as string,
+    rewardedId:     string | undefined = import.meta.env.VITE_ADMOB_REWARDED_ID as string,
+  ) {
+    this._interstitialId = normalizeAdId(interstitialId);
+    this._rewardedId     = normalizeAdId(rewardedId);
+  }
 
   async initialize(): Promise<void> {
     try {
@@ -40,13 +53,13 @@ export class AdMobProvider implements AdProvider {
       this._preloadInterstitial(); // reload for next run
     } catch (err) {
       // Most often "not prepared" — the boot-time preload never landed.
-      warn('ads: showInterstitial failed', { adId: INTERSTITIAL_ID, reason: reason(err) });
+      warn('ads: showInterstitial failed', { adId: this._interstitialId, reason: reason(err) });
     }
   }
 
   async showRewarded(): Promise<boolean> {
     try {
-      const options: RewardAdOptions = { adId: REWARDED_ID };
+      const options: RewardAdOptions = { adId: this._rewardedId };
       await AdMob.prepareRewardVideoAd(options);
 
       return await new Promise<boolean>((resolve) => {
@@ -63,22 +76,22 @@ export class AdMobProvider implements AdProvider {
         });
 
         AdMob.showRewardVideoAd().catch((err) => {
-          warn('ads: showRewarded show failed', { adId: REWARDED_ID, reason: reason(err) });
+          warn('ads: showRewarded show failed', { adId: this._rewardedId, reason: reason(err) });
           Promise.all([rewardedHandle, dismissedHandle])
             .then(([rh, dh]) => Promise.all([rh.remove(), dh.remove()]));
           resolve(false);
         });
       });
     } catch (err) {
-      warn('ads: showRewarded prepare failed', { adId: REWARDED_ID, reason: reason(err) });
+      warn('ads: showRewarded prepare failed', { adId: this._rewardedId, reason: reason(err) });
       return false;
     }
   }
 
   private _preloadInterstitial(): void {
-    const options: AdOptions = { adId: INTERSTITIAL_ID };
+    const options: AdOptions = { adId: this._interstitialId };
     AdMob.prepareInterstitial(options).catch((err) => {
-      warn('ads: prepareInterstitial failed', { adId: INTERSTITIAL_ID, reason: reason(err) });
+      warn('ads: prepareInterstitial failed', { adId: this._interstitialId, reason: reason(err) });
     });
   }
 }

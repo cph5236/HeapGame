@@ -80,23 +80,29 @@ describe('AdMobProvider failure reporting', () => {
 });
 
 describe('AdMobProvider ad unit ids', () => {
-  it('passes a trimmed id to prepareInterstitial', async () => {
-    await new AdMobProvider().initialize();
+  // Reproduces the production failure: the rewarded ID secret carried a trailing
+  // newline, so the GMA SDK rejected every load with ERROR_CODE_INVALID_REQUEST.
+  // IDs are passed explicitly — `.env` is untracked, so build-time env is empty
+  // in CI and anything reading import.meta.env here would assert nothing.
+  const POISONED_INTERSTITIAL = 'ca-app-pub-9580963584294486/5213759265\n';
+  const POISONED_REWARDED     = '  ca-app-pub-9580963584294486/4249681864\r\n';
+
+  it('strips the newline before handing the id to prepareInterstitial', async () => {
+    await new AdMobProvider(POISONED_INTERSTITIAL, POISONED_REWARDED).initialize();
     await vi.waitFor(() => expect(admob.prepareInterstitial).toHaveBeenCalled());
-    const { adId } = admob.prepareInterstitial.mock.calls[0][0] as { adId: string };
-    expect(adId).toBe(adId.trim());
-    expect(adId.length).toBeGreaterThan(0);
+
+    expect(admob.prepareInterstitial.mock.calls[0][0])
+      .toEqual({ adId: 'ca-app-pub-9580963584294486/5213759265' });
   });
 
-  it('passes a trimmed id to prepareRewardVideoAd', async () => {
-    const pending = new AdMobProvider().showRewarded();
+  it('strips the whitespace before handing the id to prepareRewardVideoAd', async () => {
+    const pending = new AdMobProvider(POISONED_INTERSTITIAL, POISONED_REWARDED).showRewarded();
     await awaitListeners();
     handlers.dismissed();
     await pending;
 
-    const { adId } = admob.prepareRewardVideoAd.mock.calls[0][0] as { adId: string };
-    expect(adId).toBe(adId.trim());
-    expect(adId.length).toBeGreaterThan(0);
+    expect(admob.prepareRewardVideoAd.mock.calls[0][0])
+      .toEqual({ adId: 'ca-app-pub-9580963584294486/4249681864' });
   });
 });
 
