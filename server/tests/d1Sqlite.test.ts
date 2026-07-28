@@ -105,6 +105,18 @@ describe('d1Sqlite harness', () => {
     expect(row?.max_x).toBe(999); // and exactly once — not applied twice
   });
 
+  it('reports a truthful meta.changes from .all() on a mutation', async () => {
+    // Nothing in server/src/db.ts calls .all() on a write today, but the harness
+    // must not lie if something does tomorrow. A hard-coded changes: 0 here would
+    // be worse than a crash: a crash fails loudly and gets fixed, while a silent
+    // 0 reads as "the CAS guard rejected this row" and would make a real freeze
+    // race look like it passed when it didn't touch anything at all.
+    const d1 = createTestD1();
+    await d1.prepare("INSERT INTO heap_band (heap_id, band, min_x, max_x, version) VALUES ('h1', 10, 0, 100, 1)").run();
+    const res = await d1.prepare('UPDATE heap_band SET max_x = 999 WHERE heap_id = ?1').bind('h1').all();
+    expect(res.meta.changes).toBe(1);
+  });
+
   it('isolates databases between calls', async () => {
     const a = createTestD1();
     const b = createTestD1();

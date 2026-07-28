@@ -77,7 +77,7 @@ class TestStatement {
   }
 
   async all<T>() {
-    return makeResult(run(this.db, this.stmt).results as T[], 0) as unknown as { results: T[] };
+    return run(this.db, this.stmt) as unknown as { results: T[] };
   }
 
   async first<T>(): Promise<T | null> {
