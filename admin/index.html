@@ -927,11 +927,16 @@
       $('bandMaxX').value = e.maxX;
     }
 
-    /** Stage an edit, keeping minX <= maxX. Clamps rather than swapping: a
-     *  handle dragged past its partner should stop, not flip sides. */
-    function bandStage(band, next) {
-      const minX = Math.min(next.minX, next.maxX);
-      const maxX = Math.max(next.minX, next.maxX);
+    /** Stage an edit, keeping minX <= maxX. Clamps rather than swapping: the
+     *  dragged handle stops at its partner instead of pushing past it, and the
+     *  partner never moves. `side` names the edge the caller moved ('minX' or
+     *  'maxX'); omit it when both values are authored at once, as the inspector
+     *  does, where ordering two typed numbers is the sane reading. */
+    function bandStage(band, next, side) {
+      let { minX, maxX } = next;
+      if (side === 'minX') minX = Math.min(minX, maxX);
+      else if (side === 'maxX') maxX = Math.max(minX, maxX);
+      else { const lo = Math.min(minX, maxX); maxX = Math.max(minX, maxX); minX = lo; }
       bandEdits.set(band, { minX, maxX });
     }
 
@@ -986,8 +991,11 @@
         bandSel = Number(ds.band);
         // Only a handle starts a drag; clicking the bar just selects.
         if (ds.side) {
-          drag = { band: bandSel, side: ds.side };
-          svg.setPointerCapture(ev.pointerId);
+          const cur = bandEdits.get(bandSel) || bandMerged().get(bandSel);
+          if (cur) {
+            drag = { band: bandSel, side: ds.side, start: { minX: cur.minX, maxX: cur.maxX } };
+            svg.setPointerCapture(ev.pointerId);
+          }
         }
         renderBandAll();
         ev.preventDefault();
@@ -995,11 +1003,9 @@
 
       svg.addEventListener('pointermove', (ev) => {
         if (!drag) return;
-        const cur = bandEdits.get(drag.band) || bandMerged().get(drag.band);
-        if (!cur) return;
-        const next = { minX: cur.minX, maxX: cur.maxX };
+        const next = { minX: drag.start.minX, maxX: drag.start.maxX };
         next[drag.side] = worldX(ev);
-        bandStage(drag.band, next);
+        bandStage(drag.band, next, drag.side);
         renderBandAll();
       });
 
