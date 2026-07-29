@@ -330,6 +330,7 @@
     // ────── Settings ──────────────────────────────────────────────────────
 
     function bootSettings() {
+      $('adminSecret').value = localStorage.getItem(LS_LEGACY_SECRET) || '';
       $('saveSettings').onclick = () => {
         if (currentEnv() === 'custom') {
           localStorage.setItem(LS_CUSTOM_URL, $('serverUrl').value);
