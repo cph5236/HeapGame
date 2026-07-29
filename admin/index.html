@@ -81,14 +81,16 @@
       <h2 class="card-head">Heaps</h2>
       <button id="refreshHeaps" class="btn btn-sm">Refresh</button>
     </div>
-    <table class="tbl">
-      <thead>
-        <tr>
-          <th>Name</th><th>Difficulty</th><th>top Y</th><th>Created</th><th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="heapsTbody"><tr><td colspan="5" class="muted">loading…</td></tr></tbody>
-    </table>
+    <div class="overflow-x-auto">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Name</th><th>Difficulty</th><th>top Y</th><th>Created</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="heapsTbody"><tr><td colspan="5" class="muted">loading…</td></tr></tbody>
+      </table>
+    </div>
   </div>
 
   <div class="card border-l-term-green" id="editPanel" style="display:none;">
@@ -186,10 +188,12 @@
       <div><label class="lbl">Expires At <span class="muted">(blank = never)</span></label><input type="datetime-local" id="rc-expires" class="field" /></div>
     </div>
     <button id="rc-create" class="btn">Mint Code</button>
-    <table class="tbl mt-4">
-      <thead><tr><th>Code</th><th>Reward</th><th>Redeemed</th><th>Expires</th><th>Created</th></tr></thead>
-      <tbody id="rc-tbody"><tr><td colspan="5" class="muted">not loaded</td></tr></tbody>
-    </table>
+    <div class="overflow-x-auto">
+      <table class="tbl mt-4">
+        <thead><tr><th>Code</th><th>Reward</th><th>Redeemed</th><th>Expires</th><th>Created</th></tr></thead>
+        <tbody id="rc-tbody"><tr><td colspan="5" class="muted">not loaded</td></tr></tbody>
+      </table>
+    </div>
   </div>
 
   <div class="card border-l-term-violet">
