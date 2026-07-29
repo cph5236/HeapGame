@@ -3,61 +3,85 @@
 <head>
   <meta charset="UTF-8">
   <title>Heap Admin</title>
-  <style>
-    body { font-family: monospace; max-width: 900px; margin: 40px auto; padding: 0 16px; background: #111; color: #ddd; }
-    h1 { color: #0f0; margin-bottom: 4px; }
-    h2 { margin: 0 0 10px; font-size: 14px; color: #0cf; text-transform: uppercase; }
-    h3 { margin: 0 0 8px; font-size: 12px; color: #888; text-transform: uppercase; }
-    label { display: block; margin: 6px 0 2px; font-size: 13px; color: #aaa; }
-    input[type="number"], input[type="text"], input[type="password"] { width: 100%; padding: 6px; background: #222; border: 1px solid #444; color: #ddd; font-family: monospace; box-sizing: border-box; }
-    input[type="number"]:disabled, input[type="text"]:disabled { opacity: 0.5; }
-    select { cursor: pointer; }
-    .section { border-left: 4px solid #444; padding: 12px; margin: 12px 0; border-radius: 4px; }
-    .section-settings { border-left-color: #888; }
-    .section-list { border-left-color: #0cf; }
-    .section-edit { border-left-color: #0f0; }
-    .section-create { border-left-color: #fa0; }
-    .section-config { border-left-color: #a0f; }
-    .muted { color: #777; font-size: 12px; }
-    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; margin-left: 8px; }
-    .dot-ok { background: #0f0; }
-    .dot-bad { background: #f44; }
-    table.heaps { width: 100%; border-collapse: collapse; font-size: 13px; }
-    table.heaps th, table.heaps td { padding: 6px 8px; border-bottom: 1px solid #222; text-align: left; }
-    table.heaps th { color: #888; }
-    .btn-sm { padding: 4px 10px; font-size: 12px; margin-right: 4px; }
-    .btn-danger { background: #c33; color: #fff; }
-    .btn-danger:hover { background: #a22; }
-    button { margin-top: 12px; padding: 10px 24px; background: #0f0; color: #000; border: none; font-family: monospace; font-size: 14px; font-weight: bold; cursor: pointer; }
-    button:hover { background: #0d0; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    #status { margin-top: 16px; font-size: 13px; padding: 8px; background: #1a1a1a; }
-    .ok { color: #0f0; }
-    .err { color: #f44; }
+  <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+  <style type="text/tailwindcss">
+    @theme {
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --color-term-bg:     #0a0a0a;
+      --color-term-panel:  #151515;
+      --color-term-line:   #2a2a2a;
+      --color-term-text:   #dddddd;
+      --color-term-dim:    #777777;
+      --color-term-green:  #00ff00;
+      --color-term-cyan:   #00ccff;
+      --color-term-amber:  #ffaa00;
+      --color-term-violet: #aa00ff;
+      --color-term-red:    #ff4444;
+    }
+
+    @layer base {
+      html { @apply bg-term-bg; }
+    }
+
+    @layer components {
+      .card      { @apply mb-4 rounded-r border-l-4 border-term-line bg-term-panel p-4; }
+      .card-head { @apply mb-3 text-sm uppercase tracking-widest text-term-cyan; }
+      .card-sub  { @apply mt-5 mb-2 text-xs uppercase tracking-widest text-term-dim; }
+      .lbl       { @apply mb-1 block text-xs text-term-dim; }
+      .field     { @apply w-full rounded-sm border border-term-line bg-black px-2 py-1.5 text-sm
+                          text-term-text outline-none focus:border-term-green
+                          focus:ring-1 focus:ring-term-green disabled:opacity-40; }
+      .btn       { @apply mt-3 cursor-pointer rounded-sm bg-term-green px-5 py-2 text-sm
+                          font-bold text-black hover:brightness-90 active:brightness-75; }
+      .btn-sm    { @apply mt-0 px-2.5 py-1 text-xs; }
+      .btn-danger{ @apply bg-term-red text-white; }
+      .btn-ghost { @apply mt-0 bg-transparent text-term-dim hover:text-term-text; }
+      .grid2     { @apply grid grid-cols-1 gap-3 md:grid-cols-2; }
+      .tbl       { @apply w-full border-collapse text-sm; }
+      .tbl th    { @apply border-b border-term-line px-2 py-1.5 text-left text-xs
+                          uppercase tracking-wider text-term-dim; }
+      .tbl td    { @apply border-b border-term-line/60 px-2 py-1.5 align-middle; }
+      .tbl tbody tr:nth-child(even) { @apply bg-white/[0.02]; }
+      .tbl tbody tr:hover           { @apply bg-term-green/5; }
+      .badge     { @apply inline-flex items-center gap-1.5 rounded-sm border border-term-line
+                          px-2 py-0.5 text-xs text-term-dim; }
+      .dot       { @apply inline-block h-2.5 w-2.5 rounded-full bg-term-red align-middle; }
+      .dot-ok    { @apply bg-term-green; }
+      .muted     { @apply text-xs text-term-dim; }
+    }
   </style>
 </head>
-<body>
-  <h1>Heap Admin</h1>
+<body class="mx-auto min-h-screen max-w-5xl px-4 pb-16 font-mono text-term-text">
+  <header class="sticky top-0 z-20 -mx-4 mb-4 border-b border-term-line bg-term-bg/95 px-4 py-3 backdrop-blur">
+    <div class="flex flex-wrap items-center gap-3">
+      <h1 class="text-lg font-bold tracking-widest text-term-green">HEAP ADMIN</h1>
+      <div class="ml-auto flex items-center gap-2">
+        <span id="envDot" class="dot"></span>
+      </div>
+    </div>
+  </header>
 
-  <div class="section section-settings">
-    <h2>Settings</h2>
-    <label>Server URL</label>
-    <input type="text" id="serverUrl" />
+  <div class="card border-l-term-dim">
+    <h2 class="card-head">Settings</h2>
+    <label class="lbl">Server URL</label>
+    <input type="text" id="serverUrl" class="field" />
 
-    <label>Admin Secret <span class="muted">(stored in localStorage)</span></label>
-    <input type="password" id="adminSecret" placeholder="leave blank if server has no secret" />
+    <label class="lbl mt-3">Admin Secret <span class="muted">(stored in localStorage)</span></label>
+    <input type="password" id="adminSecret" class="field" placeholder="leave blank if server has no secret" />
 
-    <div style="margin-top: 10px;">
-      <button id="saveSettings">Save Settings</button>
-      <span id="secretDot" class="dot dot-bad"></span>
+    <div class="mt-3 flex items-center gap-2">
+      <button id="saveSettings" class="btn">Save Settings</button>
+      <span id="secretDot" class="dot"></span>
       <span id="secretLabel" class="muted">no secret saved</span>
     </div>
   </div>
 
-  <div class="section section-list">
-    <h2>Heaps</h2>
-    <button id="refreshHeaps">Refresh</button>
-    <table class="heaps">
+  <div class="card border-l-term-cyan">
+    <div class="flex items-center justify-between">
+      <h2 class="card-head">Heaps</h2>
+      <button id="refreshHeaps" class="btn btn-sm">Refresh</button>
+    </div>
+    <table class="tbl">
       <thead>
         <tr>
           <th>Name</th><th>Difficulty</th><th>top Y</th><th>Created</th><th>Actions</th>
@@ -221,7 +245,7 @@
     <button id="cfg-create">Create</button>
   </div>
 
-  <div id="status"></div>
+  <div id="status" class="fixed inset-x-0 bottom-0 z-30 border-t border-term-line bg-term-panel px-4 py-2 text-sm text-term-dim"></div>
 
   <script>
     const LS_URL    = 'heapAdmin.serverUrl';
@@ -249,7 +273,7 @@
 
     function refreshSecretIndicator() {
       const has = !!localStorage.getItem(LS_SECRET);
-      $('secretDot').className = 'dot ' + (has ? 'dot-ok' : 'dot-bad');
+      $('secretDot').className = 'dot' + (has ? ' dot-ok' : '');
       $('secretLabel').textContent = has ? 'secret saved' : 'no secret saved';
     }
 
@@ -269,11 +293,17 @@
       return res;
     }
 
+    const STATUS_BASE = 'fixed inset-x-0 bottom-0 z-30 border-t border-term-line '
+                      + 'bg-term-panel px-4 py-2 text-sm';
+
     function setStatus(msg, kind) {
       const el = $('status');
       if (!el) return;
       el.textContent = msg;
-      el.className = kind || '';
+      const tone = kind === 'ok' ? 'text-term-green'
+                 : kind === 'err' ? 'text-term-red'
+                 : 'text-term-dim';
+      el.className = STATUS_BASE + ' ' + tone;
     }
 
     function escapeHtml(s) {
