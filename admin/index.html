@@ -1030,8 +1030,138 @@
       };
     }
 
+    /**
+     * Recompute a band range by interpolating between the nearest good bands on
+     * either side, filling gaps inside the range as it goes.
+     *
+     * Two rules borrowed from interpolateBandSeed in shared/heapPolygon: a
+     * single-extent band is skipped as a seed source, because its unknown side
+     * is itself a forward-filled guess and interpolating from a guess propagates
+     * it; and a seed is required on BOTH sides, so the range must be genuinely
+     * between two known bands rather than hanging off one.
+     *
+     * Runs here rather than on the server so the result is visible before it is
+     * saved — for this operation the preview is the check.
+     */
+    function bandReDerive(fromBand, toBand) {
+      if (!bandState) return;
+      if (!Number.isInteger(fromBand) || !Number.isInteger(toBand) || toBand < fromBand) {
+        setStatus('re-derive needs an integer band range, from <= to', 'err');
+        return;
+      }
+      const merged = bandMerged();
+      let above = null, below = null;
+      for (const [b, e] of merged) {
+        if (e.minX === e.maxX) continue;
+        if (b < fromBand && (above === null || b > above)) above = b;
+        if (b > toBand  && (below === null || b < below)) below = b;
+      }
+      if (above === null || below === null) {
+        setStatus('re-derive needs a two-extent band on BOTH sides of the range', 'err');
+        return;
+      }
+      const a = merged.get(above), z = merged.get(below);
+      for (let band = fromBand; band <= toBand; band++) {
+        const t = (band - above) / (below - above);
+        bandStage(band, {
+          minX: Math.round(a.minX + (z.minX - a.minX) * t),
+          maxX: Math.round(a.maxX + (z.maxX - a.maxX) * t),
+        });
+      }
+      renderBandAll();
+      setStatus(`re-derived bands ${fromBand}–${toBand} from ${above} and ${below}`, 'ok');
+    }
+
+    /** Max bands per PUT — mirrors MAX_ADMIN_BANDS in server/src/routes/heap.ts.
+     *  Checked here so a large staged set fails with a clear message instead of
+     *  an opaque 400 from the worker. */
+    const BAND_SAVE_CAP = 500;
+
+    /** True when saving would rewrite base geometry, so the confirm can say so.
+     *  Mirrors the server's routing rule: the base carries a band it already
+     *  holds, and it takes a brand-new band at or below the freeze line. */
+    function bandSaveTouchesBase() {
+      const freezeBand = bandState.freezeY > 0 ? Math.floor(bandState.freezeY / BAND_PX) : Infinity;
+      for (const band of bandEdits.keys()) {
+        if (bandState.base.has(band)) return true;
+        if (!bandState.live.has(band) && band >= freezeBand) return true;
+      }
+      return false;
+    }
+
+    async function onSaveBands() {
+      if (!bandState || !editingHeapId || bandEdits.size === 0) return;
+      const bands = [...bandEdits.entries()].map(([band, e]) => ({
+        band, minX: e.minX, maxX: e.maxX,
+      }));
+
+      if (bands.length > BAND_SAVE_CAP) {
+        setStatus(
+          `${bands.length} staged edits exceeds the ${BAND_SAVE_CAP}-band save cap — `
+          + 'discard some or save in batches',
+          'err',
+        );
+        return;
+      }
+
+      let msg = `Save ${bands.length} band(s) to ${envLabel()}?`;
+      if (bandSaveTouchesBase()) {
+        msg += '\n\nThis rewrites the base. Every client will re-download it.';
+      }
+      if (!confirm(msg)) return;
+
+      const gen = envGeneration;
+      try {
+        const res = await adminFetch(`/heaps/${editingHeapId}/bands`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            expectedVersion: bandState.version,
+            expectedBaseId: bandState.baseId,
+            bands,
+          }),
+        });
+        if (gen !== envGeneration) return; // operator switched environments mid-flight
+        const body = await res.json().catch(() => ({}));
+        if (gen !== envGeneration) return;
+        if (res.status === 409) {
+          setStatus(
+            `heap changed on the server (now v${body.version}) — reload the silhouette`,
+            'err',
+          );
+          return;
+        }
+        if (!res.ok) throw new Error(body.error || ('save failed: ' + res.status));
+        setStatus(`✓ saved ${bands.length} band(s) — now v${body.version}`, 'ok');
+        await loadBands(editingHeapId);
+      } catch (e) {
+        if (gen !== envGeneration) return; // operator switched environments mid-flight
+        setStatus('Save failed: ' + e.message, 'err');
+      }
+    }
+
+    function onDiscardBands() {
+      if (bandEdits.size === 0) return;
+      if (!confirm(`Discard ${bandEdits.size} staged band edit(s)?`)) return;
+      bandEdits = new Map();
+      renderBandAll();
+      setStatus('staged band edits discarded', 'ok');
+    }
+
     function bootBandEditor() {
-      $('bandLoad').onclick = () => { if (editingHeapId) loadBands(editingHeapId); };
+      $('bandLoad').onclick = () => {
+        if (!editingHeapId) return;
+        if (bandEdits.size > 0
+            && !confirm(`Reloading discards ${bandEdits.size} staged band edit(s). Continue?`)) {
+          return;
+        }
+        loadBands(editingHeapId);
+      };
+      $('bandSave').onclick = onSaveBands;
+      $('bandDiscard').onclick = onDiscardBands;
+      $('bandRederive').onclick = () => bandReDerive(
+        parseInt($('bandFrom').value, 10),
+        parseInt($('bandTo').value, 10),
+      );
       bootBandOverviewScrub();
       bootBandDrag();
     }
