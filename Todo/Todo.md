@@ -8,12 +8,13 @@ Call the Integrity API at important moments in your app to check that it's your 
 
 Language detection?
 
-Improve Admin UI - add drop down to switch ENVS + add envs
+~~Improve Admin UI - env dropdown, per-env admin secrets, eye toggle~~ — done 2026-07-28, Tailwind restyle in the same pass.
+
+Heap silhouette renderered in the Admin UI. Renders the layers at the 20 px bands as just horizontal bars like a bar chart looks like. X min and max can be edited. This will allow fixing points from the admin UI. Likely needs a new Admin api server route. 
 
 ### UI
 
 ### ENEMIES
--   Jumper cables - spawn on walls and extend in and out slightly, if player touches them, player stunned loses controls
 
 ### PERF — from load testing (2026-07-26)
 
