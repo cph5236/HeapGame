@@ -34,7 +34,7 @@ describe('freezeAtomic', () => {
   it('applies when the freeze line is unchanged', async () => {
     const db = await seeded();
     const applied = await db.freezeAtomic({
-      heapId: 'h1', expectedFreezeY: 0,
+      heapId: 'h1', expectedFreezeY: 0, expectedBaseId: 'b1',
       newBaseId: 'b2', baseVertices: [{ x: 400, y: 102 * BAND_SIZE_PX }], baseHash: 'hash-b2',
       newFreezeY: 102 * BAND_SIZE_PX, versionWatermark: 1, now: NOW,
     });
@@ -51,7 +51,7 @@ describe('freezeAtomic', () => {
     const db = await seeded();
     // Winner.
     await db.freezeAtomic({
-      heapId: 'h1', expectedFreezeY: 0,
+      heapId: 'h1', expectedFreezeY: 0, expectedBaseId: 'b1',
       newBaseId: 'b2', baseVertices: [{ x: 400, y: 102 * BAND_SIZE_PX }], baseHash: 'hash-b2',
       newFreezeY: 102 * BAND_SIZE_PX, versionWatermark: 1, now: NOW,
     });
@@ -59,7 +59,7 @@ describe('freezeAtomic', () => {
     // freeze_y === 0 and still picks a line of its own. This is the interleaving
     // that used to destroy geometry.
     const applied = await db.freezeAtomic({
-      heapId: 'h1', expectedFreezeY: 0,
+      heapId: 'h1', expectedFreezeY: 0, expectedBaseId: 'b1',
       newBaseId: 'b3', baseVertices: [{ x: 400, y: 101 * BAND_SIZE_PX }], baseHash: 'hash-b3',
       newFreezeY: 101 * BAND_SIZE_PX, versionWatermark: 1, now: NOW,
     });
@@ -78,7 +78,7 @@ describe('freezeAtomic', () => {
     await db.upsertBands('h1', [{ band: 103, minX: 100, maxX: 900 }], 9);
 
     await db.freezeAtomic({
-      heapId: 'h1', expectedFreezeY: 0,
+      heapId: 'h1', expectedFreezeY: 0, expectedBaseId: 'b1',
       newBaseId: 'b2', baseVertices: [{ x: 400, y: 102 * BAND_SIZE_PX }], baseHash: 'hash-b2',
       newFreezeY: 102 * BAND_SIZE_PX, versionWatermark: 1, now: NOW,
     });
@@ -94,13 +94,13 @@ describe('freezeAtomic', () => {
     const db = await seeded();
     await db.upsertBands('h1', [{ band: 103, minX: 100, maxX: 900 }], 9);
     await db.freezeAtomic({
-      heapId: 'h1', expectedFreezeY: 0,
+      heapId: 'h1', expectedFreezeY: 0, expectedBaseId: 'b1',
       newBaseId: 'b2', baseVertices: [], baseHash: 'hash-b2',
       newFreezeY: 102 * BAND_SIZE_PX, versionWatermark: 1, now: NOW,
     });
     // Next freeze reads the straggler, so its watermark covers version 9.
     const applied = await db.freezeAtomic({
-      heapId: 'h1', expectedFreezeY: 102 * BAND_SIZE_PX,
+      heapId: 'h1', expectedFreezeY: 102 * BAND_SIZE_PX, expectedBaseId: 'b2',
       newBaseId: 'b3', baseVertices: [{ x: 100, y: 101 * BAND_SIZE_PX }], baseHash: 'hash-b3',
       newFreezeY: 101 * BAND_SIZE_PX, versionWatermark: 9, now: NOW,
     });
@@ -112,7 +112,7 @@ describe('freezeAtomic', () => {
   it('two racers computing the SAME line still leave one clean winner', async () => {
     const db = await seeded();
     const args = {
-      heapId: 'h1', expectedFreezeY: 0,
+      heapId: 'h1', expectedFreezeY: 0, expectedBaseId: 'b1',
       baseVertices: [{ x: 400, y: 102 * BAND_SIZE_PX }],
       newFreezeY: 102 * BAND_SIZE_PX, versionWatermark: 1, now: NOW,
     };
@@ -126,15 +126,55 @@ describe('freezeAtomic', () => {
   it('advances the line on a heap that is already frozen', async () => {
     const db = await seeded();
     await db.freezeAtomic({
-      heapId: 'h1', expectedFreezeY: 0, newBaseId: 'b2', baseVertices: [], baseHash: 'h2',
+      heapId: 'h1', expectedFreezeY: 0, expectedBaseId: 'b1', newBaseId: 'b2', baseVertices: [], baseHash: 'h2',
       newFreezeY: 104 * BAND_SIZE_PX, versionWatermark: 1, now: NOW,
     });
     const applied = await db.freezeAtomic({
-      heapId: 'h1', expectedFreezeY: 104 * BAND_SIZE_PX, newBaseId: 'b3', baseVertices: [], baseHash: 'h3',
+      heapId: 'h1', expectedFreezeY: 104 * BAND_SIZE_PX, expectedBaseId: 'b2', newBaseId: 'b3', baseVertices: [], baseHash: 'h3',
       newFreezeY: 102 * BAND_SIZE_PX, versionWatermark: 1, now: NOW,
     });
     expect(applied).toBe(true);
     expect((await db.getHeap('h1'))!.freeze_y).toBe(102 * BAND_SIZE_PX);
     expect((await db.getAllBands('h1')).map((b) => b.band)).toEqual([100, 101]);
+  });
+
+  // Finding 1 from the feature/admin-band-editor whole-branch review: base_id
+  // now has a second writer (adminReplaceBands), which can repoint the heap at
+  // a repaired base WITHOUT moving freeze_y. Before expectedBaseId existed,
+  // freezeAtomic's CAS only checked freeze_y, so a freeze computed from a
+  // pre-repair snapshot would pass that guard purely because the line hadn't
+  // moved — silently discarding the admin's repair.
+  it('rejects a freeze computed from a base an admin has since replaced', async () => {
+    const db = await seeded(); // h1: freeze_y=0 (F), base_id='b1' (B1), bands 100..104 @ v1
+
+    // An admin repair lands: mints base 'b2' (B2), bumps the version, but does
+    // NOT touch freeze_y — exactly the gap this guard closes.
+    const adminApplied = await db.adminReplaceBands({
+      heapId: 'h1',
+      expectedVersion: 1,
+      expectedBaseId: 'b1',
+      newBaseId: 'b2',
+      baseVertices: [{ x: 10, y: 49010 }],
+      baseHash: 'hash-admin-b2',
+      liveRows: [{ band: 102, minX: -100, maxX: 100 }],
+      now: NOW,
+    });
+    expect(adminApplied).toBe(true);
+
+    // A concurrent /place request had already read the heap BEFORE the admin
+    // write landed — its snapshot still says base_id: 'b1'. Its freeze block
+    // built a new base from that stale, pre-repair geometry and now races the
+    // CAS with exactly that snapshot (expectedBaseId: 'b1').
+    const applied = await db.freezeAtomic({
+      heapId: 'h1', expectedFreezeY: 0, expectedBaseId: 'b1',
+      newBaseId: 'b3', baseVertices: [{ x: 400, y: 102 * BAND_SIZE_PX }], baseHash: 'hash-freeze-b3',
+      newFreezeY: 102 * BAND_SIZE_PX, versionWatermark: 1, now: NOW,
+    });
+
+    expect(applied).toBe(false);
+    const row = (await db.getHeap('h1'))!;
+    expect(row.base_id).toBe('b2');       // admin's repair still owns the heap
+    expect(row.freeze_y).toBe(0);         // untouched by the losing freeze
+    expect(await db.getBaseVerticesById('b3')).toBeNull(); // no orphan base row
   });
 });

@@ -893,11 +893,18 @@ export function heapRoutes(
         ...envelopeToVertices(mergeBands(new Map(), buried)),
       ];
       // row.base_id was read before commitPlacement, so a losing racer builds
-      // its base from a stale one. Harmless: the guard makes its whole batch a
-      // no-op, base row included.
+      // its base from a stale one. Passing it as expectedBaseId (alongside
+      // expectedFreezeY) is what makes that harmless: base_id now has a second
+      // writer (adminReplaceBands, which can move it without touching
+      // freeze_y), so guarding on freeze_y alone would let this batch win
+      // purely because the line hadn't moved — repointing the heap at a
+      // freeze built from a base an admin has since replaced, silently
+      // discarding the repair. Guarding on both makes the whole batch a
+      // no-op, base row included, whenever base_id moved out from under it.
       await db.freezeAtomic({
         heapId: id,
         expectedFreezeY: row.freeze_y,
+        expectedBaseId: row.base_id,
         newBaseId: crypto.randomUUID(),
         baseVertices,
         baseHash: hashVertices(baseVertices),

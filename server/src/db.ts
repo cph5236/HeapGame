@@ -12,6 +12,13 @@ export interface FreezeArgs {
   /** The heap's freeze_y as READ before the freeze decision — never recomputed,
    *  so the REAL-column equality compares an exact round-tripped value. */
   expectedFreezeY: number;
+  /** The base_id read alongside expectedFreezeY. base_id now has a second
+   *  writer — adminReplaceBands — which can repoint the heap at a repaired
+   *  base without moving freeze_y. Guarding on freeze_y alone would let a
+   *  freeze built from a stale (pre-repair) base win its CAS purely because
+   *  the line hadn't moved, silently discarding the admin's repair. Guarding
+   *  on both means freeze only ever writes atop the exact base it read. */
+  expectedBaseId: string;
   newBaseId: string;
   baseVertices: Vertex[];
   baseHash: string;
@@ -525,21 +532,25 @@ export class D1HeapDB implements HeapDB {
   }
 
   async freezeAtomic(args: FreezeArgs): Promise<boolean> {
-    const { heapId, expectedFreezeY, newBaseId, baseVertices, baseHash, newFreezeY, versionWatermark, now } = args;
+    const { heapId, expectedFreezeY, expectedBaseId, newBaseId, baseVertices, baseHash, newFreezeY, versionWatermark, now } = args;
     const results = await this.d1.batch([
-      // 1. Mint the base — only if the line we read is still the line. A losing
-      //    racer inserts nothing, so there is no orphan to clean up.
+      // 1. Mint the base — only if the line AND the base we built from are both
+      //    still current. A losing racer inserts nothing, so there is no orphan
+      //    to clean up. The base_id half of this guard is what stops a freeze
+      //    computed from a base an admin has since replaced (adminReplaceBands)
+      //    from winning just because freeze_y itself never moved.
       this.d1
         .prepare(
           `INSERT INTO heap_base (id, heap_id, vertices, vertex_hash, created_at)
            SELECT ?1, ?2, ?3, ?4, ?5
-            WHERE (SELECT freeze_y FROM heap WHERE id = ?2) = ?6`,
+            WHERE EXISTS (SELECT 1 FROM heap
+                           WHERE id = ?2 AND freeze_y = ?6 AND base_id = ?7)`,
         )
-        .bind(newBaseId, heapId, JSON.stringify(baseVertices), baseHash, now, expectedFreezeY),
+        .bind(newBaseId, heapId, JSON.stringify(baseVertices), baseHash, now, expectedFreezeY, expectedBaseId),
       // 2. CAS the heap onto it. This statement's changes count IS the verdict.
       this.d1
-        .prepare('UPDATE heap SET base_id = ?1, freeze_y = ?2 WHERE id = ?3 AND freeze_y = ?4')
-        .bind(newBaseId, newFreezeY, heapId, expectedFreezeY),
+        .prepare('UPDATE heap SET base_id = ?1, freeze_y = ?2 WHERE id = ?3 AND freeze_y = ?4 AND base_id = ?5')
+        .bind(newBaseId, newFreezeY, heapId, expectedFreezeY, expectedBaseId),
       // 3. Bury rows — only ones the new base captured (version watermark), and
       //    only if statement 2 landed (the heap now points at OUR base).
       this.d1

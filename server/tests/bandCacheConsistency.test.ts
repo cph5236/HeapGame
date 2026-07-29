@@ -97,7 +97,7 @@ describe('band cache consistency', () => {
     // taking commitPlacement's row-only shortcut: it changes base_id, so a
     // stale list summary would point at a base that no longer exists.
     const applied = await cached.freezeAtomic({
-      heapId: 'h1', expectedFreezeY: 0, newBaseId: 'b2',
+      heapId: 'h1', expectedFreezeY: 0, expectedBaseId: 'b1', newBaseId: 'b2',
       baseVertices: [{ x: 400, y: 210 }], baseHash: 'hash-b2',
       newFreezeY: 200, versionWatermark: 0, now: NOW,
     });

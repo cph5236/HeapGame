@@ -328,7 +328,11 @@ export class MockHeapDB implements HeapDB {
     if (!existing) return false;
     // Mirrors the D1 CAS: a stale expectedFreezeY means another request froze
     // first, and NOTHING is written — no base, no line advance, no deletion.
+    // base_id is guarded too — a second writer (adminReplaceBands) can move
+    // base_id without touching freeze_y, and a mock that only checked
+    // freeze_y would pass tests that production's WHERE clause rejects.
     if (existing.freeze_y !== args.expectedFreezeY) return false;
+    if (existing.base_id !== args.expectedBaseId) return false;
 
     this.bases.set(args.newBaseId, {
       heap_id: args.heapId,

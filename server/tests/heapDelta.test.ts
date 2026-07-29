@@ -110,7 +110,7 @@ describe('GET /heaps/:id — delta protocol', () => {
     const db = await heap();
     // Simulate what the freeze path does: new base row, heap repointed at it.
     await db.freezeAtomic({
-      heapId: 'h1', expectedFreezeY: 0, newBaseId: 'b2',
+      heapId: 'h1', expectedFreezeY: 0, expectedBaseId: 'b1', newBaseId: 'b2',
       baseVertices: [{ x: 480, y: 50000 }], baseHash: 'h2',
       newFreezeY: 47000, versionWatermark: 0, now: new Date().toISOString(),
     });
