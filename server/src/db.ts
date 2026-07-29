@@ -21,6 +21,22 @@ export interface FreezeArgs {
   now: string;
 }
 
+/** Inputs to a single guarded admin band save. See HeapDB.adminReplaceBands. */
+export interface AdminReplaceBandsArgs {
+  heapId: string;
+  /** The heap version the operator's editor was loaded from. */
+  expectedVersion: number;
+  /** The base the operator's editor was loaded from. Guarded alongside the
+   *  version so a freeze landing mid-edit is caught rather than overwritten. */
+  expectedBaseId: string;
+  newBaseId: string;
+  baseVertices: Vertex[];
+  baseHash: string;
+  /** heap_band rows to REPLACE. May be empty — the base is minted regardless. */
+  liveRows: BandRow[];
+  now: string;
+}
+
 export interface HeapRow {
   id: string;
   base_id: string;
@@ -218,6 +234,35 @@ export interface HeapDB {
   /** Delete every band row for a heap. Used by reset — the fresh base absorbs
    *  the live zone's shape, so the band table starts empty again. */
   clearBands(heapId: string): Promise<void>;
+  /**
+   * The admin band editor's write, in ONE transaction: mint a new base,
+   * repoint the heap at it, bump the version, and REPLACE `liveRows`.
+   * Returns false when the guard fails, in which case NOTHING was written.
+   *
+   * Two things separate this from every other band write.
+   *
+   * First, replace semantics. `upsertBands` widens with MIN/MAX and therefore
+   * structurally cannot shrink a band — which is exactly what repairing a spike
+   * requires. This one overwrites.
+   *
+   * Second, the unconditional new base id, even when `liveRows` is empty and no
+   * base band changed. `mergeBands` on the client is MIN/MAX too, so a narrowed
+   * band delivered as a delta is merged straight back to its old width; the
+   * repair would be correct in D1 and invisible in game. A changed base_id is
+   * the existing signal that forces a client to discard its bands and take a
+   * full response — the same mechanism reset relies on, and for the same reason.
+   *
+   * The CAS covers `version` AND `base_id`. Version alone would miss a freeze
+   * landing between the operator's read and their save: freeze repoints base_id
+   * and moves geometry between the layers, so the plan built from the old read
+   * no longer describes the heap.
+   *
+   * As in freezeAtomic, the guard cannot live in JS between the statements — a
+   * D1 batch fixes every statement's bind params before any of them run and
+   * executes all of them regardless of what the others did. So each statement
+   * carries its own correlated subquery.
+   */
+  adminReplaceBands(args: AdminReplaceBandsArgs): Promise<boolean>;
 }
 
 export class D1HeapDB implements HeapDB {
@@ -512,5 +557,51 @@ export class D1HeapDB implements HeapDB {
       .prepare('DELETE FROM heap_band WHERE heap_id = ?1')
       .bind(heapId)
       .run();
+  }
+
+  async adminReplaceBands(args: AdminReplaceBandsArgs): Promise<boolean> {
+    const {
+      heapId, expectedVersion, expectedBaseId,
+      newBaseId, baseVertices, baseHash, liveRows, now,
+    } = args;
+    const newVersion = expectedVersion + 1;
+    const results = await this.d1.batch([
+      // 1. Mint the base — only if the version AND base the operator edited are
+      //    both still current. A losing racer inserts nothing, so there is no
+      //    orphan row to clean up.
+      this.d1
+        .prepare(
+          `INSERT INTO heap_base (id, heap_id, vertices, vertex_hash, created_at)
+           SELECT ?1, ?2, ?3, ?4, ?5
+            WHERE EXISTS (SELECT 1 FROM heap
+                           WHERE id = ?2 AND version = ?6 AND base_id = ?7)`,
+        )
+        .bind(newBaseId, heapId, JSON.stringify(baseVertices), baseHash, now,
+              expectedVersion, expectedBaseId),
+      // 2. CAS the heap onto it. This statement's changes count IS the verdict.
+      this.d1
+        .prepare(
+          `UPDATE heap SET base_id = ?1, version = ?2
+            WHERE id = ?3 AND version = ?4 AND base_id = ?5`,
+        )
+        .bind(newBaseId, newVersion, heapId, expectedVersion, expectedBaseId),
+      // 3. REPLACE the live rows — not MIN/MAX. Narrowing is the whole point.
+      //    Guarded on the heap now pointing at OUR base: base ids are unique per
+      //    attempt, which is a stronger test than re-checking the version.
+      ...liveRows.map((r) =>
+        this.d1
+          .prepare(
+            `INSERT INTO heap_band (heap_id, band, min_x, max_x, version)
+             SELECT ?1, ?2, ?3, ?4, ?5
+              WHERE (SELECT base_id FROM heap WHERE id = ?1) = ?6
+             ON CONFLICT(heap_id, band) DO UPDATE SET
+               min_x   = excluded.min_x,
+               max_x   = excluded.max_x,
+               version = excluded.version`,
+          )
+          .bind(heapId, r.band, r.minX, r.maxX, newVersion, newBaseId),
+      ),
+    ]);
+    return results[1].meta.changes > 0;
   }
 }
