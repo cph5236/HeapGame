@@ -29,6 +29,9 @@ import type {
   HeapParams,
   HeapEnemyParams,
   AdminBandsResponse,
+  AdminBandsRequest,
+  AdminBandsWriteResponse,
+  AdminBandsConflictResponse,
 } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS, INFINITE_HEAP_ID } from '../../../shared/heapTypes';
 import { generateDefaultPolygon } from '../../../shared/heapPolygon';
@@ -61,6 +64,11 @@ export const GHOST_SPREAD_BANDS = Math.ceil(GHOST_JITTER_RADIUS_PX / BAND_SIZE_P
 // anything useful about this y, and no seed is better than a fabricated one.
 const SEED_SEARCH_BANDS = 16;
 const PLACE_WINDOW_BANDS = GHOST_SPREAD_BANDS + SEED_SEARCH_BANDS;
+
+/** Cap on one admin band save. Base edits are O(1) statements regardless of how
+ *  many bands they touch (one blob rewrite), so this bounds only the live-row
+ *  statement count — and the live zone runs to roughly 77 bands. */
+const MAX_ADMIN_BANDS = 500;
 
 function validateDifficulty(d: number): string | null {
   if (!Number.isFinite(d)) return 'difficulty must be a finite number';
@@ -330,6 +338,103 @@ export function heapRoutes(
       liveBands: liveBandsOf(row, allBands).map(({ band, minX, maxX }) => ({ band, minX, maxX })),
       baseBands: envelopeToRows(verticesToEnvelope(baseVertices ?? [])),
     } satisfies AdminBandsResponse);
+  });
+
+  // PUT /heaps/:id/bands — the admin band editor's batched save.
+  // NOTE: must be registered before /:id to prevent Hono matching "bands" as an id
+  app.put('/:id/bands', async (c) => {
+    const id = c.req.param('id');
+
+    let body: AdminBandsRequest;
+    try {
+      body = await c.req.json<AdminBandsRequest>();
+    } catch {
+      return c.json({ error: 'Invalid JSON' }, 400);
+    }
+
+    const row = await db.getHeapFresh(id);
+    if (!row) return c.json({ error: 'Heap not found' }, 404);
+
+    if (!Number.isInteger(body.expectedVersion)) {
+      return c.json({ error: 'expectedVersion must be an integer' }, 400);
+    }
+    if (typeof body.expectedBaseId !== 'string' || body.expectedBaseId.length === 0) {
+      return c.json({ error: 'expectedBaseId must be a non-empty string' }, 400);
+    }
+    if (!Array.isArray(body.bands) || body.bands.length === 0) {
+      return c.json({ error: 'bands must be a non-empty array' }, 400);
+    }
+    if (body.bands.length > MAX_ADMIN_BANDS) {
+      return c.json({ error: `bands must not exceed ${MAX_ADMIN_BANDS} entries` }, 400);
+    }
+
+    const maxBand = Math.floor(row.world_height / BAND_SIZE_PX);
+    const seen = new Set<number>();
+    for (const r of body.bands) {
+      if (!r || typeof r !== 'object') {
+        return c.json({ error: 'each band must be an object' }, 400);
+      }
+      if (!Number.isInteger(r.band) || r.band < 0 || r.band > maxBand) {
+        return c.json({ error: `band must be an integer in [0, ${maxBand}]` }, 400);
+      }
+      if (seen.has(r.band)) return c.json({ error: `duplicate band ${r.band}` }, 400);
+      seen.add(r.band);
+      if (!Number.isFinite(r.minX) || !Number.isFinite(r.maxX)) {
+        return c.json({ error: `band ${r.band}: minX and maxX must be finite numbers` }, 400);
+      }
+      if (r.minX > r.maxX) {
+        return c.json({ error: `band ${r.band}: minX must not exceed maxX` }, 400);
+      }
+    }
+
+    // Checked here so a doomed save costs one read instead of a whole plan. It
+    // is NOT what makes the write safe — adminReplaceBands guards again in SQL,
+    // which is the check that actually holds under concurrency.
+    if (row.version !== body.expectedVersion || row.base_id !== body.expectedBaseId) {
+      return c.json({
+        error: 'heap changed since load', version: row.version, baseId: row.base_id,
+      } satisfies AdminBandsConflictResponse, 409);
+    }
+
+    const [baseVertices, allBands] = await Promise.all([
+      db.getBaseVerticesById(row.base_id),
+      db.getAllBandsVersioned(id),
+    ]);
+
+    const plan = planBandWrite({
+      dirty:     body.bands,
+      baseRows:  envelopeToRows(verticesToEnvelope(baseVertices ?? [])),
+      // Database state, not what the editor loaded: a straggler row below the
+      // freeze line is hidden from the editor but must still be replaced.
+      liveBands: new Set(allBands.map((b) => b.band)),
+      freezeY:   row.freeze_y,
+    });
+
+    const nextBaseVertices = envelopeToVertices(mergeBands(new Map(), plan.nextBaseRows));
+    const newBaseId = crypto.randomUUID();
+    const applied = await db.adminReplaceBands({
+      heapId: id,
+      expectedVersion: body.expectedVersion,
+      expectedBaseId: body.expectedBaseId,
+      newBaseId,
+      baseVertices: nextBaseVertices,
+      baseHash: hashVertices(nextBaseVertices),
+      liveRows: plan.liveRows,
+      now: new Date().toISOString(),
+    });
+
+    if (!applied) {
+      const fresh = await db.getHeapFresh(id);
+      return c.json({
+        error: 'heap changed since load',
+        version: fresh?.version ?? row.version,
+        baseId:  fresh?.base_id ?? row.base_id,
+      } satisfies AdminBandsConflictResponse, 409);
+    }
+
+    return c.json({
+      version: body.expectedVersion + 1, baseId: newBaseId,
+    } satisfies AdminBandsWriteResponse);
   });
 
   // GET /heaps/:id/base — get current base vertices for a heap
