@@ -52,9 +52,10 @@
   </style>
 </head>
 <body class="mx-auto min-h-screen max-w-5xl px-4 pb-16 font-mono text-term-text">
-  <header class="sticky top-0 z-20 -mx-4 mb-4 border-b border-term-line bg-term-bg/95 px-4 py-3 backdrop-blur">
+  <header id="appHeader" class="sticky top-0 z-20 -mx-4 mb-4 border-b border-term-line bg-term-bg/95 px-4 py-3 backdrop-blur">
     <div class="flex flex-wrap items-center gap-3">
       <h1 class="text-lg font-bold tracking-widest text-term-green">HEAP ADMIN</h1>
+      <span id="prodBadge" class="badge border-term-red font-bold text-term-red" style="display:none">PROD</span>
       <div class="ml-auto flex items-center gap-2">
         <select id="envSelect" class="field w-auto"></select>
         <span id="envDot" class="dot"></span>
@@ -358,6 +359,18 @@
       localStorage.removeItem(LS_LEGACY_SECRET);
     }
 
+    function setEnvHealth(ok) {
+      $('envDot').className = 'dot' + (ok ? ' dot-ok' : '');
+      $('envDot').title = ok ? 'last request succeeded' : 'last request failed';
+    }
+
+    function refreshProdBadge() {
+      const isProd = currentEnv() === 'prod';
+      $('prodBadge').style.display = isProd ? '' : 'none';
+      $('appHeader').classList.toggle('border-term-red', isProd);
+      $('appHeader').classList.toggle('border-term-line', !isProd);
+    }
+
     function applyEnv(env) {
       localStorage.setItem(LS_ENV, env);
       $('envSelect').value = env;
@@ -368,6 +381,7 @@
       $('eyeOpen').style.display = '';
       $('eyeClosed').style.display = 'none';
       refreshSecretIndicator();
+      refreshProdBadge();
       $('envUrl').textContent = serverUrl() || '(no url set)';
       hideEditPanel();
       loadHeaps();
@@ -420,7 +434,9 @@
         const data = await res.json();
         cachedHeaps = data.heaps || [];
         renderHeapsTable();
+        setEnvHealth(true);
       } catch (e) {
+        setEnvHealth(false);
         setStatus(String(e), 'err');
       }
     }
@@ -450,7 +466,7 @@
     async function onDeleteHeap(id) {
       const heap = cachedHeaps.find(h => h.id === id);
       if (!heap) return;
-      if (!confirm(`Delete "${heap.params.name}"? This cannot be undone.`)) return;
+      if (!confirm(`Delete "${heap.params.name}" on ${envLabel()}? This cannot be undone.`)) return;
       try {
         const res = await adminFetch('/heaps/' + id, { method: 'DELETE' });
         if (!res.ok) throw new Error('delete failed: ' + res.status);
@@ -755,7 +771,7 @@
     }
 
     async function onDeleteConfigKey(key) {
-      if (!confirm('Delete config key "' + key + '"? This cannot be undone.')) return;
+      if (!confirm('Delete config key "' + key + '" on ' + envLabel() + '? This cannot be undone.')) return;
       try {
         const res = await adminFetch('/config/' + key, { method: 'DELETE' });
         if (!res.ok) throw new Error('delete failed: ' + res.status);
