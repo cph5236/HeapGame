@@ -282,11 +282,15 @@
       );
       const secret = adminSecret();
       if (secret) headers['X-Admin-Secret'] = secret;
+      // Pin the environment that issued this request. A 401 that lands after
+      // the operator has switched environments must clear the secret for the
+      // env that was actually rejected, not whichever one is selected now.
+      const reqEnv = currentEnv();
       const res = await fetch(serverUrl() + path, Object.assign({}, opts, { headers }));
       if (res.status === 401) {
-        writeSecret(currentEnv(), '');
+        writeSecret(reqEnv, '');
         refreshSecretIndicator();
-        throw new Error('admin secret rejected for ' + envLabel() + ' — cleared');
+        throw new Error('admin secret rejected for ' + ENVS[reqEnv].label + ' — cleared');
       }
       return res;
     }
