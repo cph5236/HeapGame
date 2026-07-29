@@ -70,8 +70,22 @@
       <input type="text" id="serverUrl" class="field" placeholder="http://localhost:8787" />
     </div>
 
-    <label class="lbl mt-3">Admin Secret <span class="muted">(stored in localStorage)</span></label>
-    <input type="password" id="adminSecret" class="field" placeholder="leave blank if server has no secret" />
+    <label class="lbl mt-3">Admin Secret <span class="muted">(stored per environment)</span></label>
+    <div class="relative">
+      <input type="password" id="adminSecret" class="field pr-9" placeholder="leave blank if server has no secret" />
+      <button type="button" id="secretEye" title="Show/hide secret"
+              class="absolute right-1 top-1/2 -translate-y-1/2 cursor-pointer bg-transparent p-1 text-term-dim hover:text-term-green">
+        <svg id="eyeOpen" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+        </svg>
+        <svg id="eyeClosed" style="display:none" xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+          <line x1="1" y1="1" x2="23" y2="23" />
+        </svg>
+      </button>
+    </div>
 
     <div class="mt-3 flex items-center gap-2">
       <button id="saveSettings" class="btn">Save Settings</button>
@@ -254,9 +268,11 @@
     function adminSecret() { return $('adminSecret').value; }
 
     function refreshSecretIndicator() {
-      const has = !!localStorage.getItem(LS_LEGACY_SECRET);
+      const has = !!readSecrets()[currentEnv()];
       $('secretDot').className = 'dot' + (has ? ' dot-ok' : '');
-      $('secretLabel').textContent = has ? 'secret saved' : 'no secret saved';
+      $('secretLabel').textContent = has
+        ? 'secret saved for ' + envLabel()
+        : 'no secret saved for ' + envLabel();
     }
 
     async function adminFetch(path, opts = {}) {
@@ -268,9 +284,9 @@
       if (secret) headers['X-Admin-Secret'] = secret;
       const res = await fetch(serverUrl() + path, Object.assign({}, opts, { headers }));
       if (res.status === 401) {
-        localStorage.removeItem(LS_LEGACY_SECRET);
+        writeSecret(currentEnv(), '');
         refreshSecretIndicator();
-        throw new Error('admin secret rejected — cleared from localStorage');
+        throw new Error('admin secret rejected for ' + envLabel() + ' — cleared from localStorage');
       }
       return res;
     }
@@ -304,11 +320,54 @@
 
     function envLabel() { return ENVS[currentEnv()].label; }
 
+    // Secrets are per-environment: staging and production each have their own
+    // ADMIN_SECRET, so one shared value would 401 on every switch.
+    function readSecrets() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(LS_SECRETS) || '{}');
+        return (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function writeSecret(env, secret) {
+      const all = readSecrets();
+      if (secret) all[env] = secret; else delete all[env];
+      localStorage.setItem(LS_SECRETS, JSON.stringify(all));
+    }
+
+    // One-time move from the pre-multi-env keys. Idempotent: once the legacy
+    // keys are gone this returns immediately.
+    function migrateLegacySettings() {
+      const legacyUrl    = localStorage.getItem(LS_LEGACY_URL);
+      const legacySecret = localStorage.getItem(LS_LEGACY_SECRET);
+      if (legacyUrl === null && legacySecret === null) return;
+
+      const url = stripSlash(legacyUrl || ENVS.local.url);
+      let env = Object.keys(ENVS)
+        .find(k => ENVS[k].url && stripSlash(ENVS[k].url) === url);
+      if (!env) {
+        env = 'custom';
+        localStorage.setItem(LS_CUSTOM_URL, url);
+      }
+      localStorage.setItem(LS_ENV, env);
+      if (legacySecret) writeSecret(env, legacySecret);
+
+      localStorage.removeItem(LS_LEGACY_URL);
+      localStorage.removeItem(LS_LEGACY_SECRET);
+    }
+
     function applyEnv(env) {
       localStorage.setItem(LS_ENV, env);
       $('envSelect').value = env;
       $('customUrlWrap').style.display = env === 'custom' ? '' : 'none';
       if (env === 'custom') $('serverUrl').value = localStorage.getItem(LS_CUSTOM_URL) || '';
+      $('adminSecret').value = readSecrets()[env] || '';
+      $('adminSecret').type = 'password';
+      $('eyeOpen').style.display = '';
+      $('eyeClosed').style.display = 'none';
+      refreshSecretIndicator();
       $('envUrl').textContent = serverUrl() || '(no url set)';
       hideEditPanel();
       loadHeaps();
@@ -329,16 +388,24 @@
 
     // ────── Settings ──────────────────────────────────────────────────────
 
+    function toggleSecretVisibility() {
+      const input = $('adminSecret');
+      const shown = input.type === 'text';
+      input.type = shown ? 'password' : 'text';
+      $('eyeOpen').style.display   = shown ? '' : 'none';
+      $('eyeClosed').style.display = shown ? 'none' : '';
+    }
+
     function bootSettings() {
-      $('adminSecret').value = localStorage.getItem(LS_LEGACY_SECRET) || '';
       $('saveSettings').onclick = () => {
         if (currentEnv() === 'custom') {
           localStorage.setItem(LS_CUSTOM_URL, $('serverUrl').value);
         }
-        localStorage.setItem(LS_LEGACY_SECRET, $('adminSecret').value);
+        writeSecret(currentEnv(), $('adminSecret').value);
         refreshSecretIndicator();
         setStatus('settings saved for ' + envLabel(), 'ok');
       };
+      $('secretEye').onclick = toggleSecretVisibility;
       refreshSecretIndicator();
     }
 
@@ -738,6 +805,7 @@
     // ────── Boot ───────────────────────────────────────────────────────────
 
     document.addEventListener('DOMContentLoaded', () => {
+      migrateLegacySettings();
       bootEnv();
       bootSettings();
       bootHeapsList();
