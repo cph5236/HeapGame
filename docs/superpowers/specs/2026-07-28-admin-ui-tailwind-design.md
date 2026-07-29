@@ -198,6 +198,15 @@ screenshots:
 
 - **CDN dependency.** Offline → unstyled page. Accepted; functionality is
   unaffected and this is a single-operator internal tool.
+- **CDN as an execution vector for the admin secrets.** This page keeps
+  per-environment `ADMIN_SECRET`s — production's included — in `localStorage`, so
+  a compromised or MITM'd CDN response would get script execution next to them.
+  Mitigated by pinning the script to an exact version with a Subresource
+  Integrity hash and `crossorigin="anonymous"`: the browser refuses to execute
+  any response that does not match the hash, which turns tampering into an
+  unstyled page rather than a secret leak. The bundle is self-contained (no
+  dynamic imports, no runtime fetches), so the hash covers the whole surface.
+  Cost: Tailwind upgrades need a manual version bump and re-hash.
 - **Play CDN is not intended for production traffic.** Irrelevant here: the file
   is never deployed or served to users.
 - **localStorage migration is one-way.** Reverting the file would leave the new

@@ -3,7 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <title>Heap Admin</title>
-  <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+  <!-- Pinned to an exact version with a Subresource Integrity hash: this page holds
+       the production ADMIN_SECRET in localStorage, so a tampered CDN response would
+       get script execution alongside it. The browser refuses anything off-hash.
+       To bump: change the version, then re-hash with
+         curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A -->
+  <script src="https://unpkg.com/@tailwindcss/browser@4.3.3/dist/index.global.js"
+          integrity="sha384-2ql948lIdLcGEE0/qxNiudyTjgauA3RDJERu5xW75kFCvSl5a9odyQYCb6tEjnmB"
+          crossorigin="anonymous"></script>
   <style type="text/tailwindcss">
     @theme {
       --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
