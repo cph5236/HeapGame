@@ -151,6 +151,67 @@ export function liveBandsOf(row: HeapRow, allBands: BandRow[]): BandRow[] {
   return allBands.filter((b) => b.band < freezeBand);
 }
 
+/** What a single admin save resolves to, once fanned out across the layers. */
+export interface BandWritePlan {
+  /** The COMPLETE new base envelope, ready to serialise. Not just the changes:
+   *  the base is an immutable blob, so it is always rewritten whole. */
+  nextBaseRows: BandRow[];
+  /** Only the heap_band rows that need writing. */
+  liveRows: BandRow[];
+}
+
+/**
+ * Fan each edited band out to every layer that holds it.
+ *
+ * The client builds its polygon as `[...base, ...liveVertices]` and buckets to
+ * bands afterwards, so a band's rendered extent is the UNION of the two layers.
+ * Writing an edit to only one of them leaves the other's stale extent winning
+ * that union — the repair lands in the database and changes nothing on screen.
+ * Two situations make the overlap routine rather than exotic: `freeze_y === 0`
+ * is the "nothing frozen yet" sentinel, so every band row is live while the base
+ * still covers those bands; and migration 0004 backfilled heap_band from the
+ * live zone AND the base.
+ *
+ * `liveBands` is the set of bands that currently have a heap_band row, taken
+ * from database state rather than from whatever the editor happened to load.
+ */
+export function planBandWrite(args: {
+  dirty: BandRow[];
+  baseRows: BandRow[];
+  liveBands: Set<number>;
+  freezeY: number;
+}): BandWritePlan {
+  const { dirty, baseRows, liveBands, freezeY } = args;
+  const baseEnv: BandEnvelope = new Map(
+    baseRows.map((r) => [r.band, { minX: r.minX, maxX: r.maxX }]),
+  );
+  const liveRows: BandRow[] = [];
+
+  for (const r of dirty) {
+    const inBase = baseEnv.has(r.band);
+    const inLive = liveBands.has(r.band);
+
+    // Rule 1 — the base holds this band, so the base must carry the edit.
+    if (inBase) baseEnv.set(r.band, { minX: r.minX, maxX: r.maxX });
+    // Rule 2 — so must the live row, when one exists. Both firing is the
+    // normal case: afterwards the two layers agree, so their union is the
+    // operator's value.
+    if (inLive) liveRows.push(r);
+
+    // Rule 3 — held by neither (a gap being filled). Create it in the layer the
+    // freeze line assigns, matching liveBandsOf's freeze_y === 0 sentinel.
+    if (!inBase && !inLive) {
+      if (freezeY > 0 && r.band >= bandOf(freezeY)) {
+        baseEnv.set(r.band, { minX: r.minX, maxX: r.maxX });
+      } else {
+        liveRows.push(r);
+      }
+    }
+  }
+
+  return { nextBaseRows: envelopeToRows(baseEnv), liveRows };
+}
+
 export function heapRoutes(
   db: HeapDB,
   getSink: () => Sink | undefined,
