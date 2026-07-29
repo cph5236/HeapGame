@@ -11,7 +11,7 @@
 //   cache:heap:list     — listHeaps() summary     (short TTL; any heap mutation busts it)
 //   cache:base:{baseId} — base vertices           (immutable; long TTL)
 
-import type { HeapDB, HeapRow, HeapSummaryRow, VersionedBandRow, FreezeArgs } from '../db';
+import type { HeapDB, HeapRow, HeapSummaryRow, VersionedBandRow, FreezeArgs, AdminReplaceBandsArgs } from '../db';
 import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
 import type { BandRow } from '../../../shared/heapPolygon/bandEnvelope';
 import type { Sink } from '../logging/Sink';
@@ -222,6 +222,21 @@ export class CachedHeapDB implements HeapDB {
       // createBase. Only on a win: a loser's base row does not exist.
       this.waitUntil(this.kv.put(`cache:base:${args.newBaseId}`, JSON.stringify(args.baseVertices), { expirationTtl: BASE_TTL }));
     }
+    return applied;
+  }
+
+  async adminReplaceBands(args: AdminReplaceBandsArgs): Promise<boolean> {
+    const applied = await this.inner.adminReplaceBands(args);
+    // Changes base_id and version on the heap row AND rewrites band rows, so
+    // both the snapshot and the list summary are stale. invalidateHeap, not
+    // invalidateHeapRow: base_id is what a client uses to decide whether its
+    // cached geometry is still valid, so serving a stale one is not the
+    // cosmetic staleness commitPlacement tolerates.
+    //
+    // Unconditional, win or lose. A losing CAS wrote nothing, so the delete is
+    // redundant — but admin saves are rare, and a redundant KV delete costs
+    // less than a branch whose correctness depends on the return value.
+    await this.invalidateHeap(args.heapId);
     return applied;
   }
 
