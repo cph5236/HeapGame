@@ -1104,10 +1104,15 @@
         return;
       }
 
+      // Every save mints a fresh baseId unconditionally (see adminReplaceBands),
+      // so every save forces every player's client to re-download the base blob
+      // for this heap — the client caches it on baseId with no TTL. Only an edit
+      // that actually falls in the base layer rewrites the base *geometry*
+      // itself. Both costs are real; say both, or a live-only save reads as free.
       let msg = `Save ${bands.length} band(s) to ${envLabel()}?`;
-      if (bandSaveTouchesBase()) {
-        msg += '\n\nThis rewrites the base. Every client will re-download it.';
-      }
+      msg += bandSaveTouchesBase()
+        ? '\n\nThis rewrites base geometry AND forces every player\'s client to re-download the base.'
+        : '\n\nBase geometry is unchanged, but this still mints a new base id — every player\'s client will re-download the base.';
       if (!confirm(msg)) return;
 
       const gen = envGeneration;
