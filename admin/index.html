@@ -56,15 +56,19 @@
     <div class="flex flex-wrap items-center gap-3">
       <h1 class="text-lg font-bold tracking-widest text-term-green">HEAP ADMIN</h1>
       <div class="ml-auto flex items-center gap-2">
+        <select id="envSelect" class="field w-auto"></select>
         <span id="envDot" class="dot"></span>
       </div>
     </div>
+    <div class="mt-1 text-xs text-term-dim" id="envUrl">—</div>
   </header>
 
   <div class="card border-l-term-dim">
     <h2 class="card-head">Settings</h2>
-    <label class="lbl">Server URL</label>
-    <input type="text" id="serverUrl" class="field" />
+    <div id="customUrlWrap" style="display:none">
+      <label class="lbl">Custom Server URL</label>
+      <input type="text" id="serverUrl" class="field" placeholder="http://localhost:8787" />
+    </div>
 
     <label class="lbl mt-3">Admin Secret <span class="muted">(stored in localStorage)</span></label>
     <input type="password" id="adminSecret" class="field" placeholder="leave blank if server has no secret" />
@@ -211,9 +215,21 @@
   <div id="status" class="fixed inset-x-0 bottom-0 z-30 border-t border-term-line bg-term-panel px-4 py-2 text-sm text-term-dim"></div>
 
   <script>
-    const LS_URL    = 'heapAdmin.serverUrl';
-    const LS_SECRET = 'heapAdmin.adminSecret';
-    const DEFAULT_URL = 'http://localhost:8787';
+    const LS_ENV        = 'heapAdmin.env';
+    const LS_CUSTOM_URL = 'heapAdmin.customUrl';
+    const LS_SECRETS    = 'heapAdmin.secrets';
+    // Legacy single-env keys, migrated then deleted on first boot (migrateLegacySettings).
+    const LS_LEGACY_URL    = 'heapAdmin.serverUrl';
+    const LS_LEGACY_SECRET = 'heapAdmin.adminSecret';
+
+    // Known deployments. Staging and production are separate Workers with
+    // separate ADMIN_SECRETs — see server/wrangler.toml.
+    const ENVS = {
+      local:   { label: 'Local',      url: 'http://localhost:8787' },
+      staging: { label: 'Staging',    url: 'https://heap-server-staging.hanlinsoftwaresws.workers.dev' },
+      prod:    { label: 'Production', url: 'https://heap-server.hanlinsoftwaresws.workers.dev' },
+      custom:  { label: 'Custom…',    url: null },
+    };
     // Well-known infinite-heap row id — must match shared/heapTypes.ts INFINITE_HEAP_ID
     // (this page is standalone static HTML and cannot import shared code).
     const INFINITE_HEAP_ID = 'FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF';
@@ -231,11 +247,14 @@
     const ITEM_IDS = ['ladder', 'ibeam', 'checkpoint', 'shield', 'revive', 'adrenaline', 'pogo', 'stall'];
 
     function $(id) { return document.getElementById(id); }
-    function serverUrl() { return $('serverUrl').value.replace(/\/$/, ''); }
+    function serverUrl() {
+      const env = currentEnv();
+      return stripSlash(env === 'custom' ? $('serverUrl').value : ENVS[env].url);
+    }
     function adminSecret() { return $('adminSecret').value; }
 
     function refreshSecretIndicator() {
-      const has = !!localStorage.getItem(LS_SECRET);
+      const has = !!localStorage.getItem(LS_LEGACY_SECRET);
       $('secretDot').className = 'dot' + (has ? ' dot-ok' : '');
       $('secretLabel').textContent = has ? 'secret saved' : 'no secret saved';
     }
@@ -249,7 +268,7 @@
       if (secret) headers['X-Admin-Secret'] = secret;
       const res = await fetch(serverUrl() + path, Object.assign({}, opts, { headers }));
       if (res.status === 401) {
-        localStorage.removeItem(LS_SECRET);
+        localStorage.removeItem(LS_LEGACY_SECRET);
         refreshSecretIndicator();
         throw new Error('admin secret rejected — cleared from localStorage');
       }
@@ -274,16 +293,50 @@
         ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
     }
 
+    // ────── Environment ─────────────────────────────────────────────────────
+
+    function stripSlash(u) { return String(u || '').replace(/\/$/, ''); }
+
+    function currentEnv() {
+      const env = localStorage.getItem(LS_ENV);
+      return Object.prototype.hasOwnProperty.call(ENVS, env) ? env : 'local';
+    }
+
+    function envLabel() { return ENVS[currentEnv()].label; }
+
+    function applyEnv(env) {
+      localStorage.setItem(LS_ENV, env);
+      $('envSelect').value = env;
+      $('customUrlWrap').style.display = env === 'custom' ? '' : 'none';
+      if (env === 'custom') $('serverUrl').value = localStorage.getItem(LS_CUSTOM_URL) || '';
+      $('envUrl').textContent = serverUrl() || '(no url set)';
+      hideEditPanel();
+      loadHeaps();
+      loadCodes();
+      loadConfig();
+    }
+
+    function bootEnv() {
+      $('envSelect').innerHTML = Object.keys(ENVS)
+        .map(k => `<option value="${k}">${escapeHtml(ENVS[k].label)}</option>`)
+        .join('');
+      $('envSelect').onchange = () => applyEnv($('envSelect').value);
+      $('serverUrl').onchange = () => {
+        localStorage.setItem(LS_CUSTOM_URL, $('serverUrl').value);
+        $('envUrl').textContent = serverUrl() || '(no url set)';
+      };
+    }
+
     // ────── Settings ──────────────────────────────────────────────────────
 
     function bootSettings() {
-      $('serverUrl').value    = localStorage.getItem(LS_URL)    || DEFAULT_URL;
-      $('adminSecret').value  = localStorage.getItem(LS_SECRET) || '';
       $('saveSettings').onclick = () => {
-        localStorage.setItem(LS_URL,    $('serverUrl').value);
-        localStorage.setItem(LS_SECRET, $('adminSecret').value);
+        if (currentEnv() === 'custom') {
+          localStorage.setItem(LS_CUSTOM_URL, $('serverUrl').value);
+        }
+        localStorage.setItem(LS_LEGACY_SECRET, $('adminSecret').value);
         refreshSecretIndicator();
-        setStatus('settings saved', 'ok');
+        setStatus('settings saved for ' + envLabel(), 'ok');
       };
       refreshSecretIndicator();
     }
@@ -343,7 +396,6 @@
 
     function bootHeapsList() {
       $('refreshHeaps').onclick = loadHeaps;
-      loadHeaps();
     }
 
     // ────── Edit Heap ──────────────────────────────────────────────────────
@@ -571,7 +623,6 @@
         $('rc-item-wrap').style.display = $('rc-type').value === 'item' ? '' : 'none';
       };
       $('rc-create').onclick = onCreateCode;
-      loadCodes();
     }
 
     // ────── Remote Config ────────────────────────────────────────────────────
@@ -681,18 +732,19 @@
 
     function bootConfig() {
       $('cfg-create').onclick = onCreateConfigKey;
-      loadConfig();
     }
 
     // ────── Boot ───────────────────────────────────────────────────────────
 
     document.addEventListener('DOMContentLoaded', () => {
+      bootEnv();
       bootSettings();
       bootHeapsList();
       bootEditHeap();
       bootCreateHeap();
       bootRewardCodes();
       bootConfig();
+      applyEnv(currentEnv());
     });
   </script>
 </body>
