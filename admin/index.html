@@ -848,9 +848,98 @@
       ctx.strokeRect(0.5, sy(bandWinTop), W - 1, Math.max(2, rowH * BAND_WIN));
     }
 
+    function renderBandDetail() {
+      const svg = $('bandDetail');
+      const merged = bandMerged();
+      const ks = bandKeys();
+      if (ks.length === 0) { svg.innerHTML = ''; return; }
+
+      const last = ks[ks.length - 1];
+      const top = Math.max(ks[0], Math.min(bandWinTop, Math.max(ks[0], last - BAND_WIN + 1)));
+      const W = 600, ROW = 16;
+      const { lo, hi } = bandState.dom;
+      const sx = (x) => ((x - lo) / (hi - lo)) * W;
+      const cy = (band) => (band - top) * ROW + ROW / 2;
+
+      const bars = [], edges = [], handles = [];
+      let prev = null;
+      for (let band = top; band < top + BAND_WIN; band++) {
+        const e = merged.get(band);
+        if (!e) continue;                       // genuinely empty band — a gap
+        const dirty = bandEdits.has(band);
+        const col = dirty ? BAND_COLORS.dirty : BAND_COLORS[bandLayers(band)];
+        const y = cy(band);
+        const x0 = sx(e.minX), x1 = sx(e.maxX);
+
+        bars.push(`<rect x="${x0}" y="${y - 5}" width="${Math.max(1, x1 - x0)}" height="10"
+                         fill="${col}" opacity="0.45" data-band="${band}"/>`);
+
+        // The two edges the client renders. A segment that spans a missing band
+        // is dashed: that dashed run IS the forward-fill sawtooth, and it is the
+        // only way a gap is visible at all — an empty row just looks empty.
+        if (prev) {
+          const dash = (band !== prev.band + 1) ? ' stroke-dasharray="4 3" opacity="0.5"' : '';
+          edges.push(`<line x1="${prev.x0}" y1="${prev.y}" x2="${x0}" y2="${y}"
+                            stroke="${col}" stroke-width="1.2"${dash}/>`);
+          edges.push(`<line x1="${prev.x1}" y1="${prev.y}" x2="${x1}" y2="${y}"
+                            stroke="${col}" stroke-width="1.2"${dash}/>`);
+        }
+        prev = { band, x0, x1, y };
+
+        const ring = band === bandSel ? '#ffffff' : col;
+        for (const side of ['minX', 'maxX']) {
+          handles.push(`<rect class="bandHandle" data-band="${band}" data-side="${side}"
+                              x="${sx(e[side]) - 4}" y="${y - 4}" width="8" height="8"
+                              fill="#0a0a0a" stroke="${ring}" stroke-width="1.5"
+                              style="cursor:ew-resize"/>`);
+        }
+      }
+
+      let freeze = '';
+      if (bandState.freezeY > 0) {
+        const fb = Math.floor(bandState.freezeY / BAND_PX);
+        if (fb >= top && fb < top + BAND_WIN) {
+          const fy = cy(fb) - ROW / 2;
+          freeze = `<line x1="0" y1="${fy}" x2="${W}" y2="${fy}"
+                          stroke="#ffaa00" stroke-width="1" stroke-dasharray="4 3"/>`;
+        }
+      }
+
+      svg.setAttribute('viewBox', `0 0 ${W} ${BAND_WIN * ROW}`);
+      svg.innerHTML = bars.join('') + edges.join('') + freeze + handles.join('');
+      $('bandWinLabel').textContent = `${top}–${top + BAND_WIN - 1}`;
+    }
+
+    function renderBandInspector() {
+      if (bandSel === null) {
+        $('bandMeta').textContent = 'no band selected';
+        $('bandMinX').value = '';
+        $('bandMaxX').value = '';
+        return;
+      }
+      const e = bandMerged().get(bandSel);
+      if (!e) { $('bandMeta').textContent = `band ${bandSel} — empty`; return; }
+      const y0 = bandSel * BAND_PX;
+      $('bandMeta').innerHTML =
+        `band <span class="text-term-text">${bandSel}</span> · y ${y0}–${y0 + BAND_PX}`
+        + ` · ${bandLayers(bandSel)} · w ${Math.round(e.maxX - e.minX)}`;
+      $('bandMinX').value = e.minX;
+      $('bandMaxX').value = e.maxX;
+    }
+
+    /** Stage an edit, keeping minX <= maxX. Clamps rather than swapping: a
+     *  handle dragged past its partner should stop, not flip sides. */
+    function bandStage(band, next) {
+      const minX = Math.min(next.minX, next.maxX);
+      const maxX = Math.max(next.minX, next.maxX);
+      bandEdits.set(band, { minX, maxX });
+    }
+
     function renderBandAll() {
       if (!bandState) return;
       renderBandOverview();
+      renderBandDetail();
+      renderBandInspector();
       $('bandDirty').textContent = bandEdits.size + ' bands dirty';
     }
 
@@ -878,9 +967,67 @@
       });
     }
 
+    function bootBandDrag() {
+      const svg = $('bandDetail');
+      let drag = null;
+
+      /** Pointer x -> world x, snapped to whole pixels. Bands are floats in D1,
+       *  but pixel granularity on a 20px band is finer than anything visible. */
+      const worldX = (ev) => {
+        const { lo, hi } = bandState.dom;
+        const r = svg.getBoundingClientRect();
+        return Math.round(lo + ((ev.clientX - r.left) / r.width) * (hi - lo));
+      };
+
+      svg.addEventListener('pointerdown', (ev) => {
+        if (!bandState) return;
+        const ds = ev.target && ev.target.dataset;
+        if (!ds || ds.band === undefined) return;
+        bandSel = Number(ds.band);
+        // Only a handle starts a drag; clicking the bar just selects.
+        if (ds.side) {
+          drag = { band: bandSel, side: ds.side };
+          svg.setPointerCapture(ev.pointerId);
+        }
+        renderBandAll();
+        ev.preventDefault();
+      });
+
+      svg.addEventListener('pointermove', (ev) => {
+        if (!drag) return;
+        const cur = bandEdits.get(drag.band) || bandMerged().get(drag.band);
+        if (!cur) return;
+        const next = { minX: cur.minX, maxX: cur.maxX };
+        next[drag.side] = worldX(ev);
+        bandStage(drag.band, next);
+        renderBandAll();
+      });
+
+      const end = (ev) => {
+        if (!drag) return;
+        drag = null;
+        try { svg.releasePointerCapture(ev.pointerId); } catch (_) { /* already released */ }
+      };
+      svg.addEventListener('pointerup', end);
+      svg.addEventListener('pointercancel', end);
+
+      $('bandApply').onclick = () => {
+        if (bandSel === null || !bandState) return;
+        const minX = parseFloat($('bandMinX').value);
+        const maxX = parseFloat($('bandMaxX').value);
+        if (!isFinite(minX) || !isFinite(maxX)) {
+          setStatus('min_x and max_x must be numbers', 'err');
+          return;
+        }
+        bandStage(bandSel, { minX, maxX });
+        renderBandAll();
+      };
+    }
+
     function bootBandEditor() {
       $('bandLoad').onclick = () => { if (editingHeapId) loadBands(editingHeapId); };
       bootBandOverviewScrub();
+      bootBandDrag();
     }
 
     // ────── Reward Codes ─────────────────────────────────────────────────────
