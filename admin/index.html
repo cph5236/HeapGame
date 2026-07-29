@@ -35,7 +35,6 @@
                           font-bold text-black hover:brightness-90 active:brightness-75; }
       .btn-sm    { @apply mt-0 px-2.5 py-1 text-xs; }
       .btn-danger{ @apply bg-term-red text-white; }
-      .btn-ghost { @apply mt-0 bg-transparent text-term-dim hover:text-term-text; }
       .grid2     { @apply grid grid-cols-1 gap-3 md:grid-cols-2; }
       .tbl       { @apply w-full border-collapse text-sm; }
       .tbl th    { @apply border-b border-term-line px-2 py-1.5 text-left text-xs
@@ -287,7 +286,7 @@
       if (res.status === 401) {
         writeSecret(currentEnv(), '');
         refreshSecretIndicator();
-        throw new Error('admin secret rejected for ' + envLabel() + ' — cleared from localStorage');
+        throw new Error('admin secret rejected for ' + envLabel() + ' — cleared');
       }
       return res;
     }
@@ -312,7 +311,15 @@
 
     // ────── Environment ─────────────────────────────────────────────────────
 
+    // Bumped on every environment switch. A load that resolves after the
+    // operator has moved on must not render another environment's data.
+    let envGeneration = 0;
+
     function stripSlash(u) { return String(u || '').replace(/\/$/, ''); }
+
+    function refreshEnvUrlLabel() {
+      $('envUrl').textContent = serverUrl() || '(no url set)';
+    }
 
     function currentEnv() {
       const env = localStorage.getItem(LS_ENV);
@@ -372,6 +379,7 @@
     }
 
     function applyEnv(env) {
+      envGeneration++;
       localStorage.setItem(LS_ENV, env);
       $('envSelect').value = env;
       $('customUrlWrap').style.display = env === 'custom' ? '' : 'none';
@@ -382,7 +390,7 @@
       $('eyeClosed').style.display = 'none';
       refreshSecretIndicator();
       refreshProdBadge();
-      $('envUrl').textContent = serverUrl() || '(no url set)';
+      refreshEnvUrlLabel();
       hideEditPanel();
       loadHeaps();
       loadCodes();
@@ -396,7 +404,7 @@
       $('envSelect').onchange = () => applyEnv($('envSelect').value);
       $('serverUrl').onchange = () => {
         localStorage.setItem(LS_CUSTOM_URL, $('serverUrl').value);
-        $('envUrl').textContent = serverUrl() || '(no url set)';
+        refreshEnvUrlLabel();
       };
     }
 
@@ -428,14 +436,17 @@
     let cachedHeaps = [];
 
     async function loadHeaps() {
+      const gen = envGeneration;
       try {
         const res = await fetch(serverUrl() + '/heaps');
         if (!res.ok) throw new Error('list failed: ' + res.status);
         const data = await res.json();
+        if (gen !== envGeneration) return; // operator switched environments mid-flight
         cachedHeaps = data.heaps || [];
         renderHeapsTable();
         setEnvHealth(true);
       } catch (e) {
+        if (gen !== envGeneration) return;
         setEnvHealth(false);
         setStatus(String(e), 'err');
       }
@@ -647,12 +658,15 @@
     // ────── Reward Codes ─────────────────────────────────────────────────────
 
     async function loadCodes() {
+      const gen = envGeneration;
       try {
         const res = await adminFetch('/codes');
         if (!res.ok) throw new Error('list failed: ' + res.status);
         const data = await res.json();
+        if (gen !== envGeneration) return; // operator switched environments mid-flight
         renderCodesTable(data.codes || []);
       } catch (e) {
+        if (gen !== envGeneration) return;
         setStatus(String(e), 'err');
       }
     }
@@ -734,13 +748,16 @@
     }
 
     async function loadConfig() {
+      const gen = envGeneration;
       try {
         const res = await fetch(serverUrl() + '/config');
         if (!res.ok) throw new Error('config load failed: ' + res.status);
         const data = await res.json();
+        if (gen !== envGeneration) return; // operator switched environments mid-flight
         cachedConfig = data.config || {};
         renderConfigRows();
       } catch (e) {
+        if (gen !== envGeneration) return;
         setStatus(String(e), 'err');
       }
     }
