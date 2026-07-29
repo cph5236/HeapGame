@@ -134,11 +134,12 @@ export interface HeapDB {
    * no version — the client's envelope maths has no use for one — and because
    * this must never be served from a cached snapshot.
    *
-   * The freeze path is the only caller: it needs the versions to compute the
-   * watermark that bounds its DELETE, and a stale watermark would let it bury
-   * a row the new base never captured. Called only when a freeze is actually
-   * due (once per FREEZE_BATCH_BANDS of climb), so the read cost does not land
-   * on the placement hot path.
+   * Two callers: the freeze path, which needs the versions to compute the
+   * watermark that bounds its DELETE (a stale watermark would let it bury a row
+   * the new base never captured), and GET /heaps/:id/bands, which needs the
+   * read-through rather than the versions — the admin editor CAS-es on the
+   * version it loaded, so a cached snapshot would make saving fail for as long
+   * as the entry lives.
    */
   getAllBandsVersioned(heapId: string): Promise<VersionedBandRow[]>;
   /**

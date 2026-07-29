@@ -28,6 +28,7 @@ import type {
   Vertex,
   HeapParams,
   HeapEnemyParams,
+  AdminBandsResponse,
 } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS, INFINITE_HEAP_ID } from '../../../shared/heapTypes';
 import { generateDefaultPolygon } from '../../../shared/heapPolygon';
@@ -299,6 +300,36 @@ export function heapRoutes(
         },
       })),
     } satisfies ListHeapsResponse);
+  });
+
+  // GET /heaps/:id/bands — the admin band editor's read. Deliberately uncached.
+  // NOTE: must be registered before /:id to prevent Hono matching "bands" as an id
+  app.get('/:id/bands', async (c) => {
+    const id = c.req.param('id');
+    // getHeapFresh, not getHeap: the editor CAS-es on the version it loaded, so
+    // a 60s-old snapshot would mean saving against a version that has already
+    // moved — failing repeatedly for up to a minute on an active heap.
+    const row = await db.getHeapFresh(id);
+    if (!row) return c.json({ error: 'Heap not found' }, 404);
+
+    const [baseVertices, allBands] = await Promise.all([
+      db.getBaseVerticesById(row.base_id),
+      // getAllBandsVersioned, not getAllBands, for the same reason: the former
+      // reads through the cache, the latter is served from it.
+      db.getAllBandsVersioned(id),
+    ]);
+
+    return c.json({
+      version: row.version,
+      baseId: row.base_id,
+      freezeY: row.freeze_y,
+      worldHeight: row.world_height,
+      // Mirrors what players see: rows below the freeze line render for nobody.
+      // The version each row carries is dropped — the editor has no use for it,
+      // and the heap's own version is what the CAS keys on.
+      liveBands: liveBandsOf(row, allBands).map(({ band, minX, maxX }) => ({ band, minX, maxX })),
+      baseBands: envelopeToRows(verticesToEnvelope(baseVertices ?? [])),
+    } satisfies AdminBandsResponse);
   });
 
   // GET /heaps/:id/base — get current base vertices for a heap
