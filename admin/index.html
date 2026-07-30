@@ -729,6 +729,27 @@
     const BAND_WIN = 40;
     const BAND_COLORS = { live: '#00ff00', base: '#00ccff', both: '#3ecf8e', dirty: '#ffaa00' };
 
+    /** Detail-pane geometry, in viewBox units. Shared by the renderer and the
+     *  drag's inverse mapping, which must subtract the same gutter the renderer
+     *  added or handles stop tracking the pointer. */
+    const BAND_SVG_W = 600;
+    const BAND_ROW_H = 16;
+    const BAND_GUTTER = 88;        // left axis: band index + ft reading
+
+    /** World y -> in-game ft. The HUD shows climbed px / SCORE_DISPLAY_DIVISOR,
+     *  measured from GameScene's spawnY = worldHeight - PLAYER_HEIGHT/2 - 1.
+     *  Both constants are mirrored here because this file cannot import them. */
+    const FT_DIVISOR = 10;         // shared/scoreConstants.ts SCORE_DISPLAY_DIVISOR
+    const SPAWN_OFFSET_PX = 24;    // PLAYER_HEIGHT (46) / 2 + 1
+
+    /** The ft a player reads while standing at this band. Uses the band's mid-y —
+     *  the y the client emits every vertex of a band at. */
+    function bandFt(band) {
+      if (!bandState) return 0;
+      const y = band * BAND_PX + BAND_PX / 2;
+      return Math.max(0, Math.round((bandState.worldHeight - SPAWN_OFFSET_PX - y) / FT_DIVISOR));
+    }
+
     let bandState = null;          // { version, baseId, freezeY, worldHeight, base:Map, live:Map, dom }
     let bandEdits = new Map();     // band -> { minX, maxX } — staged, unsaved
     let bandSel   = null;          // selected band index
@@ -771,6 +792,15 @@
 
     function bandKeys() {
       return [...bandMerged().keys()].sort((a, b) => a - b);
+    }
+
+    /** Hold a window top inside the loaded range, so the last window ends on the
+     *  last band instead of scrolling off into empty rows. */
+    function clampBandWinTop(v) {
+      const ks = bandKeys();
+      if (ks.length === 0) return 0;
+      const first = ks[0], last = ks[ks.length - 1];
+      return Math.max(first, Math.min(v, Math.max(first, last - BAND_WIN + 1)));
     }
 
     function resetBandEditor() {
@@ -845,7 +875,7 @@
       }
 
       ctx.strokeStyle = '#00ff00';
-      ctx.strokeRect(0.5, sy(bandWinTop), W - 1, Math.max(2, rowH * BAND_WIN));
+      ctx.strokeRect(0.5, sy(clampBandWinTop(bandWinTop)), W - 1, Math.max(2, rowH * BAND_WIN));
     }
 
     function renderBandDetail() {
@@ -854,12 +884,31 @@
       const ks = bandKeys();
       if (ks.length === 0) { svg.innerHTML = ''; return; }
 
-      const last = ks[ks.length - 1];
-      const top = Math.max(ks[0], Math.min(bandWinTop, Math.max(ks[0], last - BAND_WIN + 1)));
-      const W = 600, ROW = 16;
+      const top = clampBandWinTop(bandWinTop);
+      const W = BAND_SVG_W, ROW = BAND_ROW_H, G = BAND_GUTTER;
       const { lo, hi } = bandState.dom;
-      const sx = (x) => ((x - lo) / (hi - lo)) * W;
+      const sx = (x) => G + ((x - lo) / (hi - lo)) * (W - G);
       const cy = (band) => (band - top) * ROW + ROW / 2;
+
+      // Left axis. Drawn for every row in the window, not just the rows that
+      // have a band — a gap has to be locatable too, which is the whole point of
+      // an index. Every fifth row is a major tick: it carries the ft reading and
+      // a rule across the plot, so a band can be tied to a spot in the game.
+      const axis = [`<line x1="${G - 5}" y1="0" x2="${G - 5}" y2="${BAND_WIN * ROW}"
+                           stroke="#2a2a2a" stroke-width="1"/>`];
+      for (let band = top; band < top + BAND_WIN; band++) {
+        const y = cy(band), major = band % 5 === 0;
+        // Index left-aligned, ft right-aligned against the rule: the two columns
+        // then keep a gap whatever the digit counts, instead of running together.
+        axis.push(`<text x="6" y="${y + 3}" font-size="9"
+                         font-family="monospace" fill="${major ? '#8b8b8b' : '#454545'}"
+                   >${band}</text>`);
+        if (!major) continue;
+        axis.push(`<text x="${G - 10}" y="${y + 3}" text-anchor="end" font-size="9"
+                         font-family="monospace" fill="#3ecf8e">${bandFt(band)}ft</text>`);
+        axis.push(`<line x1="${G}" y1="${y}" x2="${W}" y2="${y}"
+                         stroke="#1c1c1c" stroke-width="1"/>`);
+      }
 
       const bars = [], edges = [], handles = [];
       let prev = null;
@@ -900,14 +949,15 @@
         const fb = Math.floor(bandState.freezeY / BAND_PX);
         if (fb >= top && fb < top + BAND_WIN) {
           const fy = cy(fb) - ROW / 2;
-          freeze = `<line x1="0" y1="${fy}" x2="${W}" y2="${fy}"
+          freeze = `<line x1="${G}" y1="${fy}" x2="${W}" y2="${fy}"
                           stroke="#ffaa00" stroke-width="1" stroke-dasharray="4 3"/>`;
         }
       }
 
       svg.setAttribute('viewBox', `0 0 ${W} ${BAND_WIN * ROW}`);
-      svg.innerHTML = bars.join('') + edges.join('') + freeze + handles.join('');
-      $('bandWinLabel').textContent = `${top}–${top + BAND_WIN - 1}`;
+      svg.innerHTML = axis.join('') + bars.join('') + edges.join('') + freeze + handles.join('');
+      $('bandWinLabel').textContent =
+        `${top}–${top + BAND_WIN - 1} · ${bandFt(top)}→${bandFt(top + BAND_WIN - 1)} ft`;
     }
 
     function renderBandInspector() {
@@ -922,6 +972,7 @@
       const y0 = bandSel * BAND_PX;
       $('bandMeta').innerHTML =
         `band <span class="text-term-text">${bandSel}</span> · y ${y0}–${y0 + BAND_PX}`
+        + ` · <span class="text-term-text">${bandFt(bandSel)}ft</span> in game`
         + ` · ${bandLayers(bandSel)} · w ${Math.round(e.maxX - e.minX)}`;
       $('bandMinX').value = e.minX;
       $('bandMaxX').value = e.maxX;
@@ -960,7 +1011,7 @@
         const r = cv.getBoundingClientRect();
         const frac = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height));
         const target = Math.round(first + frac * (last - first + 1)) - Math.floor(BAND_WIN / 2);
-        bandWinTop = Math.max(first, Math.min(target, Math.max(first, last - BAND_WIN + 1)));
+        bandWinTop = clampBandWinTop(target);
         renderBandAll();
       };
       cv.addEventListener('pointerdown', (ev) => {
@@ -972,16 +1023,45 @@
       });
     }
 
+    /**
+     * Wheel over either pane pans the band window instead of scrolling the page.
+     * A heap runs to thousands of bands, so scrubbing the 420px overview moves
+     * ~6 bands per pixel — far too coarse to land on a specific one. The wheel is
+     * the fine control; the overview stays the coarse one.
+     */
+    function bootBandWheel() {
+      const onWheel = (ev) => {
+        if (!bandState) return;
+        ev.preventDefault();
+        // deltaMode: 0 = px, 1 = lines, 2 = pages.
+        const rows = ev.deltaMode === 1 ? ev.deltaY * 3
+                   : ev.deltaMode === 2 ? ev.deltaY * BAND_WIN
+                   : ev.deltaY / BAND_ROW_H;
+        // Round away from zero: a trackpad nudge worth a fraction of a row still
+        // has to move, or slow scrolling reads as a dead pane.
+        const step = rows > 0 ? Math.max(1, Math.round(rows)) : Math.min(-1, Math.round(rows));
+        const next = clampBandWinTop(bandWinTop + step);
+        if (next === bandWinTop) return;
+        bandWinTop = next;
+        renderBandAll();
+      };
+      $('bandDetail').addEventListener('wheel', onWheel, { passive: false });
+      $('bandOverview').addEventListener('wheel', onWheel, { passive: false });
+    }
+
     function bootBandDrag() {
       const svg = $('bandDetail');
       let drag = null;
 
       /** Pointer x -> world x, snapped to whole pixels. Bands are floats in D1,
-       *  but pixel granularity on a 20px band is finer than anything visible. */
+       *  but pixel granularity on a 20px band is finer than anything visible.
+       *  Inverts renderBandDetail's sx, gutter included. */
       const worldX = (ev) => {
         const { lo, hi } = bandState.dom;
         const r = svg.getBoundingClientRect();
-        return Math.round(lo + ((ev.clientX - r.left) / r.width) * (hi - lo));
+        const vx = ((ev.clientX - r.left) / r.width) * BAND_SVG_W; // client px -> viewBox units
+        const frac = (vx - BAND_GUTTER) / (BAND_SVG_W - BAND_GUTTER);
+        return Math.round(lo + frac * (hi - lo));
       };
 
       svg.addEventListener('pointerdown', (ev) => {
@@ -1168,6 +1248,7 @@
         parseInt($('bandTo').value, 10),
       );
       bootBandOverviewScrub();
+      bootBandWheel();
       bootBandDrag();
     }
 
