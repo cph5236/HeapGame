@@ -123,6 +123,34 @@ describe('CachedHeapDB', () => {
     const got = await cached.getBaseVerticesById('base-1');
     expect(got).toEqual(verts);
   });
+
+  it('adminReplaceBands busts both the heap row and the list cache', async () => {
+    const { inner, kv, cached } = setup();
+    inner.seedHeap(HEAP_ID, 1, [], 'b1');
+
+    // Populate both keys.
+    await cached.getHeap(HEAP_ID);
+    await cached.listHeaps();
+    expect(kv.has(`cache:heap:${HEAP_ID}`)).toBe(true);
+    expect(kv.has('cache:heap:list')).toBe(true);
+
+    const applied = await cached.adminReplaceBands({
+      heapId: HEAP_ID,
+      expectedVersion: 1,
+      expectedBaseId: 'b1',
+      newBaseId: 'b2',
+      baseVertices: [{ x: 3, y: 4 }],
+      baseHash: 'hash-b2',
+      liveRows: [{ band: 5, minX: -1, maxX: 1 }],
+      now: '2026-07-29T00:00:00.000Z',
+    });
+
+    expect(applied).toBe(true);
+    // invalidateHeap, not invalidateHeapRow — base_id decides whether a client's
+    // cached geometry is still valid, so the list summary must go too.
+    expect(kv.has(`cache:heap:${HEAP_ID}`)).toBe(false);
+    expect(kv.has('cache:heap:list')).toBe(false);
+  });
 });
 
 describe('CachedScoreDB', () => {

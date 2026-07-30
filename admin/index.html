@@ -174,6 +174,52 @@
       </div>
     </div>
     <button id="saveEnemyParams" class="btn">Save Enemy Params</button>
+
+    <h3 class="card-sub">Silhouette <span class="muted">— band editor</span></h3>
+    <div class="card border-l-term-cyan">
+      <button id="bandLoad" class="btn btn-sm">Load silhouette</button>
+      <div id="bandEditor" style="display:none;" class="mt-3">
+        <div class="flex flex-col gap-3 md:flex-row">
+          <div>
+            <div class="lbl">All bands</div>
+            <canvas id="bandOverview" width="64" height="420"
+                    class="cursor-ns-resize border border-term-line bg-black"></canvas>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="lbl">Window <span id="bandWinLabel" class="text-term-text">—</span></div>
+            <svg id="bandDetail" viewBox="0 0 600 640"
+                 class="w-full border border-term-line bg-black"
+                 style="touch-action:none"></svg>
+          </div>
+          <div class="md:w-52">
+            <div class="lbl">Selected band</div>
+            <div class="rounded-sm border border-term-line bg-black p-2">
+              <div id="bandMeta" class="muted mb-2">no band selected</div>
+              <label class="lbl">min_x</label>
+              <input id="bandMinX" type="number" step="1" class="field" />
+              <label class="lbl">max_x</label>
+              <input id="bandMaxX" type="number" step="1" class="field" />
+              <button id="bandApply" class="btn btn-sm">Apply</button>
+              <div class="card-sub">Re-derive range</div>
+              <label class="lbl">from band</label>
+              <input id="bandFrom" type="number" step="1" class="field" />
+              <label class="lbl">to band</label>
+              <input id="bandTo" type="number" step="1" class="field" />
+              <button id="bandRederive" class="btn btn-sm">Re-derive</button>
+            </div>
+          </div>
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-3">
+          <span id="bandDirty" class="badge">0 bands dirty</span>
+          <span class="badge"><span class="dot dot-ok"></span>live</span>
+          <span class="badge"><span class="dot" style="background:#00ccff"></span>base</span>
+          <span class="badge"><span class="dot" style="background:#3ecf8e"></span>both</span>
+          <span class="badge"><span class="dot" style="background:#ffaa00"></span>edited</span>
+          <button id="bandSave" class="btn btn-sm">Save Bands</button>
+          <button id="bandDiscard" class="btn btn-sm btn-danger">Discard</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="card border-l-term-amber">
@@ -509,6 +555,7 @@
     let editingHeapId = null;
 
     function showEditPanel(heap, opts = {}) {
+      resetBandEditor();
       editingHeapId = heap.id;
       $('editPanel').style.display = '';
       $('editHeapName').textContent = heap.params.name;
@@ -535,6 +582,7 @@
     function hideEditPanel() {
       editingHeapId = null;
       $('editPanel').style.display = 'none';
+      resetBandEditor();
     }
 
     function onEditHeap(id) {
@@ -664,6 +712,544 @@
 
     function bootCreateHeap() {
       $('createHeap').onclick = onCreateHeap;
+    }
+
+    // ────── Band editor ────────────────────────────────────────────────────
+    //
+    // The heap's shape lives in two layers and the game renders their UNION:
+    // HeapClient builds its polygon as [...base, ...liveVertices] and buckets to
+    // bands afterwards. So this editor shows the merged envelope — what players
+    // actually see — and colours each band by which layer(s) hold it. The server
+    // decides where an edit is written; the operator never picks a layer.
+
+    /** Must match BAND_SIZE_PX in shared/heapPolygon/bandEnvelope.ts. This file
+     *  is standalone (no bundler, no imports), so it cannot import the constant. */
+    const BAND_PX = 20;
+    /** Bands visible in the detail pane at once. */
+    const BAND_WIN = 40;
+    const BAND_COLORS = { live: '#00ff00', base: '#00ccff', both: '#3ecf8e', dirty: '#ffaa00' };
+
+    /** Detail-pane geometry, in viewBox units. Shared by the renderer and the
+     *  drag's inverse mapping, which must subtract the same gutter the renderer
+     *  added or handles stop tracking the pointer. */
+    const BAND_SVG_W = 600;
+    const BAND_ROW_H = 16;
+    const BAND_GUTTER = 88;        // left axis: band index + ft reading
+
+    /** World y -> in-game ft. The HUD shows climbed px / SCORE_DISPLAY_DIVISOR,
+     *  measured from GameScene's spawnY = worldHeight - PLAYER_HEIGHT/2 - 1.
+     *  Both constants are mirrored here because this file cannot import them. */
+    const FT_DIVISOR = 10;         // shared/scoreConstants.ts SCORE_DISPLAY_DIVISOR
+    const SPAWN_OFFSET_PX = 24;    // PLAYER_HEIGHT (46) / 2 + 1
+
+    /** The ft a player reads while standing at this band. Uses the band's mid-y —
+     *  the y the client emits every vertex of a band at. */
+    function bandFt(band) {
+      if (!bandState) return 0;
+      const y = band * BAND_PX + BAND_PX / 2;
+      return Math.max(0, Math.round((bandState.worldHeight - SPAWN_OFFSET_PX - y) / FT_DIVISOR));
+    }
+
+    let bandState = null;          // { version, baseId, freezeY, worldHeight, base:Map, live:Map, dom }
+    let bandEdits = new Map();     // band -> { minX, maxX } — staged, unsaved
+    let bandSel   = null;          // selected band index
+    let bandWinTop = 0;            // topmost band index shown in the detail pane
+
+    /** The union of both layers, with staged edits REPLACING it. An edit is the
+     *  operator's intent for the band, not another extent to union in. */
+    function bandMerged() {
+      const m = new Map();
+      const put = (band, e) => {
+        const cur = m.get(band);
+        m.set(band, cur
+          ? { minX: Math.min(cur.minX, e.minX), maxX: Math.max(cur.maxX, e.maxX) }
+          : { minX: e.minX, maxX: e.maxX });
+      };
+      for (const [b, e] of bandState.base) put(b, e);
+      for (const [b, e] of bandState.live) put(b, e);
+      for (const [b, e] of bandEdits) m.set(b, { minX: e.minX, maxX: e.maxX });
+      return m;
+    }
+
+    function bandLayers(band) {
+      const inBase = bandState.base.has(band);
+      const inLive = bandState.live.has(band);
+      return inBase && inLive ? 'both' : inBase ? 'base' : 'live';
+    }
+
+    /** Fixed once per load. Recomputing during a drag would rescale the pane
+     *  under the pointer, so the handle would not follow the cursor. */
+    function bandDomain(merged) {
+      let lo = Infinity, hi = -Infinity;
+      for (const e of merged.values()) {
+        if (e.minX < lo) lo = e.minX;
+        if (e.maxX > hi) hi = e.maxX;
+      }
+      if (!isFinite(lo)) return { lo: 0, hi: 1 };
+      const pad = Math.max(1, (hi - lo) * 0.2);
+      return { lo: lo - pad, hi: hi + pad };
+    }
+
+    function bandKeys() {
+      return [...bandMerged().keys()].sort((a, b) => a - b);
+    }
+
+    /** Hold a window top inside the loaded range, so the last window ends on the
+     *  last band instead of scrolling off into empty rows. */
+    function clampBandWinTop(v) {
+      const ks = bandKeys();
+      if (ks.length === 0) return 0;
+      const first = ks[0], last = ks[ks.length - 1];
+      return Math.max(first, Math.min(v, Math.max(first, last - BAND_WIN + 1)));
+    }
+
+    function resetBandEditor() {
+      bandState = null;
+      bandEdits = new Map();
+      bandSel = null;
+      bandWinTop = 0;
+      const ed = $('bandEditor');
+      if (ed) ed.style.display = 'none';
+    }
+
+    async function loadBands(heapId) {
+      const gen = envGeneration;
+      try {
+        const res = await adminFetch(`/heaps/${heapId}/bands`);
+        if (gen !== envGeneration) return; // operator switched environments mid-flight
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || ('load failed: ' + res.status));
+        }
+        const d = await res.json();
+        if (gen !== envGeneration) return;
+
+        bandState = {
+          version: d.version,
+          baseId: d.baseId,
+          freezeY: d.freezeY,
+          worldHeight: d.worldHeight,
+          base: new Map(d.baseBands.map(b => [b.band, { minX: b.minX, maxX: b.maxX }])),
+          live: new Map(d.liveBands.map(b => [b.band, { minX: b.minX, maxX: b.maxX }])),
+        };
+        bandEdits = new Map();
+        bandSel = null;
+        bandState.dom = bandDomain(bandMerged());
+        const ks = bandKeys();
+        bandWinTop = ks.length ? ks[0] : 0;
+        $('bandEditor').style.display = '';
+        renderBandAll();
+        setStatus(`silhouette loaded — v${d.version}, ${ks.length} bands`, 'ok');
+      } catch (e) {
+        setStatus('Failed to load silhouette: ' + e.message, 'err');
+      }
+    }
+
+    function renderBandOverview() {
+      const cv = $('bandOverview');
+      const ctx = cv.getContext('2d');
+      const W = cv.width, H = cv.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const merged = bandMerged();
+      const ks = bandKeys();
+      if (ks.length === 0) return;
+      const first = ks[0], rows = ks[ks.length - 1] - first + 1;
+      const { lo, hi } = bandState.dom;
+      const sx = (x) => ((x - lo) / (hi - lo)) * W;
+      const sy = (band) => ((band - first) / rows) * H;
+      const rowH = Math.max(1, H / rows);
+
+      for (const band of ks) {
+        const e = merged.get(band);
+        ctx.fillStyle = bandEdits.has(band) ? BAND_COLORS.dirty : BAND_COLORS[bandLayers(band)];
+        ctx.fillRect(sx(e.minX), sy(band), Math.max(1, sx(e.maxX) - sx(e.minX)), rowH);
+      }
+
+      if (bandState.freezeY > 0) {
+        const fy = sy(Math.floor(bandState.freezeY / BAND_PX));
+        ctx.strokeStyle = '#ffaa00';
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(0, fy); ctx.lineTo(W, fy); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      ctx.strokeStyle = '#00ff00';
+      ctx.strokeRect(0.5, sy(clampBandWinTop(bandWinTop)), W - 1, Math.max(2, rowH * BAND_WIN));
+    }
+
+    function renderBandDetail() {
+      const svg = $('bandDetail');
+      const merged = bandMerged();
+      const ks = bandKeys();
+      if (ks.length === 0) { svg.innerHTML = ''; return; }
+
+      const top = clampBandWinTop(bandWinTop);
+      const W = BAND_SVG_W, ROW = BAND_ROW_H, G = BAND_GUTTER;
+      const { lo, hi } = bandState.dom;
+      const sx = (x) => G + ((x - lo) / (hi - lo)) * (W - G);
+      const cy = (band) => (band - top) * ROW + ROW / 2;
+
+      // Left axis. Drawn for every row in the window, not just the rows that
+      // have a band — a gap has to be locatable too, which is the whole point of
+      // an index. Every fifth row is a major tick: it carries the ft reading and
+      // a rule across the plot, so a band can be tied to a spot in the game.
+      const axis = [`<line x1="${G - 5}" y1="0" x2="${G - 5}" y2="${BAND_WIN * ROW}"
+                           stroke="#2a2a2a" stroke-width="1"/>`];
+      for (let band = top; band < top + BAND_WIN; band++) {
+        const y = cy(band), major = band % 5 === 0;
+        // Index left-aligned, ft right-aligned against the rule: the two columns
+        // then keep a gap whatever the digit counts, instead of running together.
+        axis.push(`<text x="6" y="${y + 3}" font-size="9"
+                         font-family="monospace" fill="${major ? '#8b8b8b' : '#454545'}"
+                   >${band}</text>`);
+        if (!major) continue;
+        axis.push(`<text x="${G - 10}" y="${y + 3}" text-anchor="end" font-size="9"
+                         font-family="monospace" fill="#3ecf8e">${bandFt(band)}ft</text>`);
+        axis.push(`<line x1="${G}" y1="${y}" x2="${W}" y2="${y}"
+                         stroke="#1c1c1c" stroke-width="1"/>`);
+      }
+
+      const bars = [], edges = [], handles = [];
+      let prev = null;
+      for (let band = top; band < top + BAND_WIN; band++) {
+        const e = merged.get(band);
+        if (!e) continue;                       // genuinely empty band — a gap
+        const dirty = bandEdits.has(band);
+        const col = dirty ? BAND_COLORS.dirty : BAND_COLORS[bandLayers(band)];
+        const y = cy(band);
+        const x0 = sx(e.minX), x1 = sx(e.maxX);
+
+        bars.push(`<rect x="${x0}" y="${y - 5}" width="${Math.max(1, x1 - x0)}" height="10"
+                         fill="${col}" opacity="0.45" data-band="${band}"/>`);
+
+        // The two edges the client renders. A segment that spans a missing band
+        // is dashed: that dashed run IS the forward-fill sawtooth, and it is the
+        // only way a gap is visible at all — an empty row just looks empty.
+        if (prev) {
+          const dash = (band !== prev.band + 1) ? ' stroke-dasharray="4 3" opacity="0.5"' : '';
+          edges.push(`<line x1="${prev.x0}" y1="${prev.y}" x2="${x0}" y2="${y}"
+                            stroke="${col}" stroke-width="1.2"${dash}/>`);
+          edges.push(`<line x1="${prev.x1}" y1="${prev.y}" x2="${x1}" y2="${y}"
+                            stroke="${col}" stroke-width="1.2"${dash}/>`);
+        }
+        prev = { band, x0, x1, y };
+
+        const ring = band === bandSel ? '#ffffff' : col;
+        for (const side of ['minX', 'maxX']) {
+          handles.push(`<rect class="bandHandle" data-band="${band}" data-side="${side}"
+                              x="${sx(e[side]) - 4}" y="${y - 4}" width="8" height="8"
+                              fill="#0a0a0a" stroke="${ring}" stroke-width="1.5"
+                              style="cursor:ew-resize"/>`);
+        }
+      }
+
+      let freeze = '';
+      if (bandState.freezeY > 0) {
+        const fb = Math.floor(bandState.freezeY / BAND_PX);
+        if (fb >= top && fb < top + BAND_WIN) {
+          const fy = cy(fb) - ROW / 2;
+          freeze = `<line x1="${G}" y1="${fy}" x2="${W}" y2="${fy}"
+                          stroke="#ffaa00" stroke-width="1" stroke-dasharray="4 3"/>`;
+        }
+      }
+
+      svg.setAttribute('viewBox', `0 0 ${W} ${BAND_WIN * ROW}`);
+      svg.innerHTML = axis.join('') + bars.join('') + edges.join('') + freeze + handles.join('');
+      $('bandWinLabel').textContent =
+        `${top}–${top + BAND_WIN - 1} · ${bandFt(top)}→${bandFt(top + BAND_WIN - 1)} ft`;
+    }
+
+    function renderBandInspector() {
+      if (bandSel === null) {
+        $('bandMeta').textContent = 'no band selected';
+        $('bandMinX').value = '';
+        $('bandMaxX').value = '';
+        return;
+      }
+      const e = bandMerged().get(bandSel);
+      if (!e) { $('bandMeta').textContent = `band ${bandSel} — empty`; return; }
+      const y0 = bandSel * BAND_PX;
+      $('bandMeta').innerHTML =
+        `band <span class="text-term-text">${bandSel}</span> · y ${y0}–${y0 + BAND_PX}`
+        + ` · <span class="text-term-text">${bandFt(bandSel)}ft</span> in game`
+        + ` · ${bandLayers(bandSel)} · w ${Math.round(e.maxX - e.minX)}`;
+      $('bandMinX').value = e.minX;
+      $('bandMaxX').value = e.maxX;
+    }
+
+    /** Stage an edit, keeping minX <= maxX. Clamps rather than swapping: the
+     *  dragged handle stops at its partner instead of pushing past it, and the
+     *  partner never moves. `side` names the edge the caller moved ('minX' or
+     *  'maxX'); omit it when both values are authored at once, as the inspector
+     *  does, where ordering two typed numbers is the sane reading. */
+    function bandStage(band, next, side) {
+      let { minX, maxX } = next;
+      if (side === 'minX') minX = Math.min(minX, maxX);
+      else if (side === 'maxX') maxX = Math.max(minX, maxX);
+      else { const lo = Math.min(minX, maxX); maxX = Math.max(minX, maxX); minX = lo; }
+      bandEdits.set(band, { minX, maxX });
+    }
+
+    function renderBandAll() {
+      if (!bandState) return;
+      renderBandOverview();
+      renderBandDetail();
+      renderBandInspector();
+      $('bandDirty').textContent = bandEdits.size + ' bands dirty';
+    }
+
+    /** Drag anywhere on the overview to scrub the detail window. */
+    function bootBandOverviewScrub() {
+      const cv = $('bandOverview');
+      let scrubbing = false;
+      const scrub = (ev) => {
+        if (!bandState) return;
+        const ks = bandKeys();
+        if (ks.length === 0) return;
+        const first = ks[0], last = ks[ks.length - 1];
+        const r = cv.getBoundingClientRect();
+        const frac = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height));
+        const target = Math.round(first + frac * (last - first + 1)) - Math.floor(BAND_WIN / 2);
+        bandWinTop = clampBandWinTop(target);
+        renderBandAll();
+      };
+      cv.addEventListener('pointerdown', (ev) => {
+        scrubbing = true; cv.setPointerCapture(ev.pointerId); scrub(ev);
+      });
+      cv.addEventListener('pointermove', (ev) => { if (scrubbing) scrub(ev); });
+      cv.addEventListener('pointerup', (ev) => {
+        scrubbing = false; cv.releasePointerCapture(ev.pointerId);
+      });
+    }
+
+    /**
+     * Wheel over either pane pans the band window instead of scrolling the page.
+     * A heap runs to thousands of bands, so scrubbing the 420px overview moves
+     * ~6 bands per pixel — far too coarse to land on a specific one. The wheel is
+     * the fine control; the overview stays the coarse one.
+     */
+    function bootBandWheel() {
+      const onWheel = (ev) => {
+        if (!bandState) return;
+        ev.preventDefault();
+        // deltaMode: 0 = px, 1 = lines, 2 = pages.
+        const rows = ev.deltaMode === 1 ? ev.deltaY * 3
+                   : ev.deltaMode === 2 ? ev.deltaY * BAND_WIN
+                   : ev.deltaY / BAND_ROW_H;
+        // Round away from zero: a trackpad nudge worth a fraction of a row still
+        // has to move, or slow scrolling reads as a dead pane.
+        const step = rows > 0 ? Math.max(1, Math.round(rows)) : Math.min(-1, Math.round(rows));
+        const next = clampBandWinTop(bandWinTop + step);
+        if (next === bandWinTop) return;
+        bandWinTop = next;
+        renderBandAll();
+      };
+      $('bandDetail').addEventListener('wheel', onWheel, { passive: false });
+      $('bandOverview').addEventListener('wheel', onWheel, { passive: false });
+    }
+
+    function bootBandDrag() {
+      const svg = $('bandDetail');
+      let drag = null;
+
+      /** Pointer x -> world x, snapped to whole pixels. Bands are floats in D1,
+       *  but pixel granularity on a 20px band is finer than anything visible.
+       *  Inverts renderBandDetail's sx, gutter included. */
+      const worldX = (ev) => {
+        const { lo, hi } = bandState.dom;
+        const r = svg.getBoundingClientRect();
+        const vx = ((ev.clientX - r.left) / r.width) * BAND_SVG_W; // client px -> viewBox units
+        const frac = (vx - BAND_GUTTER) / (BAND_SVG_W - BAND_GUTTER);
+        return Math.round(lo + frac * (hi - lo));
+      };
+
+      svg.addEventListener('pointerdown', (ev) => {
+        if (!bandState) return;
+        const ds = ev.target && ev.target.dataset;
+        if (!ds || ds.band === undefined) return;
+        bandSel = Number(ds.band);
+        // Only a handle starts a drag; clicking the bar just selects.
+        if (ds.side) {
+          const cur = bandEdits.get(bandSel) || bandMerged().get(bandSel);
+          if (cur) {
+            drag = { band: bandSel, side: ds.side, start: { minX: cur.minX, maxX: cur.maxX } };
+            svg.setPointerCapture(ev.pointerId);
+          }
+        }
+        renderBandAll();
+        ev.preventDefault();
+      });
+
+      svg.addEventListener('pointermove', (ev) => {
+        if (!drag) return;
+        const next = { minX: drag.start.minX, maxX: drag.start.maxX };
+        next[drag.side] = worldX(ev);
+        bandStage(drag.band, next, drag.side);
+        renderBandAll();
+      });
+
+      const end = (ev) => {
+        if (!drag) return;
+        drag = null;
+        try { svg.releasePointerCapture(ev.pointerId); } catch (_) { /* already released */ }
+      };
+      svg.addEventListener('pointerup', end);
+      svg.addEventListener('pointercancel', end);
+
+      $('bandApply').onclick = () => {
+        if (bandSel === null || !bandState) return;
+        const minX = parseFloat($('bandMinX').value);
+        const maxX = parseFloat($('bandMaxX').value);
+        if (!isFinite(minX) || !isFinite(maxX)) {
+          setStatus('min_x and max_x must be numbers', 'err');
+          return;
+        }
+        bandStage(bandSel, { minX, maxX });
+        renderBandAll();
+      };
+    }
+
+    /**
+     * Recompute a band range by interpolating between the nearest good bands on
+     * either side, filling gaps inside the range as it goes.
+     *
+     * Two rules borrowed from interpolateBandSeed in shared/heapPolygon: a
+     * single-extent band is skipped as a seed source, because its unknown side
+     * is itself a forward-filled guess and interpolating from a guess propagates
+     * it; and a seed is required on BOTH sides, so the range must be genuinely
+     * between two known bands rather than hanging off one.
+     *
+     * Runs here rather than on the server so the result is visible before it is
+     * saved — for this operation the preview is the check.
+     */
+    function bandReDerive(fromBand, toBand) {
+      if (!bandState) return;
+      if (!Number.isInteger(fromBand) || !Number.isInteger(toBand) || toBand < fromBand) {
+        setStatus('re-derive needs an integer band range, from <= to', 'err');
+        return;
+      }
+      const merged = bandMerged();
+      let above = null, below = null;
+      for (const [b, e] of merged) {
+        if (e.minX === e.maxX) continue;
+        if (b < fromBand && (above === null || b > above)) above = b;
+        if (b > toBand  && (below === null || b < below)) below = b;
+      }
+      if (above === null || below === null) {
+        setStatus('re-derive needs a two-extent band on BOTH sides of the range', 'err');
+        return;
+      }
+      const a = merged.get(above), z = merged.get(below);
+      for (let band = fromBand; band <= toBand; band++) {
+        const t = (band - above) / (below - above);
+        bandStage(band, {
+          minX: Math.round(a.minX + (z.minX - a.minX) * t),
+          maxX: Math.round(a.maxX + (z.maxX - a.maxX) * t),
+        });
+      }
+      renderBandAll();
+      setStatus(`re-derived bands ${fromBand}–${toBand} from ${above} and ${below}`, 'ok');
+    }
+
+    /** Max bands per PUT — mirrors MAX_ADMIN_BANDS in server/src/routes/heap.ts.
+     *  Checked here so a large staged set fails with a clear message instead of
+     *  an opaque 400 from the worker. */
+    const BAND_SAVE_CAP = 500;
+
+    /** True when saving would rewrite base geometry, so the confirm can say so.
+     *  Mirrors the server's routing rule: the base carries a band it already
+     *  holds, and it takes a brand-new band at or below the freeze line. */
+    function bandSaveTouchesBase() {
+      const freezeBand = bandState.freezeY > 0 ? Math.floor(bandState.freezeY / BAND_PX) : Infinity;
+      for (const band of bandEdits.keys()) {
+        if (bandState.base.has(band)) return true;
+        if (!bandState.live.has(band) && band >= freezeBand) return true;
+      }
+      return false;
+    }
+
+    async function onSaveBands() {
+      if (!bandState || !editingHeapId || bandEdits.size === 0) return;
+      const bands = [...bandEdits.entries()].map(([band, e]) => ({
+        band, minX: e.minX, maxX: e.maxX,
+      }));
+
+      if (bands.length > BAND_SAVE_CAP) {
+        setStatus(
+          `${bands.length} staged edits exceeds the ${BAND_SAVE_CAP}-band save cap — `
+          + 'discard some or save in batches',
+          'err',
+        );
+        return;
+      }
+
+      // Every save mints a fresh baseId unconditionally (see adminReplaceBands),
+      // so every save forces every player's client to re-download the base blob
+      // for this heap — the client caches it on baseId with no TTL. Only an edit
+      // that actually falls in the base layer rewrites the base *geometry*
+      // itself. Both costs are real; say both, or a live-only save reads as free.
+      let msg = `Save ${bands.length} band(s) to ${envLabel()}?`;
+      msg += bandSaveTouchesBase()
+        ? '\n\nThis rewrites base geometry AND forces every player\'s client to re-download the base.'
+        : '\n\nBase geometry is unchanged, but this still mints a new base id — every player\'s client will re-download the base.';
+      if (!confirm(msg)) return;
+
+      const gen = envGeneration;
+      try {
+        const res = await adminFetch(`/heaps/${editingHeapId}/bands`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            expectedVersion: bandState.version,
+            expectedBaseId: bandState.baseId,
+            bands,
+          }),
+        });
+        if (gen !== envGeneration) return; // operator switched environments mid-flight
+        const body = await res.json().catch(() => ({}));
+        if (gen !== envGeneration) return;
+        if (res.status === 409) {
+          setStatus(
+            `heap changed on the server (now v${body.version}) — reload the silhouette`,
+            'err',
+          );
+          return;
+        }
+        if (!res.ok) throw new Error(body.error || ('save failed: ' + res.status));
+        setStatus(`✓ saved ${bands.length} band(s) — now v${body.version}`, 'ok');
+        await loadBands(editingHeapId);
+      } catch (e) {
+        if (gen !== envGeneration) return; // operator switched environments mid-flight
+        setStatus('Save failed: ' + e.message, 'err');
+      }
+    }
+
+    function onDiscardBands() {
+      if (bandEdits.size === 0) return;
+      if (!confirm(`Discard ${bandEdits.size} staged band edit(s)?`)) return;
+      bandEdits = new Map();
+      renderBandAll();
+      setStatus('staged band edits discarded', 'ok');
+    }
+
+    function bootBandEditor() {
+      $('bandLoad').onclick = () => {
+        if (!editingHeapId) return;
+        if (bandEdits.size > 0
+            && !confirm(`Reloading discards ${bandEdits.size} staged band edit(s). Continue?`)) {
+          return;
+        }
+        loadBands(editingHeapId);
+      };
+      $('bandSave').onclick = onSaveBands;
+      $('bandDiscard').onclick = onDiscardBands;
+      $('bandRederive').onclick = () => bandReDerive(
+        parseInt($('bandFrom').value, 10),
+        parseInt($('bandTo').value, 10),
+      );
+      bootBandOverviewScrub();
+      bootBandWheel();
+      bootBandDrag();
     }
 
     // ────── Reward Codes ─────────────────────────────────────────────────────
@@ -854,6 +1440,7 @@
       bootSettings();
       bootHeapsList();
       bootEditHeap();
+      bootBandEditor();
       bootCreateHeap();
       bootRewardCodes();
       bootConfig();

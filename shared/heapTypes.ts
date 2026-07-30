@@ -1,5 +1,10 @@
 // shared/heapTypes.ts
 
+// Type-only import, so this does not create a runtime cycle with bandEnvelope
+// (which type-only imports Vertex from here). Reusing BandRow rather than
+// redeclaring it keeps the wire shape tied to the storage shape.
+import type { BandRow } from './heapPolygon/bandEnvelope';
+
 /**
  * Well-known row id for the infinite heap. The DB has no `isInfinite` column —
  * the client (src/data/infiniteCatalog.ts) merges `isInfinite: true` onto the
@@ -159,4 +164,39 @@ export interface UpdateHeapParamsResponse {
 
 export interface DeleteHeapResponse {
   deleted: boolean;
+}
+
+// ────── Admin band editor ──────────────────────────────────────────────────
+
+export type AdminBandRow = BandRow;
+
+/** GET /heaps/:id/bands — everything the band editor needs, in one read. */
+export interface AdminBandsResponse {
+  version: number;
+  baseId: string;
+  freezeY: number;
+  worldHeight: number;
+  /** heap_band rows above the freeze line. */
+  liveBands: AdminBandRow[];
+  /** The base blob, converted to band rows. */
+  baseBands: AdminBandRow[];
+}
+
+/** PUT /heaps/:id/bands — the full dirty set across both layers. */
+export interface AdminBandsRequest {
+  expectedVersion: number;
+  expectedBaseId: string;
+  bands: AdminBandRow[];
+}
+
+export interface AdminBandsWriteResponse {
+  version: number;
+  baseId: string;
+}
+
+/** 409 body — the server's current values, so the UI can report the drift. */
+export interface AdminBandsConflictResponse {
+  error: string;
+  version: number;
+  baseId: string;
 }

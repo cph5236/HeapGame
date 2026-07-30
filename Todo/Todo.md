@@ -10,7 +10,7 @@ Language detection?
 
 ~~Improve Admin UI - env dropdown, per-env admin secrets, eye toggle~~ — done 2026-07-28, Tailwind restyle in the same pass.
 
-Heap silhouette renderered in the Admin UI. Renders the layers at the 20 px bands as just horizontal bars like a bar chart looks like. X min and max can be edited. This will allow fixing points from the admin UI. Likely needs a new Admin api server route. 
+~~Heap silhouette rendered in the Admin UI — 20px bands as horizontal bars, x min/max editable, base points editable, versioned writes~~ — done 2026-07-29, see `docs/superpowers/specs/2026-07-29-admin-band-editor-design.md`.
 
 ### UI
 

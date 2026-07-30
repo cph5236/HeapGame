@@ -28,6 +28,10 @@ import type {
   Vertex,
   HeapParams,
   HeapEnemyParams,
+  AdminBandsResponse,
+  AdminBandsRequest,
+  AdminBandsWriteResponse,
+  AdminBandsConflictResponse,
 } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS, INFINITE_HEAP_ID } from '../../../shared/heapTypes';
 import { generateDefaultPolygon } from '../../../shared/heapPolygon';
@@ -60,6 +64,11 @@ export const GHOST_SPREAD_BANDS = Math.ceil(GHOST_JITTER_RADIUS_PX / BAND_SIZE_P
 // anything useful about this y, and no seed is better than a fabricated one.
 const SEED_SEARCH_BANDS = 16;
 const PLACE_WINDOW_BANDS = GHOST_SPREAD_BANDS + SEED_SEARCH_BANDS;
+
+/** Cap on one admin band save. Base edits are O(1) statements regardless of how
+ *  many bands they touch (one blob rewrite), so this bounds only the live-row
+ *  statement count — and the live zone runs to roughly 77 bands. */
+const MAX_ADMIN_BANDS = 500;
 
 function validateDifficulty(d: number): string | null {
   if (!Number.isFinite(d)) return 'difficulty must be a finite number';
@@ -151,6 +160,67 @@ export function liveBandsOf(row: HeapRow, allBands: BandRow[]): BandRow[] {
   return allBands.filter((b) => b.band < freezeBand);
 }
 
+/** What a single admin save resolves to, once fanned out across the layers. */
+export interface BandWritePlan {
+  /** The COMPLETE new base envelope, ready to serialise. Not just the changes:
+   *  the base is an immutable blob, so it is always rewritten whole. */
+  nextBaseRows: BandRow[];
+  /** Only the heap_band rows that need writing. */
+  liveRows: BandRow[];
+}
+
+/**
+ * Fan each edited band out to every layer that holds it.
+ *
+ * The client builds its polygon as `[...base, ...liveVertices]` and buckets to
+ * bands afterwards, so a band's rendered extent is the UNION of the two layers.
+ * Writing an edit to only one of them leaves the other's stale extent winning
+ * that union — the repair lands in the database and changes nothing on screen.
+ * Two situations make the overlap routine rather than exotic: `freeze_y === 0`
+ * is the "nothing frozen yet" sentinel, so every band row is live while the base
+ * still covers those bands; and migration 0004 backfilled heap_band from the
+ * live zone AND the base.
+ *
+ * `liveBands` is the set of bands that currently have a heap_band row, taken
+ * from database state rather than from whatever the editor happened to load.
+ */
+export function planBandWrite(args: {
+  dirty: BandRow[];
+  baseRows: BandRow[];
+  liveBands: Set<number>;
+  freezeY: number;
+}): BandWritePlan {
+  const { dirty, baseRows, liveBands, freezeY } = args;
+  const baseEnv: BandEnvelope = new Map(
+    baseRows.map((r) => [r.band, { minX: r.minX, maxX: r.maxX }]),
+  );
+  const liveRows: BandRow[] = [];
+
+  for (const r of dirty) {
+    const inBase = baseEnv.has(r.band);
+    const inLive = liveBands.has(r.band);
+
+    // Rule 1 — the base holds this band, so the base must carry the edit.
+    if (inBase) baseEnv.set(r.band, { minX: r.minX, maxX: r.maxX });
+    // Rule 2 — so must the live row, when one exists. Both firing is the
+    // normal case: afterwards the two layers agree, so their union is the
+    // operator's value.
+    if (inLive) liveRows.push(r);
+
+    // Rule 3 — held by neither (a gap being filled). Create it in the layer the
+    // freeze line assigns, matching liveBandsOf's freeze_y === 0 sentinel.
+    if (!inBase && !inLive) {
+      if (freezeY > 0 && r.band >= bandOf(freezeY)) {
+        baseEnv.set(r.band, { minX: r.minX, maxX: r.maxX });
+      } else {
+        liveRows.push(r);
+      }
+    }
+  }
+
+  return { nextBaseRows: envelopeToRows(baseEnv), liveRows };
+}
+
 export function heapRoutes(
   db: HeapDB,
   getSink: () => Sink | undefined,
@@ -238,6 +308,133 @@ export function heapRoutes(
         },
       })),
     } satisfies ListHeapsResponse);
+  });
+
+  // GET /heaps/:id/bands — the admin band editor's read. Deliberately uncached.
+  // NOTE: must be registered before /:id to prevent Hono matching "bands" as an id
+  app.get('/:id/bands', async (c) => {
+    const id = c.req.param('id');
+    // getHeapFresh, not getHeap: the editor CAS-es on the version it loaded, so
+    // a 60s-old snapshot would mean saving against a version that has already
+    // moved — failing repeatedly for up to a minute on an active heap.
+    const row = await db.getHeapFresh(id);
+    if (!row) return c.json({ error: 'Heap not found' }, 404);
+
+    const [baseVertices, allBands] = await Promise.all([
+      db.getBaseVerticesById(row.base_id),
+      // getAllBandsVersioned, not getAllBands, for the same reason: the former
+      // reads through the cache, the latter is served from it.
+      db.getAllBandsVersioned(id),
+    ]);
+
+    return c.json({
+      version: row.version,
+      baseId: row.base_id,
+      freezeY: row.freeze_y,
+      worldHeight: row.world_height,
+      // Mirrors what players see: rows below the freeze line render for nobody.
+      // The version each row carries is dropped — the editor has no use for it,
+      // and the heap's own version is what the CAS keys on.
+      liveBands: liveBandsOf(row, allBands).map(({ band, minX, maxX }) => ({ band, minX, maxX })),
+      baseBands: envelopeToRows(verticesToEnvelope(baseVertices ?? [])),
+    } satisfies AdminBandsResponse);
+  });
+
+  // PUT /heaps/:id/bands — the admin band editor's batched save.
+  // NOTE: must be registered before /:id to prevent Hono matching "bands" as an id
+  app.put('/:id/bands', async (c) => {
+    const id = c.req.param('id');
+
+    let body: AdminBandsRequest;
+    try {
+      body = await c.req.json<AdminBandsRequest>();
+    } catch {
+      return c.json({ error: 'Invalid JSON' }, 400);
+    }
+
+    const row = await db.getHeapFresh(id);
+    if (!row) return c.json({ error: 'Heap not found' }, 404);
+
+    if (!Number.isInteger(body.expectedVersion)) {
+      return c.json({ error: 'expectedVersion must be an integer' }, 400);
+    }
+    if (typeof body.expectedBaseId !== 'string' || body.expectedBaseId.length === 0) {
+      return c.json({ error: 'expectedBaseId must be a non-empty string' }, 400);
+    }
+    if (!Array.isArray(body.bands) || body.bands.length === 0) {
+      return c.json({ error: 'bands must be a non-empty array' }, 400);
+    }
+    if (body.bands.length > MAX_ADMIN_BANDS) {
+      return c.json({ error: `bands must not exceed ${MAX_ADMIN_BANDS} entries` }, 400);
+    }
+
+    const maxBand = Math.floor(row.world_height / BAND_SIZE_PX);
+    const seen = new Set<number>();
+    for (const r of body.bands) {
+      if (!r || typeof r !== 'object') {
+        return c.json({ error: 'each band must be an object' }, 400);
+      }
+      if (!Number.isInteger(r.band) || r.band < 0 || r.band > maxBand) {
+        return c.json({ error: `band must be an integer in [0, ${maxBand}]` }, 400);
+      }
+      if (seen.has(r.band)) return c.json({ error: `duplicate band ${r.band}` }, 400);
+      seen.add(r.band);
+      if (!Number.isFinite(r.minX) || !Number.isFinite(r.maxX)) {
+        return c.json({ error: `band ${r.band}: minX and maxX must be finite numbers` }, 400);
+      }
+      if (r.minX > r.maxX) {
+        return c.json({ error: `band ${r.band}: minX must not exceed maxX` }, 400);
+      }
+    }
+
+    // Checked here so a doomed save costs one read instead of a whole plan. It
+    // is NOT what makes the write safe — adminReplaceBands guards again in SQL,
+    // which is the check that actually holds under concurrency.
+    if (row.version !== body.expectedVersion || row.base_id !== body.expectedBaseId) {
+      return c.json({
+        error: 'heap changed since load', version: row.version, baseId: row.base_id,
+      } satisfies AdminBandsConflictResponse, 409);
+    }
+
+    const [baseVertices, allBands] = await Promise.all([
+      db.getBaseVerticesById(row.base_id),
+      db.getAllBandsVersioned(id),
+    ]);
+
+    const plan = planBandWrite({
+      dirty:     body.bands,
+      baseRows:  envelopeToRows(verticesToEnvelope(baseVertices ?? [])),
+      // Database state, not what the editor loaded: a straggler row below the
+      // freeze line is hidden from the editor but must still be replaced.
+      liveBands: new Set(allBands.map((b) => b.band)),
+      freezeY:   row.freeze_y,
+    });
+
+    const nextBaseVertices = envelopeToVertices(mergeBands(new Map(), plan.nextBaseRows));
+    const newBaseId = crypto.randomUUID();
+    const applied = await db.adminReplaceBands({
+      heapId: id,
+      expectedVersion: body.expectedVersion,
+      expectedBaseId: body.expectedBaseId,
+      newBaseId,
+      baseVertices: nextBaseVertices,
+      baseHash: hashVertices(nextBaseVertices),
+      liveRows: plan.liveRows,
+      now: new Date().toISOString(),
+    });
+
+    if (!applied) {
+      const fresh = await db.getHeapFresh(id);
+      return c.json({
+        error: 'heap changed since load',
+        version: fresh?.version ?? row.version,
+        baseId:  fresh?.base_id ?? row.base_id,
+      } satisfies AdminBandsConflictResponse, 409);
+    }
+
+    return c.json({
+      version: body.expectedVersion + 1, baseId: newBaseId,
+    } satisfies AdminBandsWriteResponse);
   });
 
   // GET /heaps/:id/base — get current base vertices for a heap
@@ -696,11 +893,18 @@ export function heapRoutes(
         ...envelopeToVertices(mergeBands(new Map(), buried)),
       ];
       // row.base_id was read before commitPlacement, so a losing racer builds
-      // its base from a stale one. Harmless: the guard makes its whole batch a
-      // no-op, base row included.
+      // its base from a stale one. Passing it as expectedBaseId (alongside
+      // expectedFreezeY) is what makes that harmless: base_id now has a second
+      // writer (adminReplaceBands, which can move it without touching
+      // freeze_y), so guarding on freeze_y alone would let this batch win
+      // purely because the line hadn't moved — repointing the heap at a
+      // freeze built from a base an admin has since replaced, silently
+      // discarding the repair. Guarding on both makes the whole batch a
+      // no-op, base row included, whenever base_id moved out from under it.
       await db.freezeAtomic({
         heapId: id,
         expectedFreezeY: row.freeze_y,
+        expectedBaseId: row.base_id,
         newBaseId: crypto.randomUUID(),
         baseVertices,
         baseHash: hashVertices(baseVertices),

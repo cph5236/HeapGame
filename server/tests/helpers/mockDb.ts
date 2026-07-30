@@ -1,6 +1,6 @@
 // server/tests/helpers/mockDb.ts
 
-import type { HeapDB, HeapRow, HeapSummaryRow, VersionedBandRow, FreezeArgs } from '../../src/db';
+import type { HeapDB, HeapRow, HeapSummaryRow, VersionedBandRow, FreezeArgs, AdminReplaceBandsArgs } from '../../src/db';
 import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
 import { bandOf, type BandRow } from '../../../shared/heapPolygon/bandEnvelope';
@@ -328,7 +328,11 @@ export class MockHeapDB implements HeapDB {
     if (!existing) return false;
     // Mirrors the D1 CAS: a stale expectedFreezeY means another request froze
     // first, and NOTHING is written — no base, no line advance, no deletion.
+    // base_id is guarded too — a second writer (adminReplaceBands) can move
+    // base_id without touching freeze_y, and a mock that only checked
+    // freeze_y would pass tests that production's WHERE clause rejects.
     if (existing.freeze_y !== args.expectedFreezeY) return false;
+    if (existing.base_id !== args.expectedBaseId) return false;
 
     this.bases.set(args.newBaseId, {
       heap_id: args.heapId,
@@ -353,5 +357,35 @@ export class MockHeapDB implements HeapDB {
 
   async clearBands(heapId: string): Promise<void> {
     this.bands.delete(heapId);
+  }
+
+  async adminReplaceBands(args: AdminReplaceBandsArgs): Promise<boolean> {
+    const existing = this.heaps.get(args.heapId);
+    if (!existing) return false;
+    // Mirrors the D1 CAS: a stale version or base id means the operator edited a
+    // snapshot that has since moved, and NOTHING is written.
+    if (existing.version !== args.expectedVersion) return false;
+    if (existing.base_id !== args.expectedBaseId) return false;
+
+    const newVersion = args.expectedVersion + 1;
+    this.bases.set(args.newBaseId, {
+      heap_id: args.heapId,
+      vertices: JSON.stringify(args.baseVertices),
+      vertex_hash: args.baseHash,
+      created_at: args.now,
+    });
+    this.heaps.set(args.heapId, {
+      ...existing,
+      base_id: args.newBaseId,
+      version: newVersion,
+    });
+
+    let m = this.bands.get(args.heapId);
+    if (!m) { m = new Map(); this.bands.set(args.heapId, m); }
+    // REPLACE, not MIN/MAX — unlike upsertBands. Narrowing is the point.
+    for (const r of args.liveRows) {
+      m.set(r.band, { minX: r.minX, maxX: r.maxX, version: newVersion });
+    }
+    return true;
   }
 }
