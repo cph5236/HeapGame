@@ -267,7 +267,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: "Yesterday's mattress, still bouncy.",
     color:       0xbbaa66,
     polarity:    'negative',
-    effect:      { speedMult: 0.85, jumpBonus: 90, extraAirJumps: 0 },
+    effect:      { speedMult: 0.85, jumpBonus: 45, extraAirJumps: 0 },
     scoreBonus:  PICKUP_BONUS['box-spring'],
   },
   {
@@ -321,7 +321,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: "Fast. Stopping's your problem.",
     color:       0xbb6644,
     polarity:    'negative',
-    effect:      { speedMult: 1.3, jumpBonus: -45, extraAirJumps: 0 },
+    effect:      { speedMult: 1.3, jumpBonus: -35, extraAirJumps: 0 },
     scoreBonus:  PICKUP_BONUS['rusted-roller-skates'],
   },
   {
@@ -330,7 +330,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'No pool for miles.',
     color:       0x88aacc,
     polarity:    'negative',
-    effect:      { speedMult: 1.0, jumpBonus: 70, extraAirJumps: 0, cooldownMult: 1.5 },
+    effect:      { speedMult: 1.0, jumpBonus: 45, extraAirJumps: 0, cooldownMult: 1.5 },
     scoreBonus:  PICKUP_BONUS['diving-board'],
   },
   {
