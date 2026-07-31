@@ -866,10 +866,15 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   private createRewardedAdButtonAt(cx: number, cy: number, compact: boolean): void {
-    const W         = compact ? 200 : 220;
+    // Compact buttons share the row at quarter positions (cx = 0.25W / 0.75W — see
+    // bottomButtonLayout), leaving only ~0.25 of the screen width either side. A
+    // fixed 200px pill overran the right edge on any phone narrower than ~400
+    // logical px (nearly all of them). Shrink to fit that margin on narrow screens.
+    const narrow    = logicalWidth(this) < 420;
+    const W         = compact ? (narrow ? 150 : 200) : 220;
     const H         = 36;
     const labelText = compact ? '▶  2× coins' : '▶  Watch ad → 2× coins';
-    const fontSize  = compact ? '12px' : '13px';
+    const fontSize  = compact ? (narrow ? '11px' : '12px') : '13px';
 
     const btn = this.add.container(cx, cy);
 
