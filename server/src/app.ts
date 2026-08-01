@@ -14,6 +14,7 @@ import { playerRoutes } from './routes/players';
 import { authAdminRoutes } from './routes/auth';
 import { requireAdminSecret } from './middleware/adminAuth';
 import { rateLimit, type RateLimiter, setRateLimitSink } from './middleware/rateLimit';
+import { parseOriginAllowlist } from './middleware/originAllowlist';
 import type { Sink } from './logging/Sink';
 import type { RewardCodeDB } from './codeDb';
 import type { DailyClaimDB } from './dailyDb';
@@ -25,7 +26,11 @@ import type { ContributionDB } from './contributionDb';
 import type { PlayerNameDB } from './playerNameDb';
 
 export interface AppOptions {
-  /** Comma-separated origin list, or '*' to allow all (dev only). */
+  /**
+   * Comma-separated origin list, or '*' to allow all (dev only). Entries may use
+   * a `https://*.example.com` wildcard to match subdomains — see
+   * middleware/originAllowlist.ts.
+   */
   allowedOrigins?: string;
   /** When set, mutating heap routes require X-Admin-Secret: <value>. */
   adminSecret?: string;
@@ -69,17 +74,13 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
     setRateLimitSink(() => opts.logSink);
   }
 
-  const raw = (opts.allowedOrigins ?? '*').trim();
-  const allowAll = raw === '*';
-  const list = allowAll
-    ? []
-    : raw.split(',').map((s) => s.trim()).filter(Boolean);
+  const allowlist = parseOriginAllowlist(opts.allowedOrigins);
 
   app.use('*', cors({
     origin: (origin) => {
-      if (allowAll) return origin ?? '*';
+      if (allowlist.allowAll) return origin ?? '*';
       if (!origin) return null;
-      return list.includes(origin) ? origin : null;
+      return allowlist.allows(origin) ? origin : null;
     },
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'X-Admin-Secret', 'X-Player-Token', 'X-LoadTest-Secret', 'X-LoadTest-Key'],

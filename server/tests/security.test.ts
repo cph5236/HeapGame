@@ -69,6 +69,35 @@ describe('CORS allowlist includes Capacitor WebView origins', () => {
   });
 });
 
+describe('CORS allowlist supports subdomain wildcards', () => {
+  // itch.io serves the HTML5 build from a randomized per-build host, so the
+  // embed can only be allowlisted by wildcard. See middleware/originAllowlist.ts.
+  const ORIGINS = 'https://heapgame.com,https://*.hwcdn.net';
+
+  it('echoes a randomized itch.io subdomain', async () => {
+    const res = await makeApp(ORIGINS).request('/heaps', {
+      method: 'OPTIONS',
+      headers: {
+        'Origin': 'https://v6p9d9t4.ssl.hwcdn.net',
+        'Access-Control-Request-Method': 'POST',
+      },
+    });
+    expect(res.headers.get('access-control-allow-origin'))
+      .toBe('https://v6p9d9t4.ssl.hwcdn.net');
+  });
+
+  it('does not let a lookalike host satisfy the wildcard', async () => {
+    const res = await makeApp(ORIGINS).request('/heaps', {
+      method: 'OPTIONS',
+      headers: {
+        'Origin': 'https://foo.hwcdn.net.evil.com',
+        'Access-Control-Request-Method': 'POST',
+      },
+    });
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
+
 describe('Admin secret gate', () => {
   function makeAppWithSecret(secret: string) {
     return createApp(new MockHeapDB(), new MockScoreDB(), { adminSecret: secret });
