@@ -21,7 +21,7 @@ import { setupGameplayUiCamera, addToGameplayUi } from '../systems/GameplayUiCam
 import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { getPlayerConfig, setTutorialDone, getJoystickSide, getEffectiveControlMode, getEquippedCosmetics, getHatAdjustments } from '../systems/SaveData';
 import { resolveCosmetics } from '../systems/cosmeticsLogic';
-import { resolveTutorialExit } from './tutorialExit';
+import { resolveTutorialExit, type TutorialExitState } from './tutorialExit';
 import type { HeapParams } from '../../shared/heapTypes';
 import { TutorialDirector, type TutorialStep } from '../systems/TutorialDirector';
 import { TutorialOverlay } from '../ui/TutorialOverlay';
@@ -472,29 +472,35 @@ export class TutorialScene extends Phaser.Scene {
     setTutorialDone(true);
     this.overlay.hide();
 
-    // Route into a real run. Infinite mode MUST be checked first: HeapSelectScene
-    // stores an empty `heapPolygon` for it, and `[]` is truthy, so the polygon
-    // branch below would otherwise send infinite players into GameScene with no
-    // heap to climb — a blank screen. See resolveTutorialExit for the details.
-    const params = this.game.registry.get('heapParams') as HeapParams | undefined;
-    const exit = resolveTutorialExit({
-      isInfinite:    params?.isInfinite === true,
-      hasPolygon:    !!this.game.registry.get('heapPolygon'),
-      hasActiveHeap: !!this.game.registry.get('activeHeapId'),
-    });
-
+    // Route into a real run. Both blank-scene cases this guards against — an
+    // Infinite player, and a first-timer skipping before the heap catalog has
+    // landed — come from the same trap: `heapPolygon` is an empty array in both,
+    // and `[]` is truthy. resolveTutorialExit ignores the polygon entirely.
+    const exit = resolveTutorialExit(this.readExitState());
     if (exit.kind === 'start') {
       this.scene.start(exit.scene);
       return;
     }
-    // Catalog still loading. BootScene sets the registry flag and emits the
-    // event together, so check the flag first — the event has usually already
-    // fired by now, and a bare `once` would wait forever.
-    if (this.game.registry.get('heapCatalogReady') === true) {
-      this.scene.start('GameScene');
-    } else {
-      this.game.events.once('heapCatalogReady', () => this.scene.start('GameScene'));
-    }
+
+    // Catalog still in flight. BootScene sets the `heapCatalogReady` registry
+    // flag and emits the event together, and readExitState() checks the flag —
+    // so reaching here means the event genuinely has not fired yet and a `once`
+    // is safe. Re-resolve when it lands rather than assuming GameScene: by then
+    // we may have learned the player is on Infinite.
+    this.game.events.once('heapCatalogReady', () => {
+      if (!this.scene.isActive()) return;  // tutorial was stopped while we waited
+      const settled = resolveTutorialExit(this.readExitState());
+      this.scene.start(settled.kind === 'start' ? settled.scene : 'MenuScene');
+    });
+  }
+
+  private readExitState(): TutorialExitState {
+    const params = this.game.registry.get('heapParams') as HeapParams | undefined;
+    return {
+      catalogReady:  this.game.registry.get('heapCatalogReady') === true,
+      isInfinite:    params?.isInfinite === true,
+      hasActiveHeap: !!this.game.registry.get('activeHeapId'),
+    };
   }
 
   shutdown(): void {
