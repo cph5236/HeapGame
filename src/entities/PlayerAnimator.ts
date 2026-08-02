@@ -63,6 +63,7 @@ export class PlayerAnimator {
   private state:      AnimState = AnimState.IDLE;
   private stateTimer: number    = 0;  // ms remaining in current timed state
   private dormant:    boolean   = false;
+  private destroyed:  boolean   = false;
 
   // Accumulators for continuous sine-driven states
   private idleTime:     number = 0;
@@ -95,6 +96,11 @@ export class PlayerAnimator {
     // it here would lag by one frame. POST_UPDATE fires after ArcadePhysics finishes, so
     // sprite.x/y is final for the current frame when this callback runs.
     scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.syncGfxToSprite, this);
+    // Same reasoning as PlayerCosmetics: Phaser never calls a Scene's
+    // `shutdown()` method, and scene.events keeps its listeners across a
+    // shutdown, so this must unsubscribe itself or it leaks into the scene's
+    // next run and draws to a destroyed Graphics.
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this);
   }
 
   /** Set the tie-string color from the equipped cosmetic (rainbow = hue cycle). */
@@ -202,11 +208,17 @@ export class PlayerAnimator {
     this.drawStrings();
   }
 
+  /** Idempotent: reachable from both the scene's own teardown and SHUTDOWN. */
   destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
     this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.syncGfxToSprite, this);
+    this.scene.events.off(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this);
     this.sprite.setScale(this.baseScaleX, this.baseScaleY);
     this.sprite.setAngle(0);
-    this.sprite.body.setSize(PLAYER_WIDTH / this.baseScaleX, PLAYER_HEIGHT / this.baseScaleY);
+    // On the SHUTDOWN path the sprite is already destroyed and `body` is gone;
+    // restoring the hitbox only matters when the caller keeps using the sprite.
+    this.sprite.body?.setSize(PLAYER_WIDTH / this.baseScaleX, PLAYER_HEIGHT / this.baseScaleY);
     this.gfx.destroy();
   }
 

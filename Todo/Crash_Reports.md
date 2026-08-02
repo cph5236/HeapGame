@@ -4,29 +4,6 @@
 Triaged from the `heap_logs` Analytics Engine dataset via the `fetch-logs` Action.
 Each entry lists its source session(s) + event time (UTC) as the audit trail.
 
-## [P1] TypeError: reading 'velocity' of undefined — PlayerCosmetics.sync
-
-- **occurrences:** 4  ·  **players affected:** 4  ·  **sessions:** 4
-- **first seen:** 2026-07-15 20:56:48  ·  **last seen:** 2026-08-02 17:13:23
-- **platform:** android (3), web (1)  ·  **app version:** 0.2.24 (1), 0.2.19 (1), 0.2.18 (2)
-- **message:** `Cannot read properties of undefined (reading 'velocity')` (V8) /
-  `undefined is not an object (evaluating 'r.velocity')` (WebKit) — same bug,
-  the two engines word it differently, so it only clusters once the wording is
-  normalised away
-- **top frame:** `PlayerCosmetics.sync` ← Phaser `Systems.step` (POST_UPDATE emit)
-- **sample:** session `fbdedcfb-6bf3-4175-b40e-d2277ea1238e` @ 2026-08-02 17:13:23
-- **assessment:** `sync()` does `const body = this.sprite.body` then dereferences
-  `body.velocity.x` with **no null check**
-  (`src/entities/PlayerCosmetics.ts:95-98`). Phaser sets `sprite.body` to null
-  once the physics body is removed. The constructor registers `sync` on
-  `POST_UPDATE` and only `destroy()` unsubscribes, so any path where the body
-  goes away *before* `destroy()`/`hide()` runs leaves a live listener
-  dereferencing a null body on the next frame. `hide()` guards the normal
-  death path via the `hidden` flag — this is the unguarded remainder.
-- **why P1:** four *distinct* players (not one person retrying), still firing on
-  the current version, most recent occurrence is today, and it throws inside the
-  update loop. Fix is a one-line guard: `if (!body) return;` after line 95.
-
 ## [P2] auth:rejected — one player 403-locked out of customization writes
 
 - **occurrences:** 38  ·  **players affected:** 1  ·  **sessions:** 10
@@ -102,6 +79,56 @@ Each entry lists its source session(s) + event time (UTC) as the audit trail.
 ---
 
 ## Resolved
+
+### [P1] TypeError: reading 'velocity' of undefined — PlayerCosmetics.sync → fix in PR #140
+
+- **occurrences:** 4  ·  **players affected:** 4  ·  **sessions:** 4
+- **first seen:** 2026-07-15 20:56:48  ·  **last seen:** 2026-08-02 17:13:23
+- **platform:** android (3), web (1)  ·  **app version:** 0.2.24 (1), 0.2.19 (1), 0.2.18 (2)
+- **message:** `Cannot read properties of undefined (reading 'velocity')` (V8) /
+  `undefined is not an object (evaluating 'r.velocity')` (WebKit) — same bug,
+  the two engines word it differently, so it only clusters once the wording is
+  normalised away
+- **top frame:** `PlayerCosmetics.sync` ← Phaser `Systems.step` (POST_UPDATE emit)
+- **sample:** session `fbdedcfb-6bf3-4175-b40e-d2277ea1238e` @ 2026-08-02 17:13:23
+- **root cause:** a **leaked POST_UPDATE listener**, not merely a missing null
+  check. The initial triage assessment ("add `if (!body) return;`") described the
+  symptom; the actual chain is:
+  1. `PlayerCosmetics`' constructor subscribes `sync` to `POST_UPDATE`, and only
+     `destroy()` unsubscribes.
+  2. `destroy()` is called from `GameScene.shutdown()` / `InfiniteGameScene`
+     `.shutdown()` / `TutorialScene.shutdown()` — but **Phaser never invokes a
+     Scene's `shutdown()` method.** It auto-calls only `init`/`preload`/`create`/
+     `update`; `shutdown` has to be wired to the SHUTDOWN event by hand, and none
+     of the three scenes does. Verified: no reference to a scene's `shutdown`
+     method exists anywhere in `node_modules/phaser/src`. Those methods are dead
+     code.
+  3. `Systems.shutdown()` emits SHUTDOWN but does **not** `removeAllListeners()`
+     (only `Systems.destroy()` does), so the listener survives the scene stopping.
+  4. Phaser's `DisplayList.shutdown` destroys the scene's children, and
+     `GameObject.destroy()` sets `this.body = undefined`
+     (`gameobjects/GameObject.js:919`) — note *undefined*, which is exactly the
+     wording both engines reported.
+  5. On the scene's **next** start the stale listener fires against that
+     destroyed sprite → `body.velocity` throws.
+- **why it was rare:** the normal death/success paths call `playerCosmetics.hide()`,
+  and `sync()` early-returns on the `hidden` flag, so the stale listener is inert.
+  It only crashes when the player leaves a run *without* dying — e.g. Pause →
+  quit (`PauseScene.ts:153-155`) — and then starts that scene again.
+- **fix:** PR #140 — `PlayerCosmetics` and `PlayerAnimator` now own their teardown
+  via `scene.events.once(SHUTDOWN, this.destroy, this)`, `destroy()` is idempotent
+  and also unhooks the SHUTDOWN handler, and `sync()` keeps a defensive
+  `if (!body) return;` for any other body-removal path. `PlayerAnimator.destroy()`
+  needed `this.sprite.body?.setSize(...)` — it would otherwise have thrown the
+  same way on the SHUTDOWN path. 7 regression tests in
+  `src/entities/__tests__/PlayerCosmetics.test.ts` (3 fail against the old code).
+- **follow-up (not in PR #140):** the three dead `shutdown()` methods are still
+  dead. Everything else in them is currently a no-op too — `AudioManager.stopAll()`
+  (masked, because `AudioManager.play()` stops the previous music track itself),
+  `playerOutro.destroy()`, the `InputManager` suppression-rect reset, the joystick
+  destroy, and `InfiniteGameScene`'s `physics.world.resume()` /
+  `loadingOverlay.destroy()`. Wiring them up is a behaviour change (audio would
+  now be cut on scene exit) and wants its own PR + smoke test.
 
 ### [P2] TypeError: Cannot read properties of null (reading 'drawImage') — Phaser updateUVs / canvas texture → fix in PR #98
 

@@ -26,6 +26,7 @@ export class PlayerCosmetics {
   private skinGlaze: Phaser.GameObjects.Image | null = null;
   private emitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private hidden = false;
+  private destroyed = false;
   private prevVx = 0;
   private prevVy = 0;
 
@@ -67,6 +68,15 @@ export class PlayerCosmetics {
     }
 
     scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.sync, this);
+    // Own our own teardown rather than trusting the scene to call destroy().
+    // Phaser only auto-invokes init/preload/create/update on a Scene — a
+    // `shutdown()` method is NOT called unless the scene wires it to the
+    // SHUTDOWN event itself, and the game scenes don't. Worse, Systems.shutdown
+    // emits SHUTDOWN without calling removeAllListeners (only Systems.destroy
+    // does), so a POST_UPDATE listener survives the scene stopping. The next
+    // time that scene starts, the stale listener fired against a sprite Phaser
+    // had already destroyed. Unsubscribing here makes that impossible.
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this);
   }
 
   /** Hide everything (death / successful placement) — mirrors the animator's dormant path. */
@@ -78,8 +88,12 @@ export class PlayerCosmetics {
     if (this.emitter) { this.emitter.stop(); this.emitter.setVisible(false); }
   }
 
+  /** Idempotent: reachable from both the scene's own teardown and SHUTDOWN. */
   destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
     this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.sync, this);
+    this.scene.events.off(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this);
     this.hatRig?.destroy();
     this.faceRig?.destroy();
     this.skinGlaze?.destroy();
@@ -92,7 +106,11 @@ export class PlayerCosmetics {
     // stretch with the bag through the animator's keyframes.
     const fx = this.sprite.scaleX / this.baseScaleX;
     const fy = this.sprite.scaleY / this.baseScaleY;
+    // Phaser's GameObject.destroy() sets `body` to undefined, so any frame that
+    // lands between the sprite dying and this listener going away has no body
+    // to read. Belt-and-braces alongside the SHUTDOWN unsubscribe above.
     const body = this.sprite.body;
+    if (!body) return;
     const dt = Math.max(delta, 1);
     const motion = {
       vx: body.velocity.x,
