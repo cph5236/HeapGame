@@ -801,6 +801,13 @@ export class InfiniteGameScene extends Phaser.Scene {
   private shutdown(): void {
     // Exiting mid-preload: without this reset, `update()` early-returns on
     // `_preloading` forever and the scene's next run never ticks.
+    //
+    // Dropping the reference is enough — no `loadingOverlay.destroy()` needed.
+    // Its five GameObjects are moved into the UI Layer by addToGameplayUi, so
+    // they leave the scene's display list, but the Layer itself is a display
+    // list child: DisplayList.shutdown() destroys the Layer, and Layer.destroy()
+    // cascades to its children. Verified live — after a quit mid-preload all
+    // five have `scene === undefined`. (Raised in review on PR #140.)
     this.loadingOverlay = undefined;
     this._preloading = false;
     // Clears the joystick + dash suppression rects on the InputManager singleton.
