@@ -122,6 +122,16 @@ Each entry lists its source session(s) + event time (UTC) as the audit trail.
   needed `this.sprite.body?.setSize(...)` — it would otherwise have thrown the
   same way on the SHUTDOWN path. 7 regression tests in
   `src/entities/__tests__/PlayerCosmetics.test.ts` (3 fail against the old code).
+- **verified live** (localhost, counting POST_UPDATE listeners on the scene across
+  start → quit-mid-run → restart cycles):
+  - a probe scene with a `shutdown()` method that is *not* wired to the SHUTDOWN
+    event confirmed the premise: `shutdown()` was **never called**, and listeners
+    went 2 → 1 → 3 across one stop/restart.
+  - pre-fix `GameScene`: 3 → 2 → 5 listeners, and the run threw
+    `Uncaught TypeError: Cannot read properties of undefined (reading 'velocity')`
+    — the production message, reproduced exactly.
+  - post-fix `GameScene` **and** `InfiniteGameScene`: 3 → 0 → 3 → 0 over three
+    cycles each, zero errors.
 - **follow-up (not in PR #140):** the three dead `shutdown()` methods are still
   dead. Everything else in them is currently a no-op too — `AudioManager.stopAll()`
   (masked, because `AudioManager.play()` stops the previous music track itself),
