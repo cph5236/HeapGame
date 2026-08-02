@@ -133,6 +133,10 @@ export class InfiniteGameScene extends Phaser.Scene {
   constructor() { super({ key: 'InfiniteGameScene' }); }
 
   create(): void {
+    // Phaser never calls scene.shutdown() by itself — wire it, or the teardown
+    // below never runs and per-run state leaks into this scene's next run.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+
     // Dedicated UI camera for the (zoomed, following) gameplay scene — must run
     // before any HUD/world objects are created. See GameplayUiCamera.
     setupGameplayUiCamera(this);
@@ -784,18 +788,28 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.time.delayedCall(STUN_MS, () => { this.invincible = false; });
   };
 
-  shutdown(): void {
-    // Guard against exiting mid-preload (quit-to-menu / restart): drop the overlay
-    // and resume the world so we never leave a paused physics world behind.
-    this.loadingOverlay?.destroy();
+  /**
+   * Teardown — see the note on GameScene.shutdown(). Phaser does not call this
+   * on its own; create() wires it to SHUTDOWN.
+   *
+   * Scene instances are REUSED across restarts, so per-run fields have to be
+   * reset here or they carry into the next run. Dropped from the previous
+   * version: the animator/cosmetics/outro destroys (each self-unsubscribes now)
+   * and `physics.world.resume()` (ArcadePhysics.shutdown destroys the world and
+   * start() builds a fresh one, so a paused world cannot survive a restart).
+   */
+  private shutdown(): void {
+    // Exiting mid-preload: without this reset, `update()` early-returns on
+    // `_preloading` forever and the scene's next run never ticks.
     this.loadingOverlay = undefined;
     this._preloading = false;
-    if (this.physics.world.isPaused) this.physics.world.resume();
+    // Clears the joystick + dash suppression rects on the InputManager singleton.
     this.joystick?.destroy();
     this.joystick = null;
-    this.playerAnimator.destroy();
-    this.playerCosmetics.destroy();
-    this.playerOutro.destroy();
-    AudioManager.stopAll();
+    // Unlike GameScene this scene has no PAUSE handler, so the looping wall
+    // rumble and enemy ambients are hushed here. Scoped to those two categories
+    // rather than stopAll() so ScoreScene's music survives.
+    AudioManager.stopAll('enemySfx');
+    AudioManager.stopAll('envSfx');
   }
 }

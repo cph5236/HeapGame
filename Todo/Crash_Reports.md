@@ -132,13 +132,34 @@ Each entry lists its source session(s) + event time (UTC) as the audit trail.
     — the production message, reproduced exactly.
   - post-fix `GameScene` **and** `InfiniteGameScene`: 3 → 0 → 3 → 0 over three
     cycles each, zero errors.
-- **follow-up (not in PR #140):** the three dead `shutdown()` methods are still
-  dead. Everything else in them is currently a no-op too — `AudioManager.stopAll()`
-  (masked, because `AudioManager.play()` stops the previous music track itself),
-  `playerOutro.destroy()`, the `InputManager` suppression-rect reset, the joystick
-  destroy, and `InfiniteGameScene`'s `physics.world.resume()` /
-  `loadingOverlay.destroy()`. Wiring them up is a behaviour change (audio would
-  now be cut on scene exit) and wants its own PR + smoke test.
+- **dead-code follow-up — done, also in PR #140.** The three `shutdown()` methods
+  are now wired to SHUTDOWN in each scene's `create()` and trimmed to only what
+  is load-bearing. Auditing them line by line turned up three further latent bugs
+  that had never been able to run:
+  - **`InfiniteGameScene._preloading` was never reset.** Phaser *reuses* scene
+    instances across restarts, and `create()` does not clear this flag, so
+    quitting during a band preload left it `true` — and `update()` early-returns
+    on it (`InfiniteGameScene.ts:475`), so the scene's next run would never tick.
+    Same for the stale `loadingOverlay` reference.
+  - **`TutorialScene` cleared the wrong suppression id.** It registers both
+    `'tutorial'` and `'place'` but only ever cleared `'tutorial'`, so exiting the
+    tutorial with the PLACE button up left a dead tap-swallowing rect over the
+    menu. Now clears both.
+  - **The joystick's suppression rects leaked.** `mountJoystick`'s `destroy()` is
+    what clears the joystick + dash rects on the `InputManager` *singleton*;
+    with `shutdown()` dead it never ran.
+
+  Deleted as genuinely redundant: the animator/cosmetics/outro `destroy()` calls
+  (all three self-unsubscribe now) and `physics.world.resume()`
+  (`ArcadePhysics.shutdown()` destroys the world and `start()` builds a fresh
+  one, so a paused world cannot survive a restart).
+
+  `AudioManager.stopAll()` was **not** revived as-is: on the death path this
+  scene is only *paused* when ScoreScene opens, so shutdown lands later and a
+  blanket stop would cut ScoreScene's own music. `GameScene` already hushes the
+  gameplay loops from its PAUSE handler, so its call was dropped entirely;
+  `InfiniteGameScene` has no such handler, so it keeps a narrowed
+  `stopAll('enemySfx')` / `stopAll('envSfx')`.
 
 ### [P2] TypeError: Cannot read properties of null (reading 'drawImage') — Phaser updateUVs / canvas texture → fix in PR #98
 

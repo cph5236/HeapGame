@@ -78,6 +78,13 @@ export class PlayerOutro {
   ) {
     this.scene = scene;
     this.sourceSprite = sourceSprite;
+    // Phaser does not auto-call a Scene's shutdown() method, and scene.events
+    // keeps its listeners across a shutdown, so an outro interrupted by the
+    // scene stopping would leak its 'update' handler into the scene's next run.
+    // Own the teardown here. (Same pattern as PlayerCosmetics/PlayerAnimator.)
+    // 'shutdown' rather than Phaser.Scenes.Events.SHUTDOWN because Phaser is a
+    // type-only import in this file.
+    scene.events.once('shutdown', this.destroy, this);
   }
 
   play(kind: OutroKind, onComplete: () => void): void {
@@ -181,7 +188,9 @@ export class PlayerOutro {
     this.finish();
   }
 
+  /** Idempotent: reachable from finish(), the scene's teardown, and SHUTDOWN. */
   destroy(): void {
+    this.scene.events.off('shutdown', this.destroy, this);
     if (this.finalTimer) this.finalTimer.remove();
     this.finalTimer = null;
     this.activeTweens.forEach(t => t.stop());
