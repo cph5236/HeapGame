@@ -55,7 +55,6 @@ import { controlClusterLayout } from '../ui/hudLogic';
 export class TutorialScene extends Phaser.Scene {
   private player!: Player;
   private playerAnimator!: PlayerAnimator;
-  private playerCosmetics!: PlayerCosmetics;
   private enemyManager!: EnemyManager;
   private pickupManager!: PickupManager;
   private heapGenerator!: HeapGenerator;
@@ -87,6 +86,12 @@ export class TutorialScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Phaser never calls scene.shutdown() by itself — wire it, or the teardown
+    // below never runs and suppression rects leak onto the InputManager
+    // singleton. Registered before buildWorld() (which may be deferred until
+    // assets load) because shutdown() only touches state that always exists.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+
     loadGameAssets(this);
     if (this.registry.get('gameAssetsReady') === true) {
       this.buildWorld();
@@ -176,7 +181,9 @@ export class TutorialScene extends Phaser.Scene {
     this.playerAnimator = new PlayerAnimator(this.player.sprite, this);
     const cosmetics = resolveCosmetics(getEquippedCosmetics(), getHatAdjustments());
     this.playerAnimator.setTieStyle({ color: cosmetics.tieColor, rainbow: cosmetics.tieRainbow });
-    this.playerCosmetics = new PlayerCosmetics(this.player.sprite, this, cosmetics);
+    // Not retained: PlayerCosmetics registers its own POST_UPDATE sync and
+    // tears itself down on SHUTDOWN, so the scene has nothing to call on it.
+    new PlayerCosmetics(this.player.sprite, this, cosmetics);
 
     // Camera setup
     CameraController.setup(
@@ -503,10 +510,20 @@ export class TutorialScene extends Phaser.Scene {
     };
   }
 
-  shutdown(): void {
-    this.playerAnimator.destroy();
-    this.playerCosmetics.destroy();
-    InputManager.getInstance().setSuppressionRect('tutorial', null);
+  /**
+   * Teardown — see the note on GameScene.shutdown(). Phaser does not call this
+   * on its own; create() wires it to SHUTDOWN. The animator/cosmetics destroys
+   * that used to be here are gone: both self-unsubscribe now.
+   */
+  private shutdown(): void {
+    // InputManager is a singleton. This scene registers TWO suppression ids —
+    // 'tutorial' for the step callouts and 'place' for the PLACE button — and
+    // the old version only ever cleared the first, so a tutorial exited while
+    // the PLACE button was up left a dead tap-swallowing rect on the menu.
+    const im = InputManager.getInstance();
+    im.setSuppressionRect('tutorial', null);
+    im.setSuppressionRect('place', null);
+    // Also clears the joystick + dash suppression rects that mountJoystick set.
     this.joystick?.destroy();
     this.joystick = null;
   }

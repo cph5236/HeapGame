@@ -136,6 +136,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Phaser never calls scene.shutdown() by itself — wire it, or the teardown
+    // below never runs and singleton state leaks into the next scene.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+
     // Dedicated UI camera for the (zoomed, following) gameplay scene. Must run
     // before any HUD/world objects are created so the ADDED_TO_SCENE hook can
     // auto-ignore world objects on the UI camera. Screen-space objects are
@@ -991,14 +995,25 @@ export class GameScene extends Phaser.Scene {
     this.scene.pause();
   }
 
-  shutdown(): void {
-    this.playerAnimator.destroy();
-    this.playerCosmetics.destroy();
-    this.playerOutro.destroy();
-    AudioManager.stopAll();
-    // InputManager is a singleton — drop our PLACE suppression zone so it can't
-    // linger into the next scene.
+  /**
+   * Teardown. Phaser does NOT auto-call a Scene's `shutdown()` — it only
+   * invokes init/preload/create/update — so this only runs because create()
+   * wires it to the SHUTDOWN event. Until that wiring was added this whole
+   * method was dead code (see Todo/Crash_Reports.md, the P1 velocity crash).
+   *
+   * Only *singleton* state belongs here. Scene-owned objects are destroyed by
+   * Phaser's own SHUTDOWN handlers, and PlayerAnimator / PlayerCosmetics /
+   * PlayerOutro each unsubscribe themselves, so destroying them here would be
+   * redundant. Audio is deliberately absent: the PAUSE handler in create()
+   * already hushes the gameplay loops, and a blanket AudioManager.stopAll()
+   * here would cut ScoreScene's own music, since this scene is not stopped
+   * until the player leaves that screen.
+   */
+  private shutdown(): void {
+    // InputManager is a singleton — drop our suppression zones or they linger
+    // into the next scene and silently swallow taps in those screen regions.
     InputManager.getInstance().setSuppressionRect('place', null);
+    // Also clears the joystick + dash suppression rects that mountJoystick set.
     this.joystick?.destroy();
     this.joystick = null;
   }

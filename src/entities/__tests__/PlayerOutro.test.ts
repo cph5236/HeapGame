@@ -13,6 +13,24 @@ import { PlayerOutro } from '../PlayerOutro';
 
 interface CapturedTimer { ms: number; callback: () => void; remove: () => void; removed: boolean }
 
+type Handler = (...args: unknown[]) => void;
+type HandlerMap = Record<string, Handler[]>;
+
+// Phaser's EventEmitter takes a context as the 3rd arg and applies it when the
+// event fires; `off(event, fn, ctx)` then matches on the ORIGINAL function, not
+// the bound one. Mirror both halves, or a handler registered as
+// `once(evt, this.method, this)` loses its `this` when a test invokes it.
+function push(map: HandlerMap, event: string, fn: Handler, ctx?: unknown): void {
+  const bound = ctx ? fn.bind(ctx) : fn;
+  (bound as Handler & { __orig?: Handler }).__orig = fn;
+  (map[event] ??= []).push(bound);
+}
+
+function drop(map: HandlerMap, event: string, fn: Handler): void {
+  const arr = map[event];
+  if (arr) map[event] = arr.filter(h => h !== fn && (h as Handler & { __orig?: Handler }).__orig !== fn);
+}
+
 function makeStubScene() {
   const timers: CapturedTimer[] = [];
   const tweens: Array<{ stop: () => void; config: Record<string, unknown> }> = [];
@@ -69,22 +87,14 @@ function makeStubScene() {
       }),
     },
     events: {
-      on:  vi.fn((event: string, fn: (...args: unknown[]) => void) => {
-        (eventHandlers[event] ??= []).push(fn);
-      }),
-      off: vi.fn((event: string, fn: (...args: unknown[]) => void) => {
-        const arr = eventHandlers[event];
-        if (arr) eventHandlers[event] = arr.filter(h => h !== fn);
-      }),
+      on:   vi.fn((e: string, fn: Handler, ctx?: unknown) => push(eventHandlers, e, fn, ctx)),
+      // PlayerOutro registers its own SHUTDOWN teardown in the constructor.
+      once: vi.fn((e: string, fn: Handler, ctx?: unknown) => push(eventHandlers, e, fn, ctx)),
+      off:  vi.fn((e: string, fn: Handler) => drop(eventHandlers, e, fn)),
     },
     input: {
-      on:  vi.fn((event: string, fn: (...args: unknown[]) => void) => {
-        (inputHandlers[event] ??= []).push(fn);
-      }),
-      off: vi.fn((event: string, fn: (...args: unknown[]) => void) => {
-        const arr = inputHandlers[event];
-        if (arr) inputHandlers[event] = arr.filter(h => h !== fn);
-      }),
+      on:   vi.fn((e: string, fn: Handler, ctx?: unknown) => push(inputHandlers, e, fn, ctx)),
+      off:  vi.fn((e: string, fn: Handler) => drop(inputHandlers, e, fn)),
     },
     physics: {
       world: { pause: vi.fn(), resume: vi.fn() },
@@ -405,5 +415,52 @@ describe('PlayerOutro — twinkle', () => {
     const starCall = stub.scene.add.graphics.mock.results[2];
     outro.skip();
     expect(starCall.value.destroy).toHaveBeenCalled();
+  });
+});
+
+// ── Teardown ─────────────────────────────────────────────────────────────────
+//
+// Phaser never auto-calls a Scene's shutdown() method, and scene.events keeps
+// its listeners across a shutdown, so PlayerOutro must unhook itself or an
+// outro interrupted by the scene stopping leaks its 'update' handler into the
+// scene's next run. See Todo/Crash_Reports.md (P1 velocity crash).
+
+describe('PlayerOutro — scene teardown', () => {
+  let stub: ReturnType<typeof makeStubScene>;
+  let outro: PlayerOutro;
+
+  beforeEach(() => {
+    stub = makeStubScene();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    outro = new PlayerOutro(stub.scene as any, makeStubSprite() as any);
+  });
+
+  it('registers a SHUTDOWN teardown in the constructor', () => {
+    expect(stub.eventHandlers['shutdown']).toHaveLength(1);
+  });
+
+  it('drops its update handler when the scene shuts down mid-outro', () => {
+    outro.play('death', vi.fn());
+    expect(stub.eventHandlers['update']).toHaveLength(1);
+    stub.eventHandlers['shutdown'][0]();
+    expect(stub.eventHandlers['update']).toHaveLength(0);
+  });
+
+  it('drops its pointerdown skip handler when the scene shuts down', () => {
+    outro.play('death', vi.fn());
+    expect(stub.inputHandlers['pointerdown']).toHaveLength(1);
+    stub.eventHandlers['shutdown'][0]();
+    expect(stub.inputHandlers['pointerdown']).toHaveLength(0);
+  });
+
+  it('unhooks the SHUTDOWN listener on an explicit destroy()', () => {
+    outro.destroy();
+    expect(stub.eventHandlers['shutdown']).toHaveLength(0);
+  });
+
+  it('is safe to tear down twice', () => {
+    outro.play('death', vi.fn());
+    outro.destroy();
+    expect(() => outro.destroy()).not.toThrow();
   });
 });
