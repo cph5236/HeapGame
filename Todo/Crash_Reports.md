@@ -1,8 +1,73 @@
 # Crash Reports — from production logs
-**Last updated:** 2026-07-10
+**Last updated:** 2026-08-02
 
 Triaged from the `heap_logs` Analytics Engine dataset via the `fetch-logs` Action.
 Each entry lists its source session(s) + event time (UTC) as the audit trail.
+
+## [P1] TypeError: reading 'velocity' of undefined — PlayerCosmetics.sync
+
+- **occurrences:** 4  ·  **players affected:** 4  ·  **sessions:** 4
+- **first seen:** 2026-07-15 20:56:48  ·  **last seen:** 2026-08-02 17:13:23
+- **platform:** android (3), web (1)  ·  **app version:** 0.2.24 (1), 0.2.19 (1), 0.2.18 (2)
+- **message:** `Cannot read properties of undefined (reading 'velocity')` (V8) /
+  `undefined is not an object (evaluating 'r.velocity')` (WebKit) — same bug,
+  the two engines word it differently, so it only clusters once the wording is
+  normalised away
+- **top frame:** `PlayerCosmetics.sync` ← Phaser `Systems.step` (POST_UPDATE emit)
+- **sample:** session `fbdedcfb-6bf3-4175-b40e-d2277ea1238e` @ 2026-08-02 17:13:23
+- **assessment:** `sync()` does `const body = this.sprite.body` then dereferences
+  `body.velocity.x` with **no null check**
+  (`src/entities/PlayerCosmetics.ts:95-98`). Phaser sets `sprite.body` to null
+  once the physics body is removed. The constructor registers `sync` on
+  `POST_UPDATE` and only `destroy()` unsubscribes, so any path where the body
+  goes away *before* `destroy()`/`hide()` runs leaves a live listener
+  dereferencing a null body on the next frame. `hide()` guards the normal
+  death path via the `hidden` flag — this is the unguarded remainder.
+- **why P1:** four *distinct* players (not one person retrying), still firing on
+  the current version, most recent occurrence is today, and it throws inside the
+  update loop. Fix is a one-line guard: `if (!body) return;` after line 95.
+
+## [P2] auth:rejected — one player 403-locked out of customization writes
+
+- **occurrences:** 38  ·  **players affected:** 1  ·  **sessions:** 10
+- **first seen:** 2026-07-13 14:56:57  ·  **last seen:** 2026-07-15 15:02:21
+- **platform:** web (38)  ·  **app version:** 0.2.17 (34), 0.2.18 (4)
+- **message:** `auth:rejected` — `{"route":"customization:put","status":403}`
+- **sample:** session `a0f3b0d3-a6f7-4c71-b8e5-d69ae54fdf93` @ 2026-07-15 15:02:21
+- **assessment:** A single player, retrying across 10 separate sessions over
+  three days, rejected every time on the same route. That persistence is the
+  signature of the known TOFU `playerSecret` lockout — a SaveData path that
+  migrates or merges without carrying `playerSecret` leaves the player unable to
+  authenticate against their own record (documented in CLAUDE.md). Reach is one
+  player, but for that player it is total and self-healing is impossible from
+  the client.
+- **status:** no occurrences since 2026-07-15, and both affected versions predate
+  the place-auth stack merged that same day (#103/#104/#105) — so this is
+  plausibly already fixed. **Not confirmed.** Worth checking whether that
+  `user_guid` still 403s before closing; if they do, they need a manual
+  server-side secret reset since they cannot recover on their own.
+
+## [P3] fetch failed — background client connectivity noise
+
+- **occurrences:** 14  ·  **players affected:** 5  ·  **sessions:** 8
+- **first seen:** 2026-07-08 14:32:23  ·  **last seen:** 2026-07-31 19:10:59
+- **platform:** web (11), android (3)  ·  **app version:** spread across 0.2.17–0.2.24
+- **message:** `Failed to fetch` / `NetworkError when attempting to fetch resource`
+- **endpoints:** `/config` (5), `/heaps` (4), `/heaps/{guid}` (3),
+  `/heaps/FFFFFFFF-…/enemy-params` (2 — the Infinite-mode sentinel, expected)
+- **sample:** session `ms9bio7p-hwhsgh0o` @ 2026-07-31 19:10:59
+- **assessment:** Failure durations are 9–257ms — far too fast to be timeouts, so
+  these are clients losing connectivity rather than the worker failing. Spread
+  thinly across 5 players, 4 app versions and three weeks: a low background rate,
+  not an incident. This recurs the signature discarded on the 2026-07-10 run,
+  now at wider reach (5 players vs 1), so it is filed rather than discarded to
+  serve as a **baseline** — re-triage if the rate climbs or clusters on one
+  endpoint.
+- **no action.**
+
+> **CORS tightening check (2026-08-02):** the allowlist came off `*` at
+> 16:19 UTC (PR #137). Exactly one error was logged after that deploy — the P1
+> velocity crash above — and zero fetch/CORS failures. No fallout.
 
 ## [P3] HTTP 500 burst across multiple worker endpoints — 2026-07-03 backend incident
 
