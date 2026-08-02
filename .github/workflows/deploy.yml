@@ -1,8 +1,26 @@
-name: Deploy to GitHub Pages
+name: Redirect GitHub Pages to heapgame.com
+
+# GitHub Pages is retired as a game host — heapgame.com (Cloudflare Pages) is the
+# primary web build. Rather than delete this workflow and leave the old URL dead,
+# it now publishes a one-page redirect so existing links keep landing somewhere
+# useful.
+#
+# Why not keep serving the game from both:
+#   - two live copies of the same site compete in search, splitting the ranking
+#     signal for the domain we actually want found
+#   - a stale build here would keep serving forever if this workflow ever broke,
+#     and the version gate's web action is RELOAD, so a gated old build would
+#     reload straight back into itself
+#   - it is one more origin in the Worker's CORS allowlist and one more surface
+#     spending the free-tier request budget
+#
+# The redirect page makes no API calls, so cph5236.github.io is dropped from
+# ALLOWED_ORIGINS in the same change.
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,29 +32,57 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
+  redirect:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-
-      - run: npm ci
-      - run: npm run build
-        env:
-          VITE_HEAP_SERVER_URL: ${{ secrets.VITE_HEAP_SERVER_URL }}
+      - name: Build redirect page
+        run: |
+          mkdir -p out
+          cat > out/index.html <<'HTML'
+          <!DOCTYPE html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8" />
+              <title>Heap has moved to heapgame.com</title>
+              <link rel="canonical" href="https://heapgame.com/" />
+              <meta name="robots" content="noindex" />
+              <meta http-equiv="refresh" content="0; url=https://heapgame.com/" />
+              <style>
+                body {
+                  margin: 0;
+                  min-height: 100vh;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 14px;
+                  background: #1a1a1a;
+                  color: #c8c8d2;
+                  font-family: monospace;
+                  text-align: center;
+                  padding: 24px;
+                }
+                a { color: #f5a02a; }
+              </style>
+            </head>
+            <body>
+              <p>Heap now lives at <a href="https://heapgame.com/">heapgame.com</a>.</p>
+              <p>Redirecting&hellip;</p>
+              <script>location.replace('https://heapgame.com/');</script>
+            </body>
+          </html>
+          HTML
+          # 404s hit the same redirect, so deep links into the old build still land.
+          cp out/index.html out/404.html
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: out
 
       - id: deployment
         uses: actions/deploy-pages@v4

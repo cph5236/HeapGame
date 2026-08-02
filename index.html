@@ -247,7 +247,9 @@
         <ul class="links">
           <!-- Matches the butler push target in release-itchio.yml (hanlinsoftware/heap). -->
           <li><a href="https://hanlinsoftware.itch.io/heap" target="_blank" rel="noopener">Play on itch.io</a></li>
-          <li><a href="/devlog/">Devlog</a></li>
+          <!-- itch generates this path only once at least one devlog post is
+               published; it 404s on a game with none. -->
+          <li><a href="https://hanlinsoftware.itch.io/heap/devlog" target="_blank" rel="noopener">Devlog</a></li>
         </ul>
       </div>
       <p class="fine">Made by Hanlin Software.</p>
