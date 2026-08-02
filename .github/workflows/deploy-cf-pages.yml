@@ -1,0 +1,53 @@
+name: Deploy to Cloudflare Pages
+
+# Primary web deploy. The GitHub Pages workflow (deploy.yml) is kept running in
+# parallel as a fallback until this is verified against the custom domain; remove
+# it once heapgame.com is serving from Pages.
+#
+# Secrets:
+#   VITE_HEAP_SERVER_URL      — already used by deploy.yml
+#   CLOUDFLARE_ACCOUNT_ID     — already present, shared (an identifier, not a credential)
+#   CLOUDFLARE_API_TOKEN_PAGES — its own token, scoped to "Cloudflare Pages: Edit"
+#
+# Deliberately NOT the existing CLOUDFLARE_API_TOKEN: that one is shared by
+# migrate-d1.yml (D1 edit) and fetch-logs.yml (Analytics Engine read), so adding
+# Pages scope to it would widen what those two workflows could do as a side
+# effect. A separate token keeps each blast radius the size of its job.
+#
+# Unlike the Worker (which deploys via Cloudflare's Git integration), the game
+# client is built here so the build env matches CI exactly and VITE_* secrets
+# stay in GitHub rather than being duplicated into the Cloudflare dashboard.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cf-pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_HEAP_SERVER_URL: ${{ secrets.VITE_HEAP_SERVER_URL }}
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN_PAGES }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=heap --branch=main

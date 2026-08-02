@@ -30,8 +30,9 @@ import {
 } from '../../shared/versionGate';
 
 /** Play Store listing for the production build (matches capacitor.config.ts appId). */
-const ANDROID_APP_ID = 'com.hanlinsoftware.heapgame.app';
-const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${ANDROID_APP_ID}`;
+export const ANDROID_APP_ID = 'com.hanlinsoftware.heapgame.app';
+/** Also used by the web page chrome's install CTA — keep this the single source. */
+export const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${ANDROID_APP_ID}`;
 
 /** This build's version, baked in from package.json by vite.config.ts. */
 export function getClientVersion(): string {
