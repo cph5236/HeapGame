@@ -21,6 +21,8 @@ import { setupGameplayUiCamera, addToGameplayUi } from '../systems/GameplayUiCam
 import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { getPlayerConfig, setTutorialDone, getJoystickSide, getEffectiveControlMode, getEquippedCosmetics, getHatAdjustments } from '../systems/SaveData';
 import { resolveCosmetics } from '../systems/cosmeticsLogic';
+import { resolveTutorialExit } from './tutorialExit';
+import type { HeapParams } from '../../shared/heapTypes';
 import { TutorialDirector, type TutorialStep } from '../systems/TutorialDirector';
 import { TutorialOverlay } from '../ui/TutorialOverlay';
 import { loadGameAssets } from './loadGameAssets';
@@ -469,13 +471,29 @@ export class TutorialScene extends Phaser.Scene {
   private finish(): void {
     setTutorialDone(true);
     this.overlay.hide();
-    // Route into a real run
-    if (this.game.registry.get('heapPolygon')) {
+
+    // Route into a real run. Infinite mode MUST be checked first: HeapSelectScene
+    // stores an empty `heapPolygon` for it, and `[]` is truthy, so the polygon
+    // branch below would otherwise send infinite players into GameScene with no
+    // heap to climb — a blank screen. See resolveTutorialExit for the details.
+    const params = this.game.registry.get('heapParams') as HeapParams | undefined;
+    const exit = resolveTutorialExit({
+      isInfinite:    params?.isInfinite === true,
+      hasPolygon:    !!this.game.registry.get('heapPolygon'),
+      hasActiveHeap: !!this.game.registry.get('activeHeapId'),
+    });
+
+    if (exit.kind === 'start') {
+      this.scene.start(exit.scene);
+      return;
+    }
+    // Catalog still loading. BootScene sets the registry flag and emits the
+    // event together, so check the flag first — the event has usually already
+    // fired by now, and a bare `once` would wait forever.
+    if (this.game.registry.get('heapCatalogReady') === true) {
       this.scene.start('GameScene');
-    } else if (this.game.registry.get('activeHeapId')) {
-      this.game.events.once('heapCatalogReady', () => this.scene.start('GameScene'));
     } else {
-      this.scene.start('MenuScene');
+      this.game.events.once('heapCatalogReady', () => this.scene.start('GameScene'));
     }
   }
 
