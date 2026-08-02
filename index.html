@@ -155,7 +155,16 @@
         color: var(--text);
         z-index: 10;
       }
-      html[data-rails="off"] #install-prompt { display: none; }
+      /* No rails means no dead space to sit in (phones, narrow windows), so the
+         prompt becomes a bottom sheet over the canvas. It only ever appears on
+         the menu after a finished run — never during play — and mobile web is
+         where the CTA matters most, since tapping it installs in one step. */
+      html[data-rails="off"] #install-prompt {
+        left: 12px;
+        right: 12px;
+        bottom: calc(var(--safe-b) + 12px);
+        width: auto;
+      }
       #install-prompt[hidden] { display: none; }
 
       #install-prompt .optout {
@@ -224,7 +233,8 @@
       <div>
         <h2>Elsewhere</h2>
         <ul class="links">
-          <li><a href="https://gamertose.itch.io/heap" target="_blank" rel="noopener">Play on itch.io</a></li>
+          <!-- Matches the butler push target in release-itchio.yml (hanlinsoftware/heap). -->
+          <li><a href="https://hanlinsoftware.itch.io/heap" target="_blank" rel="noopener">Play on itch.io</a></li>
           <li><a href="/devlog/">Devlog</a></li>
         </ul>
       </div>

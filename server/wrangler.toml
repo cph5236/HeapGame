@@ -43,10 +43,20 @@ id = "a507cae477684d78991295b61a54dcc6"
 
 [vars]
 # Comma-separated list of origins allowed to call the API from a browser.
-# Use "*" to allow all (dev only). Tighten to your real production origin(s)
-# before relying on the CORS allowlist as a security layer. Production should be:
-#   ALLOWED_ORIGINS = "https://heap.example.com,capacitor://localhost,https://localhost"
-ALLOWED_ORIGINS = "*"
+# `*` allows all; a `https://*.host.tld` entry matches subdomains (see
+# src/middleware/originAllowlist.ts).
+#
+# Every surface the client is served from must appear here or its API calls
+# fail CORS:
+#   heapgame.com            Cloudflare Pages, the primary web build
+#   cph5236.github.io       GitHub Pages, kept as fallback during cutover
+#   *.hwcdn.net/*.itch.zone itch.io frames HTML5 games from randomized
+#                           per-build subdomains, so these cannot be exact
+#   capacitor://localhost   Android WebView
+#   https://localhost       Android WebView (https scheme variant)
+#   http://localhost:3000   local `npm run dev` against `wrangler dev`, which
+#                           reads this same [vars] block
+ALLOWED_ORIGINS = "https://heapgame.com,https://www.heapgame.com,https://cph5236.github.io,https://*.hwcdn.net,https://*.itch.zone,capacitor://localhost,https://localhost,http://localhost:3000"
 
 # Per-IP rate limits (Workers Rate Limiting API). period must be 10 or 60.
 # limit is tokens per period, counted per Cloudflare datacenter per key (key = client IP).
