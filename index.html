@@ -6,35 +6,246 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <title>Heap</title>
+    <title>Heap — how high can you climb?</title>
+    <meta name="description" content="Heap is a free vertical climbing game built on one shared pile of trash. Every player who falls leaves an item behind, and everyone else climbs what they left. Play free in your browser." />
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      :root {
+        --safe-t: env(safe-area-inset-top, 0px);
+        --safe-b: env(safe-area-inset-bottom, 0px);
+        /* Single source for the portrait column width — #game and the dead-space
+           rails either side are both derived from it. */
+        --game-w: min(100vw, calc((100dvh - var(--safe-t) - var(--safe-b)) * 0.75));
+        --rail-w: calc((100vw - var(--game-w)) / 2);
+
+        --bg:      #1a1a1a;
+        --panel:   #20202a;
+        --line:    #33333f;
+        --text:    #c8c8d2;
+        --muted:   #7a7a88;
+        --accent:  #f5a02a;
+        --accent-2:#6ee7a0;
+      }
+
       html, body {
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: #1a1a1a;
+        background: var(--bg);
       }
+
       #game {
         position: fixed;
-        top: env(safe-area-inset-top, 0px);
-        bottom: env(safe-area-inset-bottom, 0px);
+        top: var(--safe-t);
+        bottom: var(--safe-b);
         left: 50%;
         transform: translateX(-50%);
         /* Scale as wide as possible up to a 3:4 (width:height) cap */
-        width: min(
-          100vw,
-          calc((100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * 0.75)
-        );
+        width: var(--game-w);
       }
       canvas {
         display: block;
         touch-action: none;
       }
+
+      /* ── Page chrome ────────────────────────────────────────────────────────
+         Rails fill the dead space either side of the portrait column on desktop.
+         Hidden by default and enabled by web/pageChrome.ts once it has measured
+         the space — so they never flash in on phones or inside the itch.io frame. */
+      .rail { display: none; }
+
+      html[data-rails="on"] .rail {
+        display: flex;
+        flex-direction: column;
+        /* `safe` so tall content still scrolls from the top rather than
+           overflowing past the scroll origin, which plain `center` would do. */
+        justify-content: safe center;
+        gap: 26px;
+        position: fixed;
+        top: var(--safe-t);
+        bottom: var(--safe-b);
+        width: var(--rail-w);
+        padding: 34px clamp(16px, 2.2vw, 30px);
+        overflow-y: auto;
+        font-family: monospace;
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.65;
+        scrollbar-width: thin;
+        scrollbar-color: var(--line) transparent;
+      }
+      html[data-rails="on"] .rail-left  { left: 0;  align-items: flex-end;   text-align: right; }
+      html[data-rails="on"] .rail-right { right: 0; align-items: flex-start; text-align: left;  }
+
+      .rail > * { max-width: 320px; width: 100%; }
+
+      .rail h1,
+      .rail h2,
+      #install-prompt h2 {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 12px;
+      }
+
+      .tagline {
+        font-size: 15px;
+        line-height: 1.5;
+        color: #e8e8ef;
+      }
+      .tagline em { color: var(--accent); font-style: normal; }
+
+      .step { margin-bottom: 14px; }
+      .step b {
+        display: block;
+        color: var(--accent-2);
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        font-size: 11px;
+        text-transform: uppercase;
+      }
+      .step span { color: var(--muted); }
+
+      .card {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        padding: 18px;
+      }
+
+      .cta {
+        display: block;
+        margin-top: 14px;
+        padding: 12px 14px;
+        border: 1px solid var(--accent);
+        color: var(--accent);
+        background: transparent;
+        font-family: monospace;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        text-align: center;
+        text-decoration: none;
+        cursor: pointer;
+        transition: background 120ms ease, color 120ms ease;
+      }
+      .cta:hover { background: var(--accent); color: #16161c; }
+
+      .links { list-style: none; }
+      .links li { margin-bottom: 7px; }
+      .links a { color: var(--muted); text-decoration: none; border-bottom: 1px solid transparent; }
+      .links a:hover { color: var(--text); border-bottom-color: var(--line); }
+
+      .fine { color: var(--muted); font-size: 11px; line-height: 1.6; }
+
+      /* Install prompt — anchored in the right rail, never over the canvas. */
+      #install-prompt {
+        position: fixed;
+        right: clamp(16px, 2.2vw, 30px);
+        bottom: calc(var(--safe-b) + 28px);
+        width: min(300px, calc(var(--rail-w) - 32px));
+        border: 1px solid var(--accent);
+        background: var(--panel);
+        padding: 18px;
+        font-family: monospace;
+        font-size: 13px;
+        color: var(--text);
+        z-index: 10;
+      }
+      html[data-rails="off"] #install-prompt { display: none; }
+      #install-prompt[hidden] { display: none; }
+
+      #install-prompt .optout {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 14px;
+        color: var(--muted);
+        font-size: 11px;
+        cursor: pointer;
+      }
+      #install-prompt .dismiss {
+        margin-top: 10px;
+        width: 100%;
+        padding: 7px;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--muted);
+        font-family: monospace;
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+      #install-prompt .dismiss:hover { color: var(--text); border-color: var(--muted); }
     </style>
   </head>
   <body>
+    <aside class="rail rail-left">
+      <div>
+        <h1>Heap</h1>
+        <p class="tagline">A shared pile of trash.<br /><em>Everybody climbs it.</em></p>
+      </div>
+      <div>
+        <h2>How it works</h2>
+        <div class="step">
+          <b>Climb</b>
+          <span>Scale a mountain of junk. How high you get is your score.</span>
+        </div>
+        <div class="step">
+          <b>Leave something</b>
+          <span>Where you fall, you drop an item. It stays in the world.</span>
+        </div>
+        <div class="step">
+          <b>One heap</b>
+          <span>Every player climbs the same pile. The ladder at 400m was
+            put there by someone else.</span>
+        </div>
+      </div>
+      <p class="fine">The heap only grows. Nothing you add is ever removed.</p>
+    </aside>
+
     <div id="game"></div>
+
+    <aside class="rail rail-right">
+      <div class="card">
+        <h2>Get the app</h2>
+        <p class="fine">
+          Free either way. The Android build adds leaderboards, achievements and
+          cloud saves so your climb follows you.
+        </p>
+        <!-- TODO: swap for the official Google Play badge asset before launch —
+             Play brand guidelines require it for store links. -->
+        <a class="cta" data-play-link href="#" target="_blank" rel="noopener">Get it on Google Play</a>
+      </div>
+      <div>
+        <h2>Elsewhere</h2>
+        <ul class="links">
+          <li><a href="https://gamertose.itch.io/heap" target="_blank" rel="noopener">Play on itch.io</a></li>
+          <li><a href="/devlog/">Devlog</a></li>
+        </ul>
+      </div>
+      <p class="fine">Made by Hanlin Software.</p>
+    </aside>
+
+    <div id="install-prompt" hidden>
+      <h2>Take the heap with you</h2>
+      <p class="fine">
+        Your progress lives on this browser only. The Android build keeps it
+        synced, with leaderboards and achievements.
+      </p>
+      <a class="cta" data-play-link href="#" target="_blank" rel="noopener">Get it on Google Play</a>
+      <label class="optout">
+        <input type="checkbox" id="install-prompt-optout" />
+        Don't show this again
+      </label>
+      <button class="dismiss" id="install-prompt-dismiss" type="button">Close</button>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/web/pageChromeEntry.ts"></script>
   </body>
 </html>

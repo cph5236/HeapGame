@@ -32,6 +32,7 @@ import { bottomButtonLayout, bottomButtonRowY, podiumSlots, PODIUM_CENTER_AVATAR
 import { composeAvatar } from '../ui/avatar';
 import { getPlayConsoleId, LEADERBOARD_HIGH_SCORE_ID } from '../data/achievementDefs';
 import { markRunEnded } from '../systems/dailyRunGate';
+import { notifyRunFinished } from '../web/hostEvents';
 
 
 /** Top-N entries shown as podium boxes (the avatar-showcase spots). */
@@ -1192,6 +1193,9 @@ export class ScoreScene extends Phaser.Scene {
       this.commitCoins();
       if (this._isAdRun && !this._rewardedWatched) AdClient.showInterstitial();
       this.scene.stop(this._heapParams.isInfinite ? 'InfiniteGameScene' : 'GameScene');
+      // Cue for the browser page chrome's install prompt; no-op in the Android
+      // WebView and inside the itch.io frame. See web/pageChrome.ts.
+      notifyRunFinished();
       this.scene.start('MenuScene');
     };
 
