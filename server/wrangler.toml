@@ -49,14 +49,16 @@ id = "a507cae477684d78991295b61a54dcc6"
 # Every surface the client is served from must appear here or its API calls
 # fail CORS:
 #   heapgame.com            Cloudflare Pages, the primary web build
-#   cph5236.github.io       GitHub Pages, kept as fallback during cutover
 #   *.hwcdn.net/*.itch.zone itch.io frames HTML5 games from randomized
 #                           per-build subdomains, so these cannot be exact
 #   capacitor://localhost   Android WebView
 #   https://localhost       Android WebView (https scheme variant)
 #   http://localhost:3000   local `npm run dev` against `wrangler dev`, which
 #                           reads this same [vars] block
-ALLOWED_ORIGINS = "https://heapgame.com,https://www.heapgame.com,https://cph5236.github.io,https://*.hwcdn.net,https://*.itch.zone,capacitor://localhost,https://localhost,http://localhost:3000"
+#
+# cph5236.github.io was removed when GitHub Pages became a redirect-only page
+# (see .github/workflows/deploy.yml) — it no longer makes API calls.
+ALLOWED_ORIGINS = "https://heapgame.com,https://www.heapgame.com,https://*.hwcdn.net,https://*.itch.zone,capacitor://localhost,https://localhost,http://localhost:3000"
 
 # Per-IP rate limits (Workers Rate Limiting API). period must be 10 or 60.
 # limit is tokens per period, counted per Cloudflare datacenter per key (key = client IP).
