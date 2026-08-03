@@ -1103,7 +1103,18 @@ export class MenuScene extends Phaser.Scene {
     // still can't deliver orientation data. startupControlOverride re-asserts the
     // joystick there, and the prompt refreshed below offers the permission grant;
     // without this the player could leave Settings with no working controls.
-    tiltOpt.on('pointerup', () => { ctrlMode = 'tilt'; setControlMode('tilt'); setSessionControlMode(startupControlOverride(im)); paintMode(); refreshTiltPrompt(); });
+    tiltOpt.on('pointerup', () => {
+      ctrlMode = 'tilt';
+      setControlMode('tilt');
+      // Any joystick override left standing here is a capability limit, NOT the
+      // player's choice — they just picked Tilt. Marking it auto is what lets
+      // clearAutoControlOverride() hand tilt back the instant data arrives;
+      // without that flag the player stays pinned to the joystick all session.
+      const override = startupControlOverride(im);
+      setSessionControlMode(override, { auto: override !== null });
+      paintMode();
+      refreshTiltPrompt();
+    });
     joyOpt.on('pointerup',  () => { ctrlMode = 'joystick'; setControlMode('joystick'); setSessionControlMode(null); paintMode(); refreshTiltPrompt(); });
     leftOpt.on('pointerup',  () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'left'; setJoystickSide('left'); paintSide(); });
     rightOpt.on('pointerup', () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'right'; setJoystickSide('right'); paintSide(); });

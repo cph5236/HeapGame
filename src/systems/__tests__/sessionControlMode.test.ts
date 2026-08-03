@@ -7,6 +7,7 @@ import {
   clearAutoControlOverride,
   resetCacheForTests,
 } from '../SaveData';
+import { startupControlOverride } from '../tiltAvailability';
 
 // Stub localStorage — vitest runs in the node environment.
 const store: Record<string, string> = {};
@@ -63,6 +64,36 @@ describe('automatic vs explicit session control-mode override', () => {
     setControlMode('joystick');
     clearAutoControlOverride();
     expect(getEffectiveControlMode()).toBe('joystick');
+  });
+
+  // Mirrors MenuScene's Settings → "Tilt" handler. Picking Tilt while permission
+  // is still pending must leave a REVOCABLE joystick override: the player has
+  // expressed a tilt preference, so the joystick is only standing in until the
+  // hardware proves itself. Marking it non-auto would pin them for the session.
+  it('Settings → Tilt while pending leaves an override that data can lift', () => {
+    const pendingIos = {
+      isMobile: true, requiresPermissionGesture: true,
+      tiltPermissionGranted: false, tiltPermissionBlocked: false,
+    };
+    setControlMode('tilt');
+    const override = startupControlOverride(pendingIos);
+    setSessionControlMode(override, { auto: override !== null });
+    expect(getEffectiveControlMode()).toBe('joystick');
+
+    clearAutoControlOverride(); // first orientation reading arrives
+    expect(getEffectiveControlMode()).toBe('tilt');
+  });
+
+  it('Settings → Tilt on an authorized device applies no override at all', () => {
+    const android = {
+      isMobile: true, requiresPermissionGesture: false,
+      tiltPermissionGranted: true, tiltPermissionBlocked: false,
+    };
+    setControlMode('tilt');
+    const override = startupControlOverride(android);
+    setSessionControlMode(override, { auto: override !== null });
+    expect(override).toBeNull();
+    expect(getEffectiveControlMode()).toBe('tilt');
   });
 
   it('clearing via setSessionControlMode(null) also drops the auto flag', () => {
