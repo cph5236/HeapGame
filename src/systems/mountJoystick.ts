@@ -3,6 +3,7 @@ import { InputManager } from './InputManager';
 import { JoystickController } from './JoystickController';
 import { Player } from '../entities/Player';
 import { getEffectiveControlMode, getJoystickSide } from './SaveData';
+import { mountableControlMode } from './tiltAvailability';
 import { logicalWidth, logicalHeight } from './displayMetrics';
 import { addToGameplayUi } from './GameplayUiCamera';
 import { JOYSTICK_RADIUS, JOYSTICK_MARGIN, DASH_BUTTON_RADIUS, HUD_PLACE_W, HUD_PLACE_H, HUD_PLACE_GAP } from '../constants';
@@ -29,7 +30,11 @@ export function mountJoystick(
   // InputManager persists across scenes, so this both ACTIVATES joystick gating
   // (gamma tilt + window gestures off) and RESETS to tilt when switched back.
   // Without this the saved/effective mode never reaches the live input system.
-  const mode = getEffectiveControlMode();
+  //
+  // mountableControlMode is the last line of defence: it downgrades tilt to the
+  // joystick on mobile whenever tilt isn't authorized, so no scene can ever mount
+  // zero controls (see systems/tiltAvailability.ts).
+  const mode = mountableControlMode(getEffectiveControlMode(), im);
   im.setControlMode(mode);
   if (mode !== 'joystick') return null;
 

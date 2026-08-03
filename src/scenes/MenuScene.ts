@@ -3,7 +3,8 @@ import Phaser from 'phaser';
 
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { AudioManager } from '../systems/AudioManager';
-import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getEffectivePlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode, getEquippedCosmetics, getHatAdjustments, getCustomizeHintSeen } from '../systems/SaveData';
+import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getEffectivePlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode, getEquippedCosmetics, getHatAdjustments, getCustomizeHintSeen } from '../systems/SaveData';
+import { tiltPromptKind, mountableControlMode, startupControlOverride, isTiltPendingPermission } from '../systems/tiltAvailability';
 import { composeAvatar } from '../ui/avatar';
 import { redeemCode, type RedeemResult } from '../systems/CodeClient';
 import { syncSaveToCloud } from '../systems/cloudSave';
@@ -687,14 +688,27 @@ export class MenuScene extends Phaser.Scene {
       strokeThickness: 2,
     }).setOrigin(0.5).setAlpha(0).setDepth(9);
 
-    if (im.isMobile && !im.tiltPermissionGranted) {
-      if (im.tiltPermissionBlocked) {
-        // Cross-origin iframe (e.g. itch.io): the iOS tilt-permission dialog can never
-        // appear, so don't offer it. Auto-use the joystick and explain why.
-        this.fallbackToJoystick(
+    // The joystick is already the active mode whenever tilt is pending permission
+    // (settled in main.ts before any scene starts), so this only decides which
+    // affordance to surface — never whether the player can move.
+    const promptKind = tiltPromptKind(im, getControlMode());
+    if (promptKind === 'blocked') {
+      // Cross-origin iframe (e.g. itch.io): the tilt-permission dialog can never
+      // appear, so don't offer it. Explain why the joystick is on instead — but
+      // only once per session, or it re-fires on every return to the menu.
+      if (!this.registry.get('tiltBlockedNoticeShown')) {
+        this.registry.set('tiltBlockedNoticeShown', true);
+        this.showControlNotice(
           'Joystick controls enabled — your browser blocks tilt steering. Change controls in Settings.',
         );
-      } else {
+      }
+    } else if (isTiltPendingPermission(im) && !im.tiltPermissionBlocked) {
+      // Build the prompt whenever a grant is still reachable — INDEPENDENT of the
+      // saved preference. Visibility is what the preference gates. Tying existence
+      // to it would strand a player who saved 'joystick' (e.g. as a workaround for
+      // this very bug): Settings → Tilt calls refreshTiltPrompt(), which can only
+      // reveal a container that already exists.
+      {
         const cx = logicalWidth(this) / 2;
         const mkBtn = (y: number, label: string, bg: string, color: string) =>
           this.add.text(cx, y, label, {
@@ -710,28 +724,40 @@ export class MenuScene extends Phaser.Scene {
         const keepBtn   = mkBtn(logicalHeight(this) - 66,  'Keep Joystick Controls', '#1a1a2e', '#cccccc');
 
         enableBtn.on('pointerup', () => {
+          this.registry.set('tiltPromptAnswered', true);
           im.requestTiltPermission().then((granted) => {
             this.setTiltPromptVisible(false);
-            // iOS: if permission was blocked, or granted but no orientation data
-            // arrives, fall back to the joystick.
-            if (!granted) { this.fallbackToJoystick(); return; }
+            if (!granted) {
+              this.showControlNotice('Tilt unavailable — joystick controls enabled. Change controls in Settings.');
+              return;
+            }
+            // Deliberately do NOT switch to tilt here. The automatic override
+            // lifts itself the instant a real orientation reading arrives
+            // (InputManager.onFirstTiltData). If none ever does, the joystick
+            // simply stays — so a player who taps START RUN before the check
+            // completes can never end up in a scene with dead controls.
             this.time.delayedCall(TILT_WATCHDOG_MS, () => {
-              if (getEffectiveControlMode() === 'tilt' && !im.tiltDataReceived) this.fallbackToJoystick();
+              if (im.tiltDataReceived) return;
+              this.showControlNotice('Tilt unavailable — joystick controls enabled. Change controls in Settings.');
             });
           });
         });
 
         keepBtn.on('pointerup', () => {
-          // Explicit dismiss: switch to the joystick for this session only (saved pref
-          // untouched) and hide the prompt. No "unavailable" toast — this is a choice.
-          setSessionControlMode('joystick');
+          // Explicit dismiss: the joystick is already the active mode, so this only
+          // hides the prompt. No "unavailable" toast — this is a choice, not a failure.
+          this.registry.set('tiltPromptAnswered', true);
           this.setTiltPromptVisible(false);
         });
 
         const container = this.add.container(0, 0, [enableBtn, keepBtn]).setDepth(9).setAlpha(0);
         this.tweens.add({ targets: container, alpha: 1, duration: 300, delay: 2000 });
         this.tiltPrompt = container;
-        this.setTiltPromptVisible(getEffectiveControlMode() === 'tilt');
+        // Offer it only until the player answers once — after that it is reachable
+        // on demand via Settings → Tilt, rather than re-asking on every menu visit.
+        this.setTiltPromptVisible(
+          promptKind === 'permission' && this.registry.get('tiltPromptAnswered') !== true,
+        );
       }
     }
 
@@ -750,12 +776,15 @@ export class MenuScene extends Phaser.Scene {
   }
 
   /** On mobile in tilt mode, auto-fall back to the joystick if device-tilt never
-   *  delivers data (no gyro, or a sandbox like iOS inside itch.io's cross-origin
-   *  iframe). iOS waits for the permission tap (handled on the prompt button);
-   *  Android / already-granted devices are checked after a short grace period. */
+   *  delivers data — a device that reports a gyro but stays silent. Tilt that is
+   *  merely awaiting an iOS permission grant is already on the joystick and needs
+   *  no watchdog; this covers the case where the mode is live but the data isn't. */
   private startTiltWatchdog(im: InputManager): void {
+    // No mode guard for pending permission is needed: tilt that can't deliver data
+    // is already overridden to joystick at startup, so this returns on the first
+    // check. It arms only when tilt is genuinely live (Android, or iOS post-grant),
+    // which is exactly when a silent no-gyro device must still be caught.
     if (!im.isMobile || getEffectiveControlMode() !== 'tilt') return;
-    if (im.requiresPermissionGesture && !im.tiltPermissionGranted) return; // iOS: driven by the prompt
     this.time.delayedCall(TILT_WATCHDOG_MS, () => {
       if (getEffectiveControlMode() === 'tilt' && !im.tiltDataReceived) this.fallbackToJoystick();
     });
@@ -769,6 +798,11 @@ export class MenuScene extends Phaser.Scene {
     if (getEffectiveControlMode() === 'joystick') return;
     setSessionControlMode('joystick');
     this.setTiltPromptVisible(false);
+    this.showControlNotice(message);
+  }
+
+  /** Briefly surface a controls message just above the bottom of the menu. */
+  private showControlNotice(message: string): void {
     const notice = this.add.text(logicalWidth(this) / 2, logicalHeight(this) - 94,
       message, {
         fontSize: '15px', color: '#ffd070', stroke: '#000000', strokeThickness: 2,
@@ -1048,7 +1082,9 @@ export class MenuScene extends Phaser.Scene {
       joyOpt.setColor(ctrlMode === 'joystick' ? '#ffffff' : '#888888').setBackgroundColor(ctrlMode === 'joystick' ? '#2244aa' : '#1a1a2e').setFontStyle(ctrlMode === 'joystick' ? 'bold' : 'normal');
       const sideDim = ctrlMode !== 'joystick';
       [sideLabel, leftOpt, rightOpt].forEach(o => o.setAlpha(sideDim ? 0.4 : 1));
-      ctrlHint.setText(controlHelpLines(im.isMobile, ctrlMode).join('\n'));
+      // The toggle shows the player's CHOICE; the hint must describe the controls
+      // actually on screen, which differ while tilt is awaiting its permission grant.
+      ctrlHint.setText(controlHelpLines(im.isMobile, mountableControlMode(ctrlMode, im)).join('\n'));
     };
     const paintSide = () => {
       leftOpt.setColor(ctrlSide === 'left' ? '#ffffff' : '#888888').setBackgroundColor(ctrlSide === 'left' ? '#2244aa' : '#1a1a2e').setFontStyle(ctrlSide === 'left' ? 'bold' : 'normal');
@@ -1059,14 +1095,15 @@ export class MenuScene extends Phaser.Scene {
     // Toggling mode also refreshes the tilt prompt behind the panel (it only
     // applies to tilt mode, and only when the device hasn't granted permission).
     const refreshTiltPrompt = () => {
-      const im2 = InputManager.getInstance();
-      this.setTiltPromptVisible(
-        ctrlMode === 'tilt' && im2.isMobile && !im2.tiltPermissionGranted && !im2.tiltPermissionBlocked,
-      );
+      this.setTiltPromptVisible(tiltPromptKind(InputManager.getInstance(), ctrlMode) === 'permission');
     };
 
-    // An explicit choice clears any auto-fallback session override (it wins).
-    tiltOpt.on('pointerup', () => { ctrlMode = 'tilt'; setControlMode('tilt'); setSessionControlMode(null); paintMode(); refreshTiltPrompt(); });
+    // An explicit choice clears any auto-fallback session override (it wins) — but
+    // picking Tilt saves the PREFERENCE without making it active on a device that
+    // still can't deliver orientation data. startupControlOverride re-asserts the
+    // joystick there, and the prompt refreshed below offers the permission grant;
+    // without this the player could leave Settings with no working controls.
+    tiltOpt.on('pointerup', () => { ctrlMode = 'tilt'; setControlMode('tilt'); setSessionControlMode(startupControlOverride(im)); paintMode(); refreshTiltPrompt(); });
     joyOpt.on('pointerup',  () => { ctrlMode = 'joystick'; setControlMode('joystick'); setSessionControlMode(null); paintMode(); refreshTiltPrompt(); });
     leftOpt.on('pointerup',  () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'left'; setJoystickSide('left'); paintSide(); });
     rightOpt.on('pointerup', () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'right'; setJoystickSide('right'); paintSide(); });

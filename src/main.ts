@@ -18,6 +18,8 @@ import { WORLD_GRAVITY_Y } from './constants';
 import { installAudioFocusGuard } from './systems/AudioFocusGuard';
 import { InputManager } from './systems/InputManager';
 import { getDprCap, applyCameraZoom } from './systems/displayMetrics';
+import { startupControlOverride } from './systems/tiltAvailability';
+import { setSessionControlMode, clearAutoControlOverride } from './systems/SaveData';
 
 // HiDPI text crispening. The physical canvas (css × DPRcap backing store) is
 // paired with camera zoom = DPRcap so logical content fills the physical pixels.
@@ -89,12 +91,36 @@ const config: Phaser.Types.Core.GameConfig = {
   parent: 'game',
 };
 
+const inputManager = InputManager.getInstance();
+
+// iOS 13+ withholds device-orientation until a user gesture grants it, so tilt
+// cannot work on first load. A first-time player boots straight into
+// TutorialScene and never passes through MenuScene's tilt prompt, which would
+// leave them in tilt mode with no usable orientation data and no joystick —
+// i.e. no movement input at all. The override is session-only, so the player's
+// saved preference is never overwritten.
+//
+// This MUST run BEFORE `new Phaser.Game()`: Phaser's DOMContentLoaded helper
+// invokes its boot callback SYNCHRONOUSLY when document.readyState is already
+// 'interactive'/'complete', which is always the case for a deferred ES module.
+// Settling the mode after construction would race the first scene's create().
+const startupMode = startupControlOverride(inputManager);
+if (startupMode) {
+  setSessionControlMode(startupMode, { auto: true });
+  // Precautionary, not final: a permission gate existing doesn't prove data is
+  // being withheld (Chrome 151+ ships the gate on Android but defaults it to
+  // ALLOW). The instant a real orientation reading arrives, tilt is proven and
+  // the saved preference is restored — which happens during LoadingScene, long
+  // before any scene mounts controls. Explicit player choices are never undone.
+  inputManager.onFirstTiltData = clearAutoControlOverride;
+}
+
 const game = new Phaser.Game(config);
 installAudioFocusGuard();
 
 // Let InputManager map touch coords (page space) into game space so it can
 // hit-test on-screen button zones and swallow those taps (no accidental jump).
-InputManager.getInstance().attachScreenTransform(game.scale);
+inputManager.attachScreenTransform(game.scale);
 
 // Dev-only: expose the game instance for scene-preview / debugging tooling.
 if (import.meta.env.DEV && typeof window !== 'undefined') {
