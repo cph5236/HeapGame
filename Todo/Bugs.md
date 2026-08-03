@@ -16,6 +16,5 @@ CAT hat is bugged and needs new art
 # Enemies
 
 # Admin
-CORS has locked ADMIN UI out 
 
 # Gameplay

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
+    "admin": "vite --config admin/vite.config.ts",
     "build": "tsc && vite build",
     "build:android": "tsc && VITE_AD_PROVIDER=admob vite build && cap sync",
     "preview": "vite preview",
