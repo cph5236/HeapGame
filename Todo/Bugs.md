@@ -6,7 +6,7 @@
 CAT hat is bugged and needs new art
 
 # Mobile
-TIlting so far left sometimes makes player move right? havent run into this while tilting to the right but may also still happen. 
+
 
 # Web
 
