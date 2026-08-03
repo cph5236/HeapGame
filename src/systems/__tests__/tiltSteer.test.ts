@@ -63,9 +63,7 @@ describe('ordinary portrait holds still steer the way they used to', () => {
   it.each([40, 55, 70])('pitch %i: left tilts read negative, right positive', (pitch) => {
     for (const steer of [-30, -15, 15, 30]) {
       const { beta, gamma } = report(hold(pitch, steer));
-      const out = screenSteerDeg(beta, gamma);
-      expect(out).not.toBeNull();
-      expect(Math.sign(out!)).toBe(Math.sign(steer));
+      expect(Math.sign(screenSteerDeg(beta, gamma))).toBe(Math.sign(steer));
     }
   });
 
@@ -73,7 +71,7 @@ describe('ordinary portrait holds still steer the way they used to', () => {
     const { beta, gamma } = report(hold(45, -20));
     // Screen-plane lean, not the body-axis roll, so it is damped by the hold angle
     // rather than equal to it -- but it must carry the same sign and rough scale.
-    const out = screenSteerDeg(beta, gamma)!;
+    const out = screenSteerDeg(beta, gamma);
     expect(Math.sign(out)).toBe(Math.sign(gamma));
     expect(Math.abs(out)).toBeGreaterThan(5);
   });
@@ -96,15 +94,15 @@ describe('screen facing down — the reported bug', () => {
 
   it('screenSteerDeg reports the physically correct direction', () => {
     const { beta, gamma } = report(overheadRightEdgeDown);
-    expect(Math.sign(screenSteerDeg(beta, gamma)!)).toBe(1); // right, matching physics
+    expect(Math.sign(screenSteerDeg(beta, gamma))).toBe(1); // right, matching physics
   });
 
   it('holds across a sweep of screen-down poses', () => {
     for (let beta = 100; beta <= 180; beta += 10) {
       for (const steer of [-25, 25]) {
         const R = specMatrix(0, beta, steer);
-        const out = screenSteerDeg(...Object.values(report(R)) as [number, number]);
-        if (out === null) continue;
+        const reported = report(R);
+        const out = screenSteerDeg(reported.beta, reported.gamma);
         // Physics: right edge lower (negative height) must steer right (positive).
         expect(Math.sign(out)).toBe(-Math.sign(rightEdgeHeight(R)));
       }
@@ -127,9 +125,7 @@ describe('no discontinuity as the roll passes 90 degrees', () => {
     let prev = sample(-75);
     for (let s = -75.5; s >= -105; s -= 0.5) {
       const cur = sample(s);
-      if (prev.steer !== null && cur.steer !== null) {
-        maxSteerJump = Math.max(maxSteerJump, Math.abs(cur.steer - prev.steer));
-      }
+      maxSteerJump = Math.max(maxSteerJump, Math.abs(cur.steer - prev.steer));
       maxGammaJump = Math.max(maxGammaJump, Math.abs(cur.gamma - prev.gamma));
       prev = cur;
     }
@@ -146,7 +142,7 @@ describe('near-vertical holds are no longer hypersensitive', () => {
     const R = mul(Rx(90 * D), Rz(30 * D));
     const { beta, gamma } = report(R);
     expect(Math.abs(gamma)).toBeCloseTo(90, 3);            // gamma is pegged
-    expect(Math.abs(screenSteerDeg(beta, gamma)!)).toBeCloseTo(30, 3); // steer is honest
+    expect(Math.abs(screenSteerDeg(beta, gamma))).toBeCloseTo(30, 3); // steer is honest
   });
 });
 
@@ -167,7 +163,7 @@ describe('flat holds keep behaving exactly as they did before', () => {
 describe('screen orientation compensation', () => {
   it('angle 0 leaves portrait steering untouched', () => {
     const { beta, gamma } = report(hold(50, -20));
-    expect(screenSteerDeg(beta, gamma, 0)).toBeCloseTo(screenSteerDeg(beta, gamma)!, 12);
+    expect(screenSteerDeg(beta, gamma, 0)).toBeCloseTo(screenSteerDeg(beta, gamma), 12);
   });
 
   it('in landscape, left/right follow the SCREEN, not the device', () => {
@@ -177,12 +173,12 @@ describe('screen orientation compensation', () => {
     const R = mul(Rx(-50 * D), Rz(0));      // beta < 0 => device +y edge is lower
     const { beta, gamma } = report(R);
     expect(R[2][1]).toBeLessThan(0);         // device +y edge IS lower
-    expect(screenSteerDeg(beta, gamma, 90)!).toBeGreaterThan(0); // ...steers right
+    expect(screenSteerDeg(beta, gamma, 90)).toBeGreaterThan(0); // ...steers right
   });
 
   it('opposite landscape mirrors it', () => {
     const R = mul(Rx(-50 * D), Rz(0));
     const { beta, gamma } = report(R);
-    expect(screenSteerDeg(beta, gamma, 270)!).toBeLessThan(0);
+    expect(screenSteerDeg(beta, gamma, 270)).toBeLessThan(0);
   });
 });

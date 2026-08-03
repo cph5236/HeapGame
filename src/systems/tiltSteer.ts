@@ -74,6 +74,14 @@ export function screenSteerDeg(
   // Rotate the in-plane part of gravity from device axes into screen axes, then
   // take the screen's horizontal component: how far its right edge hangs below
   // level. asin turns that back into the angle the old constants are tuned in.
+  //
+  // Convention assumed here: at angle 90 the device's natural top edge (+y) points
+  // to the viewer's right, so the screen's right edge is the device's +y edge. That
+  // matches the Z-axis correction three.js applies, and is self-consistent with the
+  // tests, but has NOT been confirmed against a real browser in landscape. It only
+  // affects the web build — Android is portrait-locked — and at angle 0 (every
+  // portrait case) the rotation is the identity, so the untested path is the
+  // landscape one alone.
   const a  = screenAngleDeg * DEG;
   const sx = g.x * Math.cos(a) + g.y * Math.sin(a);
 
