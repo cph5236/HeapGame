@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Hono } from 'hono';
 import { createApp } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
@@ -95,6 +97,52 @@ describe('CORS allowlist supports subdomain wildcards', () => {
       },
     });
     expect(res.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
+
+// The tests above all pass a hand-written allowlist, so none of them can catch a
+// surface being missing from the value we actually DEPLOY. That is the bug this
+// block exists for: tightening ALLOWED_ORIGINS off `*` silently locked the admin
+// page out, because nothing asserted the deployed list against the real callers.
+describe('the deployed ALLOWED_ORIGINS covers every live surface', () => {
+  const toml = readFileSync(join(__dirname, '..', 'wrangler.toml'), 'utf8');
+
+  /** ALLOWED_ORIGINS from the top-level [vars] block — the production value. */
+  const deployed = (() => {
+    const vars = toml.slice(toml.indexOf('\n[vars]'));
+    const end = vars.indexOf('\n[', 1);
+    const m = (end === -1 ? vars : vars.slice(0, end)).match(/^ALLOWED_ORIGINS\s*=\s*"([^"]*)"/m);
+    if (!m) throw new Error('ALLOWED_ORIGINS not found in the [vars] block of wrangler.toml');
+    return m[1];
+  })();
+
+  async function acao(origin: string): Promise<string | null> {
+    const res = await makeApp(deployed).request('/heaps', {
+      method: 'OPTIONS',
+      headers: { 'Origin': origin, 'Access-Control-Request-Method': 'POST' },
+    });
+    return res.headers.get('access-control-allow-origin');
+  }
+
+  it.each([
+    ['https://heapgame.com',            'Cloudflare Pages, the primary web build'],
+    ['https://www.heapgame.com',        'the www variant'],
+    ['https://v6p9d9t4.ssl.hwcdn.net',  'a randomized itch.io build subdomain'],
+    ['capacitor://localhost',           'the Android WebView'],
+    ['http://localhost:3000',           'npm run dev'],
+    ['http://localhost:3001',           'npm run admin'],
+    ['http://127.0.0.1:3001',           'npm run admin, loopback spelling'],
+  ])('allows %s (%s)', async (origin) => {
+    expect(await acao(origin)).toBe(origin);
+  });
+
+  it.each([
+    ['null',                        'a page opened from file:// — and every sandboxed iframe'],
+    ['https://cph5236.github.io',   'GitHub Pages, now a redirect that makes no API calls'],
+    ['https://heapgame.com.evil.com', 'a suffix-extension lookalike'],
+    ['http://heapgame.com',         'the plaintext downgrade'],
+  ])('still blocks %s (%s)', async (origin) => {
+    expect(await acao(origin)).toBeNull();
   });
 });
 

@@ -55,10 +55,21 @@ id = "a507cae477684d78991295b61a54dcc6"
 #   https://localhost       Android WebView (https scheme variant)
 #   http://localhost:3000   local `npm run dev` against `wrangler dev`, which
 #                           reads this same [vars] block
+#   localhost:3001          `npm run admin` — the admin page is not deployed
+#                           anywhere, so it runs against staging/production
+#                           from the operator's own machine. Both hostname
+#                           spellings are listed because the browser sends
+#                           whichever one is in the address bar.
+#
+# A localhost entry is not a hole in the allowlist: only a page actually served
+# from the operator's machine can send that Origin. This is the same reasoning
+# that already admits :3000, and the admin routes sit behind X-Admin-Secret
+# regardless. What must NOT be added is `null` — the Origin a page opened from
+# file:// sends — since every sandboxed iframe on the web sends it too.
 #
 # cph5236.github.io was removed when GitHub Pages became a redirect-only page
 # (see .github/workflows/deploy.yml) — it no longer makes API calls.
-ALLOWED_ORIGINS = "https://heapgame.com,https://www.heapgame.com,https://*.hwcdn.net,https://*.itch.zone,capacitor://localhost,https://localhost,http://localhost:3000"
+ALLOWED_ORIGINS = "https://heapgame.com,https://www.heapgame.com,https://*.hwcdn.net,https://*.itch.zone,capacitor://localhost,https://localhost,http://localhost:3000,http://localhost:3001,http://127.0.0.1:3001"
 
 # Per-IP rate limits (Workers Rate Limiting API). period must be 10 or 60.
 # limit is tokens per period, counted per Cloudflare datacenter per key (key = client IP).

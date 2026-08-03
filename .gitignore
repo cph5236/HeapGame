@@ -11,6 +11,8 @@ android/**/*.jks
 *.local
 .env
 server/.wrangler
+# Vite dep-optimizer cache for `npm run admin` (kept out of the game's own cache)
+admin/.vite/
 todo/
 .superpowers/
 .worktrees/

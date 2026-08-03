@@ -196,6 +196,34 @@ Without this file, the Android build will compile but Google services (including
 
 ---
 
+## ADMIN UI
+
+```bash
+npm run admin      # http://localhost:3001
+```
+
+`admin/index.html` is one standalone file — inline script, Tailwind from a
+pinned CDN, no build step — and it is deployed nowhere. Pick the target
+environment in the page header; the server URL and per-environment admin secret
+are remembered in `localStorage`.
+
+**It has to be served, not opened from disk.** A page loaded over `file://`
+sends `Origin: null`, and the Worker's CORS allowlist does not accept that (nor
+should it — every sandboxed iframe on the web sends `null` too). Serving it on
+`localhost:3001` gives it a real origin, which is named in `ALLOWED_ORIGINS` in
+[server/wrangler.toml](server/wrangler.toml). Loading it off disk gets you API
+calls that fail CORS against production and against `wrangler dev`, which reads
+that same `[vars]` block; only staging is unaffected, since it still runs `*`.
+
+Note `localStorage` is per-origin, so a secret saved back when the page was
+opened from `file://` will not be visible at `http://localhost:3001` — enter it
+once more.
+
+The port is `strictPort`, so a collision fails loudly rather than sliding onto
+3002 and reappearing as an unexplained CORS error.
+
+---
+
 ## THE Brain PLUGIN
 https://github.com/Advenire-Consulting/thebrain
 
