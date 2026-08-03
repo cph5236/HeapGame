@@ -6,6 +6,9 @@
 CAT hat is bugged and needs new art
 
 # Mobile
+TIlting so far left sometimes makes player move right? havent run into this while tilting to the right but may also still happen. 
+
+# Web
 
 # Scenes
 - Main menu calls out to Daily rewards API every time it loads - this can be reduced with a Next claimable timestamp from the server. 
@@ -13,5 +16,6 @@ CAT hat is bugged and needs new art
 # Enemies
 
 # Admin
+CORS has locked ADMIN UI out 
 
 # Gameplay

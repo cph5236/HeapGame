@@ -720,9 +720,24 @@ export function setJoystickSide(side: 'left' | 'right'): void {
 // iOS inside itch.io's cross-origin iframe), without overwriting the saved pref —
 // so the fallback re-evaluates each launch and an explicit Tilt choice is kept.
 let _sessionControlMode: 'tilt' | 'joystick' | null = null;
+// True while the override was applied automatically (device capability), rather
+// than chosen by the player. Only an automatic override may be auto-revoked.
+let _sessionControlModeIsAuto = false;
 
-export function setSessionControlMode(mode: 'tilt' | 'joystick' | null): void {
+export function setSessionControlMode(
+  mode: 'tilt' | 'joystick' | null, opts?: { auto?: boolean },
+): void {
   _sessionControlMode = mode;
+  _sessionControlModeIsAuto = mode !== null && opts?.auto === true;
+}
+
+/** Drop an AUTOMATIC override, restoring the saved preference. No-op once the
+ *  player has made an explicit choice (Settings toggle, or the tilt prompt), so
+ *  late-arriving sensor data can never undo a deliberate pick of the joystick. */
+export function clearAutoControlOverride(): void {
+  if (!_sessionControlModeIsAuto) return;
+  _sessionControlMode = null;
+  _sessionControlModeIsAuto = false;
 }
 
 /** The control mode in effect right now: the session override if set, else the
@@ -745,6 +760,8 @@ export function setSoundVolume(cat: keyof SoundSettings, v: number): void {
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
-export function resetCacheForTests(): void { _cache = null; _sessionControlMode = null; }
+export function resetCacheForTests(): void {
+  _cache = null; _sessionControlMode = null; _sessionControlModeIsAuto = false;
+}
 export function getLegacyPlacedForTests(): PlacedItemSave[] | undefined { return load()._legacyPlaced; }
 export function getSchemaVersionForTests(): number { return load().schemaVersion; }

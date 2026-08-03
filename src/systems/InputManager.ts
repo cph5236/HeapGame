@@ -83,6 +83,17 @@ export class InputManager {
   private gamma = 0;
   private tiltListenerAttached = false;
 
+  /** Fired once, on the first real orientation reading. Lets the bootstrap undo
+   *  its precautionary joystick override on platforms that expose a permission
+   *  gate but stream sensor data anyway (Chrome 151+ defaults the permission to
+   *  ALLOW), so those players keep the tilt controls they had before. */
+  onFirstTiltData?: () => void;
+
+  /** True when tilt is known to be usable: either no permission gate exists, or
+   *  a grant landed, or real orientation data has already arrived. Callers use
+   *  this to avoid mounting tilt-only controls that could never move the player. */
+  get tiltAuthorized(): boolean { return this.tiltPermissionGranted; }
+
   // Touch state machine
   private touchState: 'idle' | 'tracking' | 'drag' = 'idle';
   private activeTouchId: number | undefined = undefined;
@@ -288,15 +299,29 @@ export class InputManager {
   // ── Private ────────────────────────────────────────────────────────────────
 
   private setupTilt(): void {
+    // Absent outside secure contexts (and in some embedders). Bail rather than
+    // throw a ReferenceError out of the constructor and take the whole game down.
+    if (typeof DeviceOrientationEvent === 'undefined') return;
+
+    // ALWAYS attach, on every platform. Where orientation is ungated the events
+    // start flowing immediately and tilt just works; where it is gated nothing
+    // arrives until permission is granted, and `tiltDataReceived` stays false.
+    // Arriving data is therefore the single source of truth for "tilt works" —
+    // never the mere existence of the permission API. That distinction matters:
+    // Chrome 151 shipped requestPermission() on Android with the permission
+    // DEFAULTING TO ALLOW, so treating the API's presence as "iOS, must ask
+    // first" would strand Android players on the joystick even though their
+    // sensors were streaming the whole time.
+    this.attachTiltListener();
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
-      // iOS 13+ — must wait for user gesture
+      // A permission gate EXISTS (iOS 13+, Chrome 151+). Whether it actually
+      // withholds data is settled by onDeviceOrientation, not assumed here.
       this.requiresPermissionGesture = true;
       // In a cross-origin iframe the gesture grant is blocked outright (no dialog).
       this.tiltPermissionBlocked = isCrossOriginFrame();
     } else {
-      // Android / desktop with tilt — attach immediately
-      this.attachTiltListener();
       this.tiltPermissionGranted = true;
     }
   }
@@ -308,10 +333,14 @@ export class InputManager {
   }
 
   private onDeviceOrientation = (e: DeviceOrientationEvent): void => {
-    if (e.gamma !== null) {
-      this.gamma = e.gamma;
-      this.tiltDataReceived = true;
-    }
+    if (e.gamma === null) return;
+    this.gamma = e.gamma;
+    if (this.tiltDataReceived) return;
+    // First real reading. Data arriving IS proof of authorization, whatever the
+    // permission API claimed — so record it and let listeners promote tilt back.
+    this.tiltDataReceived = true;
+    this.tiltPermissionGranted = true;
+    this.onFirstTiltData?.();
   };
 
   private onTouchStart = (e: TouchEvent): void => {
