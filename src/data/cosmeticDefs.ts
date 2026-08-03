@@ -136,7 +136,7 @@ export const COSMETIC_DEFS: readonly CosmeticDef[] = [
   hat('hat_beret', 'Beret', 600, 0, -26.5, 0, 0.4),
   hat('hat_bunny', 'Bunny Ears', 800, 0.0, -33.0, 0, 0.8),
   hat('hat_captain', "Captain's Cap", 900, 0, -25.0),
-  hat('hat_catears', 'Cat Ears', 800, 0.5, -37.5),
+  hat('hat_catears', 'Cat Ears', 800, -1.0, -25, 0, 1.35),
   hat('hat_fedora', 'Fedora', 700, 0, -26.0),
   hat('hat_fireman', 'Fire Helmet', 800, -3.0, -26),
   hat('hat_pompadour', 'Pompadour', 700, -4.5, -24.0),
