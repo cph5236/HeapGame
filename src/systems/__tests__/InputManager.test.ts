@@ -141,6 +141,41 @@ describe('InputManager — analog tilt', () => {
     expect(im.goLeft).toBe(false);
     expect(im.goRight).toBe(false);
   });
+
+  // Regression: steering used to be mirrored whenever the screen tipped past
+  // horizontal, because gamma's restricted [-90,90) range makes the browser
+  // re-encode those poses with beta flipped and gamma reflected. Tilting left
+  // drove the player right. See tiltSteer.ts.
+  it('does not mirror when the screen faces downward', async () => {
+    const { im, fire } = await makeMobileIM();
+    // Phone held overhead, screen down toward the player, LEFT edge dropped.
+    // The browser reports a positive gamma for this, which the old gamma-only
+    // read would have taken as "steer right".
+    fire('deviceorientation', { beta: 175, gamma: 20 });
+    im.update(16, false);
+    expect(im.goLeft).toBe(true);
+    expect(im.goRight).toBe(false);
+  });
+
+  it('still steers right when the screen faces downward and the right edge drops', async () => {
+    const { im, fire } = await makeMobileIM();
+    fire('deviceorientation', { beta: 175, gamma: -20 });
+    im.update(16, false);
+    expect(im.goRight).toBe(true);
+    expect(im.goLeft).toBe(false);
+  });
+
+  it('a steep upright hold steers by the amount turned, not pegged to full speed', async () => {
+    const { im, fire } = await makeMobileIM();
+    // Upright phone turned 15 degrees in the plane of its own screen. gamma pegs
+    // to -90 here (beta near 90 is the gimbal-lock singularity), which would read
+    // as full-speed left; the real steer is a gentle 15 degrees, inside the ramp.
+    fire('deviceorientation', { beta: 75, gamma: -90 });
+    im.update(16, false);
+    expect(im.goLeft).toBe(true);
+    expect(im.tiltFactor).toBeGreaterThan(-1); // not saturated by the singularity
+    expect(im.tiltFactor).toBeLessThan(0);
+  });
 });
 
 // ── Swipe classifier ──────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import {
   TILT_CURVE_EXP,
 } from '../constants';
 import { getDprCap } from './displayMetrics';
+import { screenSteerDeg } from './tiltSteer';
 
 /** A screen-space rectangle in Phaser game coordinates. */
 export interface ScreenRect { x: number; y: number; w: number; h: number; }
@@ -18,6 +19,18 @@ export interface ScreenRect { x: number; y: number; w: number; h: number; }
 export interface ScreenTransform {
   transformX(pageX: number): number;
   transformY(pageY: number): number;
+}
+
+/** Rotation of the displayed content relative to the device's natural orientation.
+ *  Tilt steering needs it so "left" tracks the screen rather than the phone's body.
+ *  `screen.orientation` is unavailable on older WebKit, where the deprecated
+ *  `window.orientation` is the only source; 0 (portrait) is the safe fallback. */
+function currentScreenAngleDeg(): number {
+  const a = typeof screen !== 'undefined' ? screen.orientation?.angle : undefined;
+  if (typeof a === 'number') return a;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const legacy = (window as any).orientation;
+  return typeof legacy === 'number' ? ((legacy % 360) + 360) % 360 : 0;
 }
 
 /** True when the page runs inside a cross-origin iframe (e.g. itch.io). In that
@@ -79,8 +92,10 @@ export class InputManager {
   // The menu uses this to skip the tilt prompt and auto-enable the joystick instead.
   tiltPermissionBlocked = false;
 
-  // Internal tilt
+  // Internal tilt. Both angles are needed: gamma alone mirrors whenever the screen
+  // tips past horizontal (see tiltSteer.ts), which reads as steering the wrong way.
   private gamma = 0;
+  private beta  = 0;
   private tiltListenerAttached = false;
 
   /** Fired once, on the first real orientation reading. Lets the bootstrap undo
@@ -154,7 +169,11 @@ export class InputManager {
 
     // Compute analog tilt factor and derive binary booleans
     if (this.tiltListenerAttached && this.controlMode === 'tilt') {
-      const g   = this.gamma;
+      // How far the screen's left-right axis is tipped from level, compensated for
+      // the screen's rotation so left/right always mean SCREEN left/right. Reduces
+      // to plain gamma for a flat phone, but stays correct once the screen tips
+      // past horizontal, where gamma alone mirrors.
+      const g   = screenSteerDeg(this.beta, this.gamma, currentScreenAngleDeg());
       const abs = Math.abs(g);
 
       if (abs < TILT_DEAD_ZONE_DEG) {
@@ -335,6 +354,10 @@ export class InputManager {
   private onDeviceOrientation = (e: DeviceOrientationEvent): void => {
     if (e.gamma === null) return;
     this.gamma = e.gamma;
+    // Some sensor stacks report beta as null/absent while still supplying gamma.
+    // Treating that as 0 makes screenSteerDeg collapse to plain gamma — the old
+    // behaviour — rather than dropping tilt control entirely.
+    this.beta  = e.beta ?? 0;
     if (this.tiltDataReceived) return;
     // First real reading. Data arriving IS proof of authorization, whatever the
     // permission API claimed — so record it and let listeners promote tilt back.
