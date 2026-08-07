@@ -42,10 +42,10 @@ export function dailyRoutes(
     if (!guid || guid.length > MAX_GUID_LEN) return c.json({ error: 'invalid request' }, 400);
     const offset = clampOffsetMin(Number(c.req.query('utcOffsetMin')));
 
-    const { table, graceHours } = await loadTuning();
+    const { table, graceHours, minGapHours } = await loadTuning();
     const row = await dailyDb.get(guid);
     const state = row ? { lastClaimAt: row.last_claim_at, streakDay: row.streak_day } : null;
-    return c.json(statusFromState(state, Date.now(), offset, graceHours, table), 200);
+    return c.json(statusFromState(state, Date.now(), offset, graceHours, table, minGapHours), 200);
   });
 
   // ── Claim today's drop (auth-gated, server-authoritative) ────────────────
@@ -102,6 +102,9 @@ export function dailyRoutes(
       rewards,
       streakDay: decision.day,
       nextRewardPreview: grantsForDay(table, decision.day + 1),
+      // Same formula every 409 uses — lets the client cache this claim and
+      // skip the next menu load's /daily/status call.
+      nextEligibleAt: nextEligibleAt(now, offset, minGapHours),
     }, 200);
   });
 

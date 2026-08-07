@@ -27,6 +27,7 @@ export interface DailyClaimSuccess {
   rewards: RewardPayload[];      // array: day 7 grants coins AND an item
   streakDay: number;             // day just claimed (1-7)
   nextRewardPreview: DailyGrant[];
+  nextEligibleAt: number;        // unix ms — lets the client cache "claimed"
 }
 export interface DailyStreakBroken { kind: 'streakBroken'; repairableDay: number }
 export interface DailyNotEligible { kind: 'notEligible'; nextEligibleAt: number } // unix ms
@@ -38,4 +39,8 @@ export interface DailyStatusResponse {
   claimedToday: boolean;    // in the requesting device's local day
   nextClaimDay: number;     // day the next claim grants (1 if streak lapsed)
   todayGrants: DailyGrant[];
+  /** Unix ms the next claim becomes possible. Absent when the player has
+   *  never claimed (claimable right now). Lets the client cache a
+   *  claimed-today snapshot instead of re-fetching on every menu load. */
+  nextEligibleAt?: number;
 }

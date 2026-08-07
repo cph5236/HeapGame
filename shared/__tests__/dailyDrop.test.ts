@@ -155,4 +155,13 @@ describe('statusFromState', () => {
     expect(s.claimedToday).toBe(false);
     expect(s.nextClaimDay).toBe(1);
   });
+  it('reports nextEligibleAt for a claimed player so the client can cache it', () => {
+    const state = { lastClaimAt: T0, streakDay: 2 };
+    const s = statusFromState(state, T0 + 1 * H, -240, DEFAULT_GRACE_HOURS, DEFAULT_DAILY_REWARDS, 10);
+    expect(s.nextEligibleAt).toBe(nextEligibleAt(T0, -240, 10));
+  });
+  it('omits nextEligibleAt for a never-claimed player (claimable now)', () => {
+    const s = statusFromState(null, T0, -240, DEFAULT_GRACE_HOURS, DEFAULT_DAILY_REWARDS, 10);
+    expect(s.nextEligibleAt).toBeUndefined();
+  });
 });
