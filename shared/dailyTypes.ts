@@ -39,8 +39,11 @@ export interface DailyStatusResponse {
   claimedToday: boolean;    // in the requesting device's local day
   nextClaimDay: number;     // day the next claim grants (1 if streak lapsed)
   todayGrants: DailyGrant[];
-  /** Unix ms the next claim becomes possible. Absent when the player has
-   *  never claimed (claimable right now). Lets the client cache a
+  /** Unix ms the claim after `streakDay` became/becomes possible. Absent only
+   *  when the player has never claimed. **Presence does not mean "locked out"**
+   *  — for a player who is eligible again (new local day, or a lapsed streak)
+   *  this instant is in the past, so any countdown UI must check it against
+   *  `claimedToday` rather than rendering it blind. Lets the client cache a
    *  claimed-today snapshot instead of re-fetching on every menu load. */
   nextEligibleAt?: number;
 }
