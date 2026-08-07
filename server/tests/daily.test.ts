@@ -39,6 +39,8 @@ describe('POST /daily/claim', () => {
     expect(body.streakDay).toBe(1);
     expect(body.rewards).toEqual([{ rewardType: 'coins', rewardAmount: 50 }]);
     expect(body.nextRewardPreview).toEqual([{ type: 'coins', amount: 75 }]);
+    // Claimed 10pm NY: the 10h min gap outlasts the 2h-away local midnight.
+    expect(body.nextEligibleAt).toBe(T0 + 10 * H);
   });
 
   it('second claim the same local day is 409 notEligible with nextEligibleAt', async () => {
@@ -176,6 +178,23 @@ describe('GET /daily/status', () => {
     const app = makeApp();
     const res = await app.request('/daily/status?utcOffsetMin=0');
     expect(res.status).toBe(400);
+  });
+
+  it('reports nextEligibleAt after a claim so the client can skip the next call', async () => {
+    const app = makeApp();
+    await claim(app, 'p1', NY);
+    const body = await (await app.request(`/daily/status?playerGuid=p1&utcOffsetMin=${NY}`)).json();
+    // Claimed 10pm NY; the 10h min gap pushes past the 2h-away local midnight.
+    expect(body.nextEligibleAt).toBe(T0 + 10 * H);
+  });
+
+  it('honours a configured min gap in the reported nextEligibleAt', async () => {
+    const cfg = new MockConfigDB();
+    cfg.seed('daily_min_gap_hours', 20);
+    const app = makeApp(new MockDailyDb(), cfg);
+    await claim(app, 'p1', NY);
+    const body = await (await app.request(`/daily/status?playerGuid=p1&utcOffsetMin=${NY}`)).json();
+    expect(body.nextEligibleAt).toBe(T0 + 20 * H);
   });
 });
 

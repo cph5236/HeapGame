@@ -145,6 +145,7 @@ export function statusFromState(
   offsetMin: number,
   graceHours: number,
   table: DailyRewardTable,
+  minGapHours: number = DEFAULT_MIN_GAP_HOURS,
 ): DailyStatusResponse {
   if (!state) {
     return { streakDay: 0, claimedToday: false, nextClaimDay: 1, todayGrants: grantsForDay(table, 1) };
@@ -153,5 +154,11 @@ export function statusFromState(
     localDateKey(nowMs, offsetMin) === localDateKey(state.lastClaimAt, offsetMin);
   const withinGrace = nowMs - state.lastClaimAt <= graceHours * HOUR_MS;
   const nextClaimDay = withinGrace ? (state.streakDay % 7) + 1 : 1;
-  return { streakDay: state.streakDay, claimedToday, nextClaimDay, todayGrants: grantsForDay(table, nextClaimDay) };
+  return {
+    streakDay: state.streakDay,
+    claimedToday,
+    nextClaimDay,
+    todayGrants: grantsForDay(table, nextClaimDay),
+    nextEligibleAt: nextEligibleAt(state.lastClaimAt, offsetMin, minGapHours),
+  };
 }
