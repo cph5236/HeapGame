@@ -25,7 +25,7 @@ import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { openFeedbackOverlay } from './FeedbackOverlay';
 import { fetchDailyStatus } from '../systems/DailyDropClient';
 import { hasPlayedToday, deviceUtcOffsetMin } from '../systems/dailyRunGate';
-import { dailyIconState, shouldAutoShowPopup, type DailyIconState } from '../ui/dailyDropLogic';
+import { dailyIconState, shouldAutoShowPopup, formatCountdown, type DailyIconState } from '../ui/dailyDropLogic';
 import { openDailyDropOverlay } from '../ui/DailyDropOverlay';
 import { localDateKey } from '../../shared/dailyDrop';
 import type { DailyStatusResponse } from '../../shared/dailyTypes';
@@ -59,6 +59,7 @@ export class MenuScene extends Phaser.Scene {
   private _forceSettingsOpen = false;
   private tiltPrompt?: Phaser.GameObjects.Container;
   private dailyCanIcon?: Phaser.GameObjects.Container;
+  private dailyTick?: Phaser.Time.TimerEvent;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -1379,6 +1380,7 @@ export class MenuScene extends Phaser.Scene {
   // ── Daily Drop ─────────────────────────────────────────────────────────────
 
   private async setupDailyDrop(): Promise<void> {
+    this.clearDailyCanIcon();
     const result = await fetchDailyStatus();
     if (!this.scene.isActive()) return; // player already navigated away
     const status = result.status === 'ok' ? result.data : null;
@@ -1394,6 +1396,23 @@ export class MenuScene extends Phaser.Scene {
       localStorage.setItem(POPUP_KEY, todayKey);
       this.openDaily(status);
     }
+  }
+
+  /** Tear down the can and its countdown together — the tick closes over the
+   *  label, so orphaning one leaks into the next render. */
+  private clearDailyCanIcon(): void {
+    this.dailyTick?.remove();
+    this.dailyTick = undefined;
+    this.dailyCanIcon?.destroy();
+    this.dailyCanIcon = undefined;
+  }
+
+  /** Re-render the can when the countdown reaches zero. Reads the cached
+   *  status — the snapshot has not changed, only `now` has, so this costs no
+   *  network call. */
+  private refreshDailyDrop(): void {
+    this.clearDailyCanIcon();
+    void this.setupDailyDrop();
   }
 
   private addDailyCanIcon(state: DailyIconState, status: DailyStatusResponse | null): void {
@@ -1422,6 +1441,20 @@ export class MenuScene extends Phaser.Scene {
         targets: icon, angle: { from: -4, to: 4 }, duration: 130,
         yoyo: true, repeat: -1, repeatDelay: 1600,
       });
+    } else if (state === 'waiting') {
+      const label = this.add.text(0, 26, '', {
+        fontSize: '10px', color: '#c8cee0', fontStyle: 'bold',
+      }).setOrigin(0.5);
+      icon.add(label);
+      const until = status?.nextEligibleAt ?? 0;
+      const paint = (): void => {
+        if (!this.scene.isActive()) return;
+        const left = until - Date.now();
+        if (left <= 0) { this.refreshDailyDrop(); return; }
+        label.setText(formatCountdown(left));
+      };
+      paint();
+      this.dailyTick = this.time.addEvent({ delay: 15_000, loop: true, callback: paint });
     } else if (state === 'locked') {
       const lock = this.add.text(16, -16, '🔒', { fontSize: '12px' }).setOrigin(0.5);
       icon.add(lock);
@@ -1436,6 +1469,7 @@ export class MenuScene extends Phaser.Scene {
       // Locked: previews the streak track + today's reward (spec) rather than
       // just telling the player to come back — no claim path from here.
       if (state === 'locked' && status) { this.openDailyLockedPreview(status); return; }
+      if (state === 'waiting' && status) { this.openDailyLockedPreview(status); return; }
       this.showDailyToast('Offline — rewards need a connection');
     });
 
@@ -1445,8 +1479,7 @@ export class MenuScene extends Phaser.Scene {
   private openDaily(status: DailyStatusResponse): void {
     openDailyDropOverlay(this, status, (claimed) => {
       if (!claimed) return;
-      this.dailyCanIcon?.destroy();
-      this.dailyCanIcon = undefined;
+      this.clearDailyCanIcon();
       if (this.balanceText?.active) this.balanceText.setText(`${getBalance()} coins`);
     });
   }
