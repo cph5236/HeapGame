@@ -1468,8 +1468,8 @@ export class MenuScene extends Phaser.Scene {
       if (state === 'ready' && status) { this.openDaily(status); return; }
       // Locked: previews the streak track + today's reward (spec) rather than
       // just telling the player to come back — no claim path from here.
-      if (state === 'locked' && status) { this.openDailyLockedPreview(status); return; }
-      if (state === 'waiting' && status) { this.openDailyLockedPreview(status); return; }
+      if (state === 'locked' && status) { this.openDailyLockedPreview(status, 'locked'); return; }
+      if (state === 'waiting' && status) { this.openDailyLockedPreview(status, 'waiting'); return; }
       this.showDailyToast('Offline — rewards need a connection');
     });
 
@@ -1484,8 +1484,8 @@ export class MenuScene extends Phaser.Scene {
     });
   }
 
-  private openDailyLockedPreview(status: DailyStatusResponse): void {
-    openDailyDropOverlay(this, status, () => {}, true);
+  private openDailyLockedPreview(status: DailyStatusResponse, mode: 'locked' | 'waiting'): void {
+    openDailyDropOverlay(this, status, () => {}, mode);
   }
 
   private showDailyToast(msg: string): void {

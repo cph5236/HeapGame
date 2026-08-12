@@ -4,17 +4,20 @@
 // strip, a procedural trash can that pops open on tap, and the repair prompt
 // when the streak broke. All positions are logical-layout coordinates.
 //
-// `locked = true` renders the same streak-strip panel as a read-only preview
-// (spec: tapping the locked can-icon "previews the streak track and today's
-// reward") — no wiggle, no tap-to-claim, no claimDaily call; the can is
-// replaced by static "Finish a run to open" copy. Dismiss (backdrop / ✕)
-// behaves identically in both modes.
+// `mode: 'locked' | 'waiting'` renders the same streak-strip panel as a
+// read-only preview (spec: tapping the locked/waiting can-icon "previews the
+// streak track and today's reward") — no wiggle, no tap-to-claim, no
+// claimDaily call. The two preview modes differ only in the hint copy below
+// the can: `locked` (no run yet today) says "Finish a run to open"; `waiting`
+// (run done, min-gap cooldown still open) says how long until the next drop,
+// using the same countdown wording as the can-icon badge. Dismiss
+// (backdrop / ✕) behaves identically in all modes.
 
 import Phaser from 'phaser';
 import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { claimDaily } from '../systems/DailyDropClient';
 import { AdClient } from '../systems/ads/AdClient';
-import { streakChips, activeStreakDay, isGoldenDay, dailyRewardPreview, burstColorsForRewards } from './dailyDropLogic';
+import { streakChips, activeStreakDay, isGoldenDay, dailyRewardPreview, burstColorsForRewards, formatCountdown } from './dailyDropLogic';
 import { ITEM_DEFS } from '../data/itemDefs';
 import type { DailyStatusResponse } from '../../shared/dailyTypes';
 import type { RewardPayload } from '../../shared/codeTypes';
@@ -31,8 +34,9 @@ export function openDailyDropOverlay(
   scene: Phaser.Scene,
   status: DailyStatusResponse,
   onClosed: (claimed: boolean) => void,
-  locked = false,
+  mode: 'locked' | 'waiting' | false = false,
 ): void {
+  const locked = mode !== false;
   const w = logicalWidth(scene);
   const h = logicalHeight(scene);
   const cx = w / 2;
@@ -152,7 +156,14 @@ export function openDailyDropOverlay(
   };
   paintCan(isGoldenDay(activeStreakDay(status, null)));
 
-  const hint = scene.add.text(cx, panelTop + 262, locked ? 'Finish a run to open' : 'TAP THE CAN!', {
+  // `waiting` needs a live "now" — computed at open time, not captured earlier
+  // as a duration, so the copy matches the countdown the player just tapped.
+  const waitingCopy = (): string => {
+    const left = (status.nextEligibleAt ?? 0) - Date.now();
+    return left > 0 ? `Next drop in ${formatCountdown(left)}` : 'Next drop is ready — try again';
+  };
+  const lockedHint = mode === 'waiting' ? waitingCopy() : 'Finish a run to open';
+  const hint = scene.add.text(cx, panelTop + 262, locked ? lockedHint : 'TAP THE CAN!', {
     fontSize: '15px', color: '#ffce8a', fontStyle: 'bold',
   }).setOrigin(0.5);
   root.add(hint);
