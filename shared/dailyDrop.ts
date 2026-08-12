@@ -72,7 +72,7 @@ export function decideClaim(
     return { kind: 'notEligible', nextEligibleAt: nextEligibleAt(state.lastClaimAt, offsetMin, minGapHours) };
   }
 
-  const continuedDay = (state.streakDay % 7) + 1;
+  const continuedDay = dayAfter(state.streakDay);
   if (gapMs <= graceHours * HOUR_MS) return { kind: 'grant', day: continuedDay };
   if (resolution === 'repair') return { kind: 'grant', day: continuedDay };
   if (resolution === 'reset') return { kind: 'grant', day: 1 };
@@ -89,6 +89,13 @@ export function nextLocalMidnight(unixMs: number, offsetMin: number): number {
  *  midnight and lastClaim + minGap. */
 export function nextEligibleAt(lastClaimAt: number, offsetMin: number, minGapHours: number): number {
   return Math.max(nextLocalMidnight(lastClaimAt, offsetMin), lastClaimAt + minGapHours * HOUR_MS);
+}
+
+/** The streak day a claim after `streakDay` grants, wrapping 7 back to 1.
+ *  One definition of the wrap rule so the server's claim decision, the status
+ *  response, and the client's post-claim cache seed cannot drift apart. */
+export function dayAfter(streakDay: number): number {
+  return (streakDay % 7) + 1;
 }
 
 /** Table lookup with 7-day wrap (day 8 == day 1). */
@@ -161,7 +168,7 @@ export function statusFromState(
   const claimedToday =
     localDateKey(nowMs, offsetMin) === localDateKey(state.lastClaimAt, offsetMin);
   const withinGrace = nowMs - state.lastClaimAt <= graceHours * HOUR_MS;
-  const nextClaimDay = withinGrace ? (state.streakDay % 7) + 1 : 1;
+  const nextClaimDay = withinGrace ? dayAfter(state.streakDay) : 1;
   return {
     streakDay: state.streakDay,
     claimedToday,

@@ -5,6 +5,7 @@ import { fetchWithLog } from '../logging/fetchWithLog';
 import { authHeaders, logIfAuthRejected } from './authToken';
 import { applyReward } from './applyReward';
 import { deviceUtcOffsetMin } from './dailyRunGate';
+import { dayAfter } from '../../shared/dailyDrop';
 import {
   readCachedDailyStatus, writeCachedDailyStatus, clearCachedDailyStatus,
 } from './dailyStatusCache';
@@ -115,7 +116,7 @@ function cacheClaimedSnapshot(
   writeCachedDailyStatus(playerId, offsetMin, {
     streakDay: data.streakDay,
     claimedToday: true,
-    nextClaimDay: (data.streakDay % 7) + 1,
+    nextClaimDay: dayAfter(data.streakDay),
     todayGrants: data.nextRewardPreview,
     nextEligibleAt: data.nextEligibleAt,
     stableUntil: data.stableUntil,

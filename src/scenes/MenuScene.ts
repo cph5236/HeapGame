@@ -1484,8 +1484,14 @@ export class MenuScene extends Phaser.Scene {
     });
   }
 
+  /** Preview with no claim path. A waiting preview re-renders the can on close:
+   *  the countdown can reach zero while the overlay is up, and waiting for the
+   *  next 15s tick would leave a stale "<1m" can behind it. Reads the cached
+   *  status, so the refresh costs no request. */
   private openDailyLockedPreview(status: DailyStatusResponse, mode: 'locked' | 'waiting'): void {
-    openDailyDropOverlay(this, status, () => {}, mode);
+    openDailyDropOverlay(this, status, () => {
+      if (mode === 'waiting') this.refreshDailyDrop();
+    }, mode);
   }
 
   private showDailyToast(msg: string): void {
