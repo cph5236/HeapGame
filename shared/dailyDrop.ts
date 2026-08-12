@@ -79,12 +79,16 @@ export function decideClaim(
   return { kind: 'broken', repairableDay: continuedDay };
 }
 
+/** Next local-midnight instant after `unixMs` at the given UTC offset. */
+export function nextLocalMidnight(unixMs: number, offsetMin: number): number {
+  const local = unixMs + offsetMin * 60_000;
+  return (Math.floor(local / DAY_MS) + 1) * DAY_MS - offsetMin * 60_000;
+}
+
 /** Earliest instant the next claim can succeed: the later of the next local
  *  midnight and lastClaim + minGap. */
 export function nextEligibleAt(lastClaimAt: number, offsetMin: number, minGapHours: number): number {
-  const local = lastClaimAt + offsetMin * 60_000;
-  const nextLocalMidnightUtc = (Math.floor(local / DAY_MS) + 1) * DAY_MS - offsetMin * 60_000;
-  return Math.max(nextLocalMidnightUtc, lastClaimAt + minGapHours * HOUR_MS);
+  return Math.max(nextLocalMidnight(lastClaimAt, offsetMin), lastClaimAt + minGapHours * HOUR_MS);
 }
 
 /** Table lookup with 7-day wrap (day 8 == day 1). */
@@ -161,4 +165,36 @@ export function statusFromState(
     todayGrants: grantsForDay(table, nextClaimDay),
     nextEligibleAt: nextEligibleAt(state.lastClaimAt, offsetMin, minGapHours),
   };
+}
+
+/**
+ * The next instant a `/daily/status` response can change *by itself*, or null
+ * when no such instant exists. This is what the client cache gates on — it is
+ * a different question from `nextEligibleAt` ("when may they claim again"),
+ * and the difference is the whole unclaimed half of the state space.
+ *
+ * Only two things change a response without a claim: the local day rolling
+ * over (which flips `claimedToday` to false) and grace expiring (which resets
+ * `nextClaimDay` to 1). Midnight only matters while `claimedToday` is true —
+ * for an unclaimed response it changes nothing, and including it would force a
+ * needless daily re-fetch.
+ */
+export function stableUntilFor(
+  state: ClaimState | null,
+  nowMs: number,
+  offsetMin: number,
+  graceHours: number,
+): number | null {
+  if (!state) return null;  // never claimed — frozen until they claim
+
+  const transitions: number[] = [];
+
+  const claimedToday =
+    localDateKey(nowMs, offsetMin) === localDateKey(state.lastClaimAt, offsetMin);
+  if (claimedToday) transitions.push(nextLocalMidnight(nowMs, offsetMin));
+
+  const graceExpiry = state.lastClaimAt + graceHours * HOUR_MS;
+  if (graceExpiry > nowMs) transitions.push(graceExpiry);
+
+  return transitions.length ? Math.min(...transitions) : null;
 }

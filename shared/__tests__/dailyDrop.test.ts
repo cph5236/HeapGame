@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   clampOffsetMin, localDateKey, decideClaim, nextEligibleAt,
+  nextLocalMidnight, stableUntilFor,
   grantsForDay, grantsToRewards, sanitizeRewardTable, statusFromState,
   DEFAULT_DAILY_REWARDS, DEFAULT_GRACE_HOURS, DEFAULT_MIN_GAP_HOURS, DAILY_FALLBACK_COINS,
 } from '../dailyDrop';
@@ -163,5 +164,53 @@ describe('statusFromState', () => {
   it('omits nextEligibleAt for a never-claimed player (claimable now)', () => {
     const s = statusFromState(null, T0, -240, DEFAULT_GRACE_HOURS, DEFAULT_DAILY_REWARDS, 10);
     expect(s.nextEligibleAt).toBeUndefined();
+  });
+});
+
+describe('stableUntilFor', () => {
+  const H = 3_600_000;
+  const NY = -240;
+  const T0 = Date.parse('2026-07-16T02:00:00Z'); // 10pm Jul 15 in NY
+  const GRACE = 36;
+
+  it('never claimed: nothing can change the response', () => {
+    expect(stableUntilFor(null, T0, NY, GRACE)).toBeNull();
+  });
+
+  it('claimed today: expires at next local midnight', () => {
+    const state = { lastClaimAt: T0, streakDay: 1 };
+    expect(stableUntilFor(state, T0, NY, GRACE)).toBe(T0 + 2 * H);
+  });
+
+  it('unclaimed within grace: expires when grace expires', () => {
+    const state = { lastClaimAt: T0, streakDay: 3 };
+    // 12h later is a new local day, so claimedToday is false; grace runs to +36h.
+    expect(stableUntilFor(state, T0 + 12 * H, NY, GRACE)).toBe(T0 + 36 * H);
+  });
+
+  it('unclaimed with grace already expired: already reset, nothing left to change', () => {
+    const state = { lastClaimAt: T0, streakDay: 3 };
+    expect(stableUntilFor(state, T0 + 40 * H, NY, GRACE)).toBeNull();
+  });
+
+  it('takes the earliest transition when grace expires before midnight', () => {
+    const state = { lastClaimAt: T0, streakDay: 1 };
+    // claimedToday, so midnight (+2h) applies, but a 1h grace expires sooner.
+    expect(stableUntilFor(state, T0, NY, 1)).toBe(T0 + 1 * H);
+  });
+
+  it('honours a non-default graceHours', () => {
+    const state = { lastClaimAt: T0, streakDay: 3 };
+    expect(stableUntilFor(state, T0 + 6 * H, NY, 12)).toBe(T0 + 12 * H);
+  });
+});
+
+describe('nextLocalMidnight', () => {
+  const H = 3_600_000;
+  const NY = -240;
+  const T0 = Date.parse('2026-07-16T02:00:00Z');
+
+  it('returns the next local midnight for the offset', () => {
+    expect(nextLocalMidnight(T0, NY)).toBe(T0 + 2 * H);
   });
 });
