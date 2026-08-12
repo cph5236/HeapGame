@@ -142,6 +142,7 @@ describe('statusFromState', () => {
     expect(s).toEqual({
       streakDay: 0, claimedToday: false, nextClaimDay: 1,
       todayGrants: grantsForDay(DEFAULT_DAILY_REWARDS, 1),
+      stableUntil: null,
     });
   });
   it('claimed earlier today: claimedToday true', () => {
@@ -164,6 +165,10 @@ describe('statusFromState', () => {
   it('omits nextEligibleAt for a never-claimed player (claimable now)', () => {
     const s = statusFromState(null, T0, -240, DEFAULT_GRACE_HOURS, DEFAULT_DAILY_REWARDS, 10);
     expect(s.nextEligibleAt).toBeUndefined();
+  });
+  it('reports stableUntil null for a never-claimed player — nothing can change it', () => {
+    const s = statusFromState(null, T0, -240, DEFAULT_GRACE_HOURS, DEFAULT_DAILY_REWARDS, 10);
+    expect(s.stableUntil).toBeNull();
   });
 });
 

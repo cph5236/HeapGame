@@ -10,7 +10,7 @@ import { enforcePlayerAuth } from '../playerAuth';
 import { isItemId } from '../../../shared/itemIds';
 import {
   clampOffsetMin, decideClaim, grantsForDay, grantsToRewards,
-  nextEligibleAt, sanitizeRewardTable, statusFromState,
+  nextEligibleAt, sanitizeRewardTable, stableUntilFor, statusFromState,
   DEFAULT_GRACE_HOURS, DEFAULT_MIN_GAP_HOURS,
 } from '../../../shared/dailyDrop';
 import type { DailyClaimRequest } from '../../../shared/dailyTypes';
@@ -105,6 +105,8 @@ export function dailyRoutes(
       // Same formula every 409 uses — lets the client cache this claim and
       // skip the next menu load's /daily/status call.
       nextEligibleAt: nextEligibleAt(now, offset, minGapHours),
+      // When this snapshot self-expires — drives the client cache.
+      stableUntil: stableUntilFor({ lastClaimAt: now, streakDay: decision.day }, now, offset, graceHours),
     }, 200);
   });
 

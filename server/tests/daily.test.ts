@@ -162,6 +162,7 @@ describe('GET /daily/status', () => {
     expect(body).toEqual({
       streakDay: 0, claimedToday: false, nextClaimDay: 1,
       todayGrants: [{ type: 'coins', amount: 50 }],
+      stableUntil: null,
     });
   });
 
@@ -195,6 +196,45 @@ describe('GET /daily/status', () => {
     await claim(app, 'p1', NY);
     const body = await (await app.request(`/daily/status?playerGuid=p1&utcOffsetMin=${NY}`)).json();
     expect(body.nextEligibleAt).toBe(T0 + 20 * H);
+  });
+
+  it('reports stableUntil null for a player who has never claimed', async () => {
+    const app = makeApp();
+    const body = await (await app.request(`/daily/status?playerGuid=new1&utcOffsetMin=${NY}`)).json();
+    expect(body.stableUntil).toBeNull();
+  });
+
+  it('reports stableUntil at next local midnight once claimed today', async () => {
+    const app = makeApp();
+    await claim(app, 'p1', NY);
+    const body = await (await app.request(`/daily/status?playerGuid=p1&utcOffsetMin=${NY}`)).json();
+    // Claimed 10pm NY; local midnight is 2h away. Note this differs from
+    // nextEligibleAt (+10h), which the min gap pushes past midnight.
+    expect(body.stableUntil).toBe(T0 + 2 * H);
+  });
+
+  it('reports stableUntil at grace expiry while unclaimed and within grace', async () => {
+    const app = makeApp();
+    await claim(app, 'p1', NY);
+    vi.setSystemTime(T0 + 12 * H);
+    const body = await (await app.request(`/daily/status?playerGuid=p1&utcOffsetMin=${NY}`)).json();
+    expect(body.claimedToday).toBe(false);
+    expect(body.stableUntil).toBe(T0 + 36 * H);
+  });
+
+  it('reports stableUntil null once grace has expired — nothing left to change', async () => {
+    const app = makeApp();
+    await claim(app, 'p1', NY);
+    vi.setSystemTime(T0 + 40 * H);
+    const body = await (await app.request(`/daily/status?playerGuid=p1&utcOffsetMin=${NY}`)).json();
+    expect(body.stableUntil).toBeNull();
+  });
+
+  it('reports stableUntil on a successful claim so the client can cache it', async () => {
+    const app = makeApp();
+    const body = await (await claim(app, 'p1', NY)).json();
+    expect(body.kind).toBe('ok');
+    expect(body.stableUntil).toBe(T0 + 2 * H);
   });
 });
 
