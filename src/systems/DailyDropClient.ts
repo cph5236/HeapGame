@@ -23,10 +23,8 @@ export type DailyStatusResult =
 
 /**
  * Streak/claim snapshot for the menu. Served from the device-local cache
- * while today's drop is already claimed and the server-supplied
- * `nextEligibleAt` has not passed — the menu used to hit `/daily/status` on
- * every load even though most loads have nothing to claim. See
- * dailyStatusCache for exactly when a cached entry is considered usable.
+ * until the server-declared `stableUntil` expiry, capped at 24h — see
+ * dailyStatusCache for exactly when an entry is usable.
  */
 export async function fetchDailyStatus(): Promise<DailyStatusResult> {
   const playerId = getEffectivePlayerId();
