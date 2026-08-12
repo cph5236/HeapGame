@@ -100,16 +100,17 @@ export async function claimDaily(resolution?: 'repair' | 'reset'): Promise<Daily
 }
 
 /** A successful claim tells us everything `/daily/status` would: the drop is
- *  claimed and the next one opens at `nextEligibleAt`. Seeding the cache here
- *  saves the status call on the menu load right after claiming — the single
- *  most common menu entry. Older servers omit `nextEligibleAt`; without it the
- *  entry could never be served, so drop the cache instead. */
+ *  claimed, the next one opens at `nextEligibleAt`, and the snapshot holds
+ *  until `stableUntil` (next local midnight). Seeding here saves the status
+ *  call on the menu load right after claiming — the most common menu entry.
+ *  Older servers omit `stableUntil`; without it the entry could never be
+ *  served, so drop the cache instead. */
 function cacheClaimedSnapshot(
   playerId: string,
   offsetMin: number,
   data: DailyClaimSuccess,
 ): void {
-  if (typeof data.nextEligibleAt !== 'number' || !Number.isFinite(data.nextEligibleAt)) {
+  if (typeof data.stableUntil !== 'number' || !Number.isFinite(data.stableUntil)) {
     clearCachedDailyStatus();
     return;
   }
@@ -119,5 +120,6 @@ function cacheClaimedSnapshot(
     nextClaimDay: (data.streakDay % 7) + 1,
     todayGrants: data.nextRewardPreview,
     nextEligibleAt: data.nextEligibleAt,
+    stableUntil: data.stableUntil,
   });
 }

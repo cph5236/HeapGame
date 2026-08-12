@@ -68,6 +68,7 @@ describe('fetchDailyStatus', () => {
     const status = {
       streakDay: 2, claimedToday: true, nextClaimDay: 3, todayGrants: [],
       nextEligibleAt: Date.now() + HOUR,
+      stableUntil: Date.now() + HOUR,
     };
     fetchWithLog.mockResolvedValue(jsonResponse(200, status));
 
@@ -80,10 +81,21 @@ describe('fetchDailyStatus', () => {
     expect(fetchWithLog).toHaveBeenCalledTimes(1); // no second call
   });
 
-  it('still fetches when the cached snapshot says the drop is claimable', async () => {
+  it('caches an unclaimed snapshot too — locked/ready is decided locally', async () => {
     fetchWithLog.mockResolvedValue(jsonResponse(200, {
       streakDay: 2, claimedToday: false, nextClaimDay: 3, todayGrants: [],
       nextEligibleAt: Date.now() - HOUR,
+      stableUntil: Date.now() + 12 * HOUR,
+    }));
+    await fetchDailyStatus();
+    await fetchDailyStatus();
+    expect(fetchWithLog).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps fetching against a server that omits stableUntil', async () => {
+    fetchWithLog.mockResolvedValue(jsonResponse(200, {
+      streakDay: 2, claimedToday: true, nextClaimDay: 3, todayGrants: [],
+      nextEligibleAt: Date.now() + HOUR,
     }));
     await fetchDailyStatus();
     await fetchDailyStatus();
@@ -139,6 +151,7 @@ describe('claimDaily', () => {
       kind: 'ok', streakDay: 3, rewards: [{ rewardType: 'coins', rewardAmount: 100 }],
       nextRewardPreview: [{ type: 'coins', amount: 150 }],
       nextEligibleAt: Date.now() + HOUR,
+      stableUntil: Date.now() + HOUR,
     }));
     await claimDaily();
     fetchWithLog.mockClear();
@@ -151,7 +164,7 @@ describe('claimDaily', () => {
     });
   });
 
-  it('does not cache a claim from a server that omits nextEligibleAt', async () => {
+  it('does not cache a claim from a server that omits stableUntil', async () => {
     fetchWithLog.mockResolvedValue(jsonResponse(200, {
       kind: 'ok', streakDay: 3, rewards: [], nextRewardPreview: [],
     }));
@@ -169,6 +182,7 @@ describe('claimDaily', () => {
     fetchWithLog.mockResolvedValue(jsonResponse(200, {
       streakDay: 2, claimedToday: true, nextClaimDay: 3, todayGrants: [],
       nextEligibleAt: Date.now() + HOUR,
+      stableUntil: Date.now() + HOUR,
     }));
     await fetchDailyStatus();
 

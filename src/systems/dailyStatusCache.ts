@@ -3,22 +3,23 @@
 // Device-local cache of the last GET /daily/status snapshot, so the menu
 // stops calling the daily endpoint on every single load.
 //
-// Deliberately conservative: a cached snapshot is only reused when it says
-// "already claimed today" AND the server-supplied `nextEligibleAt` is still
-// in the future AND we are still inside the same local calendar day the
-// snapshot was fetched in. In that window there is nothing to claim and
-// nothing to show (the can icon is hidden), so a stale read cannot mislead
-// the player. Anything else — claimable, lapsed streak, crossed midnight,
-// changed timezone, different player — falls through to a real fetch.
+// A cached snapshot is reused until the server-declared expiry
+// (`stableUntil`) — the instant at which the response could change by
+// itself — capped at 24h regardless of what the server says. Different
+// player or a changed UTC offset always falls through to a real fetch, and
+// a clock rewound behind the fetch time is treated as stale too.
 //
 // Like dailyRunGate this is a standalone localStorage key, NOT part of
 // RawSave: it describes this device's view of the current day and must not
 // sync through cloud saves.
 
-import { localDateKey } from '../../shared/dailyDrop';
 import type { DailyStatusResponse } from '../../shared/dailyTypes';
 
 const KEY = 'heap_daily_status_cache';
+/** Hard ceiling on any entry, even one the server called permanently stable.
+ *  Bounds cross-device staleness: a claim on another device leaves this one
+ *  showing a spent can until it is tapped (which 409s and clears the entry). */
+const MAX_AGE_MS = 86_400_000;  // 24h
 
 interface CachedEntry {
   playerId: string;
@@ -30,14 +31,17 @@ interface CachedEntry {
 function isUsable(entry: CachedEntry, playerId: string, offsetMin: number, now: number): boolean {
   if (entry.playerId !== playerId) return false;      // signed into GPGS since
   if (entry.offsetMin !== offsetMin) return false;    // device travelled
-  if (!entry.status?.claimedToday) return false;      // only "nothing to do" is cacheable
-  const until = entry.status.nextEligibleAt;
+  const age = now - entry.fetchedAt;
+  if (!(age >= 0 && age < MAX_AGE_MS)) return false;  // stale, or clock rewound
+
+  // `stableUntil` answers "when can this response change by itself":
+  //   null      → never, so serve it (subject to the cap above)
+  //   number    → serve until that instant
+  //   undefined → server predates the field; caching would be a guess
+  const until = entry.status?.stableUntil;
+  if (until === null) return true;
   if (typeof until !== 'number' || !Number.isFinite(until)) return false;
-  if (now >= until) return false;                     // claim window may have opened
-  // Belt and braces: min-gap can push nextEligibleAt past local midnight, and
-  // `claimedToday` stops being true there even though the claim is still
-  // blocked. Re-fetch rather than reason about it.
-  return localDateKey(entry.fetchedAt, offsetMin) === localDateKey(now, offsetMin);
+  return now < until;
 }
 
 /** The cached snapshot when it is still safe to serve, else null. */
