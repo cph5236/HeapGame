@@ -6,8 +6,68 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <title>Heap — how high can you climb?</title>
-    <meta name="description" content="Heap is a free vertical climbing game built on one shared pile of trash. Every player who falls leaves an item behind, and everyone else climbs what they left. Play free in your browser." />
+    <title>Heap — free roguelite climbing platformer</title>
+    <meta name="description" content="Heap is a free roguelite climbing platformer played on community-built trash heaps. Reach the summit to leave junk behind and raise the heap for everyone, chase high scores on the leaderboards, and spend your salvage on upgrades and cosmetics. Play free in your browser or on Android." />
+
+    <!-- The same index.html is served from heapgame.com, the itch.io CDN frame and
+         any mirror, so every URL below is absolute and points at the canonical
+         home. That stops the embedded copies from competing with the real domain
+         in search results, and keeps link previews working wherever the page is
+         framed. -->
+    <link rel="canonical" href="https://heapgame.com/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Heap" />
+    <meta property="og:title" content="Heap — free roguelite climbing platformer" />
+    <meta property="og:description" content="Climb community-built trash heaps, top them out to leave junk behind for the next player, and chase a high score. Free in your browser or on Android." />
+    <meta property="og:url" content="https://heapgame.com/" />
+    <meta property="og:image" content="https://heapgame.com/og-image.png" />
+    <meta property="og:image:width" content="1024" />
+    <meta property="og:image:height" content="500" />
+    <meta property="og:image:alt" content="Heap — a trash item climbing a towering pile of junk" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Heap — free roguelite climbing platformer" />
+    <meta name="twitter:description" content="Climb community-built trash heaps, top them out to leave junk behind for the next player, and chase a high score. Free in your browser or on Android." />
+    <meta name="twitter:image" content="https://heapgame.com/og-image.png" />
+
+    <!-- Structured data. "Heap" collides with the data structure and the common
+         noun, so this exists mainly to tell crawlers the page is a video game by
+         Hanlin Software and to tie the site, Play listing and itch page together
+         as one entity via sameAs.
+
+         Deliberately no aggregateRating: Google requires it to come from real
+         reviews hosted here, and the Play ratings are not ours to restate. Add it
+         only when genuine on-site reviews exist. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": "Heap",
+        "url": "https://heapgame.com/",
+        "description": "Heap is a free roguelite climbing platformer played on community-built trash heaps. Reach the summit to leave junk behind and permanently raise the heap for every other player, chase high scores on the leaderboards, and spend salvage on upgrades and cosmetics.",
+        "image": "https://heapgame.com/og-image.png",
+        "applicationCategory": "GameApplication",
+        "genre": ["Platformer", "Roguelite", "Arcade"],
+        "gamePlatform": ["Web browser", "Android"],
+        "operatingSystem": ["Web browser", "Android"],
+        "playMode": "SinglePlayer",
+        "inLanguage": "en",
+        "author":    { "@type": "Organization", "name": "Hanlin Software" },
+        "publisher": { "@type": "Organization", "name": "Hanlin Software" },
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock"
+        },
+        "sameAs": [
+          "https://play.google.com/store/apps/details?id=com.hanlinsoftware.heapgame.app",
+          "https://hanlinsoftware.itch.io/heap"
+        ]
+      }
+    </script>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -208,22 +268,37 @@
     <aside class="rail rail-left">
       <div>
         <h1>Heap</h1>
-        <p class="tagline">A shared pile of trash.<br /><em>Everybody climbs it.</em></p>
+        <p class="tagline">A pile of trash that everyone is building.<br /><em>Climb it before it climbs away.</em></p>
       </div>
       <div>
         <h2>How it works</h2>
         <div class="step">
           <b>Climb</b>
-          <span>Scale a mountain of junk. How high you get is your score.</span>
+          <span>Height, kills, speed and salvage all feed your score — but
+            finish the run to bank it. A fall pays out a fraction.</span>
         </div>
         <div class="step">
-          <b>Leave something</b>
-          <span>Where you fall, you drop an item. It stays in the world.</span>
+          <b>Reach the top</b>
+          <span>Make it to the summit and you drop a piece of junk there. The
+            heap gets taller for everyone, permanently. Fall short and it stays
+            exactly as you found it.</span>
         </div>
         <div class="step">
-          <b>One heap</b>
-          <span>Every player climbs the same pile. The ladder at 400m was
-            put there by someone else.</span>
+          <b>Shared ground</b>
+          <span>Every heap is grown by every player who tops it out, so the
+            mountain you're climbing is other people's leftovers. Ladders and
+            beams are yours alone — your gear, your route.</span>
+        </div>
+        <div class="step">
+          <b>Pick your heap</b>
+          <span>Several community-built heaps, each with its own multipliers,
+            spawns and unlock. Plus Infinite, which never ends.</span>
+        </div>
+        <div class="step">
+          <b>Run, die, upgrade</b>
+          <span>Roguelite platforming: every run is a fresh climb. Spend what
+            you haul out on upgrades, consumables and cosmetics, then chase a
+            high score on the leaderboards.</span>
         </div>
       </div>
       <p class="fine">The heap only grows. Nothing you add is ever removed.</p>
