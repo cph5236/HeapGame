@@ -1,13 +1,19 @@
 ## FEATURES
 
 - Play Integrity API
-Integration not started
-Call the Integrity API at important moments in your app to check that it's your app binary, installed by Google Play, running on a genuine Android device. Your app's backend server can decide what to do next to prevent abuse, unauthorized access, and attacks. 
+Deferred 2026-08-12 — see docs/superpowers/specs/2026-08-12-run-session-tokens-design.md
+Integrity only verifies the Play-installed Android build, but web and itch.io are
+first-class platforms, so an attacker who fails it just uses the web build and is
+indistinguishable from a legitimate web player. It closes APK modification while
+leaving the cheapest attack (a single curl to /scores) untouched. Run-session
+tokens were built instead — platform-agnostic, and they close the actual hole.
+Revisit only if a verified-Android leaderboard tier becomes a product goal.
 
 - The claw elevator.
 
 Language detection?
 
+- admin player ban abilities 
 ### UI
 
 ### ENEMIES
