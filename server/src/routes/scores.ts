@@ -129,7 +129,7 @@ export function scoreRoutes(
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
-    const { heapId, playerId, playerName, inputs } = body;
+    const { heapId, playerId, playerName, inputs, sessionToken } = body;
 
     // Identity / name validation
     if (typeof heapId !== 'string' || heapId.length === 0 || heapId.length > MAX_ID_LEN) {
@@ -229,6 +229,23 @@ export function scoreRoutes(
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
+    // Run-session verification. Inert when no secret is configured so local dev
+    // and the existing test suite behave exactly as before.
+    let verifiedElapsedMs = elapsedMs;
+    if (sessionSecret) {
+      const now     = Date.now();
+      const session = await verifySession(sessionSecret, sessionToken, playerId, heapId, now);
+      if (!session.ok) {
+        console.warn(`[scores] reject: ${session.reason} (heapId=${heapId})`);
+        const sink = getSink();
+        if (sink) {
+          await captureServer(sink, 'warn', 'score:rejected', { reason: session.reason, heapId, playerId });
+        }
+        return c.json({ error: 'invalid score submission' }, 400);
+      }
+      verifiedElapsedMs = clampElapsedMs(elapsedMs, session.issuedAt, now);
+    }
+
     // Heap-relative validation — needs the heap row
     const heap = await heapDb.getHeap(heapId);
     if (!heap) {
@@ -250,22 +267,23 @@ export function scoreRoutes(
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
-    // Climb-rate cap (integer arithmetic to avoid FP rounding at the boundary)
-    if (baseHeightPx * 1000 > MAX_CLIMB_RATE_Y_PER_S * elapsedMs) {
-      console.warn(`[scores] reject: climb rate ${(baseHeightPx * 1000) / elapsedMs} Y/s exceeds ${MAX_CLIMB_RATE_Y_PER_S} (heapId=${heapId})`);
+    // Climb-rate cap (integer arithmetic to avoid FP rounding at the boundary).
+    // Uses verifiedElapsedMs — the elapsed time the server can vouch for.
+    if (baseHeightPx * 1000 > MAX_CLIMB_RATE_Y_PER_S * verifiedElapsedMs) {
+      console.warn(`[scores] reject: climb rate ${(baseHeightPx * 1000) / verifiedElapsedMs} Y/s exceeds ${MAX_CLIMB_RATE_Y_PER_S} (heapId=${heapId})`);
       const sink = getSink();
       if (sink) {
-        await captureServer(sink, 'warn', 'score:rejected', { reason: 'climb rate too high', heapId, climbRatePerS: (baseHeightPx * 1000) / elapsedMs });
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'climb rate too high', heapId, climbRatePerS: (baseHeightPx * 1000) / verifiedElapsedMs });
       }
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
     // Kill-rate cap
-    if ((percher + ghost + jumper) * 1000 > MAX_KILLS_PER_S * elapsedMs) {
-      console.warn(`[scores] reject: kill rate ${((percher + ghost + jumper) * 1000) / elapsedMs} /s exceeds ${MAX_KILLS_PER_S} (heapId=${heapId})`);
+    if ((percher + ghost + jumper) * 1000 > MAX_KILLS_PER_S * verifiedElapsedMs) {
+      console.warn(`[scores] reject: kill rate ${((percher + ghost + jumper) * 1000) / verifiedElapsedMs} /s exceeds ${MAX_KILLS_PER_S} (heapId=${heapId})`);
       const sink = getSink();
       if (sink) {
-        await captureServer(sink, 'warn', 'score:rejected', { reason: 'kill rate too high', heapId, killRatePerS: ((percher + ghost + jumper) * 1000) / elapsedMs });
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'kill rate too high', heapId, killRatePerS: ((percher + ghost + jumper) * 1000) / verifiedElapsedMs });
       }
       return c.json({ error: 'invalid score submission' }, 400);
     }

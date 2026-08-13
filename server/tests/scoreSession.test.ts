@@ -6,6 +6,8 @@ import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockPlayerAuthDB } from './helpers/mockPlayerAuthDb';
 import type { OpenSessionResponse } from '../../shared/scoreTypes';
+import { signSession } from '../src/runSession';
+import type { SubmitScoreResponse } from '../../shared/scoreTypes';
 
 const HEAP_ID = 'heap-test-001';
 const PLAYER  = 'player-aaa';
@@ -79,5 +81,118 @@ describe('POST /scores/session', () => {
     // A different secret for the same id must be refused.
     const second = await openSession(app, { playerId: PLAYER, heapId: HEAP_ID }, 'wrong-token');
     expect(second.status).toBe(403);
+  });
+});
+
+const VALID_INPUTS = {
+  baseHeightPx: 1000,
+  kills: { percher: 0, ghost: 0 },
+  elapsedMs: 60_000,
+  isFailure: true,
+};
+
+function submit(app: ReturnType<typeof makeApp>, body: object) {
+  return app.request('/scores', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
+  });
+}
+
+describe('POST /scores session enforcement', () => {
+  it('rejects a submit with no session token', async () => {
+    const app = makeApp({ sessionSecret: SECRET });
+    const res = await submit(app, { heapId: HEAP_ID, playerId: PLAYER, inputs: VALID_INPUTS });
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts a submit with a valid token', async () => {
+    const app   = makeApp({ sessionSecret: SECRET });
+    const token = await signSession(SECRET, PLAYER, HEAP_ID, Date.now() - 90_000);
+    const res   = await submit(app, {
+      heapId: HEAP_ID, playerId: PLAYER, inputs: VALID_INPUTS, sessionToken: token,
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as SubmitScoreResponse;
+    expect(body.submitted).toBe(true);
+  });
+
+  it('rejects a token signed with a different key', async () => {
+    const app   = makeApp({ sessionSecret: SECRET });
+    const token = await signSession('other-secret', PLAYER, HEAP_ID, Date.now());
+    const res   = await submit(app, {
+      heapId: HEAP_ID, playerId: PLAYER, inputs: VALID_INPUTS, sessionToken: token,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a token bound to a different heap', async () => {
+    const app   = makeApp({ sessionSecret: SECRET });
+    const token = await signSession(SECRET, PLAYER, 'heap-other', Date.now());
+    const res   = await submit(app, {
+      heapId: HEAP_ID, playerId: PLAYER, inputs: VALID_INPUTS, sessionToken: token,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('collapses the inflated-elapsedMs attack', async () => {
+    const app   = makeApp({ sessionSecret: SECRET });
+    // 10s-old token: the clamp allows ~15s, so 400 y/s permits ~6000px.
+    const token = await signSession(SECRET, PLAYER, HEAP_ID, Date.now() - 10_000);
+    const res   = await submit(app, {
+      heapId: HEAP_ID, playerId: PLAYER, sessionToken: token,
+      inputs: { ...VALID_INPUTS, baseHeightPx: 500_000, elapsedMs: 99_999_999 },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('still admits an honest run whose token arrived late', async () => {
+    const app   = makeApp({ sessionSecret: SECRET });
+    // Token 7 minutes old, run honestly reported as 10 minutes.
+    const token = await signSession(SECRET, PLAYER, HEAP_ID, Date.now() - 7 * 60_000);
+    const res   = await submit(app, {
+      heapId: HEAP_ID, playerId: PLAYER, sessionToken: token,
+      inputs: { ...VALID_INPUTS, baseHeightPx: 20_000, elapsedMs: 10 * 60_000 },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('does not let the clamp inflate the pace bonus', async () => {
+    // THE regression test for this feature's single most important invariant:
+    // verifiedElapsedMs gates the caps ONLY. Pace is height/seconds, so feeding
+    // the clamped value into buildRunScore would RAISE the score when it bit.
+    //
+    // The two arms are chosen so the clamp BITES in one and not the other —
+    // otherwise the test passes under the buggy implementation too:
+    //   arm A: 10s-old token  -> verified = 10_000 + GRACE(5_000) = 15_000  (bites)
+    //   arm B: 200s-old token -> verified = min(100_000, 205_000)  = 100_000 (no bite)
+    // Correct impl scores pace floor(1000/100 * 10) = 100 in BOTH arms.
+    // Buggy impl scores floor(1000/15 * 10) = 666 in arm A. Scores must match.
+    // Both arms clear the climb cap: 1000*1000 <= 400*15_000.
+    const inputs = { ...VALID_INPUTS, baseHeightPx: 1000, elapsedMs: 100_000, isFailure: false };
+
+    const appClamped   = makeApp({ sessionSecret: SECRET });
+    const clampedToken = await signSession(SECRET, PLAYER, HEAP_ID, Date.now() - 10_000);
+    const clampedRes   = await submit(appClamped, {
+      heapId: HEAP_ID, playerId: PLAYER, inputs, sessionToken: clampedToken,
+    });
+
+    const appUnclamped   = makeApp({ sessionSecret: SECRET });
+    const unclampedToken = await signSession(SECRET, PLAYER, HEAP_ID, Date.now() - 200_000);
+    const unclampedRes   = await submit(appUnclamped, {
+      heapId: HEAP_ID, playerId: PLAYER, inputs, sessionToken: unclampedToken,
+    });
+
+    expect(clampedRes.status).toBe(200);
+    expect(unclampedRes.status).toBe(200);
+    const clampedBody   = await clampedRes.json() as SubmitScoreResponse;
+    const unclampedBody = await unclampedRes.json() as SubmitScoreResponse;
+    expect(clampedBody.context.player!.score).toBe(unclampedBody.context.player!.score);
+  });
+
+  it('is inert when no session secret is configured', async () => {
+    const app = makeApp({});
+    const res = await submit(app, { heapId: HEAP_ID, playerId: PLAYER, inputs: VALID_INPUTS });
+    expect(res.status).toBe(200);
   });
 });
