@@ -9,6 +9,7 @@ import { resolveCosmetics } from '../systems/cosmeticsLogic';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import type { Vertex } from '../systems/HeapPolygon';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
+import { RunSession } from '../systems/RunSession';
 import { getPlayConsoleId, HEIGHT_ACHIEVEMENT_THRESHOLDS_PX } from '../data/achievementDefs';
 import {
   applyPolygonToGenerator,
@@ -112,6 +113,7 @@ export class GameScene extends Phaser.Scene {
   private checkpointRespawn = false;
   private _runKills:     Partial<Record<EnemyKind, number>> = {};
   private _runStartTime: number | null = null;
+  private _runSession = new RunSession();
   private _heapParams!: HeapParams;
   private _worldHeight: number = MOCK_HEAP_HEIGHT_PX;
   private _reached100m:   boolean = false;
@@ -168,6 +170,10 @@ export class GameScene extends Phaser.Scene {
     const polygon = (this.game.registry.get('heapPolygon') as Vertex[] | undefined) ?? [];
     const heapId = (this.game.registry.get('activeHeapId') as string | undefined) ?? '';
     this._heapId = heapId;
+    // Open the run session at scene create, not at first-scored-pixel: this
+    // gives issuance a whole run to succeed and makes issuedAt earlier than
+    // _runStartTime, which widens the server's verified window.
+    this._runSession.start(getEffectivePlayerId(), heapId);
     this._liveZoneBottomY = HeapClient.getLiveZoneBottomY(heapId);
     this._heapParams = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
     this._worldHeight = this._heapParams.worldHeight ?? MOCK_HEAP_HEIGHT_PX;
@@ -289,6 +295,7 @@ export class GameScene extends Phaser.Scene {
           baseHeightPx,
           kills:        this._runKills,
           elapsedMs,
+          sessionToken: this._runSession.getToken(),
           heapParams:   this._heapParams,
         });
         this.scene.pause();
@@ -758,6 +765,7 @@ export class GameScene extends Phaser.Scene {
             baseHeightPx,
             kills:          this._runKills,
             elapsedMs,
+            sessionToken: this._runSession.getToken(),
             salvageItems: this.pickupManager.getCarriedItems(),
             heapParams:     this._heapParams,
             bonusCoins:     bonusCoinsFromServer,
@@ -944,6 +952,7 @@ export class GameScene extends Phaser.Scene {
           baseHeightPx,
           kills:        this._runKills,
           elapsedMs,
+          sessionToken: this._runSession.getToken(),
           heapParams:   this._heapParams,
         });
         this.scene.pause();
@@ -1016,5 +1025,6 @@ export class GameScene extends Phaser.Scene {
     // Also clears the joystick + dash suppression rects that mountJoystick set.
     this.joystick?.destroy();
     this.joystick = null;
+    this._runSession.stop();
   }
 }
