@@ -133,13 +133,33 @@ HMAC key for run-session tokens (see
 set, `/scores/session` 404s and score submits skip session verification — the
 feature is inert, which is the correct local-dev behavior.
 
-Generate and set it:
+**Deployed environments** (`wrangler secret put` uploads to the deployed Worker
+— it does nothing for `wrangler dev`):
 
 ```bash
 openssl rand -base64 32
 npx wrangler secret put SESSION_SECRET
 npx wrangler secret put SESSION_SECRET --env staging
 ```
+
+**Locally**, `wrangler dev` reads secrets from `server/.dev.vars`, not from
+`wrangler secret put`. Create it (it is gitignored) and restart `wrangler dev`
+— the file is only read at startup:
+
+```bash
+printf 'SESSION_SECRET=%s\n' "$(openssl rand -base64 32)" > server/.dev.vars
+```
+
+The value need not match any deployed one; tokens are only ever verified by the
+same Worker that signed them.
+
+Note that `/scores/session` returns 404 in two different cases, distinguishable
+by the response body:
+
+| Body | Meaning |
+|---|---|
+| `{"error":"not found"}` | No `SESSION_SECRET` configured — the feature is off |
+| `{"error":"invalid session request"}` | Secret is set, but that `heapId` does not exist (run `npm run seed`) |
 
 **Set this on staging and verify there before production.** Once it is live in
 production, any client that cannot reach `/scores/session` at run start loses
