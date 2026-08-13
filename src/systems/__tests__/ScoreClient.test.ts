@@ -116,6 +116,41 @@ describe('ScoreClient.submitScore', () => {
   });
 });
 
+// ── openSession ───────────────────────────────────────────────────────────────
+
+describe('ScoreClient.openSession', () => {
+  it('returns the token on success', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
+      ok:   true,
+      json: async () => ({ token: 'session-token-1', issuedAt: 1000 }),
+    }));
+    const result = await ScoreClient.openSession('p1', 'heap-1');
+    expect(result).toBe('session-token-1');
+  });
+
+  it('returns null on a 404 response (no session secret configured)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: false, status: 404 }));
+    const result = await ScoreClient.openSession('p1', 'heap-1');
+    expect(result).toBeNull();
+  });
+
+  it('returns null on a 403 response (player-token mismatch)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
+      ok: false, status: 403,
+      clone: () => ({ text: async () => '' }),
+    }));
+    const result = await ScoreClient.openSession('p1', 'heap-1');
+    expect(result).toBeNull();
+    expect(vi.mocked(logIfAuthRejected)).toHaveBeenCalledWith('scores:session', 403);
+  });
+
+  it('returns null on network failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('offline')));
+    const result = await ScoreClient.openSession('p1', 'heap-1');
+    expect(result).toBeNull();
+  });
+});
+
 // ── getContext ────────────────────────────────────────────────────────────────
 
 describe('ScoreClient.getContext', () => {

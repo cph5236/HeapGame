@@ -687,6 +687,7 @@ export class InfiniteGameScene extends Phaser.Scene {
           isInfinite: true,
         },
       });
+      this._runSession.stop();
       this.scene.sleep();
     });
   }

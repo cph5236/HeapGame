@@ -298,6 +298,7 @@ export class GameScene extends Phaser.Scene {
           sessionToken: this._runSession.getToken(),
           heapParams:   this._heapParams,
         });
+        this._runSession.stop();
         this.scene.pause();
       });
     }, WORLD_WIDTH * (1 + 2 * SKY_PAD), this._worldHeight);
@@ -770,6 +771,7 @@ export class GameScene extends Phaser.Scene {
             heapParams:     this._heapParams,
             bonusCoins:     bonusCoinsFromServer,
           });
+          this._runSession.stop();
           this.scene.pause();
         });
       });
@@ -955,6 +957,7 @@ export class GameScene extends Phaser.Scene {
           sessionToken: this._runSession.getToken(),
           heapParams:   this._heapParams,
         });
+        this._runSession.stop();
         this.scene.pause();
       });
     });
