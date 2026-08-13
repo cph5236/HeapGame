@@ -9,6 +9,7 @@ import type { PlayerAuthDB } from '../playerAuthDb';
 import { enforcePlayerAuth } from '../playerAuth';
 import type { PlayerNameDB } from '../playerNameDb';
 import { validatePlayerName, generateDefaultPlayerName } from '../../../shared/playerName';
+import { signSession, verifySession, clampElapsedMs } from '../runSession';
 import type {
   SubmitScoreRequest,
   SubmitScoreResponse,
@@ -16,6 +17,8 @@ import type {
   LeaderboardContext,
   PaginatedLeaderboardResponse,
   PlayerScoresResponse,
+  OpenSessionRequest,
+  OpenSessionResponse,
 } from '../../../shared/scoreTypes';
 import { buildRunScore } from '../../../shared/buildRunScore';
 import { MAX_ID_LEN } from '../constants';
@@ -77,8 +80,40 @@ export function scoreRoutes(
   getSink: () => Sink | undefined,
   authDb?: PlayerAuthDB,
   playerNameDb?: PlayerNameDB,
+  sessionSecret?: string,
 ): Hono {
   const app = new Hono();
+
+  // POST /scores/session — open a run session. The token is a server-attested
+  // timestamp, not proof of a genuine client: anyone can call this endpoint.
+  // Its value is that a claimed elapsedMs can never exceed real elapsed time.
+  app.post('/session', async (c) => {
+    if (!sessionSecret) return c.json({ error: 'not found' }, 404);
+
+    let body: OpenSessionRequest;
+    try {
+      body = await c.req.json<OpenSessionRequest>();
+    } catch {
+      return c.json({ error: 'invalid session request' }, 400);
+    }
+
+    const { playerId, heapId } = body;
+    if (typeof playerId !== 'string' || playerId.length === 0 || playerId.length > MAX_ID_LEN) {
+      return c.json({ error: 'invalid session request' }, 400);
+    }
+    if (typeof heapId !== 'string' || heapId.length === 0 || heapId.length > MAX_ID_LEN) {
+      return c.json({ error: 'invalid session request' }, 400);
+    }
+
+    // Only the owner of a player id may open a session for it.
+    const authRes = await enforcePlayerAuth(c, authDb, playerId, getSink, 'scores:session');
+    if (authRes) return authRes;
+
+    const issuedAt = Date.now();
+    const token    = await signSession(sessionSecret, playerId, heapId, issuedAt);
+    const res: OpenSessionResponse = { token, issuedAt };
+    return c.json(res);
+  });
 
   // POST /scores — submit raw inputs; server recomputes the score and returns leaderboard context
   app.post('/', async (c) => {

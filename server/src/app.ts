@@ -45,6 +45,7 @@ export interface AppOptions {
     log?:    RateLimiter;
     codes?:  RateLimiter;
     feedback?: RateLimiter;
+    session?: RateLimiter;
   };
   /** Reward-code D1 access. If unset, /codes is not mounted. */
   codeDb?: RewardCodeDB;
@@ -64,6 +65,9 @@ export interface AppOptions {
   playerNameDb?: PlayerNameDB;
   /** Sink for incoming /log entries. If unset, /log is not mounted. */
   logSink?: Sink;
+  /** HMAC key for run-session tokens. If unset, /scores/session 404s and
+   *  score submits skip session verification entirely (legacy behavior). */
+  sessionSecret?: string;
 }
 
 export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {}): Hono {
@@ -98,6 +102,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
 
   // Per-route limiters (mounted as POST handlers; fall through on success)
   app.post('/scores',          rateLimit(lim.scores, 'scores-submit', opts.loadTestSecret));
+  app.post('/scores/session',  rateLimit(lim.session, 'scores-session', opts.loadTestSecret));
   app.post('/heaps/:id/place', rateLimit(lim.place,  'place-block',   opts.loadTestSecret));
   app.post('/log',             rateLimit(lim.log,    'log',           opts.loadTestSecret));
 
@@ -112,7 +117,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   app.delete('/heaps/:id',              adminGate);
 
   app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink, opts.playerAuthDb, opts.contributionDb));
-  app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink, opts.playerAuthDb, opts.playerNameDb));
+  app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink, opts.playerAuthDb, opts.playerNameDb, opts.sessionSecret));
 
   if (opts.codeDb) {
     // Player redeem endpoint — rate-limited, no admin gate.
