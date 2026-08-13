@@ -211,3 +211,37 @@ describe('POST /scores session enforcement', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ── Where the late-token tradeoff actually bites ──────────────────────────────
+//
+// The clamp cannot distinguish "climbed fast" from "acquired the token late",
+// so a badly-delayed token tightens the caps against an honest run. The spec
+// accepts this; these two tests pin WHERE the boundary sits rather than leaving
+// it to be discovered in production. The existing late-token test uses a wide
+// safety margin, which is why it never exercises the failing side.
+describe('POST /scores late-token boundary', () => {
+  // An honest 5-minute run climbing 30_000px.
+  const honestRun = { ...VALID_INPUTS, baseHeightPx: 30_000, elapsedMs: 300_000 };
+
+  it('accepts an honest run whose token was acquired promptly', async () => {
+    const app   = makeApp({ sessionSecret: SECRET });
+    // Token issued at run start -> verified window ~300s -> cap permits 120_000px.
+    const token = await signSession(SECRET, PLAYER, HEAP_ID, Date.now() - 300_000);
+    const res   = await submit(app, {
+      heapId: HEAP_ID, playerId: PLAYER, inputs: honestRun, sessionToken: token,
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects the same honest run when the token arrived 20s before submit', async () => {
+    // ACCEPTED COST, not a bug: the player was offline for nearly the whole run,
+    // so the server can only vouch for 20s + GRACE = 25s, and 400 y/s permits
+    // just 10_000px against the 30_000px actually climbed.
+    const app   = makeApp({ sessionSecret: SECRET });
+    const token = await signSession(SECRET, PLAYER, HEAP_ID, Date.now() - 20_000);
+    const res   = await submit(app, {
+      heapId: HEAP_ID, playerId: PLAYER, inputs: honestRun, sessionToken: token,
+    });
+    expect(res.status).toBe(400);
+  });
+});

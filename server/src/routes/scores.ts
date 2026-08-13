@@ -270,20 +270,29 @@ export function scoreRoutes(
     // Climb-rate cap (integer arithmetic to avoid FP rounding at the boundary).
     // Uses verifiedElapsedMs — the elapsed time the server can vouch for.
     if (baseHeightPx * 1000 > MAX_CLIMB_RATE_Y_PER_S * verifiedElapsedMs) {
-      console.warn(`[scores] reject: climb rate ${(baseHeightPx * 1000) / verifiedElapsedMs} Y/s exceeds ${MAX_CLIMB_RATE_Y_PER_S} (heapId=${heapId})`);
+      // Log BOTH rates. The verified rate is what tripped the cap, but the
+      // claimed rate is what reveals the severity: a submission clamped from
+      // elapsedMs=99999999 down to a ~15s window logs an unremarkable verified
+      // rate while its claimed rate is absurd. Triage needs the latter.
+      const climbRatePerS       = (baseHeightPx * 1000) / verifiedElapsedMs;
+      const claimedClimbRatePerS = (baseHeightPx * 1000) / elapsedMs;
+      console.warn(`[scores] reject: climb rate ${climbRatePerS} Y/s exceeds ${MAX_CLIMB_RATE_Y_PER_S} (claimed ${claimedClimbRatePerS} Y/s, heapId=${heapId})`);
       const sink = getSink();
       if (sink) {
-        await captureServer(sink, 'warn', 'score:rejected', { reason: 'climb rate too high', heapId, climbRatePerS: (baseHeightPx * 1000) / verifiedElapsedMs });
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'climb rate too high', heapId, climbRatePerS, claimedClimbRatePerS, verifiedElapsedMs, elapsedMs });
       }
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
     // Kill-rate cap
     if ((percher + ghost + jumper) * 1000 > MAX_KILLS_PER_S * verifiedElapsedMs) {
-      console.warn(`[scores] reject: kill rate ${((percher + ghost + jumper) * 1000) / verifiedElapsedMs} /s exceeds ${MAX_KILLS_PER_S} (heapId=${heapId})`);
+      const totalKills          = percher + ghost + jumper;
+      const killRatePerS        = (totalKills * 1000) / verifiedElapsedMs;
+      const claimedKillRatePerS = (totalKills * 1000) / elapsedMs;
+      console.warn(`[scores] reject: kill rate ${killRatePerS} /s exceeds ${MAX_KILLS_PER_S} (claimed ${claimedKillRatePerS} /s, heapId=${heapId})`);
       const sink = getSink();
       if (sink) {
-        await captureServer(sink, 'warn', 'score:rejected', { reason: 'kill rate too high', heapId, killRatePerS: ((percher + ghost + jumper) * 1000) / verifiedElapsedMs });
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'kill rate too high', heapId, killRatePerS, claimedKillRatePerS, verifiedElapsedMs, elapsedMs });
       }
       return c.json({ error: 'invalid score submission' }, 400);
     }
