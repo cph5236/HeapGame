@@ -1,4 +1,4 @@
-import type { LeaderboardContext, SubmitScoreInputs, SubmitScoreResponse, PlayerScoreEntry, PlayerScoresResponse, PaginatedLeaderboardResponse } from '../../shared/scoreTypes';
+import type { LeaderboardContext, SubmitScoreInputs, SubmitScoreResponse, PlayerScoreEntry, PlayerScoresResponse, PaginatedLeaderboardResponse, OpenSessionResponse } from '../../shared/scoreTypes';
 import { fetchWithLog } from '../logging/fetchWithLog';
 import { authHeaders, logIfAuthRejected } from './authToken';
 
@@ -17,6 +17,7 @@ export class ScoreClient {
     playerName: string;
     inputs:     SubmitScoreInputs;
     limit?:     number;
+    sessionToken?: string;
   }): Promise<LeaderboardContext | null> {
     try {
       const url = params.limit
@@ -31,6 +32,7 @@ export class ScoreClient {
           playerId:   params.playerId,
           playerName: params.playerName,
           inputs:     params.inputs,
+          sessionToken: params.sessionToken,
         }),
       });
 
@@ -40,6 +42,28 @@ export class ScoreClient {
       }
       const data = (await res.json()) as SubmitScoreResponse;
       return data.context;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Open a run session. Returns the opaque token, or null if the server is
+   * unreachable, has no session secret configured, or rejects the request.
+   */
+  static async openSession(playerId: string, heapId: string): Promise<string | null> {
+    try {
+      const res = await fetchWithLog(`${SERVER_URL}/scores/session`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body:    JSON.stringify({ playerId, heapId }),
+      });
+      if (!res.ok) {
+        logIfAuthRejected('scores:session', res.status);
+        return null;
+      }
+      const data = (await res.json()) as OpenSessionResponse;
+      return data.token;
     } catch {
       return null;
     }
