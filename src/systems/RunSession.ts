@@ -12,14 +12,17 @@ export const RETRY_MS = 15_000;
 export class RunSession {
   private token?: string;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private generation = 0;
 
   /** Begin acquiring a token. Safe to call again; discards any previous token. */
   start(playerId: string, heapId: string): void {
     this.stop();
     this.token = undefined;
+    const gen = ++this.generation;
     const attempt = (): void => {
       void ScoreClient.openSession(playerId, heapId)
         .then((token) => {
+          if (gen !== this.generation) return; // superseded by a later start()
           if (!token) return;
           this.token = token;
           this.stop();

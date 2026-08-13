@@ -73,4 +73,35 @@ describe('RunSession', () => {
     expect(s.getToken()).toBeUndefined();
     s.stop();
   });
+
+  it('ignores a stale in-flight promise from a superseded start() and keeps the new loop alive', async () => {
+    let resolveFirst!: (token: string | null) => void;
+    const firstCall = new Promise<string | null>((resolve) => { resolveFirst = resolve; });
+
+    const spy = vi.spyOn(ScoreClient, 'openSession')
+      .mockReturnValueOnce(firstCall)     // h1's attempt — left in flight
+      .mockResolvedValueOnce(null);       // h2's first attempt — fails
+
+    const s = new RunSession();
+    s.start('p1', 'h1');   // attempt A fires, stays pending
+    s.start('p1', 'h2');   // supersedes A before it resolves; attempt B fires
+
+    await vi.advanceTimersByTimeAsync(0);  // let B's attempt settle (null)
+    expect(s.getToken()).toBeUndefined();
+
+    // A finally resolves with h1's token, after being superseded.
+    resolveFirst('tok-h1');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.getToken()).toBeUndefined();
+    expect(s.getToken()).not.toBe('tok-h1');
+
+    // B's retry loop must still be alive — A's late resolution must not have
+    // called stop() on B's interval.
+    spy.mockResolvedValueOnce('tok-h2-retry');
+    await vi.advanceTimersByTimeAsync(RETRY_MS);
+    expect(spy).toHaveBeenCalledTimes(3);
+    expect(s.getToken()).toBe('tok-h2-retry');
+
+    s.stop();
+  });
 });
