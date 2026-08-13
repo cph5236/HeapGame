@@ -136,14 +136,29 @@ describe('POST /scores session enforcement', () => {
   });
 
   it('collapses the inflated-elapsedMs attack', async () => {
+    // baseHeightPx 40_000 clears the height cap (maxClimbPx = worldHeight
+    // 50_000 - top_y 0 + HEIGHT_GRACE_PX 200 = 50_200), so the only thing
+    // that can reject this submission is the climb-rate cap. A 10s-old
+    // token clamps to verifiedElapsedMs = 10_000 + GRACE_MS(5_000) = 15_000,
+    // which permits only 400 * 15_000 / 1000 = 6_000px — far below 40_000.
+    const attackInputs = { ...VALID_INPUTS, baseHeightPx: 40_000, elapsedMs: 99_999_999 };
+
     const app   = makeApp({ sessionSecret: SECRET });
-    // 10s-old token: the clamp allows ~15s, so 400 y/s permits ~6000px.
     const token = await signSession(SECRET, PLAYER, HEAP_ID, Date.now() - 10_000);
     const res   = await submit(app, {
-      heapId: HEAP_ID, playerId: PLAYER, sessionToken: token,
-      inputs: { ...VALID_INPUTS, baseHeightPx: 500_000, elapsedMs: 99_999_999 },
+      heapId: HEAP_ID, playerId: PLAYER, sessionToken: token, inputs: attackInputs,
     });
     expect(res.status).toBe(400);
+
+    // Positive control: the identical body against an app with no session
+    // secret configured must be accepted. This proves the 400 above is
+    // caused by session-clamped climb-rate enforcement specifically, and
+    // not by some other validator (e.g. the height cap) rejecting it too.
+    const controlApp = makeApp({});
+    const controlRes = await submit(controlApp, {
+      heapId: HEAP_ID, playerId: PLAYER, inputs: attackInputs,
+    });
+    expect(controlRes.status).toBe(200);
   });
 
   it('still admits an honest run whose token arrived late', async () => {
