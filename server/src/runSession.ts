@@ -9,6 +9,17 @@ export const MAX_SESSION_MS = 12 * 60 * 60 * 1000;
 /** Hard ceiling on creditable run length; this is what defeats token farming. */
 export const MAX_RUN_MS = 60 * 60 * 1000;
 
+/**
+ * Upper bound on an accepted token string, so callers can reject an oversized
+ * one before paying for base64-decoding and an HMAC verify over it.
+ *
+ * Worst case for a real token is ~259 chars: the payload JSON holds two ids of
+ * at most MAX_ID_LEN (64) plus a 13-digit timestamp — about 161 bytes, 215 as
+ * base64url — then a dot and a 43-char signature. 512 leaves generous headroom
+ * while staying far below anything that costs measurable CPU.
+ */
+export const MAX_SESSION_TOKEN_LEN = 512;
+
 export type SessionFailure =
   | 'no-session'
   | 'bad-session-sig'

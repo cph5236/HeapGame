@@ -9,7 +9,7 @@ import type { PlayerAuthDB } from '../playerAuthDb';
 import { enforcePlayerAuth } from '../playerAuth';
 import type { PlayerNameDB } from '../playerNameDb';
 import { validatePlayerName, generateDefaultPlayerName } from '../../../shared/playerName';
-import { signSession, verifySession, clampElapsedMs } from '../runSession';
+import { signSession, verifySession, clampElapsedMs, MAX_SESSION_TOKEN_LEN } from '../runSession';
 import type {
   SubmitScoreRequest,
   SubmitScoreResponse,
@@ -171,6 +171,22 @@ export function scoreRoutes(
       const sink = getSink();
       if (sink) {
         await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad playerName' });
+      }
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
+
+    // sessionToken shape. Checked here, with the other identity fields, so it
+    // is bounded before verifySession does any base64/HMAC work over it —
+    // Workers CPU quota is account-wide, so an unbounded body field on a route
+    // that runs crypto is worth capping. A non-string is rejected rather than
+    // passed through: verifySession calls token.split(), which would throw out
+    // of the handler as a 500 on a truthy non-string.
+    if (sessionToken !== undefined
+        && (typeof sessionToken !== 'string' || sessionToken.length > MAX_SESSION_TOKEN_LEN)) {
+      console.warn(`[scores] reject: bad sessionToken (${typeof sessionToken}, len=${(sessionToken as any)?.length ?? 'N/A'})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad sessionToken' });
       }
       return c.json({ error: 'invalid score submission' }, 400);
     }

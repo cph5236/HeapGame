@@ -187,6 +187,17 @@ which is the safe direction:
 `GRACE_MS` covers the issue round-trip. The clamp is one-sided by construction:
 it can only ever reduce the denominator, never inflate it.
 
+**Server-to-server skew is an accepted risk.** The above covers client-vs-server
+skew. The window is built from two *server* `Date.now()` reads — one at
+`/scores/session`, one at submit — taken in separate Worker invocations that may
+land on different edge nodes. If the submit-time read comes back more than
+`GRACE_MS` earlier than the issue-time read, the window goes negative and
+`verifiedElapsedMs` floors to 1, tripping the climb and kill caps on a legitimate
+run. Cloudflare edge clocks are NTP-synced to well under a second, so 5s of
+backwards skew is not a realistic failure mode; the consequence if it ever
+happened is a rejected honest score, not an accepted forged one, which is the
+direction this design errs in everywhere else. Not mitigated.
+
 ## Rollout
 
 Reject-from-day-one: a submit with no token is rejected as `no-session`.

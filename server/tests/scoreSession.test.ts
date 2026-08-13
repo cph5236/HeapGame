@@ -127,6 +127,43 @@ function submit(app: ReturnType<typeof makeApp>, body: object) {
   });
 }
 
+describe('POST /scores sessionToken shape', () => {
+  it('rejects an over-long sessionToken before doing crypto work', async () => {
+    const app = makeApp({ sessionSecret: SECRET });
+    const res = await submit(app, {
+      heapId: HEAP_ID, playerId: PLAYER, inputs: VALID_INPUTS,
+      sessionToken: 'a'.repeat(100_000),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a non-string sessionToken without throwing', async () => {
+    // Guards a 500: verifySession does token.split(), so a truthy non-string
+    // would TypeError out of the handler rather than reject cleanly.
+    const app = makeApp({ sessionSecret: SECRET });
+    const res = await submit(app, {
+      heapId: HEAP_ID, playerId: PLAYER, inputs: VALID_INPUTS, sessionToken: 12345,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('still accepts a token built from maximum-length ids', async () => {
+    // Pins the length cap above the real worst case, so the guard added for
+    // the two tests above can never reject a legitimate token.
+    const longPlayer = 'p'.repeat(64);
+    const longHeap   = 'h'.repeat(64);
+    const heapDb     = new MockHeapDB();
+    heapDb.seedHeap(longHeap, 1, []);
+    const app = createApp(heapDb, new MockScoreDB(), { sessionSecret: SECRET });
+
+    const token = await signSession(SECRET, longPlayer, longHeap, Date.now() - 90_000);
+    const res   = await submit(app, {
+      heapId: longHeap, playerId: longPlayer, inputs: VALID_INPUTS, sessionToken: token,
+    });
+    expect(res.status).toBe(200);
+  });
+});
+
 describe('POST /scores session enforcement', () => {
   it('rejects a submit with no session token', async () => {
     const app = makeApp({ sessionSecret: SECRET });
