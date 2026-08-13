@@ -27,6 +27,10 @@ export interface DailyClaimSuccess {
   rewards: RewardPayload[];      // array: day 7 grants coins AND an item
   streakDay: number;             // day just claimed (1-7)
   nextRewardPreview: DailyGrant[];
+  nextEligibleAt: number;        // unix ms — lets the client cache "claimed"
+  /** Unix ms this claim's status snapshot self-expires (next local midnight).
+   *  Lets the client cache the claim it just made. */
+  stableUntil: number;
 }
 export interface DailyStreakBroken { kind: 'streakBroken'; repairableDay: number }
 export interface DailyNotEligible { kind: 'notEligible'; nextEligibleAt: number } // unix ms
@@ -38,4 +42,17 @@ export interface DailyStatusResponse {
   claimedToday: boolean;    // in the requesting device's local day
   nextClaimDay: number;     // day the next claim grants (1 if streak lapsed)
   todayGrants: DailyGrant[];
+  /** Unix ms the claim after `streakDay` became/becomes possible. Absent only
+   *  when the player has never claimed. **Presence does not mean "locked out"**
+   *  — for a player who is eligible again (new local day, or a lapsed streak)
+   *  this instant is in the past, so any countdown UI must check it against
+   *  `claimedToday` rather than rendering it blind. Lets the client cache a
+   *  claimed-today snapshot instead of re-fetching on every menu load. */
+  nextEligibleAt?: number;
+  /** Unix ms this response can next change by itself, or `null` when nothing
+   *  can change it without a claim (never claimed, or grace already expired).
+   *  **Absent** means the server predates this field — the client must not
+   *  cache at all in that case. Distinct from `nextEligibleAt`, which answers
+   *  when the player may claim rather than when this response goes stale. */
+  stableUntil?: number | null;
 }

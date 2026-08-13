@@ -72,19 +72,30 @@ export function decideClaim(
     return { kind: 'notEligible', nextEligibleAt: nextEligibleAt(state.lastClaimAt, offsetMin, minGapHours) };
   }
 
-  const continuedDay = (state.streakDay % 7) + 1;
+  const continuedDay = dayAfter(state.streakDay);
   if (gapMs <= graceHours * HOUR_MS) return { kind: 'grant', day: continuedDay };
   if (resolution === 'repair') return { kind: 'grant', day: continuedDay };
   if (resolution === 'reset') return { kind: 'grant', day: 1 };
   return { kind: 'broken', repairableDay: continuedDay };
 }
 
+/** Next local-midnight instant after `unixMs` at the given UTC offset. */
+export function nextLocalMidnight(unixMs: number, offsetMin: number): number {
+  const local = unixMs + offsetMin * 60_000;
+  return (Math.floor(local / DAY_MS) + 1) * DAY_MS - offsetMin * 60_000;
+}
+
 /** Earliest instant the next claim can succeed: the later of the next local
  *  midnight and lastClaim + minGap. */
 export function nextEligibleAt(lastClaimAt: number, offsetMin: number, minGapHours: number): number {
-  const local = lastClaimAt + offsetMin * 60_000;
-  const nextLocalMidnightUtc = (Math.floor(local / DAY_MS) + 1) * DAY_MS - offsetMin * 60_000;
-  return Math.max(nextLocalMidnightUtc, lastClaimAt + minGapHours * HOUR_MS);
+  return Math.max(nextLocalMidnight(lastClaimAt, offsetMin), lastClaimAt + minGapHours * HOUR_MS);
+}
+
+/** The streak day a claim after `streakDay` grants, wrapping 7 back to 1.
+ *  One definition of the wrap rule so the server's claim decision, the status
+ *  response, and the client's post-claim cache seed cannot drift apart. */
+export function dayAfter(streakDay: number): number {
+  return (streakDay % 7) + 1;
 }
 
 /** Table lookup with 7-day wrap (day 8 == day 1). */
@@ -145,13 +156,57 @@ export function statusFromState(
   offsetMin: number,
   graceHours: number,
   table: DailyRewardTable,
+  minGapHours: number = DEFAULT_MIN_GAP_HOURS,
 ): DailyStatusResponse {
   if (!state) {
-    return { streakDay: 0, claimedToday: false, nextClaimDay: 1, todayGrants: grantsForDay(table, 1) };
+    return {
+      streakDay: 0, claimedToday: false, nextClaimDay: 1,
+      todayGrants: grantsForDay(table, 1),
+      stableUntil: null,
+    };
   }
   const claimedToday =
     localDateKey(nowMs, offsetMin) === localDateKey(state.lastClaimAt, offsetMin);
   const withinGrace = nowMs - state.lastClaimAt <= graceHours * HOUR_MS;
-  const nextClaimDay = withinGrace ? (state.streakDay % 7) + 1 : 1;
-  return { streakDay: state.streakDay, claimedToday, nextClaimDay, todayGrants: grantsForDay(table, nextClaimDay) };
+  const nextClaimDay = withinGrace ? dayAfter(state.streakDay) : 1;
+  return {
+    streakDay: state.streakDay,
+    claimedToday,
+    nextClaimDay,
+    todayGrants: grantsForDay(table, nextClaimDay),
+    nextEligibleAt: nextEligibleAt(state.lastClaimAt, offsetMin, minGapHours),
+    stableUntil: stableUntilFor(state, nowMs, offsetMin, graceHours),
+  };
+}
+
+/**
+ * The next instant a `/daily/status` response can change *by itself*, or null
+ * when no such instant exists. This is what the client cache gates on — it is
+ * a different question from `nextEligibleAt` ("when may they claim again"),
+ * and the difference is the whole unclaimed half of the state space.
+ *
+ * Only two things change a response without a claim: the local day rolling
+ * over (which flips `claimedToday` to false) and grace expiring (which resets
+ * `nextClaimDay` to 1). Midnight only matters while `claimedToday` is true —
+ * for an unclaimed response it changes nothing, and including it would force a
+ * needless daily re-fetch.
+ */
+export function stableUntilFor(
+  state: ClaimState | null,
+  nowMs: number,
+  offsetMin: number,
+  graceHours: number,
+): number | null {
+  if (!state) return null;  // never claimed — frozen until they claim
+
+  const transitions: number[] = [];
+
+  const claimedToday =
+    localDateKey(nowMs, offsetMin) === localDateKey(state.lastClaimAt, offsetMin);
+  if (claimedToday) transitions.push(nextLocalMidnight(nowMs, offsetMin));
+
+  const graceExpiry = state.lastClaimAt + graceHours * HOUR_MS;
+  if (graceExpiry > nowMs) transitions.push(graceExpiry);
+
+  return transitions.length ? Math.min(...transitions) : null;
 }

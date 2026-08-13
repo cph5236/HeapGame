@@ -25,17 +25,35 @@ export function burstColorsForRewards(rewards: RewardPayload[], count: number): 
   return Array.from({ length: count }, (_, i) => palette[i % palette.length]);
 }
 
-export type DailyIconState = 'hidden' | 'locked' | 'ready' | 'offline';
+export type DailyIconState = 'hidden' | 'locked' | 'ready' | 'waiting' | 'offline';
 
 /** Icon visibility/state. Hidden after today's claim (spec: the can must not
- *  linger once it has no job). */
+ *  linger once it has no job). `waiting` covers the min-gap window, where
+ *  `claimedToday` is already false but a claim would still 409 — without it the
+ *  can renders `ready` and the tap dead-ends. It displaces only `ready`:
+ *  when the player has not run yet, `locked` is the gate they can act on, and
+ *  tapping `locked` opens a preview with no claim path, so it is not a
+ *  dead-end. A server that omits `nextEligibleAt` never yields `waiting`. */
 export function dailyIconState(
   status: DailyStatusResponse | null,
   playedToday: boolean,
+  now: number = Date.now(),
 ): DailyIconState {
   if (status === null) return 'offline';
   if (status.claimedToday) return 'hidden';
-  return playedToday ? 'ready' : 'locked';
+  if (!playedToday) return 'locked';
+  if (typeof status.nextEligibleAt === 'number' && now < status.nextEligibleAt) return 'waiting';
+  return 'ready';
+}
+
+/** Coarse "time until the next drop" label for the waiting can. Minute
+ *  granularity — the can ticks every 15s, and seconds would just churn. */
+export function formatCountdown(msRemaining: number): string {
+  const totalMin = Math.floor(msRemaining / 60_000);
+  if (totalMin < 1) return '<1m';
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
 /** The claim overlay auto-opens once per local day, only when claimable. */

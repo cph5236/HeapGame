@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dailyIconState, shouldAutoShowPopup, streakChips, activeStreakDay, isGoldenDay, grantPreviewText, dailyRewardPreview, COIN_COLOR, burstColorsForRewards } from '../dailyDropLogic';
+import { dailyIconState, formatCountdown, shouldAutoShowPopup, streakChips, activeStreakDay, isGoldenDay, grantPreviewText, dailyRewardPreview, COIN_COLOR, burstColorsForRewards } from '../dailyDropLogic';
 import { ACCENT_COLORS } from '../../data/itemAccents';
 import type { DailyStatusResponse, DailyGrant } from '../../../shared/dailyTypes';
 import type { RewardPayload } from '../../../shared/codeTypes';
@@ -18,6 +18,55 @@ describe('dailyIconState', () => {
   });
   it('ready after a run, unclaimed', () => {
     expect(dailyIconState(base, true)).toBe('ready');
+  });
+
+  const H = 3_600_000;
+  const NOW = Date.parse('2026-07-16T02:00:00Z');
+
+  it('waiting when played but the min gap has not elapsed', () => {
+    const status = { ...base, nextEligibleAt: NOW + 2 * H };
+    expect(dailyIconState(status, true, NOW)).toBe('waiting');
+  });
+
+  it('locked beats waiting — "play a run" is the actionable gate', () => {
+    const status = { ...base, nextEligibleAt: NOW + 2 * H };
+    expect(dailyIconState(status, false, NOW)).toBe('locked');
+  });
+
+  it('ready once nextEligibleAt has passed', () => {
+    const status = { ...base, nextEligibleAt: NOW - 1 * H };
+    expect(dailyIconState(status, true, NOW)).toBe('ready');
+  });
+
+  it('ready when the server omits nextEligibleAt', () => {
+    expect(dailyIconState(base, true, NOW)).toBe('ready');
+  });
+
+  it('hidden still wins once claimed, whatever nextEligibleAt says', () => {
+    const status = { ...base, claimedToday: true, nextEligibleAt: NOW + 2 * H };
+    expect(dailyIconState(status, true, NOW)).toBe('hidden');
+  });
+});
+
+describe('formatCountdown', () => {
+  const H = 3_600_000;
+  const M = 60_000;
+
+  it('shows hours and minutes past an hour', () => {
+    expect(formatCountdown(2 * H + 14 * M)).toBe('2h 14m');
+  });
+  it('shows minutes only under an hour', () => {
+    expect(formatCountdown(14 * M)).toBe('14m');
+  });
+  it('shows a floor marker under a minute', () => {
+    expect(formatCountdown(30_000)).toBe('<1m');
+  });
+  it('shows a floor marker at or below zero', () => {
+    expect(formatCountdown(0)).toBe('<1m');
+    expect(formatCountdown(-5000)).toBe('<1m');
+  });
+  it('keeps the minute component on a whole hour', () => {
+    expect(formatCountdown(1 * H)).toBe('1h 0m');
   });
 });
 
