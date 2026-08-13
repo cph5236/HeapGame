@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { RunSession, RETRY_MS } from '../RunSession';
+import { RunSession, RETRY_MS, EARLY_RETRY_MS } from '../RunSession';
 import { ScoreClient } from '../ScoreClient';
 
 type OpenResult = Awaited<ReturnType<typeof ScoreClient.openSession>>;
@@ -24,23 +24,45 @@ describe('RunSession', () => {
     s.stop();
   });
 
-  it('retries every RETRY_MS until one succeeds', async () => {
-    const spy = vi.spyOn(ScoreClient, 'openSession')
-      .mockResolvedValueOnce(transient())
-      .mockResolvedValueOnce(transient())
-      .mockResolvedValueOnce(ok('tok-3'));
+  it('retries on the early schedule, then backs off to RETRY_MS', async () => {
+    const spy = vi.spyOn(ScoreClient, 'openSession').mockResolvedValue(transient());
     const s = new RunSession();
     s.start('p1', 'h1');
 
     await vi.advanceTimersByTimeAsync(0);
-    expect(s.getToken()).toBeUndefined();
+    expect(spy).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(RETRY_MS);
-    expect(s.getToken()).toBeUndefined();
+    // Attempts 2 and 3 land on EARLY_RETRY_MS: +1s, then +3s.
+    await vi.advanceTimersByTimeAsync(EARLY_RETRY_MS[0]);
+    expect(spy).toHaveBeenCalledTimes(2);
 
-    await vi.advanceTimersByTimeAsync(RETRY_MS);
-    expect(s.getToken()).toBe('tok-3');
+    await vi.advanceTimersByTimeAsync(EARLY_RETRY_MS[1]);
     expect(spy).toHaveBeenCalledTimes(3);
+
+    // The schedule is spent — attempt 4 waits the full RETRY_MS, so nothing
+    // fires just short of it.
+    await vi.advanceTimersByTimeAsync(RETRY_MS - 1);
+    expect(spy).toHaveBeenCalledTimes(3);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(spy).toHaveBeenCalledTimes(4);
+    s.stop();
+  });
+
+  it('holds a token within a short run despite a failed first attempt', async () => {
+    // The reason for the early schedule. A tokenless submit is rejected
+    // outright rather than clamped, so a run that ends inside the retry gap
+    // loses its score entirely. Under a flat 15s schedule this expectation
+    // fails: at 5s the second attempt has not yet fired.
+    const spy = vi.spyOn(ScoreClient, 'openSession')
+      .mockResolvedValueOnce(transient())
+      .mockResolvedValue(ok('tok-2'));
+    const s = new RunSession();
+    s.start('p1', 'h1');
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(s.getToken()).toBe('tok-2');
+    expect(spy).toHaveBeenCalledTimes(2);
     s.stop();
   });
 
@@ -70,8 +92,9 @@ describe('RunSession', () => {
     const spy = vi.spyOn(ScoreClient, 'openSession').mockResolvedValue(transient());
     const s = new RunSession();
     s.start('p1', 'h1');
+    // t=0 immediate, +1s, +3s, then every 15s: 1s, 4s, 19s, 34s within 45s.
     await vi.advanceTimersByTimeAsync(RETRY_MS * 3);
-    expect(spy).toHaveBeenCalledTimes(4); // immediate + 3 interval ticks
+    expect(spy).toHaveBeenCalledTimes(5);
     s.stop();
   });
 
@@ -97,7 +120,7 @@ describe('RunSession', () => {
     const s = new RunSession();
     s.start('p1', 'h1');
     await vi.advanceTimersByTimeAsync(RETRY_MS * 2);
-    expect(spy).toHaveBeenCalledTimes(1); // blocked by the in-flight guard
+    expect(spy).toHaveBeenCalledTimes(1); // nothing scheduled until this settles
 
     settleFirst(transient());
     await vi.advanceTimersByTimeAsync(0);
@@ -114,6 +137,26 @@ describe('RunSession', () => {
     s.start('p1', 'h1');
     await vi.advanceTimersByTimeAsync(0);
     s.stop();
+    await vi.advanceTimersByTimeAsync(RETRY_MS * 5);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not restart the loop when a request settles after stop()', async () => {
+    // Retries are scheduled by a settling request rather than by a standing
+    // interval, so stop() clearing the timer is not sufficient on its own: the
+    // request already in flight at scene shutdown settles afterwards and must
+    // not schedule anything behind the dead scene.
+    let settle!: (r: OpenResult) => void;
+    const pending = new Promise<OpenResult>((resolve) => { settle = resolve; });
+    const spy = vi.spyOn(ScoreClient, 'openSession')
+      .mockReturnValueOnce(pending)
+      .mockResolvedValue(transient());
+
+    const s = new RunSession();
+    s.start('p1', 'h1');
+    s.stop();
+
+    settle(transient());
     await vi.advanceTimersByTimeAsync(RETRY_MS * 5);
     expect(spy).toHaveBeenCalledTimes(1);
   });

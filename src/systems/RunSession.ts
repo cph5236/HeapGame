@@ -7,13 +7,34 @@
 
 import { ScoreClient } from './ScoreClient';
 
+/** Steady-state gap between retries once the early attempts are spent. */
 export const RETRY_MS = 15_000;
+
+/**
+ * Delays before the 2nd and 3rd attempts, in order; every later attempt waits
+ * RETRY_MS.
+ *
+ * A flat 15s schedule left a real hole: the happy path resolves in a few
+ * hundred ms, but if the very first attempt fails on a flaky connection there
+ * is then no token for 15 full seconds — long enough to cover an entire short
+ * run. A run that ends tokenless is rejected outright rather than clamped, so
+ * that run's score is lost. Retrying quickly twice closes almost all of that
+ * window; backing off afterwards keeps a long run from hammering the endpoint.
+ */
+export const EARLY_RETRY_MS: readonly number[] = [1_000, 3_000];
 
 export class RunSession {
   private token?: string;
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
   private generation = 0;
-  private inFlight = false;
+  private attempts = 0;
+  /**
+   * False once stop() runs. Retries are scheduled by a settling request, not by
+   * a standing interval, so clearing the timer is not enough on its own: a
+   * request already in flight when the scene shuts down would otherwise settle
+   * afterwards and start the loop up again behind a dead scene.
+   */
+  private active = false;
 
   /**
    * Begin acquiring a token. Safe to call again; discards any previous token.
@@ -27,38 +48,42 @@ export class RunSession {
   start(playerId: string, heapId: string): void {
     this.stop();
     this.token = undefined;
-    this.inFlight = false;
+    this.attempts = 0;
+    this.active = true;
     const gen = ++this.generation;
+
+    // Each attempt schedules the next one only once it has settled, so a
+    // request slower than its retry gap can never stack a second concurrent
+    // request on top of itself and double rate-limit consumption. This replaces
+    // the explicit in-flight flag the standing-interval version needed.
     const attempt = (): void => {
-      // A slow connection can leave a request outstanding past RETRY_MS.
-      // Firing a second one doubles rate-limit consumption for no benefit.
-      if (this.inFlight) return;
-      this.inFlight = true;
+      const delay = EARLY_RETRY_MS[this.attempts] ?? RETRY_MS;
+      this.attempts++;
+
       void ScoreClient.openSession(playerId, heapId)
         .then(({ token, retryable }) => {
           if (gen !== this.generation) return; // superseded by a later start()
           if (token) {
             this.token = token;
-            this.stop();
             return;
           }
-          // Nothing to retry for — stop rather than poll a server that will
+          // Nothing to retry for — give up rather than poll a server that will
           // keep giving the same answer for the whole scene.
-          if (!retryable) this.stop();
+          if (retryable && this.active) this.timer = setTimeout(attempt, delay);
         })
-        .catch(() => { /* offline — the retry timer handles it */ })
-        .finally(() => {
-          if (gen === this.generation) this.inFlight = false;
+        .catch(() => {
+          // Offline. fetch rejected, which is transient by nature — keep going.
+          if (gen === this.generation && this.active) this.timer = setTimeout(attempt, delay);
         });
     };
     attempt();
-    this.timer = setInterval(attempt, RETRY_MS);
   }
 
   /** Halt retries. Call from scene shutdown; the held token stays readable. */
   stop(): void {
+    this.active = false;
     if (this.timer !== null) {
-      clearInterval(this.timer);
+      clearTimeout(this.timer);
       this.timer = null;
     }
   }
