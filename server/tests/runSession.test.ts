@@ -92,6 +92,27 @@ describe('signSession / verifySession', () => {
     expect(res).toEqual({ ok: true, issuedAt: NOW });
   });
 
+  it('keeps per-secret keys separate across repeated use (key cache)', async () => {
+    // Guards the importKey cache: it is keyed by secret, so reusing each secret
+    // several times must not let one secret's key leak into another's. A
+    // single module-scoped cached key would make the cross-secret verify pass.
+    const tokenA1 = await signSession(SECRET, PLAYER, HEAP, NOW);
+    const tokenB1 = await signSession('secret-b', PLAYER, HEAP, NOW);
+    const tokenA2 = await signSession(SECRET, PLAYER, HEAP, NOW);
+    const tokenB2 = await signSession('secret-b', PLAYER, HEAP, NOW);
+
+    // Same secret + same inputs is deterministic; different secrets are not.
+    expect(tokenA1).toBe(tokenA2);
+    expect(tokenB1).toBe(tokenB2);
+    expect(tokenA1).not.toBe(tokenB1);
+
+    // Each token verifies only under the secret that signed it.
+    expect(await verifySession(SECRET, tokenA1, PLAYER, HEAP, NOW)).toEqual({ ok: true, issuedAt: NOW });
+    expect(await verifySession('secret-b', tokenB1, PLAYER, HEAP, NOW)).toEqual({ ok: true, issuedAt: NOW });
+    expect(await verifySession('secret-b', tokenA1, PLAYER, HEAP, NOW)).toEqual({ ok: false, reason: 'bad-session-sig' });
+    expect(await verifySession(SECRET, tokenB1, PLAYER, HEAP, NOW)).toEqual({ ok: false, reason: 'bad-session-sig' });
+  });
+
   it('does not let a delimiter in playerId shift field boundaries', async () => {
     const sneaky = `x|${HEAP}|${NOW}`;
     const token  = await signSession(SECRET, sneaky, HEAP, NOW);

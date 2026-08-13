@@ -36,14 +36,39 @@ function bytesFromB64url(s: string): Uint8Array {
   return out;
 }
 
-async function importKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
+/**
+ * Derived keys cached per secret. The key depends only on the secret, and both
+ * signing and verification sit on hot paths — every session open and every
+ * score submit would otherwise pay an `importKey` round-trip.
+ *
+ * Keyed BY the secret, deliberately: a single module-scoped key would let a
+ * token signed under one secret verify under another, which would defeat the
+ * signature check during a secret rotation (and silently break the
+ * "rejects a token signed with a different key" guarantee).
+ *
+ * The Promise is cached rather than the resolved key so concurrent callers
+ * share one import instead of racing to create duplicates.
+ */
+const keyCache = new Map<string, Promise<CryptoKey>>();
+
+function importKey(secret: string): Promise<CryptoKey> {
+  const cached = keyCache.get(secret);
+  if (cached) return cached;
+
+  const pending = crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign', 'verify'],
-  );
+  ).catch((err) => {
+    // Never leave a rejected promise cached — it would poison every later call.
+    keyCache.delete(secret);
+    throw err;
+  });
+
+  keyCache.set(secret, pending);
+  return pending;
 }
 
 export async function signSession(
