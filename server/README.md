@@ -124,6 +124,29 @@ Past blocks also appear in the **Workers → heap-server → Logs** tab in the C
 
 ---
 
+## Secrets
+
+### SESSION_SECRET
+
+HMAC key for run-session tokens (see
+`docs/superpowers/specs/2026-08-12-run-session-tokens-design.md`). Until it is
+set, `/scores/session` 404s and score submits skip session verification — the
+feature is inert, which is the correct local-dev behavior.
+
+Generate and set it:
+
+```bash
+openssl rand -base64 32
+npx wrangler secret put SESSION_SECRET
+npx wrangler secret put SESSION_SECRET --env staging
+```
+
+**Set this on staging and verify there before production.** Once it is live in
+production, any client that cannot reach `/scores/session` at run start loses
+that run's score, so the client change must be deployed first.
+
+---
+
 ## Tests
 
 ```bash
