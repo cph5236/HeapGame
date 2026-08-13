@@ -105,6 +105,24 @@ export function scoreRoutes(
       return c.json({ error: 'invalid session request' }, 400);
     }
 
+    // The heap must exist before write-auth runs. enforcePlayerAuth TOFU-claims
+    // an unclaimed playerId as a side effect, so a request that is going to be
+    // rejected must never reach it — the same ordering POST / and
+    // /heaps/:id/place already follow. Without this check a session could be
+    // opened against any heapId at all, making this the cheapest claim vector
+    // in the API and locking the real owner of that id out with a 403 on their
+    // first genuine write. It also stops minting tokens for heaps that do not
+    // exist, which the subsequent submit would only 404 on anyway.
+    const heap = await heapDb.getHeap(heapId);
+    if (!heap) {
+      console.warn(`[scores] session reject: heap not found (${heapId})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'session:rejected', { reason: 'heap not found', heapId });
+      }
+      return c.json({ error: 'invalid session request' }, 404);
+    }
+
     // Only the owner of a player id may open a session for it.
     const authRes = await enforcePlayerAuth(c, authDb, playerId, getSink, 'scores:session');
     if (authRes) return authRes;

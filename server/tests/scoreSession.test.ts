@@ -72,6 +72,34 @@ describe('POST /scores/session', () => {
     expect(res.status).toBe(400);
   });
 
+  it('404s for a heap that does not exist', async () => {
+    const app = makeApp({ sessionSecret: SECRET });
+    const res = await openSession(app, { playerId: PLAYER, heapId: 'no-such-heap' });
+    expect(res.status).toBe(404);
+  });
+
+  it('does not claim the playerId when the heap does not exist', async () => {
+    // enforcePlayerAuth TOFU-claims an unclaimed id as a side effect, so it must
+    // sit behind the heap check. Otherwise a single request naming any unclaimed
+    // playerId — with no valid heap needed — permanently claims it under the
+    // caller's secret, and the real owner is 403-locked out of their own data.
+    const authDb = new MockPlayerAuthDB();
+    const app    = makeApp({ sessionSecret: SECRET, authDb });
+
+    const attacker = await openSession(
+      app, { playerId: PLAYER, heapId: 'no-such-heap' }, 'attacker-token',
+    );
+    expect(attacker.status).toBe(404);
+
+    // The id must still be unclaimed, so the rightful owner's first request
+    // succeeds and claims it under THEIR secret.
+    expect(await authDb.getSecretHash(PLAYER)).toBeNull();
+    const owner = await openSession(
+      app, { playerId: PLAYER, heapId: HEAP_ID }, 'owner-token',
+    );
+    expect(owner.status).toBe(200);
+  });
+
   it('403s when the player token does not match a claimed id', async () => {
     const authDb = new MockPlayerAuthDB();
     const app    = makeApp({ sessionSecret: SECRET, authDb });
