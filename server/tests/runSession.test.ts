@@ -129,4 +129,16 @@ describe('clampElapsedMs', () => {
     // Guards against divide-by-zero in the rate caps.
     expect(clampElapsedMs(60_000, NOW + 999_999, NOW)).toBe(1);
   });
+
+  it('floors a NaN claim to 1 instead of propagating NaN', () => {
+    expect(clampElapsedMs(NaN, NOW - 60_000, NOW)).toBe(1);
+  });
+
+  it('floors an Infinity claim to 1', () => {
+    expect(clampElapsedMs(Infinity, NOW - 60_000, NOW)).toBe(1);
+  });
+
+  it('floors a -Infinity claim to 1', () => {
+    expect(clampElapsedMs(-Infinity, NOW - 60_000, NOW)).toBe(1);
+  });
 });

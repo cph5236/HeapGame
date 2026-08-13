@@ -112,9 +112,13 @@ export async function verifySession(
  * and clamping it into buildRunScore would inflate scores.
  *
  * Floored at 1 so the rate caps can never divide by zero on a future-dated or
- * same-instant token.
+ * same-instant token. A non-finite claim (NaN/Infinity/-Infinity) is treated
+ * as 0 before clamping, so it also floors to 1 rather than propagating NaN —
+ * `Math.min`/`Math.max` pass NaN through unconditionally, which would fail a
+ * downstream `if (rate > CAP) reject` check open instead of closed.
  */
 export function clampElapsedMs(claimedMs: number, issuedAt: number, now: number): number {
-  const window = (now - issuedAt) + GRACE_MS;
-  return Math.max(1, Math.min(claimedMs, window, MAX_RUN_MS));
+  const safeClaim = Number.isFinite(claimedMs) ? claimedMs : 0;
+  const window    = (now - issuedAt) + GRACE_MS;
+  return Math.max(1, Math.min(safeClaim, window, MAX_RUN_MS));
 }
