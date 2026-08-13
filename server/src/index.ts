@@ -36,6 +36,9 @@ export interface Env {
   // Analytics Engine binding — added in Phase 4. If unset, fall back to D1Sink.
   LOGS?: AnalyticsEngineDataset;
   RL_LOG?: RateLimiter;
+  /** HMAC key for run-session tokens. Set via `wrangler secret put SESSION_SECRET`. */
+  SESSION_SECRET?: string;
+  RL_SESSION?: RateLimiter;
 }
 
 export default {
@@ -65,6 +68,7 @@ export default {
       playerAuthDb:    new D1PlayerAuthDB(env.DB_SCORES),
       contributionDb:  new D1ContributionDB(env.DB_SCORES),
       playerNameDb:    new D1PlayerNameDB(env.DB_SCORES),
+      sessionSecret:  env.SESSION_SECRET,
       limiters: {
         scores: env.RL_SCORES,
         place:  env.RL_PLACE,
@@ -72,6 +76,7 @@ export default {
         log:    env.RL_LOG,
         codes:  env.RL_CODES,
         feedback: env.RL_FEEDBACK,
+        session: env.RL_SESSION,
       },
       logSink,
     });

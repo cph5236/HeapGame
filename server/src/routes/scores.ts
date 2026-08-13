@@ -9,6 +9,7 @@ import type { PlayerAuthDB } from '../playerAuthDb';
 import { enforcePlayerAuth } from '../playerAuth';
 import type { PlayerNameDB } from '../playerNameDb';
 import { validatePlayerName, generateDefaultPlayerName } from '../../../shared/playerName';
+import { signSession, verifySession, clampElapsedMs, MAX_SESSION_TOKEN_LEN } from '../runSession';
 import type {
   SubmitScoreRequest,
   SubmitScoreResponse,
@@ -16,6 +17,8 @@ import type {
   LeaderboardContext,
   PaginatedLeaderboardResponse,
   PlayerScoresResponse,
+  OpenSessionRequest,
+  OpenSessionResponse,
 } from '../../../shared/scoreTypes';
 import { buildRunScore } from '../../../shared/buildRunScore';
 import { MAX_ID_LEN } from '../constants';
@@ -77,8 +80,58 @@ export function scoreRoutes(
   getSink: () => Sink | undefined,
   authDb?: PlayerAuthDB,
   playerNameDb?: PlayerNameDB,
+  sessionSecret?: string,
 ): Hono {
   const app = new Hono();
+
+  // POST /scores/session — open a run session. The token is a server-attested
+  // timestamp, not proof of a genuine client: anyone can call this endpoint.
+  // Its value is that a claimed elapsedMs can never exceed real elapsed time.
+  app.post('/session', async (c) => {
+    if (!sessionSecret) return c.json({ error: 'not found' }, 404);
+
+    let body: OpenSessionRequest;
+    try {
+      body = await c.req.json<OpenSessionRequest>();
+    } catch {
+      return c.json({ error: 'invalid session request' }, 400);
+    }
+
+    const { playerId, heapId } = body;
+    if (typeof playerId !== 'string' || playerId.length === 0 || playerId.length > MAX_ID_LEN) {
+      return c.json({ error: 'invalid session request' }, 400);
+    }
+    if (typeof heapId !== 'string' || heapId.length === 0 || heapId.length > MAX_ID_LEN) {
+      return c.json({ error: 'invalid session request' }, 400);
+    }
+
+    // The heap must exist before write-auth runs. enforcePlayerAuth TOFU-claims
+    // an unclaimed playerId as a side effect, so a request that is going to be
+    // rejected must never reach it — the same ordering POST / and
+    // /heaps/:id/place already follow. Without this check a session could be
+    // opened against any heapId at all, making this the cheapest claim vector
+    // in the API and locking the real owner of that id out with a 403 on their
+    // first genuine write. It also stops minting tokens for heaps that do not
+    // exist, which the subsequent submit would only 404 on anyway.
+    const heap = await heapDb.getHeap(heapId);
+    if (!heap) {
+      console.warn(`[scores] session reject: heap not found (${heapId})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'session:rejected', { reason: 'heap not found', heapId });
+      }
+      return c.json({ error: 'invalid session request' }, 404);
+    }
+
+    // Only the owner of a player id may open a session for it.
+    const authRes = await enforcePlayerAuth(c, authDb, playerId, getSink, 'scores:session');
+    if (authRes) return authRes;
+
+    const issuedAt = Date.now();
+    const token    = await signSession(sessionSecret, playerId, heapId, issuedAt);
+    const res: OpenSessionResponse = { token, issuedAt };
+    return c.json(res);
+  });
 
   // POST /scores — submit raw inputs; server recomputes the score and returns leaderboard context
   app.post('/', async (c) => {
@@ -94,7 +147,7 @@ export function scoreRoutes(
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
-    const { heapId, playerId, playerName, inputs } = body;
+    const { heapId, playerId, playerName, inputs, sessionToken } = body;
 
     // Identity / name validation
     if (typeof heapId !== 'string' || heapId.length === 0 || heapId.length > MAX_ID_LEN) {
@@ -118,6 +171,22 @@ export function scoreRoutes(
       const sink = getSink();
       if (sink) {
         await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad playerName' });
+      }
+      return c.json({ error: 'invalid score submission' }, 400);
+    }
+
+    // sessionToken shape. Checked here, with the other identity fields, so it
+    // is bounded before verifySession does any base64/HMAC work over it —
+    // Workers CPU quota is account-wide, so an unbounded body field on a route
+    // that runs crypto is worth capping. A non-string is rejected rather than
+    // passed through: verifySession calls token.split(), which would throw out
+    // of the handler as a 500 on a truthy non-string.
+    if (sessionToken !== undefined
+        && (typeof sessionToken !== 'string' || sessionToken.length > MAX_SESSION_TOKEN_LEN)) {
+      console.warn(`[scores] reject: bad sessionToken (${typeof sessionToken}, len=${(sessionToken as any)?.length ?? 'N/A'})`);
+      const sink = getSink();
+      if (sink) {
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'bad sessionToken' });
       }
       return c.json({ error: 'invalid score submission' }, 400);
     }
@@ -194,6 +263,23 @@ export function scoreRoutes(
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
+    // Run-session verification. Inert when no secret is configured so local dev
+    // and the existing test suite behave exactly as before.
+    let verifiedElapsedMs = elapsedMs;
+    if (sessionSecret) {
+      const now     = Date.now();
+      const session = await verifySession(sessionSecret, sessionToken, playerId, heapId, now);
+      if (!session.ok) {
+        console.warn(`[scores] reject: ${session.reason} (heapId=${heapId})`);
+        const sink = getSink();
+        if (sink) {
+          await captureServer(sink, 'warn', 'score:rejected', { reason: session.reason, heapId, playerId });
+        }
+        return c.json({ error: 'invalid score submission' }, 400);
+      }
+      verifiedElapsedMs = clampElapsedMs(elapsedMs, session.issuedAt, now);
+    }
+
     // Heap-relative validation — needs the heap row
     const heap = await heapDb.getHeap(heapId);
     if (!heap) {
@@ -215,22 +301,32 @@ export function scoreRoutes(
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
-    // Climb-rate cap (integer arithmetic to avoid FP rounding at the boundary)
-    if (baseHeightPx * 1000 > MAX_CLIMB_RATE_Y_PER_S * elapsedMs) {
-      console.warn(`[scores] reject: climb rate ${(baseHeightPx * 1000) / elapsedMs} Y/s exceeds ${MAX_CLIMB_RATE_Y_PER_S} (heapId=${heapId})`);
+    // Climb-rate cap (integer arithmetic to avoid FP rounding at the boundary).
+    // Uses verifiedElapsedMs — the elapsed time the server can vouch for.
+    if (baseHeightPx * 1000 > MAX_CLIMB_RATE_Y_PER_S * verifiedElapsedMs) {
+      // Log BOTH rates. The verified rate is what tripped the cap, but the
+      // claimed rate is what reveals the severity: a submission clamped from
+      // elapsedMs=99999999 down to a ~15s window logs an unremarkable verified
+      // rate while its claimed rate is absurd. Triage needs the latter.
+      const climbRatePerS       = (baseHeightPx * 1000) / verifiedElapsedMs;
+      const claimedClimbRatePerS = (baseHeightPx * 1000) / elapsedMs;
+      console.warn(`[scores] reject: climb rate ${climbRatePerS} Y/s exceeds ${MAX_CLIMB_RATE_Y_PER_S} (claimed ${claimedClimbRatePerS} Y/s, heapId=${heapId})`);
       const sink = getSink();
       if (sink) {
-        await captureServer(sink, 'warn', 'score:rejected', { reason: 'climb rate too high', heapId, climbRatePerS: (baseHeightPx * 1000) / elapsedMs });
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'climb rate too high', heapId, climbRatePerS, claimedClimbRatePerS, verifiedElapsedMs, elapsedMs });
       }
       return c.json({ error: 'invalid score submission' }, 400);
     }
 
     // Kill-rate cap
-    if ((percher + ghost + jumper) * 1000 > MAX_KILLS_PER_S * elapsedMs) {
-      console.warn(`[scores] reject: kill rate ${((percher + ghost + jumper) * 1000) / elapsedMs} /s exceeds ${MAX_KILLS_PER_S} (heapId=${heapId})`);
+    if ((percher + ghost + jumper) * 1000 > MAX_KILLS_PER_S * verifiedElapsedMs) {
+      const totalKills          = percher + ghost + jumper;
+      const killRatePerS        = (totalKills * 1000) / verifiedElapsedMs;
+      const claimedKillRatePerS = (totalKills * 1000) / elapsedMs;
+      console.warn(`[scores] reject: kill rate ${killRatePerS} /s exceeds ${MAX_KILLS_PER_S} (claimed ${claimedKillRatePerS} /s, heapId=${heapId})`);
       const sink = getSink();
       if (sink) {
-        await captureServer(sink, 'warn', 'score:rejected', { reason: 'kill rate too high', heapId, killRatePerS: ((percher + ghost + jumper) * 1000) / elapsedMs });
+        await captureServer(sink, 'warn', 'score:rejected', { reason: 'kill rate too high', heapId, killRatePerS, claimedKillRatePerS, verifiedElapsedMs, elapsedMs });
       }
       return c.json({ error: 'invalid score submission' }, 400);
     }

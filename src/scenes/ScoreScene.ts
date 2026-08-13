@@ -65,6 +65,7 @@ export class ScoreScene extends Phaser.Scene {
   private score:               number  = 0;
   private isPeak:              boolean = false;
   private checkpointAvailable: boolean = false;
+  private sessionToken?: string;
   private isFailure:           boolean = false;
   private heapId:              string  = '';
   private isNewHighScore:      boolean = false;
@@ -107,6 +108,7 @@ export class ScoreScene extends Phaser.Scene {
     heapId?:              string;
     isPeak?:              boolean;
     checkpointAvailable?: boolean;
+    sessionToken?: string;
     isFailure?:           boolean;
     baseHeightPx?:        number;
     kills?:               Partial<Record<EnemyKind, number>>;
@@ -123,6 +125,7 @@ export class ScoreScene extends Phaser.Scene {
     this.heapId              = data.heapId              ?? '';
     this.isPeak              = data.isPeak              ?? false;
     this.checkpointAvailable = data.checkpointAvailable ?? false;
+    this.sessionToken = data.sessionToken;
     this.isFailure           = data.isFailure           ?? false;
     this._baseHeightPx       = data.baseHeightPx        ?? 0;
     this._kills              = data.kills               ?? {};
@@ -1025,6 +1028,7 @@ export class ScoreScene extends Phaser.Scene {
             salvageItems: this._salvageItems,
           },
           limit: LEADERBOARD_TOP_N,
+          sessionToken: this.sessionToken,
         })
       : ScoreClient.getContext({ heapId: this.heapId, playerId, limit: LEADERBOARD_TOP_N });
 

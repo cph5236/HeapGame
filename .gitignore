@@ -10,6 +10,10 @@ android/**/*.jks
 .DS_Store
 *.local
 .env
+# Local Worker secrets for `wrangler dev` (SESSION_SECRET, ADMIN_SECRET…).
+# Real secrets — never commit. Deployed envs use `wrangler secret put` instead.
+.dev.vars
+server/.dev.vars
 server/.wrangler
 # Vite dep-optimizer cache for `npm run admin` (kept out of the game's own cache)
 admin/.vite/

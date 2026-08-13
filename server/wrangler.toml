@@ -116,6 +116,13 @@ namespace_id = "1006"
   limit = 5
   period = 60
 
+[[ratelimits]]
+name = "RL_SESSION"
+namespace_id = "1007"
+  [ratelimits.simple]
+  limit = 20
+  period = 60
+
 # obscenity is imported by shared/playerName.ts; module resolution from shared/
 # climbs to the repo root, never into server/node_modules. The Workers CI build
 # installs only server/ deps, so alias the import to the local install.
@@ -185,8 +192,8 @@ id = "b639188e2fdd472cbc216809414adb66"
 ALLOWED_ORIGINS = "*"
 
 # Same limits as production, so the limiter is exercised under load rather than
-# bypassed. namespace_ids are 2001-2006 so staging never shares counters with
-# production's 1001-1006.
+# bypassed. namespace_ids are 2001-2007 so staging never shares counters with
+# production's 1001-1007.
 [[env.staging.ratelimits]]
 name = "RL_SCORES"
 namespace_id = "2001"
@@ -227,4 +234,11 @@ name = "RL_FEEDBACK"
 namespace_id = "2006"
   [env.staging.ratelimits.simple]
   limit = 5
+  period = 60
+
+[[env.staging.ratelimits]]
+name = "RL_SESSION"
+namespace_id = "2007"
+  [env.staging.ratelimits.simple]
+  limit = 20
   period = 60

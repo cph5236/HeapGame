@@ -5,6 +5,7 @@ import { PlayerCosmetics } from '../entities/PlayerCosmetics';
 import { PlayerOutro } from '../entities/PlayerOutro';
 import { playElectrocutionEffect } from '../entities/effects/electrocution';
 import { AudioManager } from '../systems/AudioManager';
+import { RunSession } from '../systems/RunSession';
 import { HeapGenerator } from '../systems/HeapGenerator';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { shouldBakeBands } from '../systems/generationPacing';
@@ -30,7 +31,7 @@ import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { LayerGenerator } from '../systems/LayerGenerator';
 import { computeBandPolygon, simplifyPolygon, type Vertex } from '../systems/HeapPolygon';
 import { buildRunScore } from '../systems/buildRunScore';
-import { getPlayerConfig, addBalance, getUpgrades, getEffectiveControlMode, getUpgradeLevel, getEquippedCosmetics, getHatAdjustments } from '../systems/SaveData';
+import { getPlayerConfig, addBalance, getUpgrades, getEffectiveControlMode, getUpgradeLevel, getEquippedCosmetics, getHatAdjustments, getEffectivePlayerId } from '../systems/SaveData';
 import { resolveCosmetics } from '../systems/cosmeticsLogic';
 import { showDashIndicator } from '../ui/hudLogic';
 import { ENEMY_DEFS, DEFAULT_ENEMY_PARAMS } from '../data/enemyDefs';
@@ -108,6 +109,7 @@ export class InfiniteGameScene extends Phaser.Scene {
   private spawnY:        number  = 0;
   private invincible:    boolean = false;
   private _runStartTime: number | null = null;
+  private _runSession = new RunSession();
   private _runKills:     Partial<Record<EnemyKind, number>> = {};
   private _playerDead = false;
   private colBounds:        [number, number][] = [];
@@ -147,6 +149,7 @@ export class InfiniteGameScene extends Phaser.Scene {
 
     this._runKills     = {};
     this._runStartTime = null;
+    this._runSession.start(getEffectivePlayerId(), INFINITE_HEAP_ID);
     this._playerDead   = false;
     this.invincible    = false;
     this.generators    = [];
@@ -675,6 +678,7 @@ export class InfiniteGameScene extends Phaser.Scene {
         baseHeightPx:        score,
         kills:               this._runKills,
         elapsedMs,
+        sessionToken:        this._runSession.getToken(),
         salvageItems:        this.pickupManager.getCarriedItems(),
         heapParams: {
           ...this._heapParams,
@@ -682,6 +686,7 @@ export class InfiniteGameScene extends Phaser.Scene {
           isInfinite: true,
         },
       });
+      this._runSession.stop();
       this.scene.sleep();
     });
   }
@@ -818,5 +823,6 @@ export class InfiniteGameScene extends Phaser.Scene {
     // rather than stopAll() so ScoreScene's music survives.
     AudioManager.stopAll('enemySfx');
     AudioManager.stopAll('envSfx');
+    this._runSession.stop();
   }
 }

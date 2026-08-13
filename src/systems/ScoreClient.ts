@@ -1,4 +1,4 @@
-import type { LeaderboardContext, SubmitScoreInputs, SubmitScoreResponse, PlayerScoreEntry, PlayerScoresResponse, PaginatedLeaderboardResponse } from '../../shared/scoreTypes';
+import type { LeaderboardContext, SubmitScoreInputs, SubmitScoreResponse, PlayerScoreEntry, PlayerScoresResponse, PaginatedLeaderboardResponse, OpenSessionResponse } from '../../shared/scoreTypes';
 import { fetchWithLog } from '../logging/fetchWithLog';
 import { authHeaders, logIfAuthRejected } from './authToken';
 
@@ -17,6 +17,7 @@ export class ScoreClient {
     playerName: string;
     inputs:     SubmitScoreInputs;
     limit?:     number;
+    sessionToken?: string;
   }): Promise<LeaderboardContext | null> {
     try {
       const url = params.limit
@@ -31,6 +32,7 @@ export class ScoreClient {
           playerId:   params.playerId,
           playerName: params.playerName,
           inputs:     params.inputs,
+          sessionToken: params.sessionToken,
         }),
       });
 
@@ -42,6 +44,40 @@ export class ScoreClient {
       return data.context;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Open a run session.
+   *
+   * `retryable` distinguishes a failure worth retrying from one that never
+   * will be. A 404 means the server has no SESSION_SECRET configured — the
+   * normal state in local dev and throughout the pre-enable deployment window
+   * — and retrying it every RETRY_MS for the length of every run would
+   * multiply session traffic ~20x for a result that cannot change. A 403
+   * (player-token mismatch) is equally permanent. Network errors, 429s and
+   * 5xx are transient and worth retrying, which is the case the retry loop
+   * exists for.
+   */
+  static async openSession(
+    playerId: string,
+    heapId: string,
+  ): Promise<{ token: string | null; retryable: boolean }> {
+    try {
+      const res = await fetchWithLog(`${SERVER_URL}/scores/session`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body:    JSON.stringify({ playerId, heapId }),
+      });
+      if (!res.ok) {
+        logIfAuthRejected('scores:session', res.status);
+        return { token: null, retryable: res.status === 429 || res.status >= 500 };
+      }
+      const data = (await res.json()) as OpenSessionResponse;
+      return { token: data.token, retryable: false };
+    } catch {
+      // fetchWithLog throws on network failure — transient by nature.
+      return { token: null, retryable: true };
     }
   }
 

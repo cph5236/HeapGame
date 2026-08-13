@@ -32,6 +32,19 @@ export interface SubmitScoreRequest {
   /** Optional — only used to seed a first-seen player's name; never updates an existing one. */
   playerName?: string;
   inputs:      SubmitScoreInputs;
+  /** Run-session token from POST /scores/session. Required once SESSION_SECRET is set. */
+  sessionToken?: string;
+}
+
+export interface OpenSessionRequest {
+  playerId: string;
+  heapId:   string;
+}
+
+export interface OpenSessionResponse {
+  /** Opaque HMAC token. Echo back verbatim on score submit. */
+  token:    string;
+  issuedAt: number;
 }
 
 export interface SubmitScoreResponse {
