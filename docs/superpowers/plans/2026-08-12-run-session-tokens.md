@@ -656,12 +656,18 @@ git commit -m "feat(server): add POST /scores/session issue endpoint"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `server/tests/scoreSession.test.ts`:
+Append to `server/tests/scoreSession.test.ts`. Merge these two imports into the
+existing import block at the top of the file — do not leave `import` statements
+stranded at the bottom:
 
 ```ts
 import { signSession } from '../src/runSession';
 import type { SubmitScoreResponse } from '../../shared/scoreTypes';
+```
 
+Then append the rest:
+
+```ts
 const VALID_INPUTS = {
   baseHeightPx: 1000,
   kills: { percher: 0, ghost: 0 },
@@ -736,29 +742,36 @@ describe('POST /scores session enforcement', () => {
   });
 
   it('does not let the clamp inflate the pace bonus', async () => {
-    // The regression this test exists for: verifiedElapsedMs must gate the caps
-    // only. Pace is height/seconds, so feeding the clamped value into
-    // buildRunScore would RAISE the score whenever the clamp bit.
-    // Same successful run, two tokens of very different age -> same score.
+    // THE regression test for this feature's single most important invariant:
+    // verifiedElapsedMs gates the caps ONLY. Pace is height/seconds, so feeding
+    // the clamped value into buildRunScore would RAISE the score when it bit.
+    //
+    // The two arms are chosen so the clamp BITES in one and not the other —
+    // otherwise the test passes under the buggy implementation too:
+    //   arm A: 10s-old token  -> verified = 10_000 + GRACE(5_000) = 15_000  (bites)
+    //   arm B: 200s-old token -> verified = min(100_000, 205_000)  = 100_000 (no bite)
+    // Correct impl scores pace floor(1000/100 * 10) = 100 in BOTH arms.
+    // Buggy impl scores floor(1000/15 * 10) = 666 in arm A. Scores must match.
+    // Both arms clear the climb cap: 1000*1000 <= 400*15_000.
     const inputs = { ...VALID_INPUTS, baseHeightPx: 1000, elapsedMs: 100_000, isFailure: false };
 
-    const appFresh   = makeApp({ sessionSecret: SECRET });
-    const freshToken = await signSession(SECRET, PLAYER, HEAP_ID, Date.now() - 100_000);
-    const freshRes   = await submit(appFresh, {
-      heapId: HEAP_ID, playerId: PLAYER, inputs, sessionToken: freshToken,
+    const appClamped   = makeApp({ sessionSecret: SECRET });
+    const clampedToken = await signSession(SECRET, PLAYER, HEAP_ID, Date.now() - 10_000);
+    const clampedRes   = await submit(appClamped, {
+      heapId: HEAP_ID, playerId: PLAYER, inputs, sessionToken: clampedToken,
     });
 
-    const appOld   = makeApp({ sessionSecret: SECRET });
-    const oldToken = await signSession(SECRET, PLAYER, HEAP_ID, Date.now() - 30 * 60_000);
-    const oldRes   = await submit(appOld, {
-      heapId: HEAP_ID, playerId: PLAYER, inputs, sessionToken: oldToken,
+    const appUnclamped   = makeApp({ sessionSecret: SECRET });
+    const unclampedToken = await signSession(SECRET, PLAYER, HEAP_ID, Date.now() - 200_000);
+    const unclampedRes   = await submit(appUnclamped, {
+      heapId: HEAP_ID, playerId: PLAYER, inputs, sessionToken: unclampedToken,
     });
 
-    expect(freshRes.status).toBe(200);
-    expect(oldRes.status).toBe(200);
-    const freshBody = await freshRes.json() as SubmitScoreResponse;
-    const oldBody   = await oldRes.json() as SubmitScoreResponse;
-    expect(freshBody.context.player!.score).toBe(oldBody.context.player!.score);
+    expect(clampedRes.status).toBe(200);
+    expect(unclampedRes.status).toBe(200);
+    const clampedBody   = await clampedRes.json() as SubmitScoreResponse;
+    const unclampedBody = await unclampedRes.json() as SubmitScoreResponse;
+    expect(clampedBody.context.player!.score).toBe(unclampedBody.context.player!.score);
   });
 
   it('is inert when no session secret is configured', async () => {
