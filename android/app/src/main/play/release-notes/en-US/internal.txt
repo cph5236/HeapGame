@@ -1,1 +1,3 @@
-Internal build. See git log for changes.
+Leaderboard scores are now verified against server time, so run times can't be faked.
+
+The main menu no longer re-checks your Daily Drop when there's nothing to claim, so it opens faster, and the can now counts down to your next drop.
