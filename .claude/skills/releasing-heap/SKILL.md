@@ -1,6 +1,6 @@
 ---
 name: releasing-heap
-description: Use when asked to cut a HeapGame release, bump the version, ship to Play/itch.io, or when a "V0.x.y" version commit is needed after merging feature PRs.
+description: Use when asked to cut a HeapGame release, bump the version, write Play Console release notes, ship to Play/itch.io, or when a "V0.x.y" version commit is needed after merging feature PRs.
 ---
 
 # Releasing Heap
@@ -33,10 +33,38 @@ branches build too, which is the `cloudflare-workers-and-pages` bot you see on P
    ```
    Updates `package.json` version + `android/app/build.gradle`
    `versionCode`/`versionName` together — never edit these by hand or they drift.
-3. **Commit** exactly those two files with message `V<new version>` (e.g. `V0.2.17`).
-4. **Stop — do not push.** The user reviews and pushes `main` themselves
+3. **Write the Play release notes** — see the section below. Every release.
+4. **Commit** exactly those three files with message `V<new version>` (e.g. `V0.2.17`).
+5. **Stop — do not push.** The user reviews and pushes `main` themselves
    (release = production publish). Tell them what the push will trigger, including
    any pending remote migration.
+
+## Release notes (Play Console)
+
+Rewrite `android/app/src/main/play/release-notes/en-US/internal.txt` on every
+release. GPP resolves notes as `play/release-notes/<locale>/<track>.txt`, and
+`build.gradle` sets `track = "internal"` — so `internal.txt` is the file Play
+actually shows. It sat as the placeholder `Internal build. See git log for
+changes.` from the GPP setup through V0.2.25, so **never assume the existing
+text is current** — it is either a placeholder or the previous release's notes.
+
+Format: a simple list, one short plain line per player-facing change, blank line
+between. No bullets, no headings, no version number.
+
+```
+Leaderboard scores are now verified against server time, so run times can't be faked.
+
+The main menu no longer re-checks your Daily Drop when there's nothing to claim, so it opens faster, and the can now counts down to your next drop.
+```
+
+- **Player-facing only.** Drop what a player cannot see: landing-page/SEO work,
+  server refactors, tests, CI, tooling. A 3-PR release often yields 2 lines.
+- Say the effect on the player, not the mechanism. No PR numbers, no file or
+  symbol names, no internal jargon.
+- **500 characters max** per locale — Play rejects longer. Check with
+  `wc -m android/app/src/main/play/release-notes/en-US/internal.txt`.
+- `internal.txt` is the only file needed. Promoting internal → production in the
+  console carries these notes forward and lets the user edit them there.
 
 ## Checks before handing off
 
