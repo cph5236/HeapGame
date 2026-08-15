@@ -129,6 +129,9 @@ export class PlayerCosmetics {
     this.faceRig?.update(delta, anchor, motion);
 
     if (this.skinGlaze) {
+      // The bag swaps to the dash spritesheet mid-run, so the glaze has to track
+      // the live texture *and* frame or it pastes a static silhouette over it.
+      this.skinGlaze.setTexture(this.sprite.texture.key, this.sprite.frame.name);
       this.skinGlaze.setPosition(this.sprite.x, this.sprite.y);
       this.skinGlaze.setScale(this.sprite.scaleX, this.sprite.scaleY);
       this.skinGlaze.setAngle(this.sprite.angle);

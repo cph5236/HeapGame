@@ -56,6 +56,10 @@ export interface PlayerAnimState {
   justWallJumped: boolean;
   justDied:       boolean;
   justPlaced:     boolean;
+  /** Rising edge of a dash — drives the drawn dash frames for one playback. */
+  justDashed:     boolean;
+  /** Travel direction of the dash that fired: -1 left, 1 right. */
+  dashDir:        number;
 }
 
 export class Player {
@@ -139,6 +143,8 @@ export class Player {
   private _justJumped     = false;
   private _justAirJumped  = false;
   private _justWallJumped = false;
+  private _justDashed     = false;
+  private _dashDir        = 1;
 
   // ── HUD accessors ──────────────────────────────────────────────────────────
   get dashCooldownFraction(): number  { return this.dashCooldown / DASH_COOLDOWN_MS; }
@@ -173,6 +179,8 @@ export class Player {
       justWallJumped: this._justWallJumped,
       justDied:       false,
       justPlaced:     false,
+      justDashed:     this._justDashed,
+      dashDir:        this._dashDir,
     };
   }
 
@@ -238,6 +246,7 @@ export class Player {
     this._justJumped     = false;
     this._justAirJumped  = false;
     this._justWallJumped = false;
+    this._justDashed     = false;
   }
 
   /** Decay jump buffer, prime on new press, apply held→released transition cut.
@@ -462,6 +471,8 @@ export class Player {
       this.sprite.setVelocityX(dir * PLAYER_DASH_VELOCITY);
       this.dashCooldown = DASH_COOLDOWN_MS * this.carryCooldownMult * this.buffCooldownMult;
       this.dashActive   = DASH_DURATION_MS;
+      this._justDashed  = true;
+      this._dashDir     = dir;
       this.sprite.scene.events.emit('player-action', 'dash');
       AudioManager.play('player-dash');
     }

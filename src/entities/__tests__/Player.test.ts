@@ -2229,3 +2229,48 @@ describe('Player — stun', () => {
   });
 });
 
+
+// ── Dash animation hand-off ───────────────────────────────────────────────────
+
+describe('Player — dash animation state', () => {
+  it('raises justDashed with the travel direction when a dash fires', async () => {
+    const { player } = await makePlayer({
+      onGround: true,
+      config: { maxAirJumps: 1, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    imState.dashJustFired = true;
+    imState.dashDir       = -1;
+
+    player.update(16);
+
+    expect(player.animState.justDashed).toBe(true);
+    expect(player.animState.dashDir).toBe(-1);
+  });
+
+  it('clears justDashed on the following frame', async () => {
+    const { player } = await makePlayer({
+      onGround: true,
+      config: { maxAirJumps: 1, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    imState.dashJustFired = true;
+
+    player.update(16);
+    imState.dashJustFired = false;
+    player.update(16);
+
+    expect(player.animState.justDashed).toBe(false);
+  });
+
+  it('does not raise justDashed while the dash is on cooldown', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      config: { maxAirJumps: 1, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    imState.dashJustFired = true;
+
+    player.update(16);   // dash fires, cooldown starts
+    player.update(16);   // still held, still on cooldown
+
+    expect(player.animState.justDashed).toBe(false);
+  });
+});
