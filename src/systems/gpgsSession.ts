@@ -50,19 +50,23 @@ export function beginSignIn(): void {
       // signInSettled() resolves, getEffectivePlayerId() is already final.
       // A sign-in that loses the race above is simply dropped: its promise
       // settles into nothing and no adoption ever runs.
-      try {
-        setGpgsPlayerId(player.playerId);
-        setPlayerName(player.displayName);
-      } catch {
-        // SaveData.persist() writes localStorage unguarded, so this throws on
-        // quota-exceeded and in blocked-storage / private modes. It mutates the
-        // in-memory cache *before* writing, though, so the id is adopted for
-        // this session regardless — only its persistence was lost, and the next
-        // launch simply signs in again. Fall through and report the player, so
-        // callers stay consistent with what getEffectivePlayerId() now returns:
-        // reporting null here would make BootScene skip the name sync and cloud
-        // merge for a session that is already writing under the GPGS id.
-      }
+      // SaveData.persist() writes localStorage unguarded, so these throw on
+      // quota-exceeded and in blocked-storage / private modes. It mutates the
+      // in-memory cache *before* writing, though, so each adoption still takes
+      // effect for this session — only its persistence is lost, and the next
+      // launch simply signs in again.
+      //
+      // Each write is guarded separately, because a shared guard would let a
+      // throw from the id write skip the name write: the session would then run
+      // under the GPGS id while BootScene pushed the stale GUID-era name to the
+      // server's player_name table under it.
+      try { setGpgsPlayerId(player.playerId);  } catch { /* persistence lost; cache adopted */ }
+      try { setPlayerName(player.displayName); } catch { /* persistence lost; cache adopted */ }
+
+      // Report the player even if persistence failed, so callers stay consistent
+      // with what getEffectivePlayerId() now returns. Reporting null would make
+      // BootScene skip the name sync and cloud merge for a session that is
+      // already writing under the GPGS id.
       return player;
     } catch {
       // This promise must never reject. LoadingScene gates the menu on it

@@ -172,4 +172,20 @@ describe('gpgsSession', () => {
     expect(player).toEqual({ playerId: 'gpgs-abc', displayName: 'Connor' });
     expect(getEffectivePlayerId()).toBe('gpgs-abc');
   });
+
+  // Both adoptions must survive a failed write independently. Sharing one guard
+  // let a throw from the id write skip the name write, so the session ran under
+  // the GPGS id while BootScene pushed the stale GUID-era name to the server's
+  // player_name table under that id — and the menu painted it beside
+  // "▶ Play Games".
+  it('adopts the display name even when the id write throws', async () => {
+    mockGetPlatform.mockReturnValue('android');
+    mockPlugin.signIn.mockResolvedValue({ playerId: 'gpgs-abc', displayName: 'Connor' });
+    failWrites = true;
+
+    beginSignIn();
+    await signInSettled();
+
+    expect(getPlayerName()).toBe('Connor');
+  });
 });
