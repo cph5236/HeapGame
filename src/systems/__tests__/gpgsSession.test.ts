@@ -27,11 +27,17 @@ const {
 
 // Stub localStorage — vitest runs in node environment
 const store: Record<string, string> = {};
+/** Simulates a storage write that throws: quota exceeded, or private-browsing
+ *  / blocked-storage modes where setItem raises SecurityError. */
+let failWrites = false;
 beforeAll(() => {
   Object.defineProperty(global, 'localStorage', {
     value: {
       getItem:    (k: string) => store[k] ?? null,
-      setItem:    (k: string, v: string) => { store[k] = v; },
+      setItem:    (k: string, v: string) => {
+        if (failWrites) throw new Error('QuotaExceededError');
+        store[k] = v;
+      },
       removeItem: (k: string) => { delete store[k]; },
       clear:      () => { Object.keys(store).forEach(k => delete store[k]); },
     },
@@ -41,6 +47,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  failWrites = false;
   Object.keys(store).forEach(k => delete store[k]);
   resetCacheForTests();
   resetAllData();
@@ -132,5 +139,20 @@ describe('gpgsSession', () => {
 
   it('resolves null when awaited before sign-in was ever started', async () => {
     await expect(signInSettled()).resolves.toBeNull();
+  });
+
+  // The gate must always release. LoadingScene awaits this promise to decide
+  // whether the menu may open, so a rejection here would leave the loading
+  // screen up forever — SaveData.persist() writes localStorage unguarded, which
+  // throws on quota-exceeded and in blocked-storage/private modes.
+  it('settles instead of rejecting when persisting the adopted id throws', async () => {
+    mockGetPlatform.mockReturnValue('android');
+    mockPlugin.signIn.mockResolvedValue({ playerId: 'gpgs-abc', displayName: 'Connor' });
+    failWrites = true;
+
+    beginSignIn();
+    const outcome = await signInSettled().then(() => 'settled', () => 'rejected');
+
+    expect(outcome).toBe('settled');
   });
 });

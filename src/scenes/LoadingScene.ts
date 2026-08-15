@@ -184,7 +184,13 @@ export class LoadingScene extends Phaser.Scene {
     if (this.freeze !== null) {
       this.identitySettled = true; // dev preview never transitions anyway
     } else {
-      void signInSettled().then(() => { this.identitySettled = true; });
+      // The .catch is belt-and-braces: signInSettled() is contractually
+      // non-rejecting and tested as such, but this flag is the only thing
+      // holding the boot sequence, so a future regression there must degrade
+      // into "open the menu" rather than stranding the player on this screen.
+      void signInSettled()
+        .then(()  => { this.identitySettled = true; })
+        .catch(() => { this.identitySettled = true; });
     }
 
     // ── Kick off the real asset load ─────────────────────────────────────────

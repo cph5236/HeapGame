@@ -53,6 +53,15 @@ export function beginSignIn(): void {
       setGpgsPlayerId(player.playerId);
       setPlayerName(player.displayName);
       return player;
+    } catch {
+      // This promise must never reject. LoadingScene gates the menu on it
+      // settling, so a throw would leave the player on the loading screen
+      // forever — and SaveData.persist() writes localStorage unguarded, which
+      // raises on quota-exceeded and in blocked-storage / private modes. Degrade
+      // to "sign-in did not complete" instead. persist() updates the in-memory
+      // cache before it writes, so a half-adopted id still reads consistently
+      // for the rest of this session; it just won't survive a restart.
+      return null;
     } finally {
       clearTimeout(timer);
     }
