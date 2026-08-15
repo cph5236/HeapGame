@@ -5,7 +5,7 @@ import type { Vertex } from '../systems/HeapPolygon';
 import { generateAllTextures } from '../entities/TextureGenerators';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
-import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, setGpgsPlayerId, setPlayerName, getPlayerName, getEffectivePlayerId, getRawSaveForCloudSync, applyMergedSave, mergeCloudSave, getTutorialDone } from '../systems/SaveData';
+import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, setPlayerName, getPlayerName, getEffectivePlayerId, getRawSaveForCloudSync, applyMergedSave, mergeCloudSave, getTutorialDone } from '../systems/SaveData';
 import { PlayerNameClient } from '../systems/PlayerNameClient';
 import { validatePlayerName } from '../../shared/playerName';
 import type { RawSave } from '../systems/SaveData';
@@ -13,6 +13,7 @@ import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
 import { buildInfiniteEntry } from '../data/infiniteCatalog';
 import { initLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
+import { beginSignIn, signInSettled } from '../systems/gpgsSession';
 import { AudioManager } from '../systems/AudioManager';
 import { AdClient } from '../systems/ads/AdClient';
 import { primeConfig } from '../systems/ConfigClient';
@@ -46,11 +47,13 @@ export class BootScene extends Phaser.Scene {
     // Initialize logger after SaveData is importable but before async catalog fetch.
     initLogger();
 
-    // Attempt GPGS sign-in in background — does not block menu render.
-    PlayGamesClient.signIn().then(async (player) => {
+    // Kick off GPGS sign-in. LoadingScene gates the menu on this settling, so
+    // the id is already final by the time the player can reach anything that
+    // writes under it — see gpgsSession.ts for why that matters. Adoption of
+    // the id/name happens inside signInSettled(), not here.
+    beginSignIn();
+    void signInSettled().then(async (player) => {
       if (!player) return;
-      setGpgsPlayerId(player.playerId);
-      setPlayerName(player.displayName);
       // Sync the GPGS display name to the server's player_name table — score
       // submit no longer updates names, and GPGS players can't reach the
       // rename modal, so this is their only refresh path after first seed.
@@ -61,9 +64,12 @@ export class BootScene extends Phaser.Scene {
       if (validated.ok) {
         void PlayerNameClient.updateName(getEffectivePlayerId(), validated.name);
       }
-      this.game.events.emit('gpgs:signed-in', player.displayName);
 
-      // Load cloud snapshot and merge with local SaveData.
+      // Load cloud snapshot and merge with local SaveData. Deliberately left
+      // outside the gate: the merge only rewrites local save state (balance,
+      // items), nothing keyed on player id server-side, so it can safely land
+      // after the menu has opened. The menu listens for gpgs:save-merged to
+      // refresh the coin balance in place.
       const cloudJson = await PlayGamesClient.loadSnapshot();
       if (!cloudJson) return;
 
@@ -78,7 +84,6 @@ export class BootScene extends Phaser.Scene {
       const merged    = mergeCloudSave(localSave, cloudSave);
       applyMergedSave(merged);
       setPlayerName(player.displayName); // GPGS name always wins after merge
-      this.game.events.emit('gpgs:signed-in', player.displayName);
       this.game.events.emit('gpgs:save-merged');
     }).catch(() => { /* silent — cloud save merge is optional */ });
 

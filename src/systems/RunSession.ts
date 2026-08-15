@@ -39,11 +39,12 @@ export class RunSession {
   /**
    * Begin acquiring a token. Safe to call again; discards any previous token.
    *
-   * Known accepted limitation: the token binds the playerId passed here, while
-   * ScoreScene submits under a fresh getEffectivePlayerId() read. If GPGS
-   * sign-in resolves mid-run the two disagree and the server rejects the score
-   * as session-mismatch. Android-only, requires sign-in to land after the run
-   * starts, and deliberately left unhandled — see PR #148 review.
+   * The token binds the playerId passed here, while ScoreScene submits under a
+   * fresh getEffectivePlayerId() read. Those can only disagree if the effective
+   * id changes mid-run, which GPGS sign-in used to do — see gpgsSession.ts,
+   * which now settles the id before the menu is reachable and never adopts a
+   * late sign-in, so there is no longer a path that flips it while a run is in
+   * progress.
    */
   start(playerId: string, heapId: string): void {
     this.stop();

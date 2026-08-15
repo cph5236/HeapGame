@@ -16,25 +16,21 @@ Language detection?
 - admin player ban abilities 
 ### UI
 
-- Handle GPGS sign-in settling on the main menu
-Sign-in is fired fire-and-forget from BootScene, so it can resolve at any point —
-including after a run has already started. `getEffectivePlayerId()` is
-`getGpgsPlayerId() ?? getPlayerGuid()`, so a late sign-in flips the player's
-effective id mid-run. The run-session token is bound to the id read at run start
-(see docs/superpowers/specs/2026-08-12-run-session-tokens-design.md), so the
-submit then fails server-side as `session-mismatch` and the score is silently
-lost with a 400. Android-only; known and accepted as of PR #148, commented in
-src/systems/RunSession.ts.
-Two candidate fixes:
-  a) Show a "signing in…" loader where the username sits on the main menu and
-     block PLAY until sign-in settles. Guarantees a stable id before any run,
-     but adds a startup gate on a network call — needs a timeout/fallback so a
-     slow or failed sign-in can't strand the player on the menu.
-  b) Freeze the effective id for the session: whatever it is when the run starts
-     is what the run uses, and a late sign-in only takes effect from the next
-     run. No UI work, no startup gate, but that run's score lands under the GUID
-     rather than the player's GPGS profile.
-Worth deciding alongside any other work that depends on identity stability.
+- ~~Handle GPGS sign-in settling on the main menu~~ DONE — src/systems/gpgsSession.ts
+Sign-in now settles once, in LoadingScene, before the menu is reachable, and the
+decision is final for the app session: if it hasn't landed by
+GPGS_SIGNIN_TIMEOUT_MS (6s) it is never adopted later, so nothing can flip the
+effective id mid-run. Gating in LoadingScene rather than on the menu's PLAY
+button was the key call — MenuScene.setupDailyDrop() was already firing
+fetchDailyStatus() under the GUID on every cold launch, so the score race was
+only the narrowest instance of a general orphaning bug.
+Follow-ups worth watching:
+  - Residual orphans stay orphaned. Players who declined sign-in, or whose
+    session hit the 6s ceiling, keep writing under the GUID with no path back.
+    There is still no server-side player-id migration, by choice.
+  - If the GPGS plugin hangs rather than rejecting when a player has previously
+    declined sign-in, those players would pay the full 6s on every launch.
+    Verify on-device; if it's real, persist a "declined" flag and skip the wait.
 
 ### ENEMIES
 

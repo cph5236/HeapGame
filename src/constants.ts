@@ -47,6 +47,13 @@ export const MENU_LOADING_MIN_MS       = 500;
  *  values. Runs concurrently with asset loading, so it's usually invisible. */
 export const CONFIG_FETCH_TIMEOUT_MS   = 10_000;
 
+/** Ceiling (ms) the loading screen will wait on GPGS sign-in before deciding
+ *  this session runs on the local GUID. Deliberately tighter than the config
+ *  ceiling because it delays every Android launch — a warm sign-in is a fast
+ *  local Play Services call, and the slow case is the one-time consent UI on
+ *  first launch. Timing out costs that session's records; see gpgsSession.ts. */
+export const GPGS_SIGNIN_TIMEOUT_MS    = 6_000;
+
 // ── Player ─────────────────────────────────────────────────────────────────────
 export const PLAYER_WIDTH  = 40;
 export const PLAYER_HEIGHT = 46;
