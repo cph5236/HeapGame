@@ -101,12 +101,9 @@ export class MenuScene extends Phaser.Scene {
     this.createFloatingClouds();
     this.createBalanceText();
     this.createPlayerName();
-    this.game.events.once('gpgs:signed-in', (displayName: string) => {
-      if (!this.playerNameText?.active) return;
-      this.playerNameText.setText(`${displayName}  ▶ Play Games`);
-      this.playerNameText.off('pointerup');
-      this.playerNameText.on('pointerup', () => PlayGamesClient.showPlayerProfile());
-    }, this);
+    // No gpgs:signed-in listener: LoadingScene holds the menu until sign-in has
+    // settled, so createPlayerName() above already painted the right label and
+    // the id can no longer change underneath us.
     this.game.events.once('gpgs:save-merged', () => {
       if (!this.balanceText?.active) return;
       this.balanceText.setText(`${getBalance()} coins`);

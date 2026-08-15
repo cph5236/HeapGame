@@ -3,6 +3,7 @@ import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMe
 import { loadGameAssets } from './loadGameAssets';
 import { preloadProgress, preloadComplete } from '../systems/infinitePreload';
 import { configReady, hasConfig } from '../systems/ConfigClient';
+import { signInSettled } from '../systems/gpgsSession';
 import { isUpdateRequired, shouldConfirmUpdateGate } from '../systems/UpdateGate';
 import { paintSkyGradient } from '../ui/skyGradient';
 import { MENU_LOADING_MIN_MS } from '../constants';
@@ -52,6 +53,11 @@ export class LoadingScene extends Phaser.Scene {
   private transitioning = false;
   /** Boot-time remote-config fetch has settled (or hit its timeout ceiling). */
   private configSettled = false;
+  /** GPGS sign-in has settled (or hit its timeout ceiling), so the effective
+   *  player id is final. Gating here rather than in MenuScene fixes every
+   *  per-player caller at once — score submit, daily drop, cosmetics sync and
+   *  name sync all read the id the moment the menu opens. */
+  private identitySettled = false;
   /** Dev-only: hold the screen at a fixed progress for scene-preview screenshots. */
   private freeze: number | null = null;
 
@@ -72,15 +78,16 @@ export class LoadingScene extends Phaser.Scene {
   }
 
   init(data: { next?: string; freeze?: number }): void {
-    this.nextScene     = data?.next ?? 'MenuScene';
-    this.startTime     = 0;
-    this.loaderFrac    = 0;
-    this.loaderDone    = false;
-    this.shownFrac     = 0;
-    this.transitioning = false;
-    this.configSettled = false;
-    this.heroBob       = 0;
-    this.freeze        = import.meta.env.DEV && typeof data?.freeze === 'number'
+    this.nextScene       = data?.next ?? 'MenuScene';
+    this.startTime       = 0;
+    this.loaderFrac      = 0;
+    this.loaderDone      = false;
+    this.shownFrac       = 0;
+    this.transitioning   = false;
+    this.configSettled   = false;
+    this.identitySettled = false;
+    this.heroBob         = 0;
+    this.freeze          = import.meta.env.DEV && typeof data?.freeze === 'number'
       ? Phaser.Math.Clamp(data.freeze, 0, 1) : null;
   }
 
@@ -167,6 +174,25 @@ export class LoadingScene extends Phaser.Scene {
       void configReady().then(() => { this.configSettled = true; });
     }
 
+    // Wait on GPGS sign-in so the menu opens with a final player id. Unlike the
+    // config fetch there is no last-known-good to shortcut with: the id decides
+    // which rows every downstream write lands on, and there is no server-side
+    // migration from a GUID-keyed row to a GPGS-keyed one, so guessing wrong
+    // orphans that data permanently. Bounded by GPGS_SIGNIN_TIMEOUT_MS inside
+    // gpgsSession, resolves instantly off-Android, and runs concurrently with
+    // asset loading — so on the common warm launch it costs nothing.
+    if (this.freeze !== null) {
+      this.identitySettled = true; // dev preview never transitions anyway
+    } else {
+      // The .catch is belt-and-braces: signInSettled() is contractually
+      // non-rejecting and tested as such, but this flag is the only thing
+      // holding the boot sequence, so a future regression there must degrade
+      // into "open the menu" rather than stranding the player on this screen.
+      void signInSettled()
+        .then(()  => { this.identitySettled = true; })
+        .catch(() => { this.identitySettled = true; });
+    }
+
     // ── Kick off the real asset load ─────────────────────────────────────────
     if (this.freeze !== null) {
       // Dev preview: don't load or transition — just pose at the frozen progress.
@@ -209,7 +235,7 @@ export class LoadingScene extends Phaser.Scene {
     this.percentText.setText(`${Math.round(f * 100)}%`);
 
     if (this.freeze !== null) return; // dev preview holds; never transitions
-    if (this.configSettled && preloadComplete(!this.loaderDone, elapsed, MENU_LOADING_MIN_MS) && this.shownFrac > 0.995) {
+    if (this.configSettled && this.identitySettled && preloadComplete(!this.loaderDone, elapsed, MENU_LOADING_MIN_MS) && this.shownFrac > 0.995) {
       this.transitioning = true;
       this.cameras.main.fadeOut(200, 0, 0, 0);
       // A confirmed update gate replaces the menu entirely — this build is below
