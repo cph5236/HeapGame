@@ -50,17 +50,25 @@ export function beginSignIn(): void {
       // signInSettled() resolves, getEffectivePlayerId() is already final.
       // A sign-in that loses the race above is simply dropped: its promise
       // settles into nothing and no adoption ever runs.
-      setGpgsPlayerId(player.playerId);
-      setPlayerName(player.displayName);
+      try {
+        setGpgsPlayerId(player.playerId);
+        setPlayerName(player.displayName);
+      } catch {
+        // SaveData.persist() writes localStorage unguarded, so this throws on
+        // quota-exceeded and in blocked-storage / private modes. It mutates the
+        // in-memory cache *before* writing, though, so the id is adopted for
+        // this session regardless — only its persistence was lost, and the next
+        // launch simply signs in again. Fall through and report the player, so
+        // callers stay consistent with what getEffectivePlayerId() now returns:
+        // reporting null here would make BootScene skip the name sync and cloud
+        // merge for a session that is already writing under the GPGS id.
+      }
       return player;
     } catch {
       // This promise must never reject. LoadingScene gates the menu on it
-      // settling, so a throw would leave the player on the loading screen
-      // forever — and SaveData.persist() writes localStorage unguarded, which
-      // raises on quota-exceeded and in blocked-storage / private modes. Degrade
-      // to "sign-in did not complete" instead. persist() updates the in-memory
-      // cache before it writes, so a half-adopted id still reads consistently
-      // for the rest of this session; it just won't survive a restart.
+      // settling, so a throw would leave the player stranded on the loading
+      // screen. PlayGamesClient.signIn() resolves rather than rejects today, so
+      // this is unreachable — it is here so that stays true by construction.
       return null;
     } finally {
       clearTimeout(timer);

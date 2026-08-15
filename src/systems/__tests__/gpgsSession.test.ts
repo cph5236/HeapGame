@@ -155,4 +155,21 @@ describe('gpgsSession', () => {
 
     expect(outcome).toBe('settled');
   });
+
+  // persist() mutates the in-memory cache before it writes, so a failed write
+  // still leaves the id adopted for this session. Reporting null there would
+  // desync the promise from getEffectivePlayerId(): BootScene would skip the
+  // name sync and cloud merge while scores and daily-drop kept writing under
+  // the GPGS id — a narrower version of the orphaning this gate exists to stop.
+  it('reports the player and keeps the adopted id when the persist write throws', async () => {
+    mockGetPlatform.mockReturnValue('android');
+    mockPlugin.signIn.mockResolvedValue({ playerId: 'gpgs-abc', displayName: 'Connor' });
+    failWrites = true;
+
+    beginSignIn();
+    const player = await signInSettled();
+
+    expect(player).toEqual({ playerId: 'gpgs-abc', displayName: 'Connor' });
+    expect(getEffectivePlayerId()).toBe('gpgs-abc');
+  });
 });
