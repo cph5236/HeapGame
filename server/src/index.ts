@@ -9,9 +9,11 @@ import { D1CustomizationDB } from './customizationDb';
 import { D1PlayerAuthDB } from './playerAuthDb';
 import { D1ContributionDB } from './contributionDb';
 import { D1PlayerNameDB } from './playerNameDb';
+import { D1BanDB } from './banDb';
 import { CachedHeapDB } from './cache/CachedHeapDB';
 import { CachedScoreDB } from './cache/CachedScoreDB';
 import { CachedConfigDB } from './cache/CachedConfigDB';
+import { MemoBanDB } from './cache/MemoBanDB';
 import { D1Sink } from './logging/D1Sink';
 import { AnalyticsEngineSink } from './logging/AnalyticsEngineSink';
 import type { RateLimiter } from './middleware/rateLimit';
@@ -53,8 +55,11 @@ export default {
     // hit their domain DB directly. The same logSink used for route-level
     // telemetry is threaded in so KV outages land in heap_logs, not just
     // console.warn (which only wrangler tail sees live).
+    // Ban lookups ride the leaderboard read path, so they get a per-isolate memo
+    // rather than a KV decorator — see cache/MemoBanDB.ts.
+    const banDb    = new MemoBanDB(new D1BanDB(env.DB_SCORES));
     const heapDb   = new CachedHeapDB(new D1HeapDB(env.DB_HEAP), env.CACHE, w, logSink);
-    const scoreDb  = new CachedScoreDB(new D1ScoreDB(env.DB_SCORES), env.CACHE, w, logSink);
+    const scoreDb  = new CachedScoreDB(new D1ScoreDB(env.DB_SCORES), env.CACHE, w, banDb, logSink);
     const configDb = new CachedConfigDB(new D1ConfigDB(env.DB_HEAP), env.CACHE, w, logSink);
     const app = createApp(heapDb, scoreDb, {
       allowedOrigins: env.ALLOWED_ORIGINS,
@@ -68,6 +73,7 @@ export default {
       playerAuthDb:    new D1PlayerAuthDB(env.DB_SCORES),
       contributionDb:  new D1ContributionDB(env.DB_SCORES),
       playerNameDb:    new D1PlayerNameDB(env.DB_SCORES),
+      banDb,
       sessionSecret:  env.SESSION_SECRET,
       limiters: {
         scores: env.RL_SCORES,

@@ -14,6 +14,7 @@ import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockConfigDB } from './helpers/mockConfigDb';
 import { MockKV } from './helpers/mockKv';
 import { MockSink } from './helpers/mockSink';
+import { MockBanDB } from './helpers/mockBanDb';
 
 const HEAP_ID = 'heap-1';
 const noWait = (_p: Promise<unknown>) => {};
@@ -157,7 +158,7 @@ describe('CachedScoreDB', () => {
   function setup() {
     const inner = new MockScoreDB();
     const kv = new MockKV();
-    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait, new MockBanDB());
     return { inner, kv, cached };
   }
 
@@ -318,7 +319,7 @@ describe('cache fail-open behaviour', () => {
   it('CachedScoreDB.getTopScores falls through to D1 when KV get throws', async () => {
     const inner = new MockScoreDB();
     const kv = new MockKV();
-    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait, new MockBanDB());
     await inner.upsertScore(HEAP_ID, 'p1', 500, '2026-01-01T00:00:00.000Z');
 
     kv.failAll('get');
@@ -402,7 +403,7 @@ describe('cache KV failure telemetry', () => {
     const inner = new MockScoreDB();
     const kv = new MockKV();
     const sink = new MockSink();
-    const cached = new CachedScoreDB(inner, kv.asKV(), noWait, sink);
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait, new MockBanDB(), sink);
     await inner.upsertScore(HEAP_ID, 'p1', 500, '2026-01-01T00:00:00.000Z');
 
     kv.failAll('get');
@@ -503,7 +504,7 @@ describe('CachedScoreDB selective invalidation', () => {
   it('pruneScores no longer touches KV', async () => {
     const inner = new MockScoreDB();
     const kv = new MockKV();
-    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait, new MockBanDB());
     await inner.upsertScore(HEAP_ID, 'p1', 500, NOW);
     await cached.getTopScores(HEAP_ID, 5);
     kv.deletes.length = 0;
@@ -516,7 +517,7 @@ describe('CachedScoreDB selective invalidation', () => {
   it('skips invalidation when the improved score misses the top-50 cutoff', async () => {
     const inner = new MockScoreDB();
     const kv = new MockKV();
-    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait, new MockBanDB());
     await seedFullBoard(inner);
     await cached.getTopScores(HEAP_ID, 50); // populate the cache
     kv.deletes.length = 0;
@@ -531,7 +532,7 @@ describe('CachedScoreDB selective invalidation', () => {
   it('invalidates when the improved score reaches the cutoff', async () => {
     const inner = new MockScoreDB();
     const kv = new MockKV();
-    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait, new MockBanDB());
     await seedFullBoard(inner);
     await cached.getTopScores(HEAP_ID, 50);
     kv.deletes.length = 0;
@@ -545,7 +546,7 @@ describe('CachedScoreDB selective invalidation', () => {
   it('invalidates on an exact tie with the cutoff', async () => {
     const inner = new MockScoreDB();
     const kv = new MockKV();
-    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait, new MockBanDB());
     await seedFullBoard(inner);
     await cached.getTopScores(HEAP_ID, 50);
     kv.deletes.length = 0;
@@ -558,7 +559,7 @@ describe('CachedScoreDB selective invalidation', () => {
   it('invalidates when the board is not yet full, since any score enters', async () => {
     const inner = new MockScoreDB();
     const kv = new MockKV();
-    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait, new MockBanDB());
     await inner.upsertScore(HEAP_ID, 'p1', 9000, NOW);
     await cached.getTopScores(HEAP_ID, 50); // cache holds 1 row
     kv.deletes.length = 0;
@@ -571,7 +572,7 @@ describe('CachedScoreDB selective invalidation', () => {
   it('skips invalidation when nothing is cached', async () => {
     const inner = new MockScoreDB();
     const kv = new MockKV();
-    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait, new MockBanDB());
     // No getTopScores call, so no cache entry exists.
 
     await cached.upsertScore(HEAP_ID, 'p1', 9999, NOW);
@@ -582,7 +583,7 @@ describe('CachedScoreDB selective invalidation', () => {
   it('does not invalidate when the score did not improve', async () => {
     const inner = new MockScoreDB();
     const kv = new MockKV();
-    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait, new MockBanDB());
     await inner.upsertScore(HEAP_ID, 'p1', 9000, NOW);
     await cached.getTopScores(HEAP_ID, 50);
     kv.deletes.length = 0;
@@ -596,7 +597,7 @@ describe('CachedScoreDB selective invalidation', () => {
   it('invalidates without crashing when the cached board is empty', async () => {
     const inner = new MockScoreDB();
     const kv = new MockKV();
-    const cached = new CachedScoreDB(inner, kv.asKV(), noWait);
+    const cached = new CachedScoreDB(inner, kv.asKV(), noWait, new MockBanDB());
     // Read the leaderboard of a heap with no scores — this caches an empty array,
     // which is truthy, so it is NOT treated as a cache miss.
     await cached.getTopScores(HEAP_ID, 50);

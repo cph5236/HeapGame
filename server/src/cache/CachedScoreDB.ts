@@ -12,6 +12,7 @@
 // is then a single delete, keeping writes consistent.
 
 import type { ScoreDB, ScoreRow, AdminScoreRow } from '../scoreDb';
+import type { BanDB } from '../banDb';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 
@@ -21,11 +22,20 @@ const CACHE_TOP_N = 50;
  *  60 is the floor Workers KV allows for expirationTtl. */
 const SCORES_TTL = 60;
 
+// Ban/unban deliberately does NOT bust this cache. The blob carries a 60s
+// expirationTtl (SCORES_TTL), so a newly banned player disappears from every
+// public board within a minute on its own. Fanning a KV delete out across every
+// heap on each ban would spend the tightest Cloudflare quota (deletes) to buy
+// less than a minute.
 export class CachedScoreDB implements ScoreDB {
   constructor(
     private inner: ScoreDB,
     private kv: KVNamespace,
     private waitUntil: (p: Promise<unknown>) => void,
+    /** Required, not optional: the cached blob is the PUBLIC board, so without a
+     *  ban source this decorator would serve it to a banned viewer and silently
+     *  break the illusion their client depends on. */
+    private banDb: BanDB,
     /** Optional telemetry sink — see CachedHeapDB for rationale. Optional so
      *  tests can construct this class directly. */
     private sink?: Sink,
@@ -38,10 +48,15 @@ export class CachedScoreDB implements ScoreDB {
   async getTopScores(heapId: string, limit: number, viewerId = ''): Promise<ScoreRow[]> {
     // Larger-than-cached requests bypass the cache entirely.
     if (limit > CACHE_TOP_N) return this.inner.getTopScores(heapId, limit, viewerId);
-    // TEMPORARY (narrowed in the ban-aware cache task): the cached blob is the
-    // PUBLIC board, so it cannot serve a viewer who might be banned. Bypassing
-    // for every named viewer is correct but pessimistic.
-    if (viewerId !== '') return this.inner.getTopScores(heapId, limit, viewerId);
+
+    // The cached blob is the PUBLIC board — every shadow-banned player is
+    // already filtered out of it. Only a viewer who is themselves banned needs
+    // a different result set, so only they pay for a D1 read. isBanned is
+    // memoised per isolate (MemoBanDB), so this costs no round trip in the
+    // common case.
+    if (viewerId !== '' && await this.banDb.isBanned(viewerId)) {
+      return this.inner.getTopScores(heapId, limit, viewerId);
+    }
 
     const key = this.topKey(heapId);
     const hit = await this.safeGet<ScoreRow[]>(key);
