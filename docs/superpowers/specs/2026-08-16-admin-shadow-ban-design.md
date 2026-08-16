@@ -79,8 +79,11 @@ memoises results in module scope for 60s. Workers reuse isolates across requests
 so the D1 read amortises to near zero without adding a KV read. `ban` / `unban`
 clear the memo in the calling isolate; other isolates converge within the TTL.
 
-Staleness bound: a ban takes effect for all viewers within 60s. This deliberately
-matches `SCORES_TTL`, so the two staleness windows are the same number.
+Staleness bound: a ban takes effect for all viewers within 60s. That is the same
+*duration* as `SCORES_TTL`, though not the same literal — 60_000 ms here against
+60 s there. The two windows do not only work in the ban's favour: see the
+self-view consequence in Accepted consequences above, where a memo entry cached
+just before a ban lands can briefly hide the banned player from their own top-N.
 
 ### `ScoreDB` filter
 
