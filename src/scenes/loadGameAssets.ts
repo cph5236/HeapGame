@@ -18,6 +18,7 @@ import vultureFlyRightUrl from '../sprites/Enemies/vulture/vulture-fly-right.png
 import ratUrl             from '../sprites/Enemies/Rat/rat.png?url';
 import jumperUrl          from '../sprites/Enemies/JumperCables/Jumper_Cables.png?url';
 import trashbagNoStringsUrl from '../sprites/player/trashbag-nostrings.png?url';
+import trashbagDashUrl       from '../sprites/player/trashbag-nostrings-sheet.png?url';
 import outroDeathUrl        from '../sprites/outro/trashbag-Death.png';
 
 /** Default size of the per-session trash-wall sprite pool. */
@@ -90,6 +91,14 @@ export function loadGameAssets(scene: Phaser.Scene): void {
   scene.load.spritesheet('rat',               ratUrl,             { frameWidth: 32, frameHeight: 32 });
   scene.load.spritesheet('jumper',            jumperUrl,          { frameWidth: 256, frameHeight: 256 });
 
+  // ── Player dash frames ───────────────────────────────────────────────────
+  // Grid matches trashbag-nostrings.json (3 untrimmed 224×224 cells, 100ms each).
+  // The sheet's pixels were shifted 14px left of the export so frame 0's bag
+  // centres on its cell like the static texture does — without that the bag
+  // pops sideways on dash entry and mirrors wrong when dashing left. Redo that
+  // shift if the sheet is ever re-exported.
+  scene.load.spritesheet('trashbag-dash',     trashbagDashUrl,    { frameWidth: 224, frameHeight: 224 });
+
   // ── Portal (recycle-items now reuse OBJECT_DEFS keys, no separate load) ──
   scene.load.image(PORTAL_DEF.spriteKey, PORTAL_DEF.spritePath);
 
@@ -122,6 +131,11 @@ export function loadGameAssets(scene: Phaser.Scene): void {
     scene.anims.create({ key: 'jumper-idle-2',   frames: scene.anims.generateFrameNumbers('jumper', { start: 4,  end: 7  }), frameRate: 6,  repeat: -1 });
     scene.anims.create({ key: 'jumper-attack-1', frames: scene.anims.generateFrameNumbers('jumper', { start: 8,  end: 11 }), frameRate: 12, repeat: 0  });
     scene.anims.create({ key: 'jumper-attack-2', frames: scene.anims.generateFrameNumbers('jumper', { start: 12, end: 15 }), frameRate: 12, repeat: 0  });
+    // Player dash: authored at 100ms/frame, plays once and holds the last frame.
+    // Guarded because anims are global — a scene restart re-fires this handler.
+    if (!scene.anims.exists('player-dash')) {
+      scene.anims.create({ key: 'player-dash', frames: scene.anims.generateFrameNumbers('trashbag-dash', { start: 0, end: 2 }), frameRate: 10, repeat: 0 });
+    }
 
     // Register flipbook anims for sheet-based cosmetics.
     for (const key of Object.keys(COSMETIC_ART)) {

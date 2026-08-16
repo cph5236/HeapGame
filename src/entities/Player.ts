@@ -56,6 +56,10 @@ export interface PlayerAnimState {
   justWallJumped: boolean;
   justDied:       boolean;
   justPlaced:     boolean;
+  /** Rising edge of a dash — drives the drawn dash frames for one playback. */
+  justDashed:     boolean;
+  /** Travel direction of the dash that fired: -1 left, 1 right. */
+  dashDir:        number;
 }
 
 export class Player {
@@ -139,6 +143,8 @@ export class Player {
   private _justJumped     = false;
   private _justAirJumped  = false;
   private _justWallJumped = false;
+  private _justDashed     = false;
+  private _dashDir        = 1;
 
   // ── HUD accessors ──────────────────────────────────────────────────────────
   get dashCooldownFraction(): number  { return this.dashCooldown / DASH_COOLDOWN_MS; }
@@ -173,6 +179,8 @@ export class Player {
       justWallJumped: this._justWallJumped,
       justDied:       false,
       justPlaced:     false,
+      justDashed:     this._justDashed,
+      dashDir:        this._dashDir,
     };
   }
 
@@ -238,6 +246,7 @@ export class Player {
     this._justJumped     = false;
     this._justAirJumped  = false;
     this._justWallJumped = false;
+    this._justDashed     = false;
   }
 
   /** Decay jump buffer, prime on new press, apply held→released transition cut.
@@ -457,11 +466,18 @@ export class Player {
     this.dashCooldown = Math.max(0, this.dashCooldown - delta);
     const dashTriggered = Phaser.Input.Keyboard.JustDown(this.dashKey) || im.dashJustFired;
     if (dashTriggered && this.dashCooldown === 0) {
+      // The no-input fallback reads flipX, which PlayerAnimator now owns: it is
+      // set for the length of the dash animation and cleared after. So a dash
+      // chained off a landing mid-animation continues the previous direction
+      // instead of always defaulting right. Deliberate — mountJoystick.ts reads
+      // flipX the same way for the mobile fallback.
       const dir = im.dashJustFired ? im.dashDir : (keyboardLeft ? -1 : keyboardRight ? 1 : (this.sprite.flipX ? -1 : 1));
       this.momentumX = 0;
       this.sprite.setVelocityX(dir * PLAYER_DASH_VELOCITY);
       this.dashCooldown = DASH_COOLDOWN_MS * this.carryCooldownMult * this.buffCooldownMult;
       this.dashActive   = DASH_DURATION_MS;
+      this._justDashed  = true;
+      this._dashDir     = dir;
       this.sprite.scene.events.emit('player-action', 'dash');
       AudioManager.play('player-dash');
     }

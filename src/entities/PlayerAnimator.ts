@@ -17,9 +17,27 @@ const WALL_SLIDE_GRACE_MS = 120;  // ms — keep WALL_SLIDE through brief onWall
 const STRING_STROKE_W    = 2.5;   // px
 const COLLAR_OFFSET_Y    = -1.2; // fraction of PLAYER_HEIGHT (red collar position)
 
+/** ms — 3 drawn frames at the 100ms/frame the art was authored at. Outlasts the
+ *  200ms DASH_DURATION_MS burst, so the last frame holds briefly past the dash. */
+export const DASH_ANIM_DURATION = 300;
+const DASH_ANIM_KEY      = 'player-dash';
+const STATIC_TEXTURE_KEY = 'trashbag-nostrings';
+
 // ── State enum ───────────────────────────────────────────────────────────────
 enum AnimState {
-  IDLE, LAUNCHING, AIR_JUMP, APEX, FALLING, LANDING, WALL_SLIDE,
+  IDLE, LAUNCHING, AIR_JUMP, APEX, FALLING, LANDING, WALL_SLIDE, DASH,
+}
+
+/** Tie strings swept back behind a dash, mirrored by travel direction.
+ *  Authored for a rightward dash (dir 1): both strings trail to -x, the upper
+ *  one lifted by the airflow, the lower one dragging near the collar line. */
+export function dashStringPoints(dir: number): Pick<Keyframe,
+  'cpLx' | 'cpLy' | 'endLx' | 'endLy' | 'cpRx' | 'cpRy' | 'endRx' | 'endRy'> {
+  const s = dir < 0 ? -1 : 1;
+  return {
+    cpLx: -16 * s, cpLy: 2,  endLx: -32 * s, endLy: -6,
+    cpRx: -14 * s, cpRy: 14, endRx: -28 * s, endRy: 14,
+  };
 }
 
 // ── Keyframe type ────────────────────────────────────────────────────────────
@@ -70,6 +88,7 @@ export class PlayerAnimator {
   private fallFlapTime: number = 0;
   private apexTime:     number = 0;
   private wallSlideGrace: number = 0; // ms remaining of WALL_SLIDE hysteresis
+  private dashDir:        number = 1;  // travel direction of the dash being played
 
   private tieColor:   number  = 0xFF0000;
   private tieRainbow: boolean = false;
@@ -116,6 +135,7 @@ export class PlayerAnimator {
 
     // ── Interrupts (checked before anything else) ──────────────────────────
     if (state.justDied || state.justPlaced) {
+      this.exitDash();
       this.sprite.setScale(this.baseScaleX, this.baseScaleY);
       this.sprite.setAngle(0);
       this.sprite.body.setSize(PLAYER_WIDTH / this.baseScaleX, PLAYER_HEIGHT / this.baseScaleY);
@@ -124,14 +144,34 @@ export class PlayerAnimator {
       return;
     }
     if (state.frozen) {
+      this.exitDash();
       this.dormant = true;
+      return;
+    }
+
+    // ── Dash (outranks every other timed state while it plays) ─────────────
+    if (state.justDashed) {
+      this.enterDash(state.dashDir);
+      this.applyDashPose();
+      this.drawStrings();
       return;
     }
 
     // ── Timed-state tick ───────────────────────────────────────────────────
     if (this.stateTimer > 0) {
+      if (this.state === AnimState.DASH) {
+        this.stateTimer -= delta;
+        if (this.stateTimer > 0) {
+          this.applyDashPose();
+          this.drawStrings();
+          return;
+        }
+        this.stateTimer = 0;
+        this.exitDash();
+        // fall through to continuous-state selection below
+
       // Interrupt timed state if a higher-priority event fires
-      if (state.justLanded &&
+      } else if (state.justLanded &&
           (this.state === AnimState.LAUNCHING || this.state === AnimState.AIR_JUMP)) {
         this.enterTimed(AnimState.LANDING, LANDING_DURATION);
         this.applyKeyframes();
@@ -214,10 +254,11 @@ export class PlayerAnimator {
     this.destroyed = true;
     this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.syncGfxToSprite, this);
     this.scene.events.off(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this);
+    // On the SHUTDOWN path the sprite is already destroyed and `body` is gone;
+    // restoring texture/hitbox only matters when the caller keeps using the sprite.
+    if (this.sprite.body) this.exitDash();
     this.sprite.setScale(this.baseScaleX, this.baseScaleY);
     this.sprite.setAngle(0);
-    // On the SHUTDOWN path the sprite is already destroyed and `body` is gone;
-    // restoring the hitbox only matters when the caller keeps using the sprite.
     this.sprite.body?.setSize(PLAYER_WIDTH / this.baseScaleX, PLAYER_HEIGHT / this.baseScaleY);
     this.gfx.destroy();
   }
@@ -228,6 +269,38 @@ export class PlayerAnimator {
     if (newState !== this.state) {
       this.state = newState;
     }
+  }
+
+  /** Hand the bag over to the drawn dash frames for one authored playback. */
+  private enterDash(dir: number): void {
+    this.dashDir = dir < 0 ? -1 : 1;
+    this.enterTimed(AnimState.DASH, DASH_ANIM_DURATION);
+    // The art leans into a rightward dash; flipping is safe because the aligned
+    // sheet centres the bag on the frame, so the mirror pivots on the bag itself.
+    this.sprite.setFlipX(this.dashDir < 0);
+    // Same guard as SheetRig: never play an anim the loader failed to register.
+    if (this.scene.anims.exists(DASH_ANIM_KEY)) this.sprite.play(DASH_ANIM_KEY);
+  }
+
+  /** Give the sprite back to the procedural pose. Safe to call when not dashing. */
+  private exitDash(): void {
+    if (this.state !== AnimState.DASH) return;
+    this.sprite.stop();
+    this.sprite.setTexture(STATIC_TEXTURE_KEY);
+    this.sprite.setFlipX(false);
+  }
+
+  /** No squash, no tilt — the drawn frames carry the whole dash pose. */
+  private applyDashPose(): void {
+    this.sprite.setScale(this.baseScaleX, this.baseScaleY);
+    this.sprite.setAngle(0);
+    this.sprite.body.setSize(PLAYER_WIDTH / this.baseScaleX, PLAYER_HEIGHT / this.baseScaleY);
+
+    const p = dashStringPoints(this.dashDir);
+    this.cpLx  = p.cpLx;  this.cpLy  = p.cpLy;
+    this.endLx = p.endLx; this.endLy = p.endLy;
+    this.cpRx  = p.cpRx;  this.cpRy  = p.cpRy;
+    this.endRx = p.endRx; this.endRy = p.endRy;
   }
 
   private enterTimed(newState: AnimState, duration: number): void {

@@ -74,6 +74,7 @@ function makeSprite() {
     x: 10, y: 20, angle: 0, scaleX: 1, scaleY: 1,
     depth: 5, visible: true, flipX: false, flipY: false,
     texture: { key: 'player' },
+    frame: { name: '__BASE' },
     body: makeBody() as ReturnType<typeof makeBody> | undefined,
     setTint: vi.fn(),
   };
@@ -92,6 +93,7 @@ function makeScene(events: ReturnType<typeof makeEmitter>) {
         setAngle:    vi.fn().mockReturnThis(),
         setFlip:     vi.fn().mockReturnThis(),
         setVisible:  vi.fn().mockReturnThis(),
+        setTexture:  vi.fn().mockReturnThis(),
         destroy:     vi.fn(),
       })),
       particles: vi.fn(),
@@ -159,5 +161,26 @@ describe('PlayerCosmetics lifecycle', () => {
     ctx.cos.hide();
     ctx.sprite.body = undefined;
     expect(() => ctx.events.emit('postupdate', 0, 16)).not.toThrow();
+  });
+});
+
+// ── Skin glaze tracks the bag's current art ───────────────────────────────────
+
+describe('PlayerCosmetics skin glaze', () => {
+  const TINTED: ResolvedCosmetics = {
+    tieColor: 0xff0000, tieRainbow: false,
+    skinTint: 0x00ff00, hat: null, face: null, trail: null,
+  };
+
+  it('follows the sprite onto the dash frames', () => {
+    const { events, scene, sprite } = construct(TINTED);
+    const glaze = (scene.add.image as any).mock.results[0].value;
+
+    // PlayerAnimator hands the bag to the dash spritesheet mid-run.
+    sprite.texture.key = 'trashbag-dash';
+    sprite.frame.name  = '2';
+    events.emit('postupdate', 0, 16);
+
+    expect(glaze.setTexture).toHaveBeenCalledWith('trashbag-dash', '2');
   });
 });
