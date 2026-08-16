@@ -8,8 +8,22 @@
 //
 // Staleness: a ban placed on one isolate is invisible to others until their
 // entry expires, so a ban takes full effect within TTL_MS. That deliberately
-// matches SCORES_TTL in CachedScoreDB, so the two staleness windows are the
-// same number and there is one story to tell about how long a ban takes.
+// matches the SCORES_TTL duration in CachedScoreDB (60s in both places, but
+// two different literals: this one in ms, that one in seconds) — not so the
+// windows always favour the ban, but so there is one 60-second number to
+// reason about.
+//
+// That window does not only work in the ban's favour. CachedScoreDB.getTopScores
+// calls isBanned(viewerId) through this same memo to decide whether to bypass
+// its own cache for a banned viewer looking at their own board. If an isolate
+// memoised "not banned" for that player just before the ban landed, the bypass
+// is skipped for the rest of this entry's TTL and the ban-filtered public blob
+// is served to them — so the banned player can briefly vanish from their own
+// top-N, which is the opposite of the intended tolerance. This window is
+// self-healing (≤60s, same TTL) and cosmetic: the player's own rank card is
+// built from getScore + getRank, neither of which goes through this memo, so
+// their score and rank stay correct throughout. See "Accepted consequences" in
+// docs/superpowers/specs/2026-08-16-admin-shadow-ban-design.md.
 
 import type { BanDB, BanRow } from '../banDb';
 

@@ -28,6 +28,13 @@ Accepted consequences, confirmed with the product owner:
   their original rank. The two boards genuinely differ; that is the feature.
 - **Score rows are never deleted.** A ban is purely a view filter, so unbanning
   restores the player instantly with their score intact.
+- **A banned player can briefly vanish from their own top-N.** `MemoBanDB`'s
+  per-isolate memo is also what `CachedScoreDB.getTopScores` consults to decide
+  whether to bypass its cache for a self-view; a "not banned" entry memoised
+  just before the ban lands can serve the banned-filtered public blob to the
+  banned player for up to that entry's TTL (≤60s). Self-healing, and cosmetic
+  only — their own rank card (`getScore` + `getRank`) never touches this memo
+  and stays correct throughout.
 
 ## Schema
 

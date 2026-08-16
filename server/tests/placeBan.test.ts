@@ -77,4 +77,44 @@ describe('POST /heaps/:id/place with a shadow-banned player', () => {
     const { app, heapId } = appWithHeap(bans);
     expect((await place(app, heapId)).body.accepted).toBe(true);
   });
+
+  it('is byte-identical, whole-body, to the containment no-op it impersonates', async () => {
+    // Fixture mirrors routes.test.ts's "rejects a point that does not widen
+    // its band": band 2 covers y in [40,60) with x extents [200,400], and
+    // x=300,y=50 sits strictly inside those extents — the same
+    // already-widened band a real player would bounce off routinely.
+    function seedHeap() {
+      const db = new MockHeapDB();
+      db.seedHeap('h1', 1, [], 'base-1');
+      db.seedBase('base-1', 'h1', []);
+      return db;
+    }
+
+    const bannedDb = seedHeap();
+    await bannedDb.upsertBands('h1', [{ band: 2, minX: 200, maxX: 400 }], 1);
+    const bans = new MockBanDB();
+    await bans.ban('badguy', 'griefing', '2026-08-16T00:00:00.000Z');
+    const bannedApp = createApp(bannedDb, new MockScoreDB(), { banDb: bans });
+    const bannedRes = await bannedApp.request('/heaps/h1/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 300, y: 50, playerGuid: 'badguy' }),
+    });
+
+    const containmentDb = seedHeap();
+    await containmentDb.upsertBands('h1', [{ band: 2, minX: 200, maxX: 400 }], 1);
+    const containmentApp = createApp(containmentDb, new MockScoreDB(), { banDb: new MockBanDB() });
+    const containmentRes = await containmentApp.request('/heaps/h1/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 300, y: 50, playerGuid: 'clean-player' }),
+    });
+
+    expect(bannedRes.status).toBe(containmentRes.status);
+    const bannedBody = await bannedRes.json();
+    const containmentBody = await containmentRes.json();
+    // Whole-body deep-equal, not field-by-field: this is the check that must
+    // fail if a future edit adds a field to only one branch.
+    expect(bannedBody).toEqual(containmentBody);
+  });
 });
