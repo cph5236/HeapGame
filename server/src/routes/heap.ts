@@ -14,6 +14,7 @@ import { MAX_ID_LEN } from '../constants';
 import type { PlayerAuthDB } from '../playerAuthDb';
 import { enforcePlayerAuth, PLAYER_TOKEN_HEADER } from '../playerAuth';
 import type { ContributionDB } from '../contributionDb';
+import type { BanDB } from '../banDb';
 import type {
   CreateHeapRequest,
   CreateHeapResponse,
@@ -226,6 +227,7 @@ export function heapRoutes(
   getSink: () => Sink | undefined,
   authDb?: PlayerAuthDB,
   contributionDb?: ContributionDB,
+  banDb?: BanDB,
 ): Hono {
   const app = new Hono();
 
@@ -769,6 +771,17 @@ export function heapRoutes(
     if (playerGuid !== undefined) {
       const authRes = await enforcePlayerAuth(c, authDb, playerGuid, getSink, 'heaps:place');
       if (authRes) return authRes;
+    }
+
+    // Shadow ban: a banned player's placement is dropped without a trace. The
+    // response is byte-identical to the containment no-op below — a response
+    // this client already receives routinely whenever a placement fails to
+    // widen the silhouette — so there is nothing here to notice. A 4xx would
+    // be the tell. Placed after auth so the ordering with claim-on-first-write
+    // is unchanged, and before the band read so a banned player costs us
+    // nothing beyond one memoised ban lookup.
+    if (banDb && playerGuid !== undefined && await banDb.isBanned(playerGuid)) {
+      return c.json({ accepted: false, version: row.version } satisfies PlaceResponse);
     }
 
     // One bounded window read serves this whole handler: the containment check,

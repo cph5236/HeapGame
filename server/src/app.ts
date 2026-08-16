@@ -122,7 +122,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   app.delete('/heaps/:id',              adminGate);
   app.get   ('/scores/admin/:heapId',   adminGate);
 
-  app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink, opts.playerAuthDb, opts.contributionDb));
+  app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink, opts.playerAuthDb, opts.contributionDb, opts.banDb));
   app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink, opts.playerAuthDb, opts.playerNameDb, opts.sessionSecret));
 
   if (opts.codeDb) {
