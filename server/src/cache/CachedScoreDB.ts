@@ -11,7 +11,7 @@
 // served from that one entry; a larger limit bypasses the cache. Invalidation
 // is then a single delete, keeping writes consistent.
 
-import type { ScoreDB, ScoreRow } from '../scoreDb';
+import type { ScoreDB, ScoreRow, AdminScoreRow } from '../scoreDb';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 
@@ -35,9 +35,13 @@ export class CachedScoreDB implements ScoreDB {
     return `cache:scores:${heapId}:top`;
   }
 
-  async getTopScores(heapId: string, limit: number): Promise<ScoreRow[]> {
+  async getTopScores(heapId: string, limit: number, viewerId = ''): Promise<ScoreRow[]> {
     // Larger-than-cached requests bypass the cache entirely.
-    if (limit > CACHE_TOP_N) return this.inner.getTopScores(heapId, limit);
+    if (limit > CACHE_TOP_N) return this.inner.getTopScores(heapId, limit, viewerId);
+    // TEMPORARY (narrowed in the ban-aware cache task): the cached blob is the
+    // PUBLIC board, so it cannot serve a viewer who might be banned. Bypassing
+    // for every named viewer is correct but pessimistic.
+    if (viewerId !== '') return this.inner.getTopScores(heapId, limit, viewerId);
 
     const key = this.topKey(heapId);
     const hit = await this.safeGet<ScoreRow[]>(key);
@@ -82,20 +86,28 @@ export class CachedScoreDB implements ScoreDB {
     return this.inner.getScore(heapId, playerId);
   }
 
-  getRank(heapId: string, score: number): Promise<number> {
-    return this.inner.getRank(heapId, score);
+  getRank(heapId: string, score: number, viewerId?: string): Promise<number> {
+    return this.inner.getRank(heapId, score, viewerId);
   }
 
-  countScores(heapId: string): Promise<number> {
-    return this.inner.countScores(heapId);
+  countScores(heapId: string, viewerId?: string): Promise<number> {
+    return this.inner.countScores(heapId, viewerId);
   }
 
-  getScoresPaginated(heapId: string, offset: number, limit: number): Promise<ScoreRow[]> {
-    return this.inner.getScoresPaginated(heapId, offset, limit);
+  getScoresPaginated(heapId: string, offset: number, limit: number, viewerId?: string): Promise<ScoreRow[]> {
+    return this.inner.getScoresPaginated(heapId, offset, limit, viewerId);
   }
 
   getPlayerScores(playerId: string): Promise<Array<{ heapId: string; name: string; score: number; rank: number }>> {
     return this.inner.getPlayerScores(playerId);
+  }
+
+  listScoresForAdmin(heapId: string, offset: number, limit: number): Promise<AdminScoreRow[]> {
+    return this.inner.listScoresForAdmin(heapId, offset, limit);
+  }
+
+  countAllScores(heapId: string): Promise<number> {
+    return this.inner.countAllScores(heapId);
   }
 
   // ---- helpers ----

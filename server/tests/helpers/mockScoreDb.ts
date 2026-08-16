@@ -1,5 +1,6 @@
-import type { ScoreDB, ScoreRow } from '../../src/scoreDb';
+import type { ScoreDB, ScoreRow, AdminScoreRow } from '../../src/scoreDb';
 import type { PlayerNameDB } from '../../src/playerNameDb';
+import type { BanDB } from '../../src/banDb';
 
 /**
  * In-memory ScoreDB for use in tests. No D1 or Workers runtime needed.
@@ -16,6 +17,7 @@ export class MockScoreDB implements ScoreDB {
   private loadouts = new Map<string, string>();
   private names = new Map<string, string>();
   private nameDb: PlayerNameDB | null = null;
+  private banDb: BanDB | null = null;
 
   private key(heapId: string, playerId: string): string {
     return `${heapId}::${playerId}`;
@@ -27,12 +29,35 @@ export class MockScoreDB implements ScoreDB {
     this.nameDb = nameDb;
   }
 
+  /** Wire an external BanDB; mirrors the D1 LEFT JOIN player_ban. */
+  attachBanDb(banDb: BanDB): void {
+    this.banDb = banDb;
+  }
+
   private async resolveName(playerId: string): Promise<string> {
     if (this.nameDb) {
       const name = await this.nameDb.getName(playerId);
       if (name !== null) return name;
     }
     return this.names.get(playerId) ?? 'Anonymous';
+  }
+
+  /** True when this row must be hidden from `viewerId`. Mirrors the SQL
+   *  predicate (b.player_id IS NULL OR s.player_id = ?viewer). */
+  private async hidden(playerId: string, viewerId: string): Promise<boolean> {
+    if (!this.banDb) return false;
+    if (playerId === viewerId) return false;
+    return this.banDb.isBanned(playerId);
+  }
+
+  /** Rows for a heap, banned players filtered out, ordered by score DESC. */
+  private async visibleRows(heapId: string, viewerId: string): Promise<ScoreRow[]> {
+    const rows = Array.from(this.rows.values()).filter(r => r.heap_id === heapId);
+    const keep: ScoreRow[] = [];
+    for (const r of rows) {
+      if (!(await this.hidden(r.player_id, viewerId))) keep.push(r);
+    }
+    return keep.sort((a, b) => b.score - a.score);
   }
 
   async getScore(heapId: string, playerId: string): Promise<ScoreRow | null> {
@@ -64,23 +89,18 @@ export class MockScoreDB implements ScoreDB {
     };
   }
 
-  async getTopScores(heapId: string, limit: number): Promise<ScoreRow[]> {
-    const rows = Array.from(this.rows.values())
-      .filter(r => r.heap_id === heapId)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+  async getTopScores(heapId: string, limit: number, viewerId = ''): Promise<ScoreRow[]> {
+    const rows = (await this.visibleRows(heapId, viewerId)).slice(0, limit);
     return Promise.all(rows.map(r => this.withJoins(r)));
   }
 
-  async getRank(heapId: string, score: number): Promise<number> {
-    const above = Array.from(this.rows.values())
-      .filter(r => r.heap_id === heapId && r.score > score)
-      .length;
-    return above + 1;
+  async getRank(heapId: string, score: number, viewerId = ''): Promise<number> {
+    const rows = await this.visibleRows(heapId, viewerId);
+    return rows.filter(r => r.score > score).length + 1;
   }
 
-  async countScores(heapId: string): Promise<number> {
-    return Array.from(this.rows.values()).filter(r => r.heap_id === heapId).length;
+  async countScores(heapId: string, viewerId = ''): Promise<number> {
+    return (await this.visibleRows(heapId, viewerId)).length;
   }
 
   async pruneScores(heapId: string): Promise<void> {
@@ -93,26 +113,38 @@ export class MockScoreDB implements ScoreDB {
     }
   }
 
-  async getScoresPaginated(heapId: string, offset: number, limit: number): Promise<ScoreRow[]> {
-    const rows = Array.from(this.rows.values())
-      .filter(r => r.heap_id === heapId)
-      .sort((a, b) => b.score - a.score)
-      .slice(offset, offset + limit);
+  async getScoresPaginated(heapId: string, offset: number, limit: number, viewerId = ''): Promise<ScoreRow[]> {
+    const rows = (await this.visibleRows(heapId, viewerId)).slice(offset, offset + limit);
     return Promise.all(rows.map(r => this.withJoins(r)));
   }
 
   async getPlayerScores(playerId: string): Promise<Array<{
     heapId: string; name: string; score: number; rank: number;
   }>> {
-    const all = Array.from(this.rows.values());
-    const playerRows = all.filter(r => r.player_id === playerId);
+    const playerRows = Array.from(this.rows.values()).filter(r => r.player_id === playerId);
     const name = await this.resolveName(playerId);
-    return playerRows.map(r => {
-      const rank = all.filter(o =>
-        o.heap_id === r.heap_id && o.score > r.score
-      ).length + 1;
-      return { heapId: r.heap_id, name, score: r.score, rank };
-    });
+    const out: Array<{ heapId: string; name: string; score: number; rank: number }> = [];
+    for (const r of playerRows) {
+      const visible = await this.visibleRows(r.heap_id, playerId);
+      const rank = visible.filter(o => o.score > r.score).length + 1;
+      out.push({ heapId: r.heap_id, name, score: r.score, rank });
+    }
+    return out;
+  }
+
+  async listScoresForAdmin(heapId: string, offset: number, limit: number): Promise<AdminScoreRow[]> {
+    const rows = Array.from(this.rows.values())
+      .filter(r => r.heap_id === heapId)
+      .sort((a, b) => b.score - a.score)
+      .slice(offset, offset + limit);
+    return Promise.all(rows.map(async r => ({
+      ...(await this.withJoins(r)),
+      banned: this.banDb ? await this.banDb.isBanned(r.player_id) : false,
+    })));
+  }
+
+  async countAllScores(heapId: string): Promise<number> {
+    return Array.from(this.rows.values()).filter(r => r.heap_id === heapId).length;
   }
 
   /** Test helper — seed a score row directly. `name` also seeds a shadow
