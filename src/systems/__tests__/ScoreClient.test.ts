@@ -282,3 +282,40 @@ describe('ScoreClient.getLeaderboardPage', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('getLeaderboardPage viewer id', () => {
+  it('sends playerId when one is supplied', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok:   true,
+      json: async () => ({ entries: [], total: 0, page: 0 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await ScoreClient.getLeaderboardPage('heap-1', 2, 25, 'player-abc');
+    const url = (fetchMock.mock.calls[0] as [string])[0];
+    expect(url).toContain('page=2');
+    expect(url).toContain('limit=25');
+    expect(url).toContain('playerId=player-abc');
+  });
+
+  it('omits playerId entirely when none is supplied', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok:   true,
+      json: async () => ({ entries: [], total: 0, page: 0 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await ScoreClient.getLeaderboardPage('heap-1', 0, 25);
+    const url = (fetchMock.mock.calls[0] as [string])[0];
+    expect(url).not.toContain('playerId');
+  });
+
+  it('url-encodes the player id', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok:   true,
+      json: async () => ({ entries: [], total: 0, page: 0 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await ScoreClient.getLeaderboardPage('heap-1', 0, 25, 'a b&c');
+    const url = (fetchMock.mock.calls[0] as [string])[0];
+    expect(url).toContain('playerId=a%20b%26c');
+  });
+});

@@ -121,12 +121,17 @@ export class ScoreClient {
 
   /**
    * Fetch one page of the per-heap leaderboard. Returns null on failure.
+   *
+   * `playerId` identifies the viewer to the server. It must be the effective
+   * player id (see getEffectivePlayerId), and it is what keeps a player's own
+   * board complete regardless of any server-side moderation.
    */
-  static async getLeaderboardPage(heapId: string, page: number, limit: number)
+  static async getLeaderboardPage(heapId: string, page: number, limit: number, playerId?: string)
     : Promise<PaginatedLeaderboardResponse | null>
   {
     try {
-      const url = `${SERVER_URL}/scores/${encodeURIComponent(heapId)}?page=${page}&limit=${limit}`;
+      const viewer = playerId ? `&playerId=${encodeURIComponent(playerId)}` : '';
+      const url = `${SERVER_URL}/scores/${encodeURIComponent(heapId)}?page=${page}&limit=${limit}${viewer}`;
       const res = await fetchWithLog(url);
       if (!res.ok) return null;
       return (await res.json()) as PaginatedLeaderboardResponse;

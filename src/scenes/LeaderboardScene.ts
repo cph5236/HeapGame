@@ -165,7 +165,7 @@ export class LeaderboardScene extends Phaser.Scene {
 
   private async loadInitial(): Promise<void> {
     const [page0, ctx] = await Promise.all([
-      ScoreClient.getLeaderboardPage(this.heapId, 0, PAGE_LIMIT),
+      ScoreClient.getLeaderboardPage(this.heapId, 0, PAGE_LIMIT, this.playerId),
       ScoreClient.getContext({ heapId: this.heapId, playerId: this.playerId, limit: 0 }),
     ]);
     if (!page0) {
@@ -180,7 +180,7 @@ export class LeaderboardScene extends Phaser.Scene {
   private async gotoPage(page: number): Promise<void> {
     if (page < 0) return;
     if (this.total > 0 && page * PAGE_LIMIT >= this.total) return;
-    const data = await ScoreClient.getLeaderboardPage(this.heapId, page, PAGE_LIMIT);
+    const data = await ScoreClient.getLeaderboardPage(this.heapId, page, PAGE_LIMIT, this.playerId);
     if (!data) {
       this.showError();
       return;
