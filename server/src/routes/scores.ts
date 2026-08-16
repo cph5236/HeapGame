@@ -51,8 +51,10 @@ async function buildContext(
   playerId: string,
   limit:    number,
 ): Promise<LeaderboardContext> {
+  // playerId doubles as the viewer: a shadow-banned player still sees
+  // themselves on their own board, at the rank they would have had.
   const [topRows, playerRow] = await Promise.all([
-    scoreDb.getTopScores(heapId, limit),
+    scoreDb.getTopScores(heapId, limit, playerId),
     scoreDb.getScore(heapId, playerId),
   ]);
   const top: LeaderboardEntry[] = topRows.map((row, i) => ({
@@ -64,7 +66,7 @@ async function buildContext(
   }));
   if (!playerRow) return { top, player: null };
 
-  const rank: number = await scoreDb.getRank(heapId, playerRow.score);
+  const rank: number = await scoreDb.getRank(heapId, playerRow.score, playerId);
   const player: LeaderboardEntry = {
     rank,
     playerId: playerRow.player_id,
@@ -409,6 +411,34 @@ export function scoreRoutes(
     return c.json({ submitted, context } satisfies SubmitScoreResponse);
   });
 
+  // GET /scores/admin/:heapId — unfiltered page for the admin UI, ban state
+  // resolved per row. Registered before /:heapId so "admin" is never parsed as
+  // a heapId. Admin-gated in app.ts.
+  app.get('/admin/:heapId', async (c) => {
+    const heapId = c.req.param('heapId');
+    const page   = parseInt(c.req.query('page') ?? '0') || 0;
+    const limit  = Math.min(
+      parseInt(c.req.query('limit') ?? String(MAX_LIMIT)) || MAX_LIMIT,
+      MAX_LIMIT,
+    );
+    const offset = page * limit;
+
+    const [rows, total] = await Promise.all([
+      scoreDb.listScoresForAdmin(heapId, offset, limit),
+      scoreDb.countAllScores(heapId),
+    ]);
+
+    const entries = rows.map((row, i) => ({
+      rank:     offset + i + 1,
+      playerId: row.player_id,
+      name:     row.name,
+      score:    row.score,
+      banned:   row.banned,
+    }));
+
+    return c.json({ entries, total, page });
+  });
+
   // GET /scores/player/:playerId — all of a player's scores across heaps with rank
   app.get('/player/:playerId', async (c) => {
     const playerId = c.req.param('playerId');
@@ -437,17 +467,20 @@ export function scoreRoutes(
 
   // GET /scores/:heapId — paginated full leaderboard
   app.get('/:heapId', async (c) => {
-    const heapId = c.req.param('heapId');
-    const page   = parseInt(c.req.query('page') ?? '0') || 0;
-    const limit  = Math.min(
+    const heapId   = c.req.param('heapId');
+    // Optional viewer. Shadow-banned players are filtered out for everyone
+    // except themselves, so their own board looks untouched.
+    const viewerId = c.req.query('playerId') ?? '';
+    const page     = parseInt(c.req.query('page') ?? '0') || 0;
+    const limit    = Math.min(
       parseInt(c.req.query('limit') ?? String(MAX_LIMIT)) || MAX_LIMIT,
       MAX_LIMIT,
     );
     const offset = page * limit;
 
     const [rows, total] = await Promise.all([
-      scoreDb.getScoresPaginated(heapId, offset, limit),
-      scoreDb.countScores(heapId),
+      scoreDb.getScoresPaginated(heapId, offset, limit, viewerId),
+      scoreDb.countScores(heapId, viewerId),
     ]);
 
     const entries: LeaderboardEntry[] = rows.map((row, i) => ({

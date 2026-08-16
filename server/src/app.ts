@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { HeapDB } from './db';
 import type { ScoreDB } from './scoreDb';
+import type { BanDB } from './banDb';
 import { heapRoutes } from './routes/heap';
 import { scoreRoutes } from './routes/scores';
 import { logRoutes } from './routes/log';
@@ -68,6 +69,9 @@ export interface AppOptions {
   /** HMAC key for run-session tokens. If unset, /scores/session 404s and
    *  score submits skip session verification entirely (legacy behavior). */
   sessionSecret?: string;
+  /** Shadow-ban list (player_ban in heap_scores). If unset, /bans is not mounted
+   *  and placements are never silently dropped. */
+  banDb?: BanDB;
 }
 
 export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {}): Hono {
@@ -115,6 +119,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   app.get   ('/heaps/:id/bands',        adminGate);
   app.put   ('/heaps/:id/bands',        adminGate);
   app.delete('/heaps/:id',              adminGate);
+  app.get   ('/scores/admin/:heapId',   adminGate);
 
   app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink, opts.playerAuthDb, opts.contributionDb));
   app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink, opts.playerAuthDb, opts.playerNameDb, opts.sessionSecret));
