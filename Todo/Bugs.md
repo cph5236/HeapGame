@@ -3,7 +3,6 @@
 # Server
 
 # COSMETICS
-CAT hat is bugged and needs new art
 
 # Mobile
 
