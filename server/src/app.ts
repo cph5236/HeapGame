@@ -13,6 +13,7 @@ import { configRoutes } from './routes/config';
 import { customizationRoutes } from './routes/customization';
 import { playerRoutes } from './routes/players';
 import { authAdminRoutes } from './routes/auth';
+import { banRoutes } from './routes/bans';
 import { requireAdminSecret } from './middleware/adminAuth';
 import { rateLimit, type RateLimiter, setRateLimitSink } from './middleware/rateLimit';
 import { parseOriginAllowlist } from './middleware/originAllowlist';
@@ -171,6 +172,15 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
     // Player rename writes share the scores rate-limit bucket — same pattern as customization.
     app.put('/players/:playerId/name', rateLimit(lim.scores, 'players-rename', opts.loadTestSecret));
     app.route('/players', playerRoutes(opts.playerNameDb, () => opts.logSink, opts.playerAuthDb));
+  }
+
+  if (opts.banDb) {
+    // Admin shadow-ban surface — entirely behind the admin gate.
+    app.get   ('/bans',           adminGate);
+    app.get   ('/bans/:playerId', adminGate);
+    app.put   ('/bans/:playerId', adminGate);
+    app.delete('/bans/:playerId', adminGate);
+    app.route('/bans', banRoutes(opts.banDb, scoreDb, opts.playerNameDb));
   }
 
   if (opts.logSink) {
