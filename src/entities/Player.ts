@@ -466,6 +466,11 @@ export class Player {
     this.dashCooldown = Math.max(0, this.dashCooldown - delta);
     const dashTriggered = Phaser.Input.Keyboard.JustDown(this.dashKey) || im.dashJustFired;
     if (dashTriggered && this.dashCooldown === 0) {
+      // The no-input fallback reads flipX, which PlayerAnimator now owns: it is
+      // set for the length of the dash animation and cleared after. So a dash
+      // chained off a landing mid-animation continues the previous direction
+      // instead of always defaulting right. Deliberate — mountJoystick.ts reads
+      // flipX the same way for the mobile fallback.
       const dir = im.dashJustFired ? im.dashDir : (keyboardLeft ? -1 : keyboardRight ? 1 : (this.sprite.flipX ? -1 : 1));
       this.momentumX = 0;
       this.sprite.setVelocityX(dir * PLAYER_DASH_VELOCITY);
