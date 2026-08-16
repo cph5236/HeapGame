@@ -1519,8 +1519,8 @@
           ? '<span class="text-term-red">BANNED</span>'
           : '<span class="text-term-green">ok</span>';
         const action = e.banned
-          ? `<button class="btn btn-sm" onclick="onUnbanPlayer('${e.playerId}')">Unban</button>`
-          : `<button class="btn btn-sm btn-danger" onclick="onBanPlayer('${e.playerId}')">Ban</button>`;
+          ? `<button class="btn btn-sm" data-unban-id="${escapeHtml(e.playerId)}">Unban</button>`
+          : `<button class="btn btn-sm btn-danger" data-ban-id="${escapeHtml(e.playerId)}">Ban</button>`;
         return '<tr>'
           + '<td>' + e.rank + '</td>'
           + '<td class="font-mono text-xs">' + escapeHtml(e.playerId) + '</td>'
@@ -1582,8 +1582,8 @@
             `<li>${escapeHtml(s.heapId)} — ${s.score} (rank ${s.rank})</li>`).join('')
         : '<li class="muted">no scores</li>';
       const action = p.banned
-        ? `<button class="btn btn-sm" onclick="onUnbanPlayer('${p.playerId}')">Unban</button>`
-        : `<button class="btn btn-sm btn-danger" onclick="onBanPlayer('${p.playerId}')">Ban</button>`;
+        ? `<button class="btn btn-sm" data-unban-id="${escapeHtml(p.playerId)}">Unban</button>`
+        : `<button class="btn btn-sm btn-danger" data-ban-id="${escapeHtml(p.playerId)}">Ban</button>`;
       $('pl-lookupResult').innerHTML =
           '<div class="text-term-text">' + escapeHtml(p.name) + '</div>'
         + '<div class="font-mono text-xs">' + escapeHtml(p.playerId) + '</div>'
@@ -1604,6 +1604,21 @@
         if ((plPage + 1) * PL_PAGE_LIMIT >= plTotal) return;
         plPage++; loadPlayers();
       };
+      // Ban/Unban buttons are rendered into #pl-tbody (renderPlayersTable) and
+      // #pl-lookupResult (renderLookup), both of which are wiped and rebuilt
+      // wholesale on every refresh/lookup — a listener bound to an individual
+      // button would be lost on the next render. Delegating from `document`
+      // (bound once, here, at boot) survives every re-render and covers both
+      // containers. The player id travels via a data-* attribute (escaped as
+      // HTML, since that's what it actually is) rather than being interpolated
+      // into an inline onclick handler's JS-in-an-attribute string, which is
+      // not escapable the same way — see the shadow-ban admin UI security fix.
+      document.addEventListener('click', (ev) => {
+        const banEl = ev.target.closest('[data-ban-id]');
+        if (banEl) { onBanPlayer(banEl.dataset.banId); return; }
+        const unbanEl = ev.target.closest('[data-unban-id]');
+        if (unbanEl) { onUnbanPlayer(unbanEl.dataset.unbanId); return; }
+      });
     }
 
     // ────── Boot ───────────────────────────────────────────────────────────
