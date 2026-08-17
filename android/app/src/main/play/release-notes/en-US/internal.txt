@@ -1,3 +1,3 @@
-Leaderboard scores are now verified against server time, so run times can't be faked.
+The dash now has its own hand-drawn animation instead of a stretched bag.
 
-The main menu no longer re-checks your Daily Drop when there's nothing to claim, so it opens faster, and the can now counts down to your next drop.
+Google Play Games sign-in now finishes before the main menu opens, so your scores and Daily Drop streak always save to your signed-in account instead of being stranded on a separate one.
