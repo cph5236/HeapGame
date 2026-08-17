@@ -14,6 +14,7 @@ import { MAX_ID_LEN } from '../constants';
 import type { PlayerAuthDB } from '../playerAuthDb';
 import { enforcePlayerAuth, PLAYER_TOKEN_HEADER } from '../playerAuth';
 import type { ContributionDB } from '../contributionDb';
+import type { BanDB } from '../banDb';
 import type {
   CreateHeapRequest,
   CreateHeapResponse,
@@ -69,6 +70,15 @@ const PLACE_WINDOW_BANDS = GHOST_SPREAD_BANDS + SEED_SEARCH_BANDS;
  *  many bands they touch (one blob rewrite), so this bounds only the live-row
  *  statement count — and the live zone runs to roughly 77 bands. */
 const MAX_ADMIN_BANDS = 500;
+
+/**
+ * The place-route's "nothing changed" response, shared by every no-op path
+ * (containment no-op, shadow ban). One literal, not two kept identical by
+ * convention — see docs/superpowers/specs/2026-08-16-admin-shadow-ban-design.md.
+ */
+function noOpPlace(version: number): PlaceResponse {
+  return { accepted: false, version };
+}
 
 function validateDifficulty(d: number): string | null {
   if (!Number.isFinite(d)) return 'difficulty must be a finite number';
@@ -226,6 +236,7 @@ export function heapRoutes(
   getSink: () => Sink | undefined,
   authDb?: PlayerAuthDB,
   contributionDb?: ContributionDB,
+  banDb?: BanDB,
 ): Hono {
   const app = new Hono();
 
@@ -784,11 +795,25 @@ export function heapRoutes(
       await db.getBandRange(id, band - PLACE_WINDOW_BANDS, band + PLACE_WINDOW_BANDS),
     );
 
+    // Shadow ban: a banned player's placement is dropped without a trace. The
+    // response is byte-identical to the containment no-op just below — a
+    // response this client already receives routinely whenever a placement
+    // fails to widen the silhouette — so there is nothing here to notice. A
+    // 4xx would be the tell, and so would a faster round trip: this check sits
+    // AFTER the window read (rather than before it, which would save a D1
+    // round trip) specifically so the banned path pays for the exact same
+    // getBandRange it is impersonating, and its latency cannot be
+    // distinguished from the containment no-op by timing alone. Placed after
+    // auth so the ordering with claim-on-first-write is unchanged.
+    if (banDb && playerGuid !== undefined && await banDb.isBanned(playerGuid)) {
+      return c.json(noOpPlace(row.version));
+    }
+
     // Containment: a placement counts only if it widens its band. A point at or
     // inside the extents cannot change the silhouette the client renders, so
     // storing it would cost CPU and egress forever and draw nothing.
     if (!extendsEnvelope(window, x, y)) {
-      return c.json({ accepted: false, version: row.version } satisfies PlaceResponse);
+      return c.json(noOpPlace(row.version));
     }
 
     // Candidate vertices: the placement plus its ghost points. Ghosts that do

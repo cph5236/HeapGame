@@ -1,12 +1,14 @@
 // server/src/routes/scores.ts
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { ScoreDB } from '../scoreDb';
+import type { BanDB } from '../banDb';
 import type { HeapDB } from '../db';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 import type { PlayerAuthDB } from '../playerAuthDb';
-import { enforcePlayerAuth } from '../playerAuth';
+import { enforcePlayerAuth, verifyPlayerToken, PLAYER_TOKEN_HEADER } from '../playerAuth';
 import type { PlayerNameDB } from '../playerNameDb';
 import { validatePlayerName, generateDefaultPlayerName } from '../../../shared/playerName';
 import { signSession, verifySession, clampElapsedMs, MAX_SESSION_TOKEN_LEN } from '../runSession';
@@ -49,10 +51,19 @@ async function buildContext(
   scoreDb:  ScoreDB,
   heapId:   string,
   playerId: string,
+  /**
+   * The id whose shadow-ban carveout applies — `playerId` once proven theirs
+   * (see resolveViewer), otherwise ''. Kept separate from `playerId` on
+   * purpose: the personal rank card below is looked up by `playerId` and is
+   * returned whether or not the player is banned, so it leaks nothing and must
+   * keep working for an unproven caller. Blanking the whole card when the
+   * carveout is denied would itself be a tell.
+   */
+  viewerId: string,
   limit:    number,
 ): Promise<LeaderboardContext> {
   const [topRows, playerRow] = await Promise.all([
-    scoreDb.getTopScores(heapId, limit),
+    scoreDb.getTopScores(heapId, limit, viewerId),
     scoreDb.getScore(heapId, playerId),
   ]);
   const top: LeaderboardEntry[] = topRows.map((row, i) => ({
@@ -64,7 +75,7 @@ async function buildContext(
   }));
   if (!playerRow) return { top, player: null };
 
-  const rank: number = await scoreDb.getRank(heapId, playerRow.score);
+  const rank: number = await scoreDb.getRank(heapId, playerRow.score, viewerId);
   const player: LeaderboardEntry = {
     rank,
     playerId: playerRow.player_id,
@@ -81,8 +92,46 @@ export function scoreRoutes(
   authDb?: PlayerAuthDB,
   playerNameDb?: PlayerNameDB,
   sessionSecret?: string,
+  banDb?: BanDB,
 ): Hono {
   const app = new Hono();
+
+  /**
+   * Decide whether a `playerId` query parameter may act as the viewer for the
+   * shadow-ban self-visibility carveout.
+   *
+   * The carveout is what lets a banned player still see themselves. Player ids
+   * are PUBLIC — every leaderboard entry returns one — so treating a raw query
+   * parameter as proof of identity would let anyone who has read the board
+   * replay a banned id and un-hide them, defeating the ban. Proof of identity
+   * is therefore required, via the same X-Player-Token the write routes use.
+   *
+   * The verify runs BEFORE the ban check and unconditionally whenever a token
+   * is offered, even though its result only changes the answer for a banned
+   * viewer. That is deliberate and costs a D1 read on every authenticated
+   * leaderboard load. Checking it only when banned — the obvious saving — makes
+   * the saving itself the tell: the banned path pays a getSecretHash round trip
+   * the unbanned path skips, so response latency separates them for any caller
+   * willing to send a throwaway token, and player ids are public. Same
+   * latency-parity reasoning as the /place no-op paths (commit e091494).
+   *
+   * `isBanned` is memoised per isolate (MemoBanDB), so that gate itself costs
+   * microseconds and adds no measurable difference either way.
+   *
+   * Returns '' — matching no player — when the claim is not proven.
+   */
+  async function resolveViewer(c: Context, playerId: string): Promise<string> {
+    if (!playerId) return '';
+    // Feature not wired (tests, or a deployment without ban/auth): legacy
+    // behaviour, same as enforcePlayerAuth's `if (!db) return null`.
+    if (!banDb || !authDb) return playerId;
+
+    const token  = c.req.header(PLAYER_TOKEN_HEADER) || undefined;
+    const proven = token ? await verifyPlayerToken(authDb, playerId, token) : false;
+
+    if (!(await banDb.isBanned(playerId))) return playerId;
+    return proven ? playerId : '';
+  }
 
   // POST /scores/session — open a run session. The token is a server-attested
   // timestamp, not proof of a genuine client: anyone can call this endpoint.
@@ -405,15 +454,65 @@ export function scoreRoutes(
     const submitted = await scoreDb.upsertScore(heapId, playerId, finalScore, now);
     if (submitted) await scoreDb.pruneScores(heapId);
 
-    const context = await buildContext(scoreDb, heapId, playerId, limit);
+    // Identity is already proven here — enforcePlayerAuth ran above — so this
+    // caller gets the carveout without a second lookup.
+    const context = await buildContext(scoreDb, heapId, playerId, playerId, limit);
     return c.json({ submitted, context } satisfies SubmitScoreResponse);
   });
 
-  // GET /scores/player/:playerId — all of a player's scores across heaps with rank
+  // GET /scores/admin/:heapId — unfiltered page for the admin UI, ban state
+  // resolved per row. Registered before /:heapId so "admin" is never parsed as
+  // a heapId. Admin-gated in app.ts.
+  app.get('/admin/:heapId', async (c) => {
+    const heapId = c.req.param('heapId');
+    const page   = parseInt(c.req.query('page') ?? '0') || 0;
+    const limit  = Math.min(
+      parseInt(c.req.query('limit') ?? String(MAX_LIMIT)) || MAX_LIMIT,
+      MAX_LIMIT,
+    );
+    const offset = page * limit;
+
+    const [rows, total] = await Promise.all([
+      scoreDb.listScoresForAdmin(heapId, offset, limit),
+      scoreDb.countAllScores(heapId),
+    ]);
+
+    const entries = rows.map((row, i) => ({
+      rank:     offset + i + 1,
+      playerId: row.player_id,
+      name:     row.name,
+      score:    row.score,
+      banned:   row.banned,
+    }));
+
+    return c.json({ entries, total, page });
+  });
+
+  // GET /scores/player/:playerId — all of a player's scores across heaps with rank.
+  //
+  // Unauthenticated, and the id comes straight off the path. getPlayerScores
+  // ranks the subject as if visible even when banned — deliberately, because
+  // GET /bans/:playerId reuses it to show an admin the true standing of the
+  // player they are judging. On THIS route that same true rank is an oracle:
+  // ask for a banned id and it answers "rank 2, score 8900", while the public
+  // board closed up over them and shows a different score at rank 2. Diffing
+  // two unauthenticated responses then exposes the ban for any scraped id.
+  //
+  // So the carveout applies here exactly as it does to the boards: an unproven
+  // caller gets what they would get for a player with no scores — which is
+  // already what the public board shows them, hence no new tell.
   app.get('/player/:playerId', async (c) => {
     const playerId = c.req.param('playerId');
-    const rows     = await scoreDb.getPlayerScores(playerId);
-    const entries  = rows.map(r => ({
+
+    // Both reads always run, even when the answer is going to be blanked. The
+    // hidden path must cost the same as the visible one or latency replaces the
+    // oracle this fix removes. See resolveViewer on the same parity rule.
+    const [viewer, rows] = await Promise.all([
+      resolveViewer(c, playerId),
+      scoreDb.getPlayerScores(playerId),
+    ]);
+
+    const entries = viewer === '' ? [] : rows.map(r => ({
       heapId: r.heapId,
       rank:   r.rank,
       score:  r.score,
@@ -431,23 +530,27 @@ export function scoreRoutes(
       parseInt(c.req.query('limit') ?? String(DEFAULT_LIMIT)) || DEFAULT_LIMIT,
       MAX_LIMIT,
     );
-    const context = await buildContext(scoreDb, heapId, playerId, limit);
+    const context = await buildContext(scoreDb, heapId, playerId, await resolveViewer(c, playerId), limit);
     return c.json(context);
   });
 
   // GET /scores/:heapId — paginated full leaderboard
   app.get('/:heapId', async (c) => {
-    const heapId = c.req.param('heapId');
-    const page   = parseInt(c.req.query('page') ?? '0') || 0;
-    const limit  = Math.min(
+    const heapId   = c.req.param('heapId');
+    // Optional viewer. Shadow-banned players are filtered out for everyone
+    // except themselves — and "themselves" must be proven, not merely asserted,
+    // since player ids are public. See resolveViewer.
+    const viewerId = await resolveViewer(c, c.req.query('playerId') ?? '');
+    const page     = parseInt(c.req.query('page') ?? '0') || 0;
+    const limit    = Math.min(
       parseInt(c.req.query('limit') ?? String(MAX_LIMIT)) || MAX_LIMIT,
       MAX_LIMIT,
     );
     const offset = page * limit;
 
     const [rows, total] = await Promise.all([
-      scoreDb.getScoresPaginated(heapId, offset, limit),
-      scoreDb.countScores(heapId),
+      scoreDb.getScoresPaginated(heapId, offset, limit, viewerId),
+      scoreDb.countScores(heapId, viewerId),
     ]);
 
     const entries: LeaderboardEntry[] = rows.map((row, i) => ({

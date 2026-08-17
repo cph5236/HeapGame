@@ -91,8 +91,12 @@ export class ScoreClient {
   }): Promise<LeaderboardContext | null> {
     try {
       const limit = params.limit ?? 5;
+      // The token proves the playerId is ours. The server only consults it when
+      // it would change the answer, so this costs nothing in the common case —
+      // but without it a moderated player's own board would render incomplete.
       const res   = await fetchWithLog(
         `${SERVER_URL}/scores/${params.heapId}/context?playerId=${params.playerId}&limit=${limit}`,
+        { headers: authHeaders() },
       );
       if (!res.ok) return null;
       return (await res.json()) as LeaderboardContext;
@@ -104,13 +108,20 @@ export class ScoreClient {
   /**
    * Fetch all of a player's high scores across heaps, ranked.
    * Returns a Map keyed by heapId, or null on failure.
+   *
+   * Always called for the caller's OWN id (see HeapSelectScene), so it sends the
+   * player token. That is not optional: the server hides a shadow-banned
+   * player's rows from anyone who cannot prove the id is theirs, and without the
+   * token a banned player's own score history would come back empty — a visible
+   * tell, which is the one thing a shadow ban must never produce. Same reason
+   * getLeaderboardPage sends it.
    */
   static async getPlayerScores(playerId: string)
     : Promise<Map<string, PlayerScoreEntry> | null>
   {
     try {
       const url = `${SERVER_URL}/scores/player/${encodeURIComponent(playerId)}`;
-      const res = await fetchWithLog(url);
+      const res = await fetchWithLog(url, { headers: authHeaders() });
       if (!res.ok) return null;
       const data = (await res.json()) as PlayerScoresResponse;
       return new Map(data.entries.map(e => [e.heapId, e]));
@@ -121,13 +132,19 @@ export class ScoreClient {
 
   /**
    * Fetch one page of the per-heap leaderboard. Returns null on failure.
+   *
+   * `playerId` identifies the viewer to the server. It must be the effective
+   * player id (see getEffectivePlayerId), and it is what keeps a player's own
+   * board complete regardless of any server-side moderation.
    */
-  static async getLeaderboardPage(heapId: string, page: number, limit: number)
+  static async getLeaderboardPage(heapId: string, page: number, limit: number, playerId?: string)
     : Promise<PaginatedLeaderboardResponse | null>
   {
     try {
-      const url = `${SERVER_URL}/scores/${encodeURIComponent(heapId)}?page=${page}&limit=${limit}`;
-      const res = await fetchWithLog(url);
+      const viewer = playerId ? `&playerId=${encodeURIComponent(playerId)}` : '';
+      const url = `${SERVER_URL}/scores/${encodeURIComponent(heapId)}?page=${page}&limit=${limit}${viewer}`;
+      // See getContext: the token is what makes the viewer id trustworthy.
+      const res = await fetchWithLog(url, playerId ? { headers: authHeaders() } : undefined);
       if (!res.ok) return null;
       return (await res.json()) as PaginatedLeaderboardResponse;
     } catch {

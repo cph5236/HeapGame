@@ -11,7 +11,8 @@
 // served from that one entry; a larger limit bypasses the cache. Invalidation
 // is then a single delete, keeping writes consistent.
 
-import type { ScoreDB, ScoreRow } from '../scoreDb';
+import type { ScoreDB, ScoreRow, AdminScoreRow } from '../scoreDb';
+import type { BanDB } from '../banDb';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 
@@ -21,11 +22,20 @@ const CACHE_TOP_N = 50;
  *  60 is the floor Workers KV allows for expirationTtl. */
 const SCORES_TTL = 60;
 
+// Ban/unban deliberately does NOT bust this cache. The blob carries a 60s
+// expirationTtl (SCORES_TTL), so a newly banned player disappears from every
+// public board within a minute on its own. Fanning a KV delete out across every
+// heap on each ban would spend the tightest Cloudflare quota (deletes) to buy
+// less than a minute.
 export class CachedScoreDB implements ScoreDB {
   constructor(
     private inner: ScoreDB,
     private kv: KVNamespace,
     private waitUntil: (p: Promise<unknown>) => void,
+    /** Required, not optional: the cached blob is the PUBLIC board, so without a
+     *  ban source this decorator would serve it to a banned viewer and silently
+     *  break the illusion their client depends on. */
+    private banDb: BanDB,
     /** Optional telemetry sink — see CachedHeapDB for rationale. Optional so
      *  tests can construct this class directly. */
     private sink?: Sink,
@@ -35,9 +45,18 @@ export class CachedScoreDB implements ScoreDB {
     return `cache:scores:${heapId}:top`;
   }
 
-  async getTopScores(heapId: string, limit: number): Promise<ScoreRow[]> {
+  async getTopScores(heapId: string, limit: number, viewerId = ''): Promise<ScoreRow[]> {
     // Larger-than-cached requests bypass the cache entirely.
-    if (limit > CACHE_TOP_N) return this.inner.getTopScores(heapId, limit);
+    if (limit > CACHE_TOP_N) return this.inner.getTopScores(heapId, limit, viewerId);
+
+    // The cached blob is the PUBLIC board — every shadow-banned player is
+    // already filtered out of it. Only a viewer who is themselves banned needs
+    // a different result set, so only they pay for a D1 read. isBanned is
+    // memoised per isolate (MemoBanDB), so this costs no round trip in the
+    // common case.
+    if (viewerId !== '' && await this.banDb.isBanned(viewerId)) {
+      return this.inner.getTopScores(heapId, limit, viewerId);
+    }
 
     const key = this.topKey(heapId);
     const hit = await this.safeGet<ScoreRow[]>(key);
@@ -82,20 +101,28 @@ export class CachedScoreDB implements ScoreDB {
     return this.inner.getScore(heapId, playerId);
   }
 
-  getRank(heapId: string, score: number): Promise<number> {
-    return this.inner.getRank(heapId, score);
+  getRank(heapId: string, score: number, viewerId?: string): Promise<number> {
+    return this.inner.getRank(heapId, score, viewerId);
   }
 
-  countScores(heapId: string): Promise<number> {
-    return this.inner.countScores(heapId);
+  countScores(heapId: string, viewerId?: string): Promise<number> {
+    return this.inner.countScores(heapId, viewerId);
   }
 
-  getScoresPaginated(heapId: string, offset: number, limit: number): Promise<ScoreRow[]> {
-    return this.inner.getScoresPaginated(heapId, offset, limit);
+  getScoresPaginated(heapId: string, offset: number, limit: number, viewerId?: string): Promise<ScoreRow[]> {
+    return this.inner.getScoresPaginated(heapId, offset, limit, viewerId);
   }
 
   getPlayerScores(playerId: string): Promise<Array<{ heapId: string; name: string; score: number; rank: number }>> {
     return this.inner.getPlayerScores(playerId);
+  }
+
+  listScoresForAdmin(heapId: string, offset: number, limit: number): Promise<AdminScoreRow[]> {
+    return this.inner.listScoresForAdmin(heapId, offset, limit);
+  }
+
+  countAllScores(heapId: string): Promise<number> {
+    return this.inner.countAllScores(heapId);
   }
 
   // ---- helpers ----

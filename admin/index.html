@@ -268,6 +268,38 @@
   </div>
 
   <div class="card border-l-term-violet">
+    <h2 class="card-head">Players</h2>
+    <div class="flex flex-wrap items-end gap-2">
+      <div class="grow">
+        <label class="lbl">Heap</label>
+        <select id="pl-heap" class="field"></select>
+      </div>
+      <button id="pl-refresh" class="btn btn-sm">Refresh</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="tbl mt-4">
+        <thead><tr><th>#</th><th>Player ID</th><th>Name</th><th>Score</th><th>Status</th><th></th></tr></thead>
+        <tbody id="pl-tbody"><tr><td colspan="6" class="muted">not loaded</td></tr></tbody>
+      </table>
+    </div>
+    <div class="mt-2 flex items-center gap-2">
+      <button id="pl-prev" class="btn btn-sm">‹ prev</button>
+      <span id="pl-pageLabel" class="muted">—</span>
+      <button id="pl-next" class="btn btn-sm">next ›</button>
+    </div>
+
+    <h3 class="card-sub">Look up / ban by ID</h3>
+    <div class="flex flex-wrap items-end gap-2">
+      <div class="grow">
+        <label class="lbl">Player ID</label>
+        <input type="text" id="pl-lookupId" class="field" placeholder="paste a player id" />
+      </div>
+      <button id="pl-lookup" class="btn btn-sm">Look up</button>
+    </div>
+    <div id="pl-lookupResult" class="mt-3 muted">nothing looked up yet</div>
+  </div>
+
+  <div class="card border-l-term-violet">
     <h2 class="card-head">Remote Config</h2>
     <div id="cfg-rows"></div>
     <h3 class="card-sub">Add New Key</h3>
@@ -452,6 +484,12 @@
       loadHeaps();
       loadCodes();
       loadConfig();
+      plPage = 0;
+      plTotal = 0;
+      plLookupShowing = null;
+      $('pl-tbody').innerHTML = '<tr><td colspan="6" class="muted">not loaded</td></tr>';
+      $('pl-pageLabel').textContent = '—';
+      $('pl-lookupResult').textContent = 'nothing looked up yet';
     }
 
     function bootEnv() {
@@ -513,6 +551,7 @@
       const tbody = $('heapsTbody');
       if (!cachedHeaps.length) {
         tbody.innerHTML = '<tr><td colspan="5" class="muted">no heaps</td></tr>';
+        refreshPlayerHeapPicker();
         return;
       }
       tbody.innerHTML = cachedHeaps.map(h => {
@@ -529,6 +568,7 @@
           </td>
         </tr>`;
       }).join('');
+      refreshPlayerHeapPicker();
     }
 
     async function onDeleteHeap(id) {
@@ -1432,6 +1472,181 @@
       $('cfg-create').onclick = onCreateConfigKey;
     }
 
+    // ────── Players / Shadow Bans ────────────────────────────────────────────
+
+    const PL_PAGE_LIMIT = 25;
+    let plPage = 0;
+    /** Player id the lookup panel is currently displaying, or null. */
+    let plLookupShowing = null;
+    let plTotal = 0;
+
+    /** Fill the heap picker from the heap list the page already loaded. */
+    function refreshPlayerHeapPicker() {
+      const sel = $('pl-heap');
+      const prev = sel.value;
+      sel.innerHTML = cachedHeaps
+        .map(h => `<option value="${h.id}">${escapeHtml(h.params.name)}</option>`)
+        .join('');
+      if (prev && cachedHeaps.some(h => h.id === prev)) sel.value = prev;
+    }
+
+    async function loadPlayers() {
+      const heapId = $('pl-heap').value;
+      if (!heapId) {
+        $('pl-tbody').innerHTML = '<tr><td colspan="6" class="muted">pick a heap</td></tr>';
+        return;
+      }
+      const gen = envGeneration;
+      try {
+        const res = await adminFetch(
+          `/scores/admin/${encodeURIComponent(heapId)}?page=${plPage}&limit=${PL_PAGE_LIMIT}`);
+        if (!res.ok) throw new Error('list failed: ' + res.status);
+        const data = await res.json();
+        if (gen !== envGeneration) return; // operator switched environments mid-flight
+        plTotal = data.total || 0;
+        renderPlayersTable(data.entries || []);
+      } catch (e) {
+        if (gen !== envGeneration) return;
+        setStatus(String(e), 'err');
+      }
+    }
+
+    function renderPlayersTable(entries) {
+      const tbody = $('pl-tbody');
+      const pages = Math.max(1, Math.ceil(plTotal / PL_PAGE_LIMIT));
+      $('pl-pageLabel').textContent = `page ${plPage + 1} / ${pages} — ${plTotal} players`;
+      if (!entries.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="muted">no scores on this heap</td></tr>';
+        return;
+      }
+      tbody.innerHTML = entries.map(e => {
+        const status = e.banned
+          ? '<span class="text-term-red">BANNED</span>'
+          : '<span class="text-term-green">ok</span>';
+        const action = e.banned
+          ? `<button class="btn btn-sm" data-unban-id="${escapeHtml(e.playerId)}">Unban</button>`
+          : `<button class="btn btn-sm btn-danger" data-ban-id="${escapeHtml(e.playerId)}">Ban</button>`;
+        return '<tr>'
+          + '<td>' + e.rank + '</td>'
+          + '<td class="font-mono text-xs">' + escapeHtml(e.playerId) + '</td>'
+          + '<td>' + escapeHtml(e.name) + '</td>'
+          + '<td>' + e.score + '</td>'
+          + '<td>' + status + '</td>'
+          + '<td>' + action + '</td>'
+          + '</tr>';
+      }).join('');
+    }
+
+    async function onBanPlayer(playerId) {
+      const reason = prompt(`Shadow-ban ${playerId} on ${envLabel()}?\n\nReason (optional):`);
+      if (reason === null) return;  // cancelled
+      try {
+        const res = await adminFetch('/bans/' + encodeURIComponent(playerId), {
+          method: 'PUT',
+          body: JSON.stringify({ reason }),
+        });
+        if (!res.ok) throw new Error('ban failed: ' + res.status);
+        setStatus('banned ' + playerId + ' (takes up to 60s to clear caches)', 'ok');
+        loadPlayers();
+        refreshLookupIfShowing(playerId);
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    async function onUnbanPlayer(playerId) {
+      if (!confirm(`Unban ${playerId} on ${envLabel()}?`)) return;
+      try {
+        const res = await adminFetch('/bans/' + encodeURIComponent(playerId), { method: 'DELETE' });
+        if (!res.ok) throw new Error('unban failed: ' + res.status);
+        setStatus('unbanned ' + playerId, 'ok');
+        loadPlayers();
+        refreshLookupIfShowing(playerId);
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    /** Re-render the lookup panel when it is showing the player just acted on.
+     *  Without this, banning from the lookup panel leaves its status line and
+     *  its own button showing the pre-action state. Keyed on what the panel is
+     *  actually displaying, not on the input box — the operator may have typed
+     *  something else since looking this player up. */
+    function refreshLookupIfShowing(playerId) {
+      if (plLookupShowing !== playerId) return;
+      lookupPlayer(playerId);
+    }
+
+    async function onLookupPlayer() {
+      const playerId = $('pl-lookupId').value.trim();
+      if (!playerId) { setStatus('player id required', 'err'); return; }
+      lookupPlayer(playerId);
+    }
+
+    async function lookupPlayer(playerId) {
+      const gen = envGeneration;
+      try {
+        const res = await adminFetch('/bans/' + encodeURIComponent(playerId));
+        if (!res.ok) throw new Error('lookup failed: ' + res.status);
+        const data = await res.json();
+        if (gen !== envGeneration) return; // operator switched environments mid-flight
+        renderLookup(data);
+      } catch (e) {
+        if (gen !== envGeneration) return;
+        setStatus(String(e), 'err');
+      }
+    }
+
+    function renderLookup(p) {
+      plLookupShowing = p.playerId;
+      const status = p.banned
+        ? `<span class="text-term-red">BANNED</span> since ${escapeHtml(p.bannedAt || '?')}`
+          + (p.reason ? ' — ' + escapeHtml(p.reason) : '')
+        : '<span class="text-term-green">not banned</span>';
+      const scores = p.scores.length
+        ? p.scores.map(s =>
+            `<li>${escapeHtml(s.heapId)} — ${s.score} (rank ${s.rank})</li>`).join('')
+        : '<li class="muted">no scores</li>';
+      const action = p.banned
+        ? `<button class="btn btn-sm" data-unban-id="${escapeHtml(p.playerId)}">Unban</button>`
+        : `<button class="btn btn-sm btn-danger" data-ban-id="${escapeHtml(p.playerId)}">Ban</button>`;
+      $('pl-lookupResult').innerHTML =
+          '<div class="text-term-text">' + escapeHtml(p.name) + '</div>'
+        + '<div class="font-mono text-xs">' + escapeHtml(p.playerId) + '</div>'
+        + '<div class="mt-1">' + status + '</div>'
+        + '<ul class="mt-2">' + scores + '</ul>'
+        + '<div class="mt-2">' + action + '</div>';
+    }
+
+    function bootPlayers() {
+      $('pl-refresh').onclick = () => { plPage = 0; loadPlayers(); };
+      $('pl-heap').onchange   = () => { plPage = 0; loadPlayers(); };
+      $('pl-lookup').onclick  = onLookupPlayer;
+      $('pl-prev').onclick = () => {
+        if (plPage === 0) return;
+        plPage--; loadPlayers();
+      };
+      $('pl-next').onclick = () => {
+        if ((plPage + 1) * PL_PAGE_LIMIT >= plTotal) return;
+        plPage++; loadPlayers();
+      };
+      // Ban/Unban buttons are rendered into #pl-tbody (renderPlayersTable) and
+      // #pl-lookupResult (renderLookup), both of which are wiped and rebuilt
+      // wholesale on every refresh/lookup — a listener bound to an individual
+      // button would be lost on the next render. Delegating from `document`
+      // (bound once, here, at boot) survives every re-render and covers both
+      // containers. The player id travels via a data-* attribute (escaped as
+      // HTML, since that's what it actually is) rather than being interpolated
+      // into an inline onclick handler's JS-in-an-attribute string, which is
+      // not escapable the same way — see the shadow-ban admin UI security fix.
+      document.addEventListener('click', (ev) => {
+        const banEl = ev.target.closest('[data-ban-id]');
+        if (banEl) { onBanPlayer(banEl.dataset.banId); return; }
+        const unbanEl = ev.target.closest('[data-unban-id]');
+        if (unbanEl) { onUnbanPlayer(unbanEl.dataset.unbanId); return; }
+      });
+    }
+
     // ────── Boot ───────────────────────────────────────────────────────────
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -1444,6 +1659,7 @@
       bootCreateHeap();
       bootRewardCodes();
       bootConfig();
+      bootPlayers();
       applyEnv(currentEnv());
     });
   </script>

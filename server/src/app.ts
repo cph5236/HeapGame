@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { HeapDB } from './db';
 import type { ScoreDB } from './scoreDb';
+import type { BanDB } from './banDb';
 import { heapRoutes } from './routes/heap';
 import { scoreRoutes } from './routes/scores';
 import { logRoutes } from './routes/log';
@@ -12,6 +13,7 @@ import { configRoutes } from './routes/config';
 import { customizationRoutes } from './routes/customization';
 import { playerRoutes } from './routes/players';
 import { authAdminRoutes } from './routes/auth';
+import { banRoutes } from './routes/bans';
 import { requireAdminSecret } from './middleware/adminAuth';
 import { rateLimit, type RateLimiter, setRateLimitSink } from './middleware/rateLimit';
 import { parseOriginAllowlist } from './middleware/originAllowlist';
@@ -68,6 +70,9 @@ export interface AppOptions {
   /** HMAC key for run-session tokens. If unset, /scores/session 404s and
    *  score submits skip session verification entirely (legacy behavior). */
   sessionSecret?: string;
+  /** Shadow-ban list (player_ban in heap_scores). If unset, /bans is not mounted
+   *  and placements are never silently dropped. */
+  banDb?: BanDB;
 }
 
 export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {}): Hono {
@@ -115,9 +120,10 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   app.get   ('/heaps/:id/bands',        adminGate);
   app.put   ('/heaps/:id/bands',        adminGate);
   app.delete('/heaps/:id',              adminGate);
+  app.get   ('/scores/admin/:heapId',   adminGate);
 
-  app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink, opts.playerAuthDb, opts.contributionDb));
-  app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink, opts.playerAuthDb, opts.playerNameDb, opts.sessionSecret));
+  app.route('/heaps',  heapRoutes(heapDb, () => opts.logSink, opts.playerAuthDb, opts.contributionDb, opts.banDb));
+  app.route('/scores', scoreRoutes(scoreDb, heapDb, () => opts.logSink, opts.playerAuthDb, opts.playerNameDb, opts.sessionSecret, opts.banDb));
 
   if (opts.codeDb) {
     // Player redeem endpoint — rate-limited, no admin gate.
@@ -166,6 +172,15 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
     // Player rename writes share the scores rate-limit bucket — same pattern as customization.
     app.put('/players/:playerId/name', rateLimit(lim.scores, 'players-rename', opts.loadTestSecret));
     app.route('/players', playerRoutes(opts.playerNameDb, () => opts.logSink, opts.playerAuthDb));
+  }
+
+  if (opts.banDb) {
+    // Admin shadow-ban surface — entirely behind the admin gate.
+    app.get   ('/bans',           adminGate);
+    app.get   ('/bans/:playerId', adminGate);
+    app.put   ('/bans/:playerId', adminGate);
+    app.delete('/bans/:playerId', adminGate);
+    app.route('/bans', banRoutes(opts.banDb, scoreDb, opts.playerNameDb));
   }
 
   if (opts.logSink) {
