@@ -106,10 +106,17 @@ export function scoreRoutes(
    * replay a banned id and un-hide them, defeating the ban. Proof of identity
    * is therefore required, via the same X-Player-Token the write routes use.
    *
-   * The token is only ever checked when it can change the answer, i.e. when the
-   * viewer is actually banned — an unbanned player is visible with or without
-   * the carveout, so ordinary traffic pays no auth read at all. `isBanned` is
-   * memoised per isolate (MemoBanDB), so that gate costs microseconds.
+   * The verify runs BEFORE the ban check and unconditionally whenever a token
+   * is offered, even though its result only changes the answer for a banned
+   * viewer. That is deliberate and costs a D1 read on every authenticated
+   * leaderboard load. Checking it only when banned — the obvious saving — makes
+   * the saving itself the tell: the banned path pays a getSecretHash round trip
+   * the unbanned path skips, so response latency separates them for any caller
+   * willing to send a throwaway token, and player ids are public. Same
+   * latency-parity reasoning as the /place no-op paths (commit e091494).
+   *
+   * `isBanned` is memoised per isolate (MemoBanDB), so that gate itself costs
+   * microseconds and adds no measurable difference either way.
    *
    * Returns '' — matching no player — when the claim is not proven.
    */
@@ -118,10 +125,12 @@ export function scoreRoutes(
     // Feature not wired (tests, or a deployment without ban/auth): legacy
     // behaviour, same as enforcePlayerAuth's `if (!db) return null`.
     if (!banDb || !authDb) return playerId;
-    if (!(await banDb.isBanned(playerId))) return playerId;
 
-    const token = c.req.header(PLAYER_TOKEN_HEADER) || undefined;
-    return (await verifyPlayerToken(authDb, playerId, token)) ? playerId : '';
+    const token  = c.req.header(PLAYER_TOKEN_HEADER) || undefined;
+    const proven = token ? await verifyPlayerToken(authDb, playerId, token) : false;
+
+    if (!(await banDb.isBanned(playerId))) return playerId;
+    return proven ? playerId : '';
   }
 
   // POST /scores/session — open a run session. The token is a server-attested
@@ -479,11 +488,31 @@ export function scoreRoutes(
     return c.json({ entries, total, page });
   });
 
-  // GET /scores/player/:playerId — all of a player's scores across heaps with rank
+  // GET /scores/player/:playerId — all of a player's scores across heaps with rank.
+  //
+  // Unauthenticated, and the id comes straight off the path. getPlayerScores
+  // ranks the subject as if visible even when banned — deliberately, because
+  // GET /bans/:playerId reuses it to show an admin the true standing of the
+  // player they are judging. On THIS route that same true rank is an oracle:
+  // ask for a banned id and it answers "rank 2, score 8900", while the public
+  // board closed up over them and shows a different score at rank 2. Diffing
+  // two unauthenticated responses then exposes the ban for any scraped id.
+  //
+  // So the carveout applies here exactly as it does to the boards: an unproven
+  // caller gets what they would get for a player with no scores — which is
+  // already what the public board shows them, hence no new tell.
   app.get('/player/:playerId', async (c) => {
     const playerId = c.req.param('playerId');
-    const rows     = await scoreDb.getPlayerScores(playerId);
-    const entries  = rows.map(r => ({
+
+    // Both reads always run, even when the answer is going to be blanked. The
+    // hidden path must cost the same as the visible one or latency replaces the
+    // oracle this fix removes. See resolveViewer on the same parity rule.
+    const [viewer, rows] = await Promise.all([
+      resolveViewer(c, playerId),
+      scoreDb.getPlayerScores(playerId),
+    ]);
+
+    const entries = viewer === '' ? [] : rows.map(r => ({
       heapId: r.heapId,
       rank:   r.rank,
       score:  r.score,

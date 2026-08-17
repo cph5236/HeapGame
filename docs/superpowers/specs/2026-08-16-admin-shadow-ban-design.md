@@ -172,20 +172,53 @@ re-reading a response you already have. Anyone who had ever loaded the board
 could replay a banned id and un-hide that player at will.
 
 So the carveout requires `X-Player-Token`, the same secret the write routes use,
-verified — never claimed — by `verifyPlayerToken`. The check runs only when the
-viewer is actually banned, since an unbanned player is visible either way, so
-ordinary reads pay no auth lookup.
+verified — never claimed — by `verifyPlayerToken`.
+
+The verify runs **unconditionally whenever a token is offered**, before the ban
+check, even though its result only changes the answer for a banned viewer. The
+obvious optimisation — check it only when the viewer is banned, since an unbanned
+player is visible either way — was tried first and reverted: the saving *is* a
+side channel. Only the banned path would pay the `getSecretHash` round trip, so
+response latency separates banned from unbanned for any caller willing to send a
+throwaway token, against public player ids. Parity costs one D1 read per
+authenticated leaderboard load and is the price of the claim below. Same
+reasoning as the `/place` no-op paths.
 
 What this does and does not buy, stated honestly:
 
 - **Closes:** third parties un-hiding a banned player, and probing anyone else's
-  ban status.
+  ban status — by replayed id, by response latency, and by cross-referencing the
+  per-player route against the public board (see below).
 - **Does not close:** a banned player determining their own status. They can
   always compare their authenticated view against an anonymous one, and the
   difference is the ban. That is intrinsic to shadow-banning from a *public*
   leaderboard and no amount of auth removes it. The ban degrades from "defeated
   by anyone holding a scraped id" to "detectable by a determined target", which
   is the realistic ceiling for this architecture.
+
+### The per-player route
+
+`GET /scores/player/:playerId` is unauthenticated and takes the id straight off
+the path. `getPlayerScores` ranks the subject **as if visible** even when banned,
+which is deliberate: `GET /bans/:playerId` reuses the same DB method to show an
+admin the true standing of the player they are judging.
+
+On the public route that same true rank is an oracle, and a sharper one than the
+latency channel — two unauthenticated requests, no measurement:
+
+1. `GET /scores/player/badguy` → `rank 2, score 8900`
+2. `GET /scores/:heapId` → rank 2 holds `8700`, and `8900` appears nowhere
+
+The contradiction is the ban. The fix keeps the DB method's admin semantics
+untouched and applies `resolveViewer` at the route: an unproven caller gets
+`entries: []`, byte-identical to a player who has never scored, which is already
+what the public board shows them. Both reads still run before blanking, so the
+hidden path cannot be separated from the visible one by latency either.
+
+This makes the token mandatory on `ScoreClient.getPlayerScores`, which previously
+sent none. Without it a shadow-banned player's own score history would come back
+empty in `HeapSelectScene` — a visible tell, and the one outcome a shadow ban must
+never produce.
 
 ## Placements
 
@@ -197,8 +230,10 @@ branch):
 return c.json({ accepted: false, version: row.version } satisfies PlaceResponse);
 ```
 
-A banned player receives byte-identical output. The check goes immediately after
-`enforcePlayerAuth` and before the band window read, so nothing reaches
+A banned player receives byte-identical output, via the shared `noOpPlace(version)`
+literal so the two paths cannot drift. The check goes after `enforcePlayerAuth`
+and **after** the band window read (`getBandRange`), so both no-op paths pay for
+exactly one such read and their latency matches; nothing reaches
 `commitPlacement`, no ghost points are minted, and no `bonusCoins` are awarded —
 exactly as for any other unaccepted placement. Because the response is one the
 client already sees routinely, blocking placements here carries no tell, which a

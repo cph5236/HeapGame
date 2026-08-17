@@ -17,7 +17,11 @@ import { MockBanDB } from './helpers/mockBanDb';
 import { MockPlayerAuthDB } from './helpers/mockPlayerAuthDb';
 import { hashSecret } from '../src/playerAuth';
 import { __resetBanMemo } from '../src/cache/MemoBanDB';
-import type { PaginatedLeaderboardResponse, LeaderboardContext } from '../../shared/scoreTypes';
+import type {
+  PaginatedLeaderboardResponse,
+  LeaderboardContext,
+  PlayerScoresResponse,
+} from '../../shared/scoreTypes';
 
 const HEAP   = 'heap-1';
 const SECRET = 'badguy-secret';
@@ -92,13 +96,39 @@ describe('self-visibility carveout requires proof of identity', () => {
     expect(body.entries.find(e => e.playerId === 'carl')?.rank).toBe(2);
   });
 
-  it('costs an ordinary viewer no auth lookup', async () => {
-    const { app, auth } = await makeApp();
+  // Latency parity. The banned and unbanned paths must issue the SAME number of
+  // auth reads, or response time distinguishes them to any caller willing to
+  // send a throwaway token — the tell this carveout exists to prevent. The
+  // earlier version of resolveViewer skipped the read for unbanned viewers to
+  // save a D1 round trip; that saving WAS the side channel. Same reasoning as
+  // the /place latency-parity fix in e091494.
+  function countAuthReads(auth: MockPlayerAuthDB): () => number {
     let reads = 0;
     const inner = auth.getSecretHash.bind(auth);
     auth.getSecretHash = async (id: string) => { reads++; return inner(id); };
-    await app.request(`/scores/${HEAP}?playerId=carl`, { headers: { 'X-Player-Token': 'anything' } });
-    expect(reads).toBe(0);
+    return () => reads;
+  }
+
+  it('costs a banned and an unbanned viewer the same auth reads', async () => {
+    const a = await makeApp();
+    const readsA = countAuthReads(a.auth);
+    await a.app.request(`/scores/${HEAP}?playerId=carl`, { headers: { 'X-Player-Token': 'anything' } });
+
+    __resetBanMemo();
+    const b = await makeApp();
+    const readsB = countAuthReads(b.auth);
+    await b.app.request(`/scores/${HEAP}?playerId=badguy`, { headers: { 'X-Player-Token': 'anything' } });
+
+    expect(readsA()).toBe(1);
+    expect(readsB()).toBe(readsA());
+  });
+
+  it('costs no auth read when no token is offered, banned or not', async () => {
+    const { app, auth } = await makeApp();
+    const reads = countAuthReads(auth);
+    await app.request(`/scores/${HEAP}?playerId=carl`);
+    await app.request(`/scores/${HEAP}?playerId=badguy`);
+    expect(reads()).toBe(0);
   });
 
   it('never claims an unclaimed id — a read must not have write side effects', async () => {
@@ -132,5 +162,68 @@ describe('self-visibility carveout requires proof of identity', () => {
     const res  = await app.request(`/scores/${HEAP}?playerId=alice`);
     const body = await res.json() as PaginatedLeaderboardResponse;
     expect(ids(body)).toEqual(['alice']);
+  });
+});
+
+// GET /scores/player/:playerId is unauthenticated and takes the id straight
+// from the path. It reports the subject's rank computed as if they were
+// visible — deliberately, because GET /bans/:playerId reuses the same DB method
+// to show an admin the true standing of the player they are judging.
+//
+// On the PUBLIC route that same true rank is an oracle. Ask it for a banned id
+// and it answers "rank 2, score 8900"; ask the public board and rank 2 holds a
+// different score and 8900 appears nowhere. Two unauthenticated requests, no
+// timing measurement, and the ban is exposed for any id scraped off the board.
+//
+// The rule below matches the rest of the carveout: an unproven caller sees what
+// they would see if the player simply had no scores, which is exactly what the
+// public board already shows them.
+describe('per-player score route does not leak ban state', () => {
+  beforeEach(() => __resetBanMemo());
+
+  type App = Awaited<ReturnType<typeof makeApp>>['app'];
+
+  async function playerScores(app: App, id: string, token?: string): Promise<PlayerScoresResponse> {
+    const res = await app.request(
+      `/scores/player/${id}`,
+      token ? { headers: { 'X-Player-Token': token } } : undefined,
+    );
+    return await res.json() as PlayerScoresResponse;
+  }
+
+  it('returns nothing for a banned id supplied without a token', async () => {
+    const { app } = await makeApp();
+    expect((await playerScores(app, 'badguy')).entries).toEqual([]);
+  });
+
+  it('returns nothing for a banned id supplied with the WRONG token', async () => {
+    const { app } = await makeApp();
+    expect((await playerScores(app, 'badguy', 'not-the-secret')).entries).toEqual([]);
+  });
+
+  it('returns the full self-view for a banned id with the correct token', async () => {
+    const { app } = await makeApp();
+    const body = await playerScores(app, 'badguy', SECRET);
+    expect(body.entries).toEqual([{ heapId: HEAP, rank: 2, score: 8900, name: 'BadGuy' }]);
+  });
+
+  it('leaves an ordinary player untouched', async () => {
+    const { app } = await makeApp();
+    const body = await playerScores(app, 'carl');
+    expect(body.entries).toEqual([{ heapId: HEAP, rank: 2, score: 8700, name: 'Carl' }]);
+  });
+
+  // The oracle itself, driven end to end: the two responses an attacker would
+  // diff must not contradict each other.
+  it('agrees with the public board — no rank collision to compare against', async () => {
+    const { app } = await makeApp();
+
+    const board = await (await app.request(`/scores/${HEAP}`)).json() as PaginatedLeaderboardResponse;
+    const mine  = await playerScores(app, 'badguy');
+
+    // Public board closed up over the hidden player: carl is rank 2 with 8700.
+    expect(board.entries.find(e => e.rank === 2)).toMatchObject({ playerId: 'carl', score: 8700 });
+    // The per-player route must not now claim rank 2 belongs to an 8900 score.
+    expect(mine.entries).toEqual([]);
   });
 });

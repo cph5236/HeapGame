@@ -238,6 +238,20 @@ describe('ScoreClient.getPlayerScores', () => {
     const calledUrl = (fetchMock.mock.calls[0] as [string])[0];
     expect(calledUrl).toContain('/scores/player/has%20space%2Fslash');
   });
+
+  // The server blanks this route for a caller who cannot prove the id is theirs,
+  // so dropping the token would empty a shadow-banned player's OWN history and
+  // tell them they were banned. Pinned so it cannot regress silently.
+  it('sends the X-Player-Token header', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok:   true,
+      json: async () => ({ entries: [] } as PlayerScoresResponse),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await ScoreClient.getPlayerScores('me');
+    const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
+    expect(init.headers['X-Player-Token']).toBe('secret-test');
+  });
 });
 
 // ── getLeaderboardPage ────────────────────────────────────────────────────────

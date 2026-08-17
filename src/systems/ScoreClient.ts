@@ -108,13 +108,20 @@ export class ScoreClient {
   /**
    * Fetch all of a player's high scores across heaps, ranked.
    * Returns a Map keyed by heapId, or null on failure.
+   *
+   * Always called for the caller's OWN id (see HeapSelectScene), so it sends the
+   * player token. That is not optional: the server hides a shadow-banned
+   * player's rows from anyone who cannot prove the id is theirs, and without the
+   * token a banned player's own score history would come back empty — a visible
+   * tell, which is the one thing a shadow ban must never produce. Same reason
+   * getLeaderboardPage sends it.
    */
   static async getPlayerScores(playerId: string)
     : Promise<Map<string, PlayerScoreEntry> | null>
   {
     try {
       const url = `${SERVER_URL}/scores/player/${encodeURIComponent(playerId)}`;
-      const res = await fetchWithLog(url);
+      const res = await fetchWithLog(url, { headers: authHeaders() });
       if (!res.ok) return null;
       const data = (await res.json()) as PlayerScoresResponse;
       return new Map(data.entries.map(e => [e.heapId, e]));
