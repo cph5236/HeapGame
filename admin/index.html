@@ -485,7 +485,10 @@
       loadCodes();
       loadConfig();
       plPage = 0;
+      plTotal = 0;
+      plLookupShowing = null;
       $('pl-tbody').innerHTML = '<tr><td colspan="6" class="muted">not loaded</td></tr>';
+      $('pl-pageLabel').textContent = '—';
       $('pl-lookupResult').textContent = 'nothing looked up yet';
     }
 
@@ -1473,6 +1476,8 @@
 
     const PL_PAGE_LIMIT = 25;
     let plPage = 0;
+    /** Player id the lookup panel is currently displaying, or null. */
+    let plLookupShowing = null;
     let plTotal = 0;
 
     /** Fill the heap picker from the heap list the page already loaded. */
@@ -1543,6 +1548,7 @@
         if (!res.ok) throw new Error('ban failed: ' + res.status);
         setStatus('banned ' + playerId + ' (takes up to 60s to clear caches)', 'ok');
         loadPlayers();
+        refreshLookupIfShowing(playerId);
       } catch (e) {
         setStatus(String(e), 'err');
       }
@@ -1555,24 +1561,44 @@
         if (!res.ok) throw new Error('unban failed: ' + res.status);
         setStatus('unbanned ' + playerId, 'ok');
         loadPlayers();
+        refreshLookupIfShowing(playerId);
       } catch (e) {
         setStatus(String(e), 'err');
       }
+    }
+
+    /** Re-render the lookup panel when it is showing the player just acted on.
+     *  Without this, banning from the lookup panel leaves its status line and
+     *  its own button showing the pre-action state. Keyed on what the panel is
+     *  actually displaying, not on the input box — the operator may have typed
+     *  something else since looking this player up. */
+    function refreshLookupIfShowing(playerId) {
+      if (plLookupShowing !== playerId) return;
+      lookupPlayer(playerId);
     }
 
     async function onLookupPlayer() {
       const playerId = $('pl-lookupId').value.trim();
       if (!playerId) { setStatus('player id required', 'err'); return; }
+      lookupPlayer(playerId);
+    }
+
+    async function lookupPlayer(playerId) {
+      const gen = envGeneration;
       try {
         const res = await adminFetch('/bans/' + encodeURIComponent(playerId));
         if (!res.ok) throw new Error('lookup failed: ' + res.status);
-        renderLookup(await res.json());
+        const data = await res.json();
+        if (gen !== envGeneration) return; // operator switched environments mid-flight
+        renderLookup(data);
       } catch (e) {
+        if (gen !== envGeneration) return;
         setStatus(String(e), 'err');
       }
     }
 
     function renderLookup(p) {
+      plLookupShowing = p.playerId;
       const status = p.banned
         ? `<span class="text-term-red">BANNED</span> since ${escapeHtml(p.bannedAt || '?')}`
           + (p.reason ? ' — ' + escapeHtml(p.reason) : '')

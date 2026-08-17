@@ -45,6 +45,27 @@ export async function verifyOrClaim(
 }
 
 /**
+ * Read-side identity check: proves an id belongs to the caller, and NEVER
+ * claims one.
+ *
+ * Deliberately not `verifyOrClaim`. That function TOFU-claims an unclaimed id
+ * as a side effect, which is correct on a write path and catastrophic on a read
+ * path — every GET would become a free way to claim other players' ids and lock
+ * them out of their own data. A read must have no write side effects, so an
+ * unclaimed id simply fails to prove anything here.
+ */
+export async function verifyPlayerToken(
+  db: PlayerAuthDB,
+  playerId: string,
+  token: string | undefined,
+): Promise<boolean> {
+  if (!token) return false;
+  const stored = await db.getSecretHash(playerId);
+  if (stored === null) return false;
+  return stored === await hashSecret(token);
+}
+
+/**
  * Route-level gate. Returns a generic 403 Response when the write must be
  * rejected, or null when it may proceed. When `db` is undefined (tests, or
  * feature not wired) behavior is legacy: always allow.

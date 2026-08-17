@@ -163,9 +163,29 @@ Route ordering: `/scores/admin/:heapId` must register before `/scores/:heapId`
 and `/scores/:heapId/context`, the same hazard already called out in
 `routes/scores.ts` for `/scores/:heapId/context`.
 
-`playerId` on the public reads is unauthenticated, as leaderboard reads are
-today. The only thing an attacker gains by guessing a banned player's id is
-sight of that one player — which is what a shadow ban tolerates by design.
+**The `playerId` that grants the self-visibility carveout must be proven, not
+merely asserted.** An earlier draft of this design reasoned that an attacker
+would have to *guess* a banned player's id, and accepted the consequence on that
+basis. That was wrong: ids are not secret — `LeaderboardEntry.playerId` is
+returned in every leaderboard response — so the attack costs nothing more than
+re-reading a response you already have. Anyone who had ever loaded the board
+could replay a banned id and un-hide that player at will.
+
+So the carveout requires `X-Player-Token`, the same secret the write routes use,
+verified — never claimed — by `verifyPlayerToken`. The check runs only when the
+viewer is actually banned, since an unbanned player is visible either way, so
+ordinary reads pay no auth lookup.
+
+What this does and does not buy, stated honestly:
+
+- **Closes:** third parties un-hiding a banned player, and probing anyone else's
+  ban status.
+- **Does not close:** a banned player determining their own status. They can
+  always compare their authenticated view against an anonymous one, and the
+  difference is the ban. That is intrinsic to shadow-banning from a *public*
+  leaderboard and no amount of auth removes it. The ban degrades from "defeated
+  by anyone holding a scraped id" to "detectable by a determined target", which
+  is the realistic ceiling for this architecture.
 
 ## Placements
 

@@ -91,8 +91,12 @@ export class ScoreClient {
   }): Promise<LeaderboardContext | null> {
     try {
       const limit = params.limit ?? 5;
+      // The token proves the playerId is ours. The server only consults it when
+      // it would change the answer, so this costs nothing in the common case —
+      // but without it a moderated player's own board would render incomplete.
       const res   = await fetchWithLog(
         `${SERVER_URL}/scores/${params.heapId}/context?playerId=${params.playerId}&limit=${limit}`,
+        { headers: authHeaders() },
       );
       if (!res.ok) return null;
       return (await res.json()) as LeaderboardContext;
@@ -132,7 +136,8 @@ export class ScoreClient {
     try {
       const viewer = playerId ? `&playerId=${encodeURIComponent(playerId)}` : '';
       const url = `${SERVER_URL}/scores/${encodeURIComponent(heapId)}?page=${page}&limit=${limit}${viewer}`;
-      const res = await fetchWithLog(url);
+      // See getContext: the token is what makes the viewer id trustworthy.
+      const res = await fetchWithLog(url, playerId ? { headers: authHeaders() } : undefined);
       if (!res.ok) return null;
       return (await res.json()) as PaginatedLeaderboardResponse;
     } catch {
