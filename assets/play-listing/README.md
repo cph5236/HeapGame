@@ -57,6 +57,7 @@ folder names must be exactly what GPP recognizes**, or it silently skips them:
 
 | Slot | GPP folder | Source |
 |---|---|---|
+| App icon | `icon/1.png` | `assets/icon/render-icon.mjs` (see below) |
 | Feature graphic | `feature-graphic/1.png` | `00-feature.png` |
 | Phone | `phone-screenshots/1..7.png` | `01..07-*.png` (1080×1920) |
 | 7-inch tablet | `tablet-screenshots/1..7.png` | `tablet/01..07-*.png` (1620×2880) |
@@ -73,6 +74,24 @@ still only ships the AAB; it does not touch the listing.
 
 > If the job 403s, grant the Play service account the **Store presence / graphic
 > assets** permission in Play Console → Users & permissions.
+
+## App icon
+
+The store icon is **not** rendered by `render.mjs` — it comes from
+`assets/icon/render-icon.mjs`, which also produces the on-device launcher icon so the
+two can't drift apart:
+
+```bash
+node assets/icon/render-icon.mjs            # writes assets/icon-*.png + graphics/icon/1.png
+npx @capacitor/assets generate --android    # regenerates the res/mipmap-* set
+node assets/icon/render-icon.mjs --variants # side-by-side sky treatments, for picking
+```
+
+Note that `@capacitor/assets` also reformats `AndroidManifest.xml` as a side effect —
+revert that file afterwards, it has nothing to do with the icon.
+
+The store icon publishes with the listing (below); the **launcher** icon only reaches
+devices with the next AAB, so the two are briefly out of sync after a listing publish.
 
 ## ASO text copy
 

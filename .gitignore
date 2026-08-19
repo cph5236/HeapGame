@@ -34,3 +34,6 @@ loadtest/fixtures.json
 
 # Load-test run summaries — regenerated on every run
 loadtest/results/
+
+# scratch output from `render-icon.mjs --variants`
+.icon-variants/
