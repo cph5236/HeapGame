@@ -1136,7 +1136,7 @@ export class MenuScene extends Phaser.Scene {
     rightOpt.on('pointerup', () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'right'; setJoystickSide('right'); paintSide(); });
 
     // ── Tab switching ─────────────────────────────────────────────────────────
-    const devItems    = [howToPlayBg, howToPlayLabel, codeBtnBg, codeBtnLabel, codeResult, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint, resetBg, resetLabel, resetWarning];
+    const devItems    = [howToPlayBg, howToPlayLabel, codeBtnBg, codeBtnLabel, codeResult, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint, privacyLabel, resetBg, resetLabel, resetWarning];
 
     const showSoundsTab = () => {
       soundsTabBg.setFillStyle(0x2244aa);  soundsTabText.setColor('#ffffff').setFontStyle('bold');
@@ -1144,7 +1144,6 @@ export class MenuScene extends Phaser.Scene {
       devTabBg.setFillStyle(0x1a1a2e);      devTabText.setColor('#888888').setFontStyle('normal');
       controlsItems.forEach(o => o.setVisible(false));
       devItems.forEach(o => o.setVisible(false));
-      privacyLabel.setVisible(false);
       soundsItems.forEach(o => (o as any).setVisible(true));
     };
     const showControlsTab = () => {
@@ -1153,7 +1152,6 @@ export class MenuScene extends Phaser.Scene {
       devTabBg.setFillStyle(0x1a1a2e);       devTabText.setColor('#888888').setFontStyle('normal');
       soundsItems.forEach(o => (o as any).setVisible(false));
       devItems.forEach(o => o.setVisible(false));
-      privacyLabel.setVisible(false);
       controlsItems.forEach(o => o.setVisible(true));
       paintMode(); paintSide();
     };
@@ -1164,7 +1162,9 @@ export class MenuScene extends Phaser.Scene {
       soundsItems.forEach(o => (o as any).setVisible(false));
       controlsItems.forEach(o => o.setVisible(false));
       devItems.forEach(o => o.setVisible(true));
-      // Re-read consent each time rather than trusting scene-start state.
+      // Re-read consent each time rather than trusting scene-start state; must
+      // follow the sweep above, which has just shown every devItem including
+      // this one. Membership in devItems is what gets it hidden again on close.
       privacyLabel.setVisible(privacyRow(AdClient.privacyOptionsRequired) !== null);
     };
 
