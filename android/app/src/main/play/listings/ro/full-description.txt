@@ -8,11 +8,11 @@ Controlează personajul pe un nivel de platformer înalt, în continuă creșter
 CONSTRUIEȘTE LUMEA
 Plasează obiecte pentru a face grămada mai înaltă și a crea noi căi. Contribuțiile tale devin părți permanente ale turnului pe care toți ceilalți jucători trebuie să-l urce.
 
-CURSĂ SPRE VÂRF
+ALEARGĂ SPRE VÂRF
 Înșiruie eliminări, menține-ți ritmul și urcă mai sus pentru a-ți acumula scorul. Fiecare rundă este o nouă încercare, în stil arcade, pentru a-ți depăși recordul personal.
 
 ÎMBUNĂTĂȚEȘTE FIECARE RUNDĂ
-Câștigă monede pe măsură ce urci și cheltuie-le pe îmbunătățiri valabile pe parcursul rundei, consumabile și bonusuri din vechituri – viteză, sărituri suplimentare, reînviere și multe altele. Progresia în stil roguelite face ca fiecare încercare să se simtă diferită.
+Câștigă monede pe măsură ce urci și cheltuie-le pe îmbunătățiri valabile pe parcursul rundei, consumabile și bonusuri din vechituri – viteză, sărituri suplimentare, reînvieri și multe altele. Progresia în stil roguelite face ca fiecare încercare să se simtă diferită.
 
 PERSONALIZEAZĂ-ȚI CĂȚĂRĂTORUL
 Deblochează zeci de elemente cosmetice și personalizează-ți obiectul de gunoi pe măsură ce urci în clasament.

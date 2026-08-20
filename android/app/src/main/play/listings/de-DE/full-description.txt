@@ -1,4 +1,4 @@
-Heap ist ein von der Community erschaffener Kletter-Plattformer, in dem die ganze Welt einen endlosen Turm aus Müll baut – und du willst nach ganz oben.
+Heap ist ein von der Community erschaffener Kletter-Plattformer, in dem die ganze Welt einen endlosen Turm aus Müll baut – und du willst als Erster ganz nach oben.
 
 Jeder Gegenstand, den du platzierst, bleibt erhalten. Der Müllberg, den du erklimmst, wurde von den Spielern vor dir geformt, und alles, was du fallen lässt, beeinflusst den Aufstieg für alle, die nach dir kommen. Keine zwei Durchläufe sind jemals gleich.
 
@@ -8,7 +8,7 @@ Steuere deinen Charakter in einem hoch aufragenden, ständig wachsenden Level na
 BAUE DIE WELT
 Platziere Gegenstände, um den Müllberg höher wachsen zu lassen und neue Wege zu schaffen. Deine Beiträge werden zu permanenten Teilen des Turms, den jeder andere Spieler erklimmen muss.
 
-WETTLAUF AN DIE SPITZE
+KÄMPF DICH NACH OBEN
 Verkette Kills, halte dein Tempo und klettere höher, um deinen Punktestand zu steigern. Jeder Durchlauf ist ein frischer, Arcade-ähnlicher Versuch, eine neue persönliche Bestleistung zu erzielen.
 
 VERBESSERE JEDEN DURCHLAUF

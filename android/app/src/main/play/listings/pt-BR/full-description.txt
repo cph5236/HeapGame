@@ -1,6 +1,6 @@
 Heap é um jogo de plataforma de escalada construído pela comunidade, onde o mundo inteiro ergue uma torre infinita de lixo — e você corre para chegar ao topo.
 
-Cada item que você coloca permanece. O monte que você escala foi moldado pelos jogadores que vieram antes, e tudo o que você joga molda a escalada para todos que vêm depois. Nenhuma partida é igual à outra.
+Cada item que você coloca permanece. O monte que você escala foi moldado pelos jogadores que vieram antes, e tudo o que você descarta molda a escalada para todos que vêm depois. Nenhuma partida é igual à outra.
 
 ESCALE O MONTE
 Controle o personagem em um cenário de plataforma imponente e em constante crescimento. Calcule bem seus saltos, suba escadas e vigas, e desvie dos inimigos que rastejam pelo monte.
@@ -12,7 +12,7 @@ CORRA PARA O TOPO
 Encadeie abates, mantenha o ritmo e suba cada vez mais alto para acumular pontos. Cada partida é um novo desafio, no estilo arcade, para bater seu recorde pessoal.
 
 MELHORE A CADA PARTIDA
-Ganhe moedas enquanto escala e gaste-as em melhorias para a partida, consumíveis e bônus de sucata — velocidade, saltos extras, revives e mais. A progressão no estilo roguelite faz com que cada tentativa pareça única.
+Ganhe moedas enquanto escala e gaste-as em melhorias para a partida, consumíveis e bônus de sucata — velocidade, saltos extras, reanimações e mais. A progressão no estilo roguelite faz com que cada tentativa pareça única.
 
 PERSONALIZE SEU ESCALADOR
 Desbloqueie dezenas de itens cosméticos e personalize seu item de lixo enquanto sobe nos rankings.

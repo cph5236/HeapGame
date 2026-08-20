@@ -11,7 +11,7 @@ Posiziona oggetti per far crescere il cumulo e creare nuovi percorsi. I tuoi con
 CORRI VERSO LA CIMA
 Concatena le uccisioni, mantieni il ritmo e scala sempre più in alto per accumulare punti. Ogni partita è una nuova sfida in stile arcade per battere il tuo record personale.
 
-POTENZIA OGNI SCALATA
+POTENZIA OGNI PARTITA
 Guadagna monete mentre sali e spendile in potenziamenti validi per la singola partita, oggetti consumabili e bonus dei rottami: velocità, salti extra, rianimazioni e altro ancora. La progressione in stile Roguelite rende ogni tentativo un'esperienza diversa.
 
 PERSONALIZZA IL TUO SCALATORE
