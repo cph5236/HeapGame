@@ -1,4 +1,4 @@
-Heap est un jeu de plateforme d'escalade collaboratif où le monde entier bâtit une tour de déchets infinie... et vous faites la course pour atteindre le sommet.
+Heap est un jeu de plateforme d'escalade collaboratif où le monde entier bâtit une tour infinie de déchets... et vous faites la course pour atteindre le sommet.
 
 Chaque objet que vous posez reste en place. Le tas que vous escaladez a été façonné par les joueurs avant vous, et tout ce que vous déposez modifie l'ascension pour ceux qui suivent. Aucune partie n'est jamais identique.
 
@@ -22,4 +22,4 @@ Grimpez dans le classement mondial et prouvez que vous méritez votre place au s
 
 Gratuit. Facile à prendre en main, difficile à maîtriser. Lancez-vous et commencez l'ascension.
 
-Jeu de plateforme vertical • Jeu d'escalade • Jeu d'arcade de score • Monde collaboratif
+Jeu de plateforme vertical • Jeu d'escalade • Chasse aux records • Monde collaboratif
