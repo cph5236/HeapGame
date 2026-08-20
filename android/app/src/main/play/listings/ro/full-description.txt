@@ -3,7 +3,7 @@ Heap este un platformer de cățărare creat de comunitate, unde întreaga lume 
 Fiecare obiect pe care îl plasezi rămâne acolo. Grămada pe care te cațeri a fost modelată de jucătorii dinaintea ta, iar tot ce arunci tu modelează traseul pentru toți cei care vin după. Nicio rundă nu seamănă cu alta.
 
 URCĂ GRĂMADA
-Controlează personajul pe o scenă de platformer înaltă, în continuă creștere. Cronometrează-ți săriturile, urcă pe scări și grinzi și evită inamicii care mișună pe grămadă.
+Controlează personajul pe un nivel de platformer înalt, în continuă creștere. Calculează-ți bine săriturile, urcă pe scări și grinzi și evită inamicii care mișună pe grămadă.
 
 CONSTRUIEȘTE LUMEA
 Plasează obiecte pentru a face grămada mai înaltă și a crea noi căi. Contribuțiile tale devin părți permanente ale turnului pe care toți ceilalți jucători trebuie să-l urce.
@@ -12,9 +12,9 @@ CURSĂ SPRE VÂRF
 Înșiruie eliminări, menține-ți ritmul și urcă mai sus pentru a-ți acumula scorul. Fiecare rundă este o nouă încercare, în stil arcade, pentru a-ți depăși recordul personal.
 
 ÎMBUNĂTĂȚEȘTE FIECARE RUNDĂ
-Câștigă monede pe măsură ce urci și cheltuie-le pe îmbunătățiri valabile pe parcursul rundei, consumabile și bonusuri de recuperare – viteză, sărituri suplimentare, reînviere și multe altele. Progresia în stil roguelite face ca fiecare încercare să se simtă diferită.
+Câștigă monede pe măsură ce urci și cheltuie-le pe îmbunătățiri valabile pe parcursul rundei, consumabile și bonusuri din vechituri – viteză, sărituri suplimentare, reînviere și multe altele. Progresia în stil roguelite face ca fiecare încercare să se simtă diferită.
 
-PERSONALIZEAZĂ-ȚI ALPINISTUL
+PERSONALIZEAZĂ-ȚI CĂȚĂRĂTORUL
 Deblochează zeci de elemente cosmetice și personalizează-ți obiectul de gunoi pe măsură ce urci în clasament.
 
 CONCUREAZĂ GLOBAL
@@ -22,4 +22,4 @@ Urcă în clasamentul mondial și demonstrează că meriți să fii în vârful 
 
 Gratuit. Ușor de învățat, greu de stăpânit. Sari în joc și începe să te cațeri.
 
-Platformer vertical • Joc de cățărare • Joc arcade de urmărire a scorurilor mari • Lume construită de comunitate
+Platformer vertical • Joc de cățărare • Vânătoare de recorduri arcade • Lume construită de comunitate

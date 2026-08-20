@@ -1,18 +1,18 @@
-Heap er et klatrespill bygget av fellesskapet, der hele verden bygger et endeløst tårn av søppel – og du kjemper deg til toppen.
+Heap er et klatreplattformspill bygget av fellesskapet, der hele verden bygger et endeløst tårn av søppel – og du kjemper deg til toppen.
 
 Alt du plasserer blir liggende. Haugen du klatrer på er formet av spillerne før deg, og alt du slipper former klatringen for alle som kommer etter. Ingen runder er like.
 
-KLATRE PÅ HAUGEN
+KLATR PÅ HAUGEN
 Styr figuren din opp en ruvende, stadig voksende plattformbane. Tim hoppene dine, klatre på stiger og bjelker, og unngå fiendene som kryper rundt på haugen.
 
 BYGG VERDEN
 Plasser gjenstander for å bygge haugen høyere og skape nye veier. Dine bidrag blir permanente deler av tårnet som alle andre spillere må klatre på.
 
 KAPPES OM TOPPEN
-Kjededrep fiender, hold tempoet, og klatre høyere for å øke poengsummen din. Hver runde er et nytt, arkade-inspirert forsøk på å sette en ny personlig rekord.
+Drep fiender på rekke, hold tempoet, og klatre høyere for å øke poengsummen din. Hver runde er et nytt, arkade-inspirert forsøk på å sette en ny personlig rekord.
 
 OPPGRADER FOR HVER RUNDE
-Tjen mynter mens du klatrer og bruk dem på oppgraderinger som varer runden ut, forbruksvarer og bonuser – hastighet, ekstra hopp, gjenopplivninger og mer. Progresjon i roguelite-stil gjør at hvert forsøk føles unikt.
+Tjen mynter mens du klatrer og bruk dem på oppgraderinger som varer runden ut, forbruksvarer og skrapbonuser – hastighet, ekstra hopp, gjenopplivninger og mer. Progresjon i roguelite-stil gjør at hvert forsøk føles unikt.
 
 TILPASS KLATREREN DIN
 Lås opp dusinvis av kosmetiske gjenstander og gjør søppelgjenstanden din personlig mens du klatrer i gradene.
@@ -22,4 +22,4 @@ Klatre på den globale ledertavlen og bevis at du hører hjemme på toppen av ha
 
 Gratis å spille. Lett å lære, vanskelig å mestre. Hopp inn og begynn å klatre.
 
-Vertikal plattformer • Klatrespill • Arkade-spill med fokus på poengjakt • Verden bygget av fellesskapet
+Vertikal plattformer • Klatrespill • Arkade-poengjakt • Verden bygget av fellesskapet

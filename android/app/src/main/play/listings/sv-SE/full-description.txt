@@ -9,10 +9,10 @@ BYGG VÄRLDEN
 Placera föremål för att bygga högen högre och skapa nya vägar. Dina bidrag blir permanenta delar av tornet som alla andra spelare måste klättra på.
 
 TÄVLA OM ATT NÅ TOPPEN
-Kedja dödanden, håll tempot och klättra högre för att samla poäng. Varje omgång är en ny, arkadliknande utmaning för att sätta ett nytt personbästa.
+Kedja ihop dina kills, håll tempot och klättra högre för att samla poäng. Varje omgång är en ny, arkadliknande utmaning för att sätta ett nytt personbästa.
 
-UPPGRADERA INFÖR VARJE OMGÅNG
-Tjäna mynt när du klättrar och spendera dem på uppgraderingar som gäller för den aktuella omgången, förbrukningsvaror och räddningsbonusar – snabbhet, extra hopp, återupplivningar med mera. Progressionen i roguelite-stil gör att varje försök känns unikt.
+UPPGRADERA VARJE OMGÅNG
+Tjäna mynt när du klättrar och spendera dem på uppgraderingar som gäller för den aktuella omgången, förbrukningsvaror och skrotbonusar – snabbhet, extra hopp, återupplivningar med mera. Progressionen i roguelite-stil gör att varje försök känns unikt.
 
 ANPASSA DIN KLÄTTRARE
 Lås upp dussintals kosmetiska föremål och gör ditt skräpföremål personligt när du klättrar i rankingen.
@@ -22,4 +22,4 @@ Klättra på den globala topplistan och bevisa att du hör hemma på toppen av h
 
 Gratis att spela. Lätt att lära sig, svårt att bemästra. Hoppa in och börja klättra.
 
-Vertikalt plattformsspel • Klätterspel • Arkadspel med höga poäng • Community-byggd värld
+Vertikalt plattformsspel • Klätterspel • Arkadjakt på rekord • Community-byggd värld
