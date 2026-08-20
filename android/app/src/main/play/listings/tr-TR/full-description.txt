@@ -1,0 +1,25 @@
+Heap, tüm dünyanın sonsuz bir çöp kulesi inşa ettiği, topluluk tarafından geliştirilen bir tırmanma platform oyunudur. Amacınız ise bu kulenin zirvesine ulaşmak için yarışmak.
+
+Yerleştirdiğiniz her eşya orada kalır. Tırmandığınız yığın, sizden önceki oyuncular tarafından şekillendirildi ve sizin bıraktığınız her şey, sizden sonra gelenlerin tırmanışını etkiler. Hiçbir iki oyun aynı değildir.
+
+YIĞINA TIRMANIN
+Karakterinizi yükselen, sürekli büyüyen bir platform aşamasında yönlendirin. Zıplamalarınızı zamanlayın, merdivenlere ve kirişlere tırmanın ve yığında gezinen düşmanlardan kaçının.
+
+DÜNYAYI İNŞA EDİN
+Yığını daha da yükseltmek ve yeni yollar açmak için eşyalar yerleştirin. Sizin katkılarınız, diğer tüm oyuncuların tırmanması gereken kulenin kalıcı bir parçası haline gelir.
+
+ZİRVE İÇİN YARIŞIN
+Düşmanları art arda alt edin, temponuzu koruyun ve puanınızı artırmak için daha yükseğe tırmanın. Her oyun, yeni bir kişisel rekor kırmak için taze, arcade tarzı bir mücadeledir.
+
+HER OYUNDA GELİŞİN
+Tırmanırken para kazanın ve bunları oyun içi yükseltmeler, sarf malzemeleri ve kurtarma takviyeleri için harcayın: hız, ekstra zıplamalar, canlandırmalar ve daha fazlası. Roguelite tarzı ilerleme, her denemenin farklı hissettirmesini sağlar.
+
+TIRMANICINIZI KİŞİSELLEŞTİRİN
+Düzinelerce kozmetik öğenin kilidini açın ve sıralamalarda yükselirken çöp eşyanızı kendinize özgü hale getirin.
+
+KÜRESEL REKABET EDİN
+Dünya çapındaki liderlik tablosuna tırmanın ve yığının zirvesine ait olduğunuzu kanıtlayın. Tüm topluluğun peşinde olduğu en yüksek puanı siz belirleyebilir misiniz?
+
+Oynaması ücretsiz. Başlaması kolay, ustalaşması zor. Hemen atlayın ve tırmanmaya başlayın.
+
+Dikey platform oyunu • Tırmanma oyunu • Arcade yüksek puan avcısı • Topluluk tarafından inşa edilmiş dünya

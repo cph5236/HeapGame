@@ -1,0 +1,25 @@
+A Heap egy közösség által épített mászós platformer, ahol az egész világ egyetlen, végtelen szeméttornyot épít – te pedig versenyt futsz a csúcsra.
+
+Minden elhelyezett tárgyad ott marad. A halmot, amire felmászol, az előtted járó játékosok formálták, és minden, amit eldobsz, a következő játékosok útját alakítja. Nincs két ugyanolyan menet.
+
+MÁSSZ FEL A HALOMRA
+Irányítsd a karaktert a tornyosuló, folyamatosan növekvő platformer pályán. Időzítsd az ugrásaidat, mássz létrákon és gerendákon, és kerüld el a halmon mászkáló ellenségeket.
+
+ÉPÍTSD A VILÁGOT
+Helyezz el tárgyakat, hogy magasabbra növeld a halmot és új utakat nyiss. Hozzájárulásaid a torony állandó részévé válnak, amit minden más játékosnak meg kell másznia.
+
+VERSENYEZZ A CSÚCSÉRT
+Láncolj össze gyilkosságokat, tartsd a tempót, és mássz egyre magasabbra, hogy növeld a pontszámodat. Minden menet egy friss, arcade-stílusú próbálkozás egy új személyes rekord elérésére.
+
+FEJLESZD MAGAD MINDEN MENETBEN
+Keress érméket mászás közben, és költsd el őket menet-alapú fejlesztésekre, fogyóeszközökre és mentési bónuszokra – sebesség, extra ugrások, újraélesztések és még sok más. A roguelite-szerű fejlődésnek köszönhetően minden próbálkozás más érzést nyújt.
+
+SZABD SZEMÉLYRE A MÁSZÓDAT
+Oldj fel tucatnyi kozmetikumot, és tedd egyedivé a szemét tárgyadat, ahogy emelkedsz a ranglétrán.
+
+VERSENYEZZ GLOBÁLISAN
+Mássz fel a világranglistán, és bizonyítsd be, hogy a halom tetején van a helyed. Meg tudod dönteni azt a csúcspontszámot, amit az egész közösség üldöz?
+
+Ingyenesen játszható. Könnyű belekezdeni, nehéz a csúcsra érni. Ugorj be és kezdj el mászni.
+
+Vertikális platformer • Mászós játék • Arcade pontvadászat • Közösség által épített világ
