@@ -4,6 +4,7 @@ import { loadGameAssets } from './loadGameAssets';
 import { preloadProgress, preloadComplete } from '../systems/infinitePreload';
 import { configReady, hasConfig } from '../systems/ConfigClient';
 import { signInSettled } from '../systems/gpgsSession';
+import { consentSettled } from '../systems/ads/consentGate';
 import { isUpdateRequired, shouldConfirmUpdateGate } from '../systems/UpdateGate';
 import { paintSkyGradient } from '../ui/skyGradient';
 import { MENU_LOADING_MIN_MS } from '../constants';
@@ -58,6 +59,10 @@ export class LoadingScene extends Phaser.Scene {
    *  per-player caller at once — score submit, daily drop, cosmetics sync and
    *  name sync all read the id the moment the menu opens. */
   private identitySettled = false;
+  /** AdMob consent has settled (or hit its ceiling). Gating here keeps the
+   *  native consent dialog on the loading screen rather than letting it appear
+   *  over the menu or, worse, over a run already in progress. */
+  private adConsentSettled = false;
   /** Dev-only: hold the screen at a fixed progress for scene-preview screenshots. */
   private freeze: number | null = null;
 
@@ -86,6 +91,7 @@ export class LoadingScene extends Phaser.Scene {
     this.transitioning   = false;
     this.configSettled   = false;
     this.identitySettled = false;
+    this.adConsentSettled = false;
     this.heroBob         = 0;
     this.freeze          = import.meta.env.DEV && typeof data?.freeze === 'number'
       ? Phaser.Math.Clamp(data.freeze, 0, 1) : null;
@@ -182,7 +188,8 @@ export class LoadingScene extends Phaser.Scene {
     // gpgsSession, resolves instantly off-Android, and runs concurrently with
     // asset loading — so on the common warm launch it costs nothing.
     if (this.freeze !== null) {
-      this.identitySettled = true; // dev preview never transitions anyway
+      this.identitySettled  = true; // dev preview never transitions anyway
+      this.adConsentSettled = true;
     } else {
       // The .catch is belt-and-braces: signInSettled() is contractually
       // non-rejecting and tested as such, but this flag is the only thing
@@ -191,6 +198,12 @@ export class LoadingScene extends Phaser.Scene {
       void signInSettled()
         .then(()  => { this.identitySettled = true; })
         .catch(() => { this.identitySettled = true; });
+
+      // Same belt-and-braces reasoning as above: consentSettled() is bounded
+      // and contractually non-rejecting, but it must never strand the player.
+      void consentSettled()
+        .then(()  => { this.adConsentSettled = true; })
+        .catch(() => { this.adConsentSettled = true; });
     }
 
     // ── Kick off the real asset load ─────────────────────────────────────────
@@ -235,7 +248,7 @@ export class LoadingScene extends Phaser.Scene {
     this.percentText.setText(`${Math.round(f * 100)}%`);
 
     if (this.freeze !== null) return; // dev preview holds; never transitions
-    if (this.configSettled && this.identitySettled && preloadComplete(!this.loaderDone, elapsed, MENU_LOADING_MIN_MS) && this.shownFrac > 0.995) {
+    if (this.configSettled && this.identitySettled && this.adConsentSettled && preloadComplete(!this.loaderDone, elapsed, MENU_LOADING_MIN_MS) && this.shownFrac > 0.995) {
       this.transitioning = true;
       this.cameras.main.fadeOut(200, 0, 0, 0);
       // A confirmed update gate replaces the menu entirely — this build is below

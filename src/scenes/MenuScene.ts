@@ -27,6 +27,8 @@ import { fetchDailyStatus } from '../systems/DailyDropClient';
 import { hasPlayedToday, deviceUtcOffsetMin } from '../systems/dailyRunGate';
 import { dailyIconState, shouldAutoShowPopup, formatCountdown, type DailyIconState } from '../ui/dailyDropLogic';
 import { openDailyDropOverlay } from '../ui/DailyDropOverlay';
+import { privacyRow } from '../ui/privacyRow';
+import { AdClient } from '../systems/ads/AdClient';
 import { localDateKey } from '../../shared/dailyDrop';
 import type { DailyStatusResponse } from '../../shared/dailyTypes';
 
@@ -1005,14 +1007,26 @@ export class MenuScene extends Phaser.Scene {
       fontSize: '11px', color: '#88aa88',
     }).setOrigin(0, 0.5).setDepth(33).setVisible(false);
 
-    // 3. How to Play — replays the interactive tutorial.
+    // 3. Privacy options — reopens Google's consent form so the player can
+    //    change or withdraw ad consent. Named in PRIVACY_POLICY.md as the
+    //    revocation route, so the wording here and there must stay in step.
+    //    Sits in the gap under the analytics box; no full-height button,
+    //    because the Player tab has no room for a fifth 48px row.
+    const privacy = privacyRow(AdClient.privacyOptionsRequired);
+    const privacyLabel = privacy && this.add.text(cx, CONTENT_TOP + 150, privacy.label, {
+      fontSize: '14px', color: privacy.color,
+    }).setOrigin(0.5).setDepth(33).setVisible(false)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => { void AdClient.showPrivacyOptions(); });
+
+    // 4. How to Play — replays the interactive tutorial.
     const howToPlayBg = this.add.rectangle(cx, CONTENT_TOP + 190, 260, 48, 0x2a2a4c)
       .setDepth(32).setVisible(false).setStrokeStyle(2, 0x8888cc).setInteractive({ useHandCursor: true });
     const howToPlayLabel = this.add.text(cx, CONTENT_TOP + 190, 'HOW TO PLAY', {
       fontSize: '18px', color: '#ccccff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(33).setVisible(false);
 
-    // 4. Reset all data (bottom).
+    // 5. Reset all data (bottom).
     const resetBg = this.add.rectangle(cx, CONTENT_TOP + 258, 260, 52, 0x881111)
       .setDepth(32).setVisible(false).setStrokeStyle(2, 0xff4444).setInteractive({ useHandCursor: true });
     const resetLabel = this.add.text(cx, CONTENT_TOP + 258, 'Reset All Data', {
@@ -1118,7 +1132,7 @@ export class MenuScene extends Phaser.Scene {
     rightOpt.on('pointerup', () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'right'; setJoystickSide('right'); paintSide(); });
 
     // ── Tab switching ─────────────────────────────────────────────────────────
-    const devItems    = [howToPlayBg, howToPlayLabel, codeBtnBg, codeBtnLabel, codeResult, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint, resetBg, resetLabel, resetWarning];
+    const devItems    = [howToPlayBg, howToPlayLabel, codeBtnBg, codeBtnLabel, codeResult, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint, ...(privacyLabel ? [privacyLabel] : []), resetBg, resetLabel, resetWarning];
 
     const showSoundsTab = () => {
       soundsTabBg.setFillStyle(0x2244aa);  soundsTabText.setColor('#ffffff').setFontStyle('bold');
