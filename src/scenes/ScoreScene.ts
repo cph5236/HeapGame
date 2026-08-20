@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { AudioManager } from '../systems/AudioManager';
 import { AdClient } from '../systems/ads/AdClient';
+import { adsAvailable } from '../systems/ads/adsAvailable';
 import * as AdCadence from '../systems/ads/AdCadence';
 import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N, PLAYER_HEIGHT, PLAYER_WIDTH } from '../constants';
 import {
@@ -179,7 +180,10 @@ export class ScoreScene extends Phaser.Scene {
     AudioManager.play('music-score');
     const isPreview = this._mockLeaderboard !== null || this._forceBreakdownOpen
       || Object.keys(this._mockPlayerConfig).length > 0;
-    this._isAdRun = isPreview ? false : AdCadence.registerRun(AdClient.enabled);
+    // Both flags matter: `enabled` is the build, `canRequestAds` is consent.
+    // Registering the run on `enabled` alone spends a cadence slot and offers
+    // a reward button that the consent gate would silently refuse.
+    this._isAdRun = isPreview ? false : AdCadence.registerRun(adsAvailable(AdClient));
     // Check and update local high score before rendering anything
     if (this.heapId && this.score > 0) {
       const prev = getLocalHighScore(this.heapId);

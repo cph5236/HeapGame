@@ -1012,9 +1012,13 @@ export class MenuScene extends Phaser.Scene {
     //    revocation route, so the wording here and there must stay in step.
     //    Sits in the gap under the analytics box; no full-height button,
     //    because the Player tab has no room for a fifth 48px row.
-    const privacy = privacyRow(AdClient.privacyOptionsRequired);
-    const privacyLabel = privacy && this.add.text(cx, CONTENT_TOP + 150, privacy.label, {
-      fontSize: '14px', color: privacy.color,
+    //    Built unconditionally but shown from the live flag each time the tab
+    //    opens: consent can settle after the menu is already up (it is bounded
+    //    by CONSENT_TIMEOUT_MS, not guaranteed to beat it), and a row created
+    //    once at scene start would stay missing until the scene was recreated.
+    const privacyStyle = privacyRow(true)!;
+    const privacyLabel = this.add.text(cx, CONTENT_TOP + 150, privacyStyle.label, {
+      fontSize: '14px', color: privacyStyle.color,
     }).setOrigin(0.5).setDepth(33).setVisible(false)
       .setInteractive({ useHandCursor: true })
       .on('pointerup', () => { void AdClient.showPrivacyOptions(); });
@@ -1132,7 +1136,7 @@ export class MenuScene extends Phaser.Scene {
     rightOpt.on('pointerup', () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'right'; setJoystickSide('right'); paintSide(); });
 
     // ── Tab switching ─────────────────────────────────────────────────────────
-    const devItems    = [howToPlayBg, howToPlayLabel, codeBtnBg, codeBtnLabel, codeResult, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint, ...(privacyLabel ? [privacyLabel] : []), resetBg, resetLabel, resetWarning];
+    const devItems    = [howToPlayBg, howToPlayLabel, codeBtnBg, codeBtnLabel, codeResult, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint, resetBg, resetLabel, resetWarning];
 
     const showSoundsTab = () => {
       soundsTabBg.setFillStyle(0x2244aa);  soundsTabText.setColor('#ffffff').setFontStyle('bold');
@@ -1140,6 +1144,7 @@ export class MenuScene extends Phaser.Scene {
       devTabBg.setFillStyle(0x1a1a2e);      devTabText.setColor('#888888').setFontStyle('normal');
       controlsItems.forEach(o => o.setVisible(false));
       devItems.forEach(o => o.setVisible(false));
+      privacyLabel.setVisible(false);
       soundsItems.forEach(o => (o as any).setVisible(true));
     };
     const showControlsTab = () => {
@@ -1148,6 +1153,7 @@ export class MenuScene extends Phaser.Scene {
       devTabBg.setFillStyle(0x1a1a2e);       devTabText.setColor('#888888').setFontStyle('normal');
       soundsItems.forEach(o => (o as any).setVisible(false));
       devItems.forEach(o => o.setVisible(false));
+      privacyLabel.setVisible(false);
       controlsItems.forEach(o => o.setVisible(true));
       paintMode(); paintSide();
     };
@@ -1158,6 +1164,8 @@ export class MenuScene extends Phaser.Scene {
       soundsItems.forEach(o => (o as any).setVisible(false));
       controlsItems.forEach(o => o.setVisible(false));
       devItems.forEach(o => o.setVisible(true));
+      // Re-read consent each time rather than trusting scene-start state.
+      privacyLabel.setVisible(privacyRow(AdClient.privacyOptionsRequired) !== null);
     };
 
     soundsTabBg.setInteractive({ useHandCursor: true }).on('pointerup', showSoundsTab);
