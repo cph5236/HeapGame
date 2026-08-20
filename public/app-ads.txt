@@ -1,0 +1,9 @@
+# app-ads.txt — IAB Tech Lab spec, served from the root of heapgame.com,
+# the developer website listed on the Google Play listing for
+# com.hanlinsoftware.heapgame.app. AdMob crawls this to verify that we
+# authorise Google to sell our ad inventory. Without it, ad requests get
+# treated as unauthorised and fill/eCPM drop.
+#
+# Publisher ID matches admob_app_id in android/app/src/main/res/values/strings.xml
+# (ca-app-pub-9580963584294486~3128171883).
+google.com, pub-9580963584294486, DIRECT, f08c47fec0942fa0
