@@ -77,11 +77,11 @@ The dialog lists the ad partners involved; the full list is available from the "
 
 ### Changing or withdrawing your consent
 
-You can change your choice at any time, and as easily as you gave it:
+If you were shown the consent dialog, you can change your choice at any time, and as easily as you gave it:
 
 > **Settings → Privacy options**
 
-Selecting it reopens the consent dialog with your current choices, and any change takes effect immediately. Withdrawing consent does not remove ads — it stops them being personalized.
+Selecting it reopens the consent dialog with your current choices, and any change takes effect immediately. The entry appears only where consent applies — if you were never asked for consent, there is nothing for it to change, and it is not shown. Withdrawing consent does not remove ads — it stops them being personalized.
 
 You can also reset or delete your advertising ID at any point in your device's Android settings, independently of this game.
 
