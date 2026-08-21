@@ -15,7 +15,7 @@ import { initLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { beginSignIn, signInSettled } from '../systems/gpgsSession';
 import { AudioManager } from '../systems/AudioManager';
-import { AdClient } from '../systems/ads/AdClient';
+import { beginAdConsent } from '../systems/ads/consentGate';
 import { primeConfig } from '../systems/ConfigClient';
 import { loadGameAssets } from './loadGameAssets';
 
@@ -33,7 +33,7 @@ export class BootScene extends Phaser.Scene {
     // Procedural textures — synchronous, no network/disk.
     generateAllTextures(this);
     AudioManager.init(this.sound);
-    AdClient.initialize().catch(() => { /* silent — ad init is optional */ });
+    beginAdConsent(); // gathers consent, then initializes ads; LoadingScene waits on it
     primeConfig(); // kicks off the remote-config fetch; LoadingScene awaits configReady() before opening the menu
 
     // Default registry state so MenuScene can render before catalog resolves.

@@ -27,6 +27,8 @@ import { fetchDailyStatus } from '../systems/DailyDropClient';
 import { hasPlayedToday, deviceUtcOffsetMin } from '../systems/dailyRunGate';
 import { dailyIconState, shouldAutoShowPopup, formatCountdown, type DailyIconState } from '../ui/dailyDropLogic';
 import { openDailyDropOverlay } from '../ui/DailyDropOverlay';
+import { privacyRow, PRIVACY_ROW_STYLE } from '../ui/privacyRow';
+import { AdClient } from '../systems/ads/AdClient';
 import { localDateKey } from '../../shared/dailyDrop';
 import type { DailyStatusResponse } from '../../shared/dailyTypes';
 
@@ -1005,14 +1007,29 @@ export class MenuScene extends Phaser.Scene {
       fontSize: '11px', color: '#88aa88',
     }).setOrigin(0, 0.5).setDepth(33).setVisible(false);
 
-    // 3. How to Play — replays the interactive tutorial.
+    // 3. Privacy options — reopens Google's consent form so the player can
+    //    change or withdraw ad consent. Named in PRIVACY_POLICY.md as the
+    //    revocation route, so the wording here and there must stay in step.
+    //    Sits in the gap under the analytics box; no full-height button,
+    //    because the Player tab has no room for a fifth 48px row.
+    //    Built unconditionally but shown from the live flag each time the tab
+    //    opens: consent can settle after the menu is already up (it is bounded
+    //    by CONSENT_TIMEOUT_MS, not guaranteed to beat it), and a row created
+    //    once at scene start would stay missing until the scene was recreated.
+    const privacyLabel = this.add.text(cx, CONTENT_TOP + 150, PRIVACY_ROW_STYLE.label, {
+      fontSize: '14px', color: PRIVACY_ROW_STYLE.color,
+    }).setOrigin(0.5).setDepth(33).setVisible(false)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => { void AdClient.showPrivacyOptions(); });
+
+    // 4. How to Play — replays the interactive tutorial.
     const howToPlayBg = this.add.rectangle(cx, CONTENT_TOP + 190, 260, 48, 0x2a2a4c)
       .setDepth(32).setVisible(false).setStrokeStyle(2, 0x8888cc).setInteractive({ useHandCursor: true });
     const howToPlayLabel = this.add.text(cx, CONTENT_TOP + 190, 'HOW TO PLAY', {
       fontSize: '18px', color: '#ccccff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(33).setVisible(false);
 
-    // 4. Reset all data (bottom).
+    // 5. Reset all data (bottom).
     const resetBg = this.add.rectangle(cx, CONTENT_TOP + 258, 260, 52, 0x881111)
       .setDepth(32).setVisible(false).setStrokeStyle(2, 0xff4444).setInteractive({ useHandCursor: true });
     const resetLabel = this.add.text(cx, CONTENT_TOP + 258, 'Reset All Data', {
@@ -1118,7 +1135,7 @@ export class MenuScene extends Phaser.Scene {
     rightOpt.on('pointerup', () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'right'; setJoystickSide('right'); paintSide(); });
 
     // ── Tab switching ─────────────────────────────────────────────────────────
-    const devItems    = [howToPlayBg, howToPlayLabel, codeBtnBg, codeBtnLabel, codeResult, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint, resetBg, resetLabel, resetWarning];
+    const devItems    = [howToPlayBg, howToPlayLabel, codeBtnBg, codeBtnLabel, codeResult, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint, privacyLabel, resetBg, resetLabel, resetWarning];
 
     const showSoundsTab = () => {
       soundsTabBg.setFillStyle(0x2244aa);  soundsTabText.setColor('#ffffff').setFontStyle('bold');
@@ -1144,6 +1161,10 @@ export class MenuScene extends Phaser.Scene {
       soundsItems.forEach(o => (o as any).setVisible(false));
       controlsItems.forEach(o => o.setVisible(false));
       devItems.forEach(o => o.setVisible(true));
+      // Re-read consent each time rather than trusting scene-start state; must
+      // follow the sweep above, which has just shown every devItem including
+      // this one. Membership in devItems is what gets it hidden again on close.
+      privacyLabel.setVisible(privacyRow(AdClient.privacyOptionsRequired) !== null);
     };
 
     soundsTabBg.setInteractive({ useHandCursor: true }).on('pointerup', showSoundsTab);

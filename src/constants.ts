@@ -54,6 +54,13 @@ export const CONFIG_FETCH_TIMEOUT_MS   = 10_000;
  *  first launch. Timing out costs that session's records; see gpgsSession.ts. */
 export const GPGS_SIGNIN_TIMEOUT_MS    = 6_000;
 
+/** Ceiling (ms) the loading screen will wait on the AdMob consent flow before
+ *  opening the menu anyway. Unlike the GPGS gate, timing out here is cheap:
+ *  the consent form is a native overlay, so the menu simply appears behind it
+ *  and consent keeps resolving in the background — ads stay off only until it
+ *  lands. The ceiling exists for a hung network, not for a slow reader. */
+export const CONSENT_TIMEOUT_MS        = 8_000;
+
 // ── Player ─────────────────────────────────────────────────────────────────────
 export const PLAYER_WIDTH  = 40;
 export const PLAYER_HEIGHT = 46;

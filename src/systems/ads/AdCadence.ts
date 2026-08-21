@@ -56,8 +56,12 @@ export function decideAdRun(
 
 /**
  * Register a completed run and report whether an ad should appear.
- * `enabled` is passed in (AdClient.enabled) so this stays testable without the singleton.
- * Returns false without mutating state when ads are disabled (web/dev).
+ * `enabled` is passed in (adsAvailable(AdClient)) so this stays testable without
+ * the singleton. Since that now folds in consent, not just the build, a run that
+ * completes while consent is unresolved returns false without mutating state -
+ * so it does not advance the counter toward the next ad. Deliberate: a run that
+ * showed no ad should not count as a run since the last ad. The bias is toward
+ * showing ads slightly less often, never more.
  */
 export function registerRun(enabled: boolean, rand: () => number = Math.random): boolean {
   if (!enabled) return false;
