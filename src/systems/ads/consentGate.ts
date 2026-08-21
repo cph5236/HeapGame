@@ -4,6 +4,11 @@
 // screen. Timing out is not fatal — consent carries on resolving in the
 // background and AdMobProvider flips canRequestAds when it lands, so the only
 // cost is that ads stay off until then.
+//
+// Single-shot by design: there is no retry path. A transient failure during the
+// boot window costs that session its ads and its Settings privacy row, and the
+// next launch starts clean. Adding a retry was considered and declined - the
+// fail-closed default is the safe direction, and a restart already recovers it.
 import { AdClient } from './AdClient';
 import { CONSENT_TIMEOUT_MS } from '../../constants';
 
