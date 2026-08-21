@@ -5,6 +5,7 @@ import {
   RewardAdPluginEvents,
   AdmobConsentStatus,
 } from '@capacitor-community/admob';
+import type { AdmobConsentInfo } from '@capacitor-community/admob';
 import type { AdProvider } from './AdProvider';
 import { normalizeAdId } from './adId';
 import { getLogger } from '../../logging';
@@ -81,9 +82,7 @@ export class AdMobProvider implements AdProvider {
         info = await AdMob.showConsentForm();
       }
 
-      this._canRequestAds = info.canRequestAds;
-      this._privacyOptionsRequired =
-        String(info.privacyOptionsRequirementStatus) === PRIVACY_OPTIONS_REQUIRED;
+      this._applyConsent(info);
 
       return this._canRequestAds;
     } catch (err) {
@@ -92,12 +91,24 @@ export class AdMobProvider implements AdProvider {
     }
   }
 
+  private _applyConsent(info: AdmobConsentInfo): void {
+    this._canRequestAds = info.canRequestAds;
+    this._privacyOptionsRequired =
+      String(info.privacyOptionsRequirementStatus) === PRIVACY_OPTIONS_REQUIRED;
+  }
+
   /** Reopens the consent form so the player can change or withdraw consent.
    *  Surfaced as Settings -> Privacy options, which the privacy policy names
    *  as the revocation route. */
   async showPrivacyOptions(): Promise<void> {
     try {
       await AdMob.showPrivacyOptionsForm();
+      // The form writes the player's new choice into the SDK but does not hand
+      // it back, so re-read it: without this the gate keeps serving ads off the
+      // boot-time flag and the revocation route revokes nothing until restart.
+      // requestConsentInfo only, never showConsentForm — the player has just
+      // answered a dialog and must not be handed a second one.
+      this._applyConsent(await AdMob.requestConsentInfo());
     } catch (err) {
       warn('ads: showPrivacyOptions failed', { reason: reason(err) });
     }

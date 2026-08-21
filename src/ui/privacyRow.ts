@@ -9,6 +9,11 @@ export interface PrivacyRow {
   color: string;
 }
 
+/** Styling of the row, independent of whether it should be shown. Exported so
+ *  callers can build the object once and drive visibility separately, rather
+ *  than asserting non-null on privacyRow(true). */
+export const PRIVACY_ROW_STYLE: PrivacyRow = { label: 'Privacy options', color: '#aaccff' };
+
 export function privacyRow(required: boolean): PrivacyRow | null {
-  return required ? { label: 'Privacy options', color: '#aaccff' } : null;
+  return required ? PRIVACY_ROW_STYLE : null;
 }

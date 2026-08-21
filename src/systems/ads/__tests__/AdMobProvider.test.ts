@@ -277,3 +277,52 @@ describe('AdMobProvider privacy options', () => {
     expect(warnedMessages()).toContain('ads: showPrivacyOptions failed');
   });
 });
+
+describe('AdMobProvider consent revocation', () => {
+  it('re-reads consent after the player changes it in the privacy form', async () => {
+    const provider = new AdMobProvider();
+    await provider.initialize();
+    expect(provider.canRequestAds).toBe(true);
+
+    // Player withdraws consent in Google's form.
+    admob.requestConsentInfo.mockResolvedValue({
+      status: 'REQUIRED', isConsentFormAvailable: true,
+      canRequestAds: false, privacyOptionsRequirementStatus: 'REQUIRED',
+    });
+
+    await provider.showPrivacyOptions();
+
+    expect(provider.canRequestAds).toBe(false);
+  });
+
+  it('stops serving ads immediately once consent is withdrawn', async () => {
+    const provider = new AdMobProvider();
+    await provider.initialize();
+    admob.requestConsentInfo.mockResolvedValue({
+      status: 'REQUIRED', isConsentFormAvailable: true,
+      canRequestAds: false, privacyOptionsRequirementStatus: 'REQUIRED',
+    });
+    await provider.showPrivacyOptions();
+    vi.clearAllMocks();
+
+    await provider.showInterstitial();
+
+    expect(admob.showInterstitial).not.toHaveBeenCalled();
+  });
+
+  it('does not reopen the consent form while re-reading', async () => {
+    const provider = new AdMobProvider();
+    await provider.initialize();
+    admob.requestConsentInfo.mockResolvedValue({
+      status: 'REQUIRED', isConsentFormAvailable: true,
+      canRequestAds: false, privacyOptionsRequirementStatus: 'REQUIRED',
+    });
+    vi.clearAllMocks();
+
+    await provider.showPrivacyOptions();
+
+    // The player just answered the privacy form; stacking the consent form on
+    // top of it would be a second dialog they did not ask for.
+    expect(admob.showConsentForm).not.toHaveBeenCalled();
+  });
+});

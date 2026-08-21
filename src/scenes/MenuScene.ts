@@ -27,7 +27,7 @@ import { fetchDailyStatus } from '../systems/DailyDropClient';
 import { hasPlayedToday, deviceUtcOffsetMin } from '../systems/dailyRunGate';
 import { dailyIconState, shouldAutoShowPopup, formatCountdown, type DailyIconState } from '../ui/dailyDropLogic';
 import { openDailyDropOverlay } from '../ui/DailyDropOverlay';
-import { privacyRow } from '../ui/privacyRow';
+import { privacyRow, PRIVACY_ROW_STYLE } from '../ui/privacyRow';
 import { AdClient } from '../systems/ads/AdClient';
 import { localDateKey } from '../../shared/dailyDrop';
 import type { DailyStatusResponse } from '../../shared/dailyTypes';
@@ -1016,9 +1016,8 @@ export class MenuScene extends Phaser.Scene {
     //    opens: consent can settle after the menu is already up (it is bounded
     //    by CONSENT_TIMEOUT_MS, not guaranteed to beat it), and a row created
     //    once at scene start would stay missing until the scene was recreated.
-    const privacyStyle = privacyRow(true)!;
-    const privacyLabel = this.add.text(cx, CONTENT_TOP + 150, privacyStyle.label, {
-      fontSize: '14px', color: privacyStyle.color,
+    const privacyLabel = this.add.text(cx, CONTENT_TOP + 150, PRIVACY_ROW_STYLE.label, {
+      fontSize: '14px', color: PRIVACY_ROW_STYLE.color,
     }).setOrigin(0.5).setDepth(33).setVisible(false)
       .setInteractive({ useHandCursor: true })
       .on('pointerup', () => { void AdClient.showPrivacyOptions(); });
