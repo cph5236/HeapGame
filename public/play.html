@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en" data-platform="web">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1a1a1a" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <title>Heap — play in your browser or get the Android app</title>
+
+    <!-- This page exists to be THE link: one URL to paste into a post, which
+         then hands the reader the choice instead of guessing for them. The
+         game itself still lives at heapgame.com/ and loads straight into play
+         — nothing here sits in front of that. -->
+    <meta name="description" content="Climb a trash heap that every player is building. Play free in your browser, or get the Android app for leaderboards, achievements and cloud saves." />
+    <link rel="canonical" href="https://heapgame.com/play" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Heap" />
+    <meta property="og:title" content="Heap — a pile of trash that everyone is building" />
+    <meta property="og:description" content="Climb it before it climbs away. Free in your browser, or on Android." />
+    <meta property="og:url" content="https://heapgame.com/play" />
+    <meta property="og:image" content="https://heapgame.com/og-image.png" />
+    <meta property="og:image:width" content="1024" />
+    <meta property="og:image:height" content="500" />
+    <meta property="og:image:alt" content="Heap — a trash item climbing a towering pile of junk" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Heap — a pile of trash that everyone is building" />
+    <meta name="twitter:description" content="Climb it before it climbs away. Free in your browser, or on Android." />
+    <meta name="twitter:image" content="https://heapgame.com/og-image.png" />
+
+    <!-- Runs before first paint so the emphasis swap never flashes. It only
+         reorders and restyles the two doors: both are real links in the markup
+         and both work regardless, so a wrong guess (or no JS at all) costs a
+         glance, never a destination. Default markup order favours the browser,
+         which is the option that works on every device that can load this. -->
+    <script>
+      var ua = navigator.userAgent || '';
+      if (navigator.userAgentData?.platform === 'Android' || /android/i.test(ua)) {
+        document.documentElement.dataset.platform = 'android';
+      }
+    </script>
+
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      :root {
+        /* Same tokens as the game shell in index.html — this page is a door into
+           Heap, so it has to read as Heap and not as a marketing microsite. */
+        --bg:     #1a1a1a;
+        --panel:  #20202a;
+        --line:   #33333f;
+        --text:   #c8c8d2;
+        --bright: #e8e8ef;
+        --muted:  #7a7a88;
+        --amber:  #f5a02a;
+        --mint:   #6ee7a0;
+
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+                "Liberation Mono", monospace;
+      }
+
+      html { -webkit-text-size-adjust: 100%; }
+
+      body {
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg);
+        /* A single warm wash behind the summit, standing in for the game's sky.
+           Nothing else on the page is lit. */
+        background-image: radial-gradient(
+          120% 70% at 50% -10%, rgba(245, 160, 42, 0.13), rgba(245, 160, 42, 0) 60%);
+        background-repeat: no-repeat;
+        color: var(--text);
+        font-family: var(--mono);
+        line-height: 1.6;
+      }
+
+      main {
+        width: 100%;
+        max-width: 760px;
+        margin: 0 auto;
+        padding: clamp(26px, 6vh, 64px) 20px 24px;
+      }
+
+      /* ── Hero ─────────────────────────────────────────────────────────────
+         The wordmark climbs: each letter steps up from the last, so the name
+         does the thing the game is about. It is the one flourish on the page —
+         everything else stays flat and quiet. */
+      .wordmark {
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+        font-size: clamp(3.25rem, 15vw, 5.5rem);
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        line-height: 1;
+        color: var(--bright);
+        /* Room for the tallest step, so the climb never clips or shoves the
+           tagline around. */
+        padding-top: 0.28em;
+      }
+      .wordmark span { display: block; }
+      .wordmark span:nth-child(1) { transform: translateY(0.21em); }
+      .wordmark span:nth-child(2) { transform: translateY(0.14em); }
+      .wordmark span:nth-child(3) { transform: translateY(0.07em); }
+      .wordmark span:nth-child(4) { color: var(--amber); }
+
+      .tagline {
+        margin-top: 18px;
+        text-align: center;
+        font-size: clamp(0.95rem, 3.6vw, 1.0625rem);
+        color: var(--bright);
+        text-wrap: balance;
+      }
+      .tagline em { color: var(--amber); font-style: normal; }
+
+      /* ── The fork ─────────────────────────────────────────────────────────
+         A labelled rule, not decoration: it marks where the single link splits
+         in two, and answers the first question anyone has about a game link. */
+      .fork {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin: clamp(22px, 4.5vh, 38px) 0 18px;
+        color: var(--muted);
+        font-size: 0.6875rem;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .fork::before, .fork::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: var(--line);
+      }
+
+      .doors { display: flex; flex-direction: column; gap: 12px; }
+
+      .door {
+        --accent: var(--muted);
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 9px;
+        padding: 18px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: inherit;
+        text-decoration: none;
+        transition: border-color 140ms ease, transform 140ms ease;
+      }
+      .door:hover, .door:focus-visible { border-color: var(--accent); transform: translateY(-2px); }
+      .door:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+      .door:active { transform: translateY(0); }
+
+      .door__eyebrow {
+        font-size: 0.6875rem;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+      .door__note { font-size: 0.8125rem; color: var(--text); }
+
+      .door__cta {
+        margin-top: 3px;
+        padding: 10px 18px;
+        border: 1px solid var(--accent);
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--accent);
+        transition: background-color 140ms ease, color 140ms ease;
+      }
+      .door:hover .door__cta { background: var(--accent); color: #14141a; }
+
+      /* Official Play badge, inlined verbatim from index.html (same asset, same
+         reason: one fewer request, and it must ship unmodified per Play brand
+         guidelines — only its display size is set, and 180px wide keeps it
+         comfortably above the 40px minimum height). */
+      .door__badge { display: block; width: 180px; max-width: 100%; height: auto; }
+
+      /* ── Emphasis ─────────────────────────────────────────────────────────
+           Base styling above is the quiet, secondary treatment. The pair of
+           rules below promote whichever door suits the device: colour, position
+           and weight change — the href never does. */
+      [data-platform="android"] .door--app { order: -1; }
+
+      :root:not([data-platform="android"]) .door--web,
+      [data-platform="android"] .door--app {
+        border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+        background: linear-gradient(
+          180deg, color-mix(in srgb, var(--accent) 7%, var(--panel)), var(--panel));
+        padding: 20px 18px;
+      }
+      .door--app { --accent: var(--amber); }
+      .door--web { --accent: var(--mint); }
+
+      :root:not([data-platform="android"]) .door--web .door__cta {
+        background: var(--mint);
+        color: #14141a;
+      }
+
+      footer {
+        margin: 20px auto 0;
+        padding: 0 20px 18px;
+        text-align: center;
+        font-size: 0.6875rem;
+        color: var(--muted);
+      }
+
+      /* ── Ground ───────────────────────────────────────────────────────────
+         The heap itself, kept barely above the background: it gives the page a
+         floor to sit on without competing with the choice. Pushed to the bottom
+         of the viewport on tall screens, and simply follows the content on
+         short ones. */
+      /* The negative margin absorbs the SVG's fractional height, which would
+         otherwise round the page 1px past the viewport and raise a scrollbar
+         on a page that fits. Its bottom edge is flat, so nothing is lost. */
+      .ridge { margin-top: auto; margin-bottom: -1px; display: block; width: 100%; height: auto; }
+
+      @media (min-width: 700px) {
+        .doors { flex-direction: row; }
+        .door { flex: 1; }
+      }
+
+      @media (prefers-reduced-motion: no-preference) {
+        main > *, footer { animation: rise 420ms ease-out both; }
+        .tagline { animation-delay: 70ms; }
+        .fork     { animation-delay: 130ms; }
+        .doors    { animation-delay: 180ms; }
+        footer    { animation-delay: 240ms; }
+        @keyframes rise {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: none; }
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 class="wordmark" aria-label="Heap">
+        <span aria-hidden="true">H</span><span aria-hidden="true">E</span><span aria-hidden="true">A</span><span aria-hidden="true">P</span>
+      </h1>
+
+      <p class="tagline">
+        A pile of trash that everyone is building.<br />
+        <em>Climb it before it climbs away.</em>
+      </p>
+
+      <p class="fork">Free either way</p>
+
+      <div class="doors">
+        <a class="door door--web" href="https://heapgame.com/">
+          <span class="door__eyebrow">In your browser</span>
+          <span class="door__note">
+            Nothing to install — the climb starts on tap. Progress stays in this browser.
+          </span>
+          <span class="door__cta">Start climbing</span>
+        </a>
+
+        <a class="door door--app" href="https://play.google.com/store/apps/details?id=com.hanlinsoftware.heapgame.app">
+          <span class="door__eyebrow">Android app</span>
+          <span class="door__note">
+            Adds leaderboards, achievements and cloud saves, so your climb follows you.
+          </span>
+          <img class="door__badge" src="data:image/png;base64,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" alt="Get it on Google Play" width="646" height="250" />
+        </a>
+      </div>
+    </main>
+
+    <!-- The heap itself: a jagged junk profile in two layers, the near one
+         lighter-edged so the pile reads as having depth. Deliberately kept a
+         shade above the background — it gives the page a floor without
+         competing with the two doors. -->
+    <svg class="ridge" viewBox="0 0 1200 220" role="presentation" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMax meet">
+      <polygon fill="#21212c" points="0,220 0,178 25,164 50,160 75,130 100,142 125,140 150,133 175,106 200,118 225,75 250,103 275,76 300,77 325,64 350,60 375,32 400,68 425,63 450,46 475,56 500,53 525,20 550,43 575,59 600,46 625,45 650,63 675,31 700,71 725,76 750,78 775,67 800,79 825,50 850,91 875,95 900,112 925,108 950,127 975,108 1000,131 1025,140 1050,143 1075,146 1100,164 1125,143 1150,173 1175,175 1200,174 1200,220" />
+      <polygon fill="#17171c" points="0,220 0,205 20,197 40,190 60,156 80,185 100,165 120,175 140,166 160,130 180,156 200,143 220,142 240,134 260,104 280,126 300,126 320,130 340,118 360,100 380,121 400,108 420,107 440,102 460,83 480,114 500,97 520,105 540,103 560,84 580,98 600,104 620,103 640,116 660,92 680,114 700,119 720,116 740,125 760,116 780,133 800,132 820,131 840,140 860,120 880,142 900,150 920,147 940,149 960,142 980,170 1000,158 1020,170 1040,170 1060,157 1080,185 1100,190 1120,191 1140,199 1160,174 1180,191 1200,204 1200,220" />
+      <polyline fill="none" stroke="#3a3a48" stroke-width="2" stroke-linejoin="round" points="0,205 20,197 40,190 60,156 80,185 100,165 120,175 140,166 160,130 180,156 200,143 220,142 240,134 260,104 280,126 300,126 320,130 340,118 360,100 380,121 400,108 420,107 440,102 460,83 480,114 500,97 520,105 540,103 560,84 580,98 600,104 620,103 640,116 660,92 680,114 700,119 720,116 740,125 760,116 780,133 800,132 820,131 840,140 860,120 880,142 900,150 920,147 940,149 960,142 980,170 1000,158 1020,170 1040,170 1060,157 1080,185 1100,190 1120,191 1140,199 1160,174 1180,191 1200,204" />
+    </svg>
+
+    <footer>Made by Hanlin Software.</footer>
+  </body>
+</html>
