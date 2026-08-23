@@ -37,3 +37,12 @@ loadtest/results/
 
 # scratch output from `render-icon.mjs --variants`
 .icon-variants/
+.wrangler/state/v3/cache/miniflare-CacheObject/metadata.sqlite
+.wrangler/state/v3/cache/miniflare-CacheObject/metadata.sqlite-shm
+.wrangler/state/v3/cache/miniflare-CacheObject/metadata.sqlite-wal
+.wrangler/state/v3/observability/miniflare-wobs-trace-store/a590acd76969f996ec6e4b599c3c09f58c283a76f2d61392b5d3046caf557602.sqlite
+.wrangler/state/v3/observability/miniflare-wobs-trace-store/a590acd76969f996ec6e4b599c3c09f58c283a76f2d61392b5d3046caf557602.sqlite-shm
+.wrangler/state/v3/observability/miniflare-wobs-trace-store/a590acd76969f996ec6e4b599c3c09f58c283a76f2d61392b5d3046caf557602.sqlite-wal
+.wrangler/state/v3/observability/miniflare-wobs-trace-store/metadata.sqlite
+.wrangler/state/v3/observability/miniflare-wobs-trace-store/metadata.sqlite-shm
+.wrangler/state/v3/observability/miniflare-wobs-trace-store/metadata.sqlite-wal
