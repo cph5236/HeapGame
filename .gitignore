@@ -37,3 +37,4 @@ loadtest/results/
 
 # scratch output from `render-icon.mjs --variants`
 .icon-variants/
+.wrangler/state/
