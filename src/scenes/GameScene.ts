@@ -54,7 +54,7 @@ import { addBalance, addItem, markHeapBeaten } from '../systems/SaveData';
 import { ITEM_DEFS } from '../data/itemDefs';
 import { HeapChunkRenderer } from '../systems/HeapChunkRenderer';
 import { HeapEdgeCollider } from '../systems/HeapEdgeCollider';
-import { snapPlayerToSurface, depenetratePlayerFromWall } from '../systems/HeapCollisionHelpers';
+import { snapPlayerToSurface, depenetratePlayerFromWall, deflectPlayerOffCeiling } from '../systems/HeapCollisionHelpers';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { HeapClient } from '../systems/HeapClient';
 import { BuffManager } from '../systems/BuffManager';
@@ -310,8 +310,12 @@ export class GameScene extends Phaser.Scene {
 
     // Heap colliders. Walls block only on their sides (tops/undersides are disabled in
     // HeapEdgeCollider) so the player slides down them; no eject callback needed.
-    this.physics.add.collider(this.player.sprite, this.heapWalkableGroup);
-    this.physics.add.collider(this.player.sprite, this.heapWallGroup);
+    // Head-bonk glance: a rising player who clips a sloped underside keeps part of
+    // that momentum as outward horizontal speed instead of dead-stopping.
+    const onHeapCeiling = ((_p: Phaser.GameObjects.GameObject, slab: Phaser.GameObjects.GameObject) =>
+      deflectPlayerOffCeiling(this.player, slab)) as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
+    this.physics.add.collider(this.player.sprite, this.heapWalkableGroup, onHeapCeiling);
+    this.physics.add.collider(this.player.sprite, this.heapWallGroup, onHeapCeiling);
     // Safety net: on a diagonal slope the exposed face is the slabs' (disabled) tops,
     // so falling into it can sink the player through. Push them back out horizontally.
     this.physics.add.overlap(

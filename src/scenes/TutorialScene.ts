@@ -49,7 +49,7 @@ import {
   HUD_PLACE_GAP,
   SURFACE_SNAP_TOLERANCE_PX,
 } from '../constants';
-import { snapPlayerToSurface, depenetratePlayerFromWall } from '../systems/HeapCollisionHelpers';
+import { snapPlayerToSurface, depenetratePlayerFromWall, deflectPlayerOffCeiling } from '../systems/HeapCollisionHelpers';
 import { controlClusterLayout } from '../ui/hudLogic';
 
 export class TutorialScene extends Phaser.Scene {
@@ -156,8 +156,12 @@ export class TutorialScene extends Phaser.Scene {
     this.heapGenerator.setPolygonTopY(polygonTopY(TUTORIAL_HEAP, TUTORIAL_WORLD_HEIGHT));
 
     // Heap colliders (copy GameScene pattern)
-    this.physics.add.collider(this.player.sprite, this.heapWalkableGroup);
-    this.physics.add.collider(this.player.sprite, this.heapWallGroup);
+    // Head-bonk glance: a rising player who clips a sloped underside keeps part of
+    // that momentum as outward horizontal speed instead of dead-stopping.
+    const onHeapCeiling = ((_p: Phaser.GameObjects.GameObject, slab: Phaser.GameObjects.GameObject) =>
+      deflectPlayerOffCeiling(this.player, slab)) as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
+    this.physics.add.collider(this.player.sprite, this.heapWalkableGroup, onHeapCeiling);
+    this.physics.add.collider(this.player.sprite, this.heapWallGroup, onHeapCeiling);
     this.physics.add.overlap(
       this.player.sprite,
       this.heapWallGroup,

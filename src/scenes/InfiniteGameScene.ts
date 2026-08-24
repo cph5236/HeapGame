@@ -64,7 +64,7 @@ import {
   ENEMY_RADAR_RANGE_PER_LEVEL,
   SCORE_DISPLAY_DIVISOR,
 } from '../constants';
-import { snapPlayerToSurface, depenetratePlayerFromWall } from '../systems/HeapCollisionHelpers';
+import { snapPlayerToSurface, depenetratePlayerFromWall, deflectPlayerOffCeiling } from '../systems/HeapCollisionHelpers';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import type { HeapParams } from '../../shared/heapTypes';
 import { HeapClient } from '../systems/HeapClient';
@@ -229,10 +229,14 @@ export class InfiniteGameScene extends Phaser.Scene {
     // ── Colliders ───────────────────────────────────────────────────────────────
     type AP = Phaser.Types.Physics.Arcade.ArcadePhysicsCallback;
     this.heapColliders = [];
+    // Head-bonk glance: a rising player who clips a sloped underside keeps part of
+    // that momentum as outward horizontal speed instead of dead-stopping.
+    const onHeapCeiling = ((_p: Phaser.GameObjects.GameObject, slab: Phaser.GameObjects.GameObject) =>
+      deflectPlayerOffCeiling(this.player, slab)) as AP;
     for (let i = 0; i < 3; i++) {
-      this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.walkableGroups[i]));
+      this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.walkableGroups[i], onHeapCeiling));
       // Walls block only on their sides (tops/undersides disabled) — slide, no eject.
-      this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.wallGroups[i]));
+      this.heapColliders.push(this.physics.add.collider(this.player.sprite, this.wallGroups[i], onHeapCeiling));
       // Safety net: push the player out horizontally if they sink into a slope's
       // (disabled) top face. See depenetratePlayerFromWall.
       this.heapColliders.push(this.physics.add.overlap(
