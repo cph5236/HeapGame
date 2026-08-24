@@ -90,9 +90,12 @@ export class Player {
   private wasDiving:          boolean = false; // rising-edge tracker for keyboard/hold dive emit
   private coyoteTimer:        number = 0; // ms remaining of coyote-time grace
   private momentumX:          number = 0; // airborne horizontal momentum (px/s)
-  // Arcade integrates and separates AFTER scene.update(), zeroing velocity.y on a
-  // ceiling hit before any collider callback runs. Snapshot the rising speed at the
-  // end of update() so the head-bonk glance has the real impact value to work from.
+  // Phaser's Systems.step emits UPDATE — which drives ArcadeWorld.update(), doing
+  // integration, separation and collide callbacks — and only THEN calls scene.update().
+  // So each physics step integrates the velocity left behind by the previous frame's
+  // update(), and by the time a collide callback runs, velocity.y has been zeroed.
+  // Snapshotting at the end of update() captures exactly the velocity the next step
+  // will integrate, which is the true impact speed for the head-bonk glance.
   private velocityYAtStepStart: number = 0;
   private ceilingDeflectedThisStep = false;
 
@@ -220,7 +223,8 @@ export class Player {
   }
 
   /** The real per-frame work. Wrapped by update() so its early returns still leave
-   *  the ceiling-deflection snapshot correct. */
+   *  the ceiling-deflection snapshot correct, and so the once-per-step guard is
+   *  cleared after the physics step that consumed it rather than before. */
   private runUpdate(delta: number): void {
     this.clearOneFrameFlags();
     this.updateJumpInputAndCut(delta);
@@ -625,7 +629,8 @@ export class Player {
    * A bonk can touch several slabs in one step, so only the first deflection of a
    * step is applied; later ones would fight it, and a row's left and right halves
    * disagree about which way is outward. Re-triggering on subsequent frames is
-   * self-limiting: the snapshot is 0 once Arcade has zeroed the upward velocity.
+   * self-limiting: once Arcade has zeroed the upward velocity, the next snapshot is
+   * no longer rising and computeCeilingDeflection returns 0.
    */
   applyCeilingDeflection(slopeDeg: number, edgeSide: 'left' | 'right'): void {
     if (this.ceilingDeflectedThisStep) return;

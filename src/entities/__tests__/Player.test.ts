@@ -2276,10 +2276,11 @@ describe('Player — dash animation state', () => {
 });
 
 // ── Ceiling deflection (head-bonk glance) ────────────────────────────────────
-// Arcade integrates and separates after scene.update(), zeroing velocity.y before
-// any collider callback runs. Player snapshots the rising speed at the end of
-// update() so the deflection has the true impact value; these tests drive that
-// two-phase sequence explicitly.
+// Phaser steps Arcade (integration, separation, collide callbacks) BEFORE calling
+// scene.update(), so a physics step integrates the velocity left by the previous
+// frame's update() and zeroes velocity.y before any callback runs. Player snapshots
+// at the end of update() to capture that value; these tests drive the same sequence:
+// update() to take the snapshot, then a simulated separation, then the callback.
 
 describe('Player — ceiling deflection', () => {
   const STEEP_DEG = 80;
@@ -2297,9 +2298,9 @@ describe('Player — ceiling deflection', () => {
   }
 
   /**
-   * What Arcade does between update() and the collide callback: separate the bodies,
-   * flag the contact, and ZERO the upward velocity. The zeroing is the whole reason
-   * Player snapshots vy — reading body.velocity.y inside the callback would see 0.
+   * What Arcade does in the physics step before the collide callback: separate the
+   * bodies, flag the contact, and ZERO the upward velocity. The zeroing is the whole
+   * reason Player snapshots vy — reading body.velocity.y in the callback would see 0.
    */
   function separateAtCeiling(h: { sprite: MockSprite }) {
     h.sprite.body.blocked.up = true;
