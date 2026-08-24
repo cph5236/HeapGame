@@ -30,6 +30,7 @@ import {
   DASH_COOLDOWN_MS,
   WALL_JUMP_COOLDOWN_MS,
   WALL_JUMP_PUSH,
+  PLAYER_DASH_VELOCITY,
   PLAYER_AIR_MAX_SPEED,
   WORLD_WIDTH,
   SKY_PAD,
@@ -2382,5 +2383,50 @@ describe('Player — ceiling deflection', () => {
     player.applyCeilingDeflection(STEEP_DEG, 'left');
 
     expect(spy.setVelocityX).toHaveLength(0);
+  });
+});
+
+// An active dash owns horizontal velocity outright: updateHorizontal early-returns
+// for the dash's duration, so anything the bonk writes to velocity.x would stick for
+// the rest of the dash rather than being re-driven from momentumX next frame.
+
+describe('Player — ceiling deflection vs dash', () => {
+  async function dashingAirborne(dashDir: 1 | -1) {
+    const h = await makePlayer({ onGround: false, config: { dash: true } });
+    h.sprite.body.blocked.down = false;
+    h.sprite.y = -1000;
+    h.player.update(16);
+    h.sprite.body.velocity.y = -550;    // rising
+    imState.dashJustFired = true;
+    imState.dashDir = dashDir;
+    h.player.update(16);                // fires the dash
+    imState.dashJustFired = false;
+    h.sprite.body.velocity.x = dashDir * PLAYER_DASH_VELOCITY;
+    h.spy.setVelocityX.length = 0;
+    return h;
+  }
+
+  it('leaves an active dash\'s velocity alone when the player clips a ceiling', async () => {
+    const h = await dashingAirborne(1);
+    h.sprite.body.blocked.up = true;
+    h.sprite.body.velocity.y = 0;       // Arcade separated
+
+    h.player.applyCeilingDeflection(80, 'left');
+
+    expect(h.spy.setVelocityX).toHaveLength(0);
+    expect(h.sprite.body.velocity.x).toBe(PLAYER_DASH_VELOCITY);
+  });
+
+  it('never reverses a dash mid-flight off an opposing ceiling', async () => {
+    const h = await dashingAirborne(1);   // dashing right
+    h.sprite.body.blocked.up = true;
+    h.sprite.body.velocity.y = 0;
+
+    h.player.applyCeilingDeflection(80, 'left'); // would push left
+
+    // The mock records writes rather than applying them, so assert on what was
+    // written: any leftward write here would reverse the dash in the real game.
+    const wrote = h.spy.setVelocityX;
+    expect(wrote.filter(v => v < 0)).toHaveLength(0);
   });
 });

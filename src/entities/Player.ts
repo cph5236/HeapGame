@@ -634,6 +634,12 @@ export class Player {
    */
   applyCeilingDeflection(slopeDeg: number, edgeSide: 'left' | 'right'): void {
     if (this.ceilingDeflectedThisStep) return;
+    // An active dash owns horizontal velocity outright — updateHorizontal early-returns
+    // for its whole duration, so anything written here would stick for the rest of the
+    // dash instead of being re-driven from momentumX next frame. Worse, updateDash zeroes
+    // momentumX on fire, so blending against it would discard the dash entirely and could
+    // reverse it off an opposing ceiling. Let the dash run; it already ignores air control.
+    if (this.dashActive > 0) return;
     // Heap slabs are static bodies, so Arcade reports the contact via `blocked`,
     // matching how ground and walls are detected everywhere else in this class.
     if (!this.sprite.body.blocked.up) return;
