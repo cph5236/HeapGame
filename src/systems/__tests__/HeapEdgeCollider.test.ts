@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ScanlineRow } from '../HeapPolygon';
 import { HeapEdgeCollider } from '../HeapEdgeCollider';
+import { CEILING_DEFLECT_MIN_SLOPE_DEG } from '../../constants';
 
 // Phaser StaticGroup mock — HeapEdgeCollider only calls group.create() + a few
 // methods on the returned image object.
@@ -574,9 +575,12 @@ describe('HeapEdgeCollider – ceiling deflection setData', () => {
     }
   });
 
-  it('stashes a finite slope for a single-row band that has no neighbour', () => {
+  it('suppresses deflection for a single-row band whose slope cannot be measured', () => {
     // computeRowSlopeAngleDeg returns Math.min() of an empty list (Infinity) when
-    // there is no adjacent row. Stashing that would reach sin() as NaN.
+    // there is no adjacent row — the heap's tip, say. Classification treats that as
+    // steep so the player stays out of the heap, but deflection must NOT: an
+    // unmeasurable edge is unknown, and a full-strength glance off a ledge the
+    // player reads as flat is exactly the surprise the deadzone exists to prevent.
     const collider = new HeapEdgeCollider();
     const walkable = makeMockGroup();
     const wall     = makeMockGroup();
@@ -585,7 +589,9 @@ describe('HeapEdgeCollider – ceiling deflection setData', () => {
     const all = [...walkable.created, ...wall.created];
     expect(all.length).toBeGreaterThan(0);
     for (const img of all) {
-      expect(Number.isFinite(dataFor(img, 'slopeDeg'))).toBe(true);
+      const slope = dataFor(img, 'slopeDeg');
+      expect(Number.isFinite(slope)).toBe(true);
+      expect(slope).toBeLessThan(CEILING_DEFLECT_MIN_SLOPE_DEG);
     }
   });
 

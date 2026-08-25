@@ -148,14 +148,23 @@ export class HeapEdgeCollider {
   // ── Core: wall edges get narrow tall slabs; walkable rows get a full-width span ──
 
   /**
-   * Edge slope at a row, clamped to a usable 0..90. computeRowSlopeAngleDeg returns
-   * Math.min() over an empty list — Infinity — when the row has no neighbour to
-   * measure against (a band holding a single scanline row). Treat that as vertical:
-   * an unmeasurable edge is the steep case, and it keeps sin() out of NaN.
+   * Edge slope at a row for CEILING DEFLECTION only, clamped to a usable 0..90.
+   *
+   * Deliberately does not share the classification rule. computeRowSlopeAngleDeg
+   * returns Math.min() over an empty list — Infinity — when a row has no neighbour to
+   * measure against (a band holding a single scanline row, such as the heap's tip).
+   * Wall classification reads that raw value and treats it as steep, which is the safe
+   * default there: it keeps the player out of the heap.
+   *
+   * Deflection needs the opposite default. An unmeasurable edge is unknown, not steep,
+   * and reporting 90 would make sin(slope) = 1 — a maximum-strength shove off a ledge
+   * the player reads as flat, precisely the unexplainable surprise the deadzone exists
+   * to prevent. Report 0 instead, which falls below CEILING_DEFLECT_MIN_SLOPE_DEG and
+   * leaves the surface a dead stop.
    */
-  private slopeAt(rows: ScanlineRow[], i: number, side: 'left' | 'right'): number {
+  private deflectionSlopeAt(rows: ScanlineRow[], i: number, side: 'left' | 'right'): number {
     const deg = computeRowSlopeAngleDeg(rows, i, side);
-    return Number.isFinite(deg) ? Math.max(0, Math.min(90, deg)) : 90;
+    return Number.isFinite(deg) ? Math.max(0, Math.min(90, deg)) : 0;
   }
 
   /**
@@ -193,8 +202,8 @@ export class HeapEdgeCollider {
    * with a band boundary.
    */
   private classifyRow(rows: ScanlineRow[], i: number, bandTop: number): RowClassification {
-    const leftSlope  = this.slopeAt(rows, i, 'left');
-    const rightSlope = this.slopeAt(rows, i, 'right');
+    const leftSlope  = this.deflectionSlopeAt(rows, i, 'left');
+    const rightSlope = this.deflectionSlopeAt(rows, i, 'right');
 
     if (i === 0 && rows[0].y > bandTop) {
       return {
