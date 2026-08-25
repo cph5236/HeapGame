@@ -83,6 +83,16 @@ export const MAX_AIR_JUMPS        = 1;    // base value — actual value comes f
 export const DASH_COOLDOWN_MS     = 800;  // ms between dashes
 export const DASH_DURATION_MS     = 200;  // ms the dash velocity is protected from movement override
 
+// ── Ceiling deflection (head-bonk glance) ──────────────────────────────────────
+// Hitting your head used to zero all upward momentum (Arcade's default separation,
+// bounce.y = 0). Instead, a rising player who bonks a sloped underside converts part
+// of that speed into outward horizontal speed, like a pool ball glancing off a rail.
+// Scaled by sin(slope) so a flat ceiling still reads as solid rock and a steep
+// glancing flank throws you clear. Angles come from the scanline row's edge slope
+// (0deg = flat flare, 90deg = vertical) — see computeRowSlopeAngleDeg.
+export const CEILING_DEFLECT_FACTOR        = 0.80; // fraction of impact speed redirected on a vertical flank
+export const CEILING_DEFLECT_MIN_SLOPE_DEG = 15;  // below this the ceiling dead-stops you as before
+
 export const TERRAIN_STICK_SPEED      = 300;  // px/s downward velocity applied while grounded — 300/60fps=5px/frame > 4px SCAN_STEP, bridges slab gaps in ≤1 frame
 export const PLACEMENT_MOVE_SPEED     = 50;   // px/s max horizontal speed while placing an item
 

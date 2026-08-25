@@ -33,6 +33,7 @@ import {
 import { PlayerConfig } from '../systems/SaveData';
 import type { CarryModifiers } from '../data/pickupDefs';
 import { InputManager } from '../systems/InputManager';
+import { computeCeilingDeflection, blendCeilingDeflection } from '../systems/ceilingBounce';
 import { AudioManager } from '../systems/AudioManager';
 
 const { KeyCodes } = Phaser.Input.Keyboard;
@@ -89,6 +90,14 @@ export class Player {
   private wasDiving:          boolean = false; // rising-edge tracker for keyboard/hold dive emit
   private coyoteTimer:        number = 0; // ms remaining of coyote-time grace
   private momentumX:          number = 0; // airborne horizontal momentum (px/s)
+  // Phaser's Systems.step emits UPDATE — which drives ArcadeWorld.update(), doing
+  // integration, separation and collide callbacks — and only THEN calls scene.update().
+  // So each physics step integrates the velocity left behind by the previous frame's
+  // update(), and by the time a collide callback runs, velocity.y has been zeroed.
+  // Snapshotting at the end of update() captures exactly the velocity the next step
+  // will integrate, which is the true impact speed for the head-bonk glance.
+  private velocityYAtStepStart: number = 0;
+  private ceilingDeflectedThisStep = false;
 
   // Jump feel — buffer + variable height
   private jumpBufferTimer:           number = 0; // ms remaining of buffered jump input
@@ -208,6 +217,15 @@ export class Player {
   }
 
   update(delta: number): void {
+    this.runUpdate(delta);
+    this.velocityYAtStepStart      = this.sprite.body.velocity.y;
+    this.ceilingDeflectedThisStep  = false;
+  }
+
+  /** The real per-frame work. Wrapped by update() so its early returns still leave
+   *  the ceiling-deflection snapshot correct, and so the once-per-step guard is
+   *  cleared after the physics step that consumed it rather than before. */
+  private runUpdate(delta: number): void {
     this.clearOneFrameFlags();
     this.updateJumpInputAndCut(delta);
 
@@ -597,6 +615,41 @@ export class Player {
         this.sprite.setVelocityY(PLAYER_MAX_FALL_SPEED);
       }
     }
+  }
+
+  /**
+   * Head-bonk glance. Called from the heap collider callbacks when the player
+   * collides with a slab; converts part of the blocked upward momentum into
+   * outward horizontal momentum instead of letting Arcade simply zero it.
+   *
+   * Writes `momentumX`, not `body.velocity.x` — airborne velocity is re-driven from
+   * `momentumX` every frame by updateHorizontal, so a direct velocity write would be
+   * discarded on the next step. This mirrors how tryWallJump applies its push.
+   *
+   * A bonk can touch several slabs in one step, so only the first deflection of a
+   * step is applied; later ones would fight it, and a row's left and right halves
+   * disagree about which way is outward. Re-triggering on subsequent frames is
+   * self-limiting: once Arcade has zeroed the upward velocity, the next snapshot is
+   * no longer rising and computeCeilingDeflection returns 0.
+   */
+  applyCeilingDeflection(slopeDeg: number, edgeSide: 'left' | 'right'): void {
+    if (this.ceilingDeflectedThisStep) return;
+    // An active dash owns horizontal velocity outright — updateHorizontal early-returns
+    // for its whole duration, so anything written here would stick for the rest of the
+    // dash instead of being re-driven from momentumX next frame. Worse, updateDash zeroes
+    // momentumX on fire, so blending against it would discard the dash entirely and could
+    // reverse it off an opposing ceiling. Let the dash run; it already ignores air control.
+    if (this.dashActive > 0) return;
+    // Heap slabs are static bodies, so Arcade reports the contact via `blocked`,
+    // matching how ground and walls are detected everywhere else in this class.
+    if (!this.sprite.body.blocked.up) return;
+
+    const deflection = computeCeilingDeflection(this.velocityYAtStepStart, slopeDeg, edgeSide);
+    if (deflection === 0) return;
+
+    this.momentumX = blendCeilingDeflection(this.momentumX, deflection);
+    this.sprite.setVelocityX(this.momentumX);
+    this.ceilingDeflectedThisStep = true;
   }
 
   /** Extended sky pad on each side; landing inset from the far edge. */

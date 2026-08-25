@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { snapPlayerToSurface, depenetratePlayerFromWall } from '../HeapCollisionHelpers';
+import { snapPlayerToSurface, depenetratePlayerFromWall, deflectPlayerOffCeiling } from '../HeapCollisionHelpers';
 import { WALL_DEPENETRATION_FACTOR } from '../../constants';
 
 // Player sprite mock for depenetration: body has left/right/x/velocity; sprite.x mirrors body.
@@ -121,5 +121,45 @@ describe('depenetratePlayerFromWall', () => {
     const player = makeEmbeddablePlayer({ x: 100, halfWidth: 20, vx: 50 });
     depenetratePlayerFromWall(player, makeWall(null, 110, 130));
     expect(player.x).toBe(100);
+  });
+});
+
+// ── deflectPlayerOffCeiling ──────────────────────────────────────────────────
+// Adapts an Arcade collider callback to the player's head-bonk response, reading
+// the geometry HeapEdgeCollider stashed on the slab at build time.
+
+function makeSlab(data: Record<string, unknown>) {
+  return { getData: (k: string) => data[k] } as any;
+}
+
+function makeDeflectablePlayer() {
+  return { applyCeilingDeflection: vi.fn() };
+}
+
+describe('deflectPlayerOffCeiling', () => {
+  it('forwards the slab\'s stashed slope and edge to the player', () => {
+    const player = makeDeflectablePlayer();
+    deflectPlayerOffCeiling(player, makeSlab({ slopeDeg: 62, edgeSide: 'left' }));
+    expect(player.applyCeilingDeflection).toHaveBeenCalledWith(62, 'left');
+  });
+
+  it('ignores a slab with no stashed geometry', () => {
+    // Placeables and bridges share collider wiring but carry no edge data.
+    const player = makeDeflectablePlayer();
+    deflectPlayerOffCeiling(player, makeSlab({}));
+    expect(player.applyCeilingDeflection).not.toHaveBeenCalled();
+  });
+
+  it('ignores a slab whose slope is not a usable number', () => {
+    const player = makeDeflectablePlayer();
+    deflectPlayerOffCeiling(player, makeSlab({ slopeDeg: NaN, edgeSide: 'left' }));
+    deflectPlayerOffCeiling(player, makeSlab({ slopeDeg: Infinity, edgeSide: 'left' }));
+    expect(player.applyCeilingDeflection).not.toHaveBeenCalled();
+  });
+
+  it('ignores a slab whose edge side is not left or right', () => {
+    const player = makeDeflectablePlayer();
+    deflectPlayerOffCeiling(player, makeSlab({ slopeDeg: 45, edgeSide: 'up' }));
+    expect(player.applyCeilingDeflection).not.toHaveBeenCalled();
   });
 });

@@ -72,3 +72,30 @@ export function snapPlayerToSurface(
     player.sprite.y = targetY;
   }
 }
+
+/** The slice of Player that a ceiling deflection needs. */
+export interface CeilingDeflectable {
+  applyCeilingDeflection(slopeDeg: number, edgeSide: 'left' | 'right'): void;
+}
+
+/**
+ * Collider-callback adapter for the head-bonk glance.
+ *
+ * HeapEdgeCollider stashes each slab's heap edge and derived slope at build time,
+ * so the response reads them off the body instead of recomputing geometry mid-frame.
+ * Bodies without that data — placeables, bridges, anything sharing this wiring —
+ * are ignored, as are non-finite slopes (a band of one scanline row has no
+ * neighbour to measure against and yields Infinity).
+ */
+export function deflectPlayerOffCeiling(
+  player: CeilingDeflectable,
+  slabObj: Phaser.GameObjects.GameObject,
+): void {
+  const slopeDeg = (slabObj as Phaser.GameObjects.Image).getData('slopeDeg');
+  const edgeSide = (slabObj as Phaser.GameObjects.Image).getData('edgeSide');
+
+  if (typeof slopeDeg !== 'number' || !Number.isFinite(slopeDeg)) return;
+  if (edgeSide !== 'left' && edgeSide !== 'right') return;
+
+  player.applyCeilingDeflection(slopeDeg, edgeSide);
+}

@@ -19,10 +19,14 @@ import {
 // Slab classification and geometry — internal to buildSlabs orchestration.
 // ──────────────────────────────────────────────────────────────────────────────
 
-/** What kind of body each row-side becomes. */
+/**
+ * What kind of body each row-side becomes. Every slab carries the heap edge it
+ * belongs to and that edge's derived slope, so ceiling deflection can read both
+ * off the body at collision time instead of recomputing geometry mid-frame.
+ */
 type SlabKind =
-  | { kind: 'walkable' }
-  | { kind: 'wall'; side: 'left' | 'right'; isOverhang: boolean };
+  | { kind: 'walkable'; side: 'left' | 'right'; slopeDeg: number }
+  | { kind: 'wall'; side: 'left' | 'right'; isOverhang: boolean; slopeDeg: number };
 
 /** Row-to-row classification: left and right edges. */
 interface RowClassification {
@@ -144,6 +148,26 @@ export class HeapEdgeCollider {
   // ── Core: wall edges get narrow tall slabs; walkable rows get a full-width span ──
 
   /**
+   * Edge slope at a row for CEILING DEFLECTION only, clamped to a usable 0..90.
+   *
+   * Deliberately does not share the classification rule. computeRowSlopeAngleDeg
+   * returns Math.min() over an empty list — Infinity — when a row has no neighbour to
+   * measure against (a band holding a single scanline row, such as the heap's tip).
+   * Wall classification reads that raw value and treats it as steep, which is the safe
+   * default there: it keeps the player out of the heap.
+   *
+   * Deflection needs the opposite default. An unmeasurable edge is unknown, not steep,
+   * and reporting 90 would make sin(slope) = 1 — a maximum-strength shove off a ledge
+   * the player reads as flat, precisely the unexplainable surprise the deadzone exists
+   * to prevent. Report 0 instead, which falls below CEILING_DEFLECT_MIN_SLOPE_DEG and
+   * leaves the surface a dead stop.
+   */
+  private deflectionSlopeAt(rows: ScanlineRow[], i: number, side: 'left' | 'right'): number {
+    const deg = computeRowSlopeAngleDeg(rows, i, side);
+    return Number.isFinite(deg) ? Math.max(0, Math.min(90, deg)) : 0;
+  }
+
+  /**
    * Base wall test for a single row-side, independent of neighbouring rows'
    * classification: a side is a wall if its slope is steep (> walkableSlopeDeg) OR
    * it juts out over the row below by more than OVERHANG_WALL_MIN_JUT_PX (a
@@ -178,8 +202,14 @@ export class HeapEdgeCollider {
    * with a band boundary.
    */
   private classifyRow(rows: ScanlineRow[], i: number, bandTop: number): RowClassification {
+    const leftSlope  = this.deflectionSlopeAt(rows, i, 'left');
+    const rightSlope = this.deflectionSlopeAt(rows, i, 'right');
+
     if (i === 0 && rows[0].y > bandTop) {
-      return { left: { kind: 'walkable' }, right: { kind: 'walkable' } };
+      return {
+        left:  { kind: 'walkable', side: 'left',  slopeDeg: leftSlope  },
+        right: { kind: 'walkable', side: 'right', slopeDeg: rightSlope },
+      };
     }
 
     const row      = rows[i];
@@ -208,8 +238,12 @@ export class HeapEdgeCollider {
     const rightIsWall = this.sideIsWallByBase(rows, i, 'right') || rightIsBaseLip;
 
     return {
-      left:  leftIsWall  ? { kind: 'wall', side: 'left',  isOverhang: leftIsOverhang  } : { kind: 'walkable' },
-      right: rightIsWall ? { kind: 'wall', side: 'right', isOverhang: rightIsOverhang } : { kind: 'walkable' },
+      left: leftIsWall
+        ? { kind: 'wall', side: 'left', isOverhang: leftIsOverhang, slopeDeg: leftSlope }
+        : { kind: 'walkable', side: 'left', slopeDeg: leftSlope },
+      right: rightIsWall
+        ? { kind: 'wall', side: 'right', isOverhang: rightIsOverhang, slopeDeg: rightSlope }
+        : { kind: 'walkable', side: 'right', slopeDeg: rightSlope },
     };
   }
 
@@ -266,6 +300,10 @@ export class HeapEdgeCollider {
       slab.kind !== 'wall' ? 0x00ff00 : slab.isOverhang ? 0xff0000 : 0xcc33ff,
     );
     img.refreshBody();
+    // Read by ceiling deflection on a head-bonk (see computeCeilingDeflection).
+    // Set for every slab: walkable ledge undersides deflect too, not just overhangs.
+    img.setData('edgeSide', slab.side);
+    img.setData('slopeDeg', slab.slopeDeg);
     if (slab.kind === 'wall') {
       // No wall is standable: disable the top so you slide down the face rather than
       // landing/catching on slab tops. The side faces (10px wide, 16px vertical overlap

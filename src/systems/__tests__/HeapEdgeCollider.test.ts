@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ScanlineRow } from '../HeapPolygon';
 import { HeapEdgeCollider } from '../HeapEdgeCollider';
+import { CEILING_DEFLECT_MIN_SLOPE_DEG } from '../../constants';
 
 // Phaser StaticGroup mock — HeapEdgeCollider only calls group.create() + a few
 // methods on the returned image object.
@@ -523,5 +524,81 @@ describe('HeapEdgeCollider – destroyBand', () => {
 
     // But the old band should still be gone
     expect(collider.getSurfaceYAtX(150, 96)).toBeNull();
+  });
+});
+
+// ── Ceiling deflection: edgeSide + slopeDeg stashed on every slab ────────────
+// Ceiling deflection needs to know, at collision time, which heap boundary the
+// slab belongs to and how steep the edge is there. Both are known at build time,
+// so they are stashed on the body rather than recomputed during collision.
+
+describe('HeapEdgeCollider – ceiling deflection setData', () => {
+  /** Threshold 60 splits rows45deg cleanly: left (45°) walkable, right (90°) wall. */
+  function build() {
+    const collider  = new HeapEdgeCollider(60);
+    const walkable  = makeMockGroup();
+    const wall      = makeMockGroup();
+    collider.buildFromScanlines(0, rows45deg, walkable as any, wall as any);
+    return { walkable, wall };
+  }
+
+  const dataFor = (img: ReturnType<typeof makeMockImg>, key: string) =>
+    img.setData.mock.calls.find(c => c[0] === key)?.[1];
+
+  it('tags walkable slabs with the heap edge they belong to', () => {
+    const { walkable } = build();
+    expect(walkable.created).toHaveLength(3);
+    for (const img of walkable.created) {
+      expect(dataFor(img, 'edgeSide')).toBe('left');
+    }
+  });
+
+  it('tags wall slabs with the heap edge they belong to', () => {
+    const { wall } = build();
+    expect(wall.created).toHaveLength(3);
+    for (const img of wall.created) {
+      expect(dataFor(img, 'edgeSide')).toBe('right');
+    }
+  });
+
+  it('stashes the derived edge slope on walkable slabs', () => {
+    const { walkable } = build();
+    for (const img of walkable.created) {
+      expect(dataFor(img, 'slopeDeg')).toBeCloseTo(45, 6);
+    }
+  });
+
+  it('stashes the derived edge slope on wall slabs', () => {
+    const { wall } = build();
+    for (const img of wall.created) {
+      expect(dataFor(img, 'slopeDeg')).toBeCloseTo(90, 6);
+    }
+  });
+
+  it('suppresses deflection for a single-row band whose slope cannot be measured', () => {
+    // computeRowSlopeAngleDeg returns Math.min() of an empty list (Infinity) when
+    // there is no adjacent row — the heap's tip, say. Classification treats that as
+    // steep so the player stays out of the heap, but deflection must NOT: an
+    // unmeasurable edge is unknown, and a full-strength glance off a ledge the
+    // player reads as flat is exactly the surprise the deadzone exists to prevent.
+    const collider = new HeapEdgeCollider();
+    const walkable = makeMockGroup();
+    const wall     = makeMockGroup();
+    collider.buildFromScanlines(0, [{ y: 4, leftX: 50, rightX: 300 }], walkable as any, wall as any);
+
+    const all = [...walkable.created, ...wall.created];
+    expect(all.length).toBeGreaterThan(0);
+    for (const img of all) {
+      const slope = dataFor(img, 'slopeDeg');
+      expect(Number.isFinite(slope)).toBe(true);
+      expect(slope).toBeLessThan(CEILING_DEFLECT_MIN_SLOPE_DEG);
+    }
+  });
+
+  it('still tags wall slabs with wallSide, which depenetration depends on', () => {
+    const { wall } = build();
+    for (const img of wall.created) {
+      expect(dataFor(img, 'wallSide')).toBe('right');
+    }
   });
 });

@@ -30,6 +30,7 @@ import {
   DASH_COOLDOWN_MS,
   WALL_JUMP_COOLDOWN_MS,
   WALL_JUMP_PUSH,
+  PLAYER_DASH_VELOCITY,
   PLAYER_AIR_MAX_SPEED,
   WORLD_WIDTH,
   SKY_PAD,
@@ -2272,5 +2273,160 @@ describe('Player — dash animation state', () => {
     player.update(16);   // still held, still on cooldown
 
     expect(player.animState.justDashed).toBe(false);
+  });
+});
+
+// ── Ceiling deflection (head-bonk glance) ────────────────────────────────────
+// Phaser steps Arcade (integration, separation, collide callbacks) BEFORE calling
+// scene.update(), so a physics step integrates the velocity left by the previous
+// frame's update() and zeroes velocity.y before any callback runs. Player snapshots
+// at the end of update() to capture that value; these tests drive the same sequence:
+// update() to take the snapshot, then a simulated separation, then the callback.
+
+describe('Player — ceiling deflection', () => {
+  const STEEP_DEG = 80;
+
+  /** Put the player airborne and rising, then close the frame as update() would. */
+  async function airborneAndRising(vy = -550) {
+    const h = await makePlayer({ onGround: false });
+    h.sprite.body.blocked.down = false;
+    h.sprite.y = -1000;                 // well clear of the floor clamp
+    h.player.update(16);                // frame 1: snapshot taken at end of update
+    h.sprite.body.velocity.y = vy;      // player is rising into a ceiling
+    h.player.update(16);                // frame 2: snapshot now holds the rising vy
+    h.spy.setVelocityX.length = 0;      // ignore movement writes; watch the bonk only
+    return h;
+  }
+
+  /**
+   * What Arcade does in the physics step before the collide callback: separate the
+   * bodies, flag the contact, and ZERO the upward velocity. The zeroing is the whole
+   * reason Player snapshots vy — reading body.velocity.y in the callback would see 0.
+   */
+  function separateAtCeiling(h: { sprite: MockSprite }) {
+    h.sprite.body.blocked.up = true;
+    h.sprite.body.velocity.y = 0;
+  }
+
+  it('converts blocked upward momentum into outward horizontal momentum', async () => {
+    const h = await airborneAndRising();
+    const { player, spy } = h;
+    separateAtCeiling(h);
+
+    player.applyCeilingDeflection(STEEP_DEG, 'left');
+
+    const vx = spy.setVelocityX[spy.setVelocityX.length - 1];
+    expect(vx).toBeLessThan(0);                       // left edge throws the player left
+    expect(Math.abs(vx)).toBeGreaterThan(PLAYER_SPEED); // and harder than a walk
+  });
+
+  it('throws the player right off the heap\'s right edge', async () => {
+    const h = await airborneAndRising();
+    const { player, spy } = h;
+    separateAtCeiling(h);
+
+    player.applyCeilingDeflection(STEEP_DEG, 'right');
+
+    expect(spy.setVelocityX[spy.setVelocityX.length - 1]).toBeGreaterThan(0);
+  });
+
+  it('does nothing when the player is not blocked upward', async () => {
+    const { player, sprite, spy } = await airborneAndRising();
+    sprite.body.blocked.up = false;
+
+    player.applyCeilingDeflection(STEEP_DEG, 'left');
+
+    expect(spy.setVelocityX).toHaveLength(0);
+  });
+
+  it('does nothing on a flat ceiling, which still dead-stops as before', async () => {
+    const h = await airborneAndRising();
+    const { player, spy } = h;
+    separateAtCeiling(h);
+
+    player.applyCeilingDeflection(1, 'left');
+
+    expect(spy.setVelocityX).toHaveLength(0);
+  });
+
+  it('deflects only once per step even when several slabs report the hit', async () => {
+    const h = await airborneAndRising();
+    const { player, spy } = h;
+    separateAtCeiling(h);
+
+    player.applyCeilingDeflection(STEEP_DEG, 'left');
+    player.applyCeilingDeflection(STEEP_DEG, 'right'); // opposing slab, same step
+
+    expect(spy.setVelocityX).toHaveLength(1);
+    expect(spy.setVelocityX[0]).toBeLessThan(0);       // the first slab's direction stands
+  });
+
+  it('does not re-deflect once Arcade has spent the upward velocity', async () => {
+    const h = await airborneAndRising();
+    const { player, spy } = h;
+    separateAtCeiling(h);
+    player.applyCeilingDeflection(STEEP_DEG, 'left');
+
+    // velocity.y is already 0 from separation; the next frame re-snapshots it as 0.
+    player.update(16);
+    spy.setVelocityX.length = 0;
+
+    player.applyCeilingDeflection(STEEP_DEG, 'left');
+
+    expect(spy.setVelocityX).toHaveLength(0);
+  });
+
+  it('does not deflect a falling player who merely brushes a slab', async () => {
+    const { player, sprite, spy } = await airborneAndRising(400); // descending
+    sprite.body.blocked.up = true;
+
+    player.applyCeilingDeflection(STEEP_DEG, 'left');
+
+    expect(spy.setVelocityX).toHaveLength(0);
+  });
+});
+
+// An active dash owns horizontal velocity outright: updateHorizontal early-returns
+// for the dash's duration, so anything the bonk writes to velocity.x would stick for
+// the rest of the dash rather than being re-driven from momentumX next frame.
+
+describe('Player — ceiling deflection vs dash', () => {
+  async function dashingAirborne(dashDir: 1 | -1) {
+    const h = await makePlayer({ onGround: false, config: { dash: true } });
+    h.sprite.body.blocked.down = false;
+    h.sprite.y = -1000;
+    h.player.update(16);
+    h.sprite.body.velocity.y = -550;    // rising
+    imState.dashJustFired = true;
+    imState.dashDir = dashDir;
+    h.player.update(16);                // fires the dash
+    imState.dashJustFired = false;
+    h.sprite.body.velocity.x = dashDir * PLAYER_DASH_VELOCITY;
+    h.spy.setVelocityX.length = 0;
+    return h;
+  }
+
+  it('leaves an active dash\'s velocity alone when the player clips a ceiling', async () => {
+    const h = await dashingAirborne(1);
+    h.sprite.body.blocked.up = true;
+    h.sprite.body.velocity.y = 0;       // Arcade separated
+
+    h.player.applyCeilingDeflection(80, 'left');
+
+    expect(h.spy.setVelocityX).toHaveLength(0);
+    expect(h.sprite.body.velocity.x).toBe(PLAYER_DASH_VELOCITY);
+  });
+
+  it('never reverses a dash mid-flight off an opposing ceiling', async () => {
+    const h = await dashingAirborne(1);   // dashing right
+    h.sprite.body.blocked.up = true;
+    h.sprite.body.velocity.y = 0;
+
+    h.player.applyCeilingDeflection(80, 'left'); // would push left
+
+    // The mock records writes rather than applying them, so assert on what was
+    // written: any leftward write here would reverse the dash in the real game.
+    const wrote = h.spy.setVelocityX;
+    expect(wrote.filter(v => v < 0)).toHaveLength(0);
   });
 });
