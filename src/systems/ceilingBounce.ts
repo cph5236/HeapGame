@@ -62,11 +62,15 @@ export function computeCeilingDeflection(
 export function blendCeilingDeflection(momentumX: number, deflection: number): number {
   if (deflection === 0) return momentumX;
 
-  const outward       = Math.sign(deflection);
-  const outwardSpeed  = momentumX * outward;   // >0 when already travelling outward
-  const blendedSpeed  = Math.max(Math.abs(deflection), outwardSpeed);
+  const outward      = Math.sign(deflection);
+  const outwardSpeed = momentumX * outward;   // >0 when already travelling outward
 
-  // Clamp only the value we produce. Pre-existing over-speed belongs to whatever
-  // system granted it, so this must not double as a speed limiter.
-  return outward * Math.min(blendedSpeed, PLAYER_AIR_MAX_SPEED);
+  // Cap the deflection we produce, but take the max AFTER capping so pre-existing
+  // over-speed passes through untouched. Clamping the blended result instead would
+  // sand down momentum this function never granted: tryGroundOrAirJump assigns
+  // body.velocity.x to momentumX unclamped, after updateHorizontal's own clamp has
+  // run, so stacked speed salvage can legitimately carry a player past the cap.
+  const cappedDeflection = Math.min(Math.abs(deflection), PLAYER_AIR_MAX_SPEED);
+
+  return outward * Math.max(cappedDeflection, outwardSpeed);
 }

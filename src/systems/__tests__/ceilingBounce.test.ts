@@ -127,10 +127,24 @@ describe('blendCeilingDeflection', () => {
     expect(huge).toBe(-PLAYER_AIR_MAX_SPEED);
   });
 
-  it('does not claw back existing momentum that already exceeds the clamp', () => {
-    // Pre-existing over-speed is another system's business; the bonk must not
-    // become a backdoor speed limiter.
+  it('does not claw back over-cap momentum when there is no deflection', () => {
     const over = PLAYER_AIR_MAX_SPEED * 2;
     expect(blendCeilingDeflection(-over, 0)).toBe(-over);
+  });
+
+  it('does not claw back over-cap momentum when a deflection DOES apply', () => {
+    // The real invariant: pre-existing over-speed belongs to whatever system granted
+    // it, so a bonk must not double as a backdoor speed limiter. Reachable today —
+    // tryGroundOrAirJump assigns body.velocity.x to momentumX unclamped, after
+    // updateHorizontal's clamp has already run, and stacked speed salvage multiplies
+    // ground speed past PLAYER_AIR_MAX_SPEED.
+    const over = PLAYER_AIR_MAX_SPEED + 100;
+    expect(blendCeilingDeflection(-over, -50)).toBe(-over);
+  });
+
+  it('still caps the deflection it produces on its own', () => {
+    // Clamping the produced magnitude must survive: only the existing momentum is exempt.
+    expect(blendCeilingDeflection(0, -(PLAYER_AIR_MAX_SPEED * 3))).toBe(-PLAYER_AIR_MAX_SPEED);
+    expect(blendCeilingDeflection(-10, -(PLAYER_AIR_MAX_SPEED * 3))).toBe(-PLAYER_AIR_MAX_SPEED);
   });
 });
