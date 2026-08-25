@@ -34,6 +34,11 @@ import { PlayerConfig } from '../systems/SaveData';
 import type { CarryModifiers } from '../data/pickupDefs';
 import { InputManager } from '../systems/InputManager';
 import { computeCeilingDeflection, blendCeilingDeflection } from '../systems/ceilingBounce';
+import {
+  bankWallSlideMomentum,
+  wallSlidePressVelocity,
+  applyWallLeaveNudge,
+} from '../systems/wallSlide';
 import { AudioManager } from '../systems/AudioManager';
 
 const { KeyCodes } = Phaser.Input.Keyboard;
@@ -378,10 +383,12 @@ export class Player {
     } else {
       // Not touching wall: decay coyote timer
       this.wallCoyoteTimer = Math.max(0, this.wallCoyoteTimer - delta);
-      // Wall-leave transition: grant small outward momentum so player has something to work with
+      // Wall-leave transition: nudge the player clear of the face so they don't drop
+      // dead-straight and re-catch it. A FLOOR, not an overwrite — the wall ending is
+      // exactly when an alcove opens, and steering there must survive. See wallSlide.ts.
       if (this._prevOnWall) {
-        const outwardDir = this.lastWallSide === -1 ? 1 : -1;
-        this.momentumX = outwardDir * 80;
+        const outwardDir: -1 | 1 = this.lastWallSide === -1 ? 1 : -1;
+        this.momentumX = applyWallLeaveNudge(this.momentumX, outwardDir);
       }
     }
     // Decay wall-jump cooldown every frame
@@ -580,7 +587,16 @@ export class Player {
     // nothing to catch on — the player slides cleanly to the bottom and falls off.
     if (!ctx.onGround && ctx.onWall && ctx.body.velocity.y > WALL_SLIDE_SPEED) {
       this.sprite.setVelocityY(WALL_SLIDE_SPEED);
-      this.momentumX = 0; // No horizontal momentum while actively sliding; granted on wall-leave
+
+      // Steering is banked, not wiped. This runs after updateHorizontal, so zeroing
+      // momentum here used to discard the air control built that same frame, leaving a
+      // full-tilt slide worth one frame of force (~13px/s). Momentum now accumulates
+      // across the slide and is spent the frame the face runs out; only a capped
+      // fraction is driven at the wall itself, enough to hold contact without burying
+      // the body in a sloped slab. See wallSlide.ts.
+      const inwardDir: -1 | 1 = ctx.body.blocked.left ? -1 : 1;
+      this.momentumX = bankWallSlideMomentum(this.momentumX, inwardDir);
+      this.sprite.setVelocityX(wallSlidePressVelocity(this.momentumX, inwardDir));
     }
   }
 
