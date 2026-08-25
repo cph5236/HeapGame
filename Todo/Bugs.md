@@ -17,3 +17,6 @@
 
 # Gameplay
 Air jump needs some animation / cloud jumping
+
+
+- Speed item doesnt effect air speed correctly
