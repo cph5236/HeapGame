@@ -16,24 +16,36 @@ import {
 
 describe('bankWallSlideMomentum', () => {
   it('keeps momentum built by air control below the walk-speed cap', () => {
-    expect(bankWallSlideMomentum(100, 1)).toBe(100);
+    expect(bankWallSlideMomentum(100, 1, PLAYER_SPEED)).toBe(100);
   });
 
   it('caps into-wall momentum at walk speed so a fast arrival cannot be banked', () => {
-    expect(bankWallSlideMomentum(WALL_JUMP_PUSH, 1)).toBe(PLAYER_SPEED);
+    expect(bankWallSlideMomentum(WALL_JUMP_PUSH, 1, PLAYER_SPEED)).toBe(PLAYER_SPEED);
   });
 
   it('caps into-wall momentum on the left wall too', () => {
-    expect(bankWallSlideMomentum(-WALL_JUMP_PUSH, -1)).toBe(-PLAYER_SPEED);
+    expect(bankWallSlideMomentum(-WALL_JUMP_PUSH, -1, PLAYER_SPEED)).toBe(-PLAYER_SPEED);
+  });
+
+  it('caps at the boosted walk speed when the player carries a speed item', () => {
+    // The cap tracks whatever air control may accelerate to this frame, so a speed
+    // item raises it too — the wall is not the one place the item stops applying.
+    const boosted = PLAYER_SPEED * 1.3;
+    expect(bankWallSlideMomentum(WALL_JUMP_PUSH, 1, boosted)).toBe(boosted);
+  });
+
+  it('caps at the reduced walk speed when the player carries a heavy item', () => {
+    const slowed = PLAYER_SPEED * 0.75;
+    expect(bankWallSlideMomentum(WALL_JUMP_PUSH, 1, slowed)).toBe(slowed);
   });
 
   it('leaves outward momentum untouched even above the cap', () => {
     // Wall-jumping away from this face: the player is leaving, not banking.
-    expect(bankWallSlideMomentum(-WALL_JUMP_PUSH, 1)).toBe(-WALL_JUMP_PUSH);
+    expect(bankWallSlideMomentum(-WALL_JUMP_PUSH, 1, PLAYER_SPEED)).toBe(-WALL_JUMP_PUSH);
   });
 
   it('leaves a still player at zero', () => {
-    expect(bankWallSlideMomentum(0, 1)).toBe(0);
+    expect(bankWallSlideMomentum(0, 1, PLAYER_SPEED)).toBe(0);
   });
 });
 

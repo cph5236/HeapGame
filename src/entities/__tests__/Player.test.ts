@@ -2490,6 +2490,22 @@ describe('Player — wall-slide steering', () => {
     expect(vx).toBe(-PLAYER_SPEED);
   });
 
+  it('carries the boosted inward speed when the player holds a speed item', async () => {
+    // A speed item raises what air control may build, so it must raise what the
+    // slide can bank too — otherwise the wall is the one place the item stops
+    // applying, and an alcove entry is no snappier for carrying it.
+    const { player, sprite, spy } = await makeWallSlider('left');
+    player.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 });
+    imState.tiltFactor = -1;
+
+    for (let i = 0; i < 40; i++) stepFrame(player, spy);
+
+    sprite.body.blocked.left = false;
+    const vx = stepFrame(player, spy);
+
+    expect(vx).toBe(-PLAYER_SPEED * 1.3);
+  });
+
   it('never drives more than the press cap into the face while gripping', async () => {
     // Banked momentum must not be spent burying the body in a sloped slab.
     const { player, spy } = await makeWallSlider('left');

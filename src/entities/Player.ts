@@ -176,6 +176,17 @@ export class Player {
     return PLAYER_JUMP_VELOCITY - (this.jumpBoost + this.carryJumpBonus + this.buffJumpBonus);
   }
 
+  /** Top speed the player may reach under their own power, with carried-item and
+   *  buff speed multipliers folded in. A single choke point, like jumpVelocity:
+   *  this used to be a local inside updateHorizontal's grounded branch, so every
+   *  other consumer silently gated on the bare PLAYER_SPEED constant and speed
+   *  items had no effect in the air or on a wall. */
+  private get moveSpeed(): number {
+    return this.placementMode
+      ? PLACEMENT_MOVE_SPEED
+      : PLAYER_SPEED * this.carrySpeedMult * this.buffSpeedMult;
+  }
+
   /** Max air jumps including extras granted by carried salvage. */
   private get effectiveMaxAirJumps(): number {
     return this.maxAirJumps + this.carryExtraAirJumps + this.buffExtraAirJumps;
@@ -424,7 +435,7 @@ export class Player {
 
     if (this.dashActive !== 0) return; // active dash protects horizontal velocity
 
-    const moveSpeed = this.placementMode ? PLACEMENT_MOVE_SPEED : PLAYER_SPEED * this.carrySpeedMult * this.buffSpeedMult;
+    const moveSpeed = this.moveSpeed;
 
     if (ctx.onGround) {
       // Ground: direct velocity control
@@ -608,7 +619,7 @@ export class Player {
       // fraction is driven at the wall itself, enough to hold contact without burying
       // the body in a sloped slab. See wallSlide.ts.
       const inwardDir: -1 | 1 = ctx.body.blocked.left ? -1 : 1;
-      this.momentumX = bankWallSlideMomentum(this.momentumX, inwardDir);
+      this.momentumX = bankWallSlideMomentum(this.momentumX, inwardDir, this.moveSpeed);
       this.sprite.setVelocityX(wallSlidePressVelocity(this.momentumX, inwardDir));
     }
   }

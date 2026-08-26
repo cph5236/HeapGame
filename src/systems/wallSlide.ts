@@ -1,4 +1,4 @@
-import { PLAYER_SPEED, WALL_LEAVE_NUDGE, WALL_SLIDE_PRESS_SPEED } from '../constants';
+import { WALL_LEAVE_NUDGE, WALL_SLIDE_PRESS_SPEED } from '../constants';
 
 /**
  * Momentum to keep while the player grips a wall.
@@ -13,19 +13,27 @@ import { PLAYER_SPEED, WALL_LEAVE_NUDGE, WALL_SLIDE_PRESS_SPEED } from '../const
  * nobody (Arcade blocks it, and wallSlidePressVelocity keeps it off the face anyway),
  * but the frame the wall ends the player already carries real speed inward.
  *
- * The into-wall component is capped at PLAYER_SPEED — the same ceiling
+ * The into-wall component is capped at `maxSpeed` — the same ceiling
  * updateHorizontal imposes on what air control may accelerate to — so a fast
  * arrival (a 375px/s wall jump, a dash) cannot be parked against the face and
- * released as a slingshot when the wall runs out.
+ * released as a slingshot when the wall runs out. Passing the player's boosted
+ * walk speed rather than the bare constant keeps a speed item applying here too:
+ * the wall should not be the one place a carried item stops mattering.
  *
  * @param momentumX  current air momentum; negative is leftward
  * @param inwardDir  toward the gripped face: -1 for a wall on the left, +1 on the right
+ * @param maxSpeed   ceiling for banked inward speed — Player.moveSpeed, which folds
+ *                   in the carry and buff speed multipliers
  * @returns the momentum to keep
  */
-export function bankWallSlideMomentum(momentumX: number, inwardDir: -1 | 1): number {
+export function bankWallSlideMomentum(
+  momentumX: number,
+  inwardDir: -1 | 1,
+  maxSpeed: number,
+): number {
   const inward = momentumX * inwardDir; // >0 when pressing into the wall
 
-  if (inward > PLAYER_SPEED) return inwardDir * PLAYER_SPEED;
+  if (inward > maxSpeed) return inwardDir * maxSpeed;
 
   return momentumX;
 }
