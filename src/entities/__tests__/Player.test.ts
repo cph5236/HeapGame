@@ -36,6 +36,8 @@ import {
   SKY_PAD,
   INFINITE_WORLD_WIDTH,
   INFINITE_EDGE_PAD,
+  WALL_LEAVE_NUDGE,
+  WALL_SLIDE_PRESS_SPEED,
 } from '../../constants';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -826,17 +828,33 @@ describe('Player — air momentum', () => {
     expect((player as any).momentumX).toBe(0);
   });
 
-  it('wall slide zeros momentumX (no push off wall while sliding)', async () => {
+  it('wall slide banks momentum rather than wiping it each frame', async () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 100 } },
       config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
     });
-    (player as any).momentumX = 150;
+    (player as any).momentumX = 150; // away from the left-hand wall
     imState.tiltFactor = 0; // No input so no air momentum boost
     player.update(16);
-    // While actively wall-sliding, momentumX should be zeroed
-    expect((player as any).momentumX).toBe(0);
+    // Decays under no input, but survives the slide. Zeroing it here — which is what
+    // this used to assert — discarded the air control updateHorizontal had just built,
+    // capping a full-tilt slide at one frame of force.
+    expect((player as any).momentumX).toBeGreaterThan(140);
+  });
+
+  it('wall slide caps into-wall momentum at walk speed', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+    });
+    // Arrived at the face far faster than air control could ever accelerate: banking
+    // it whole would slingshot the player the frame the wall runs out.
+    (player as any).momentumX = -WALL_JUMP_PUSH;
+    imState.tiltFactor = 0;
+    player.update(16);
+    expect((player as any).momentumX).toBe(-PLAYER_SPEED);
   });
 
   it('zeroes momentumX when dash fires', async () => {
@@ -2428,5 +2446,103 @@ describe('Player — ceiling deflection vs dash', () => {
     // written: any leftward write here would reverse the dash in the real game.
     const wrote = h.spy.setVelocityX;
     expect(wrote.filter(v => v < 0)).toHaveLength(0);
+  });
+});
+
+// ── Wall-slide steering ───────────────────────────────────────────────────────
+
+/** Build a player pinned to a wall and falling fast enough for the slide to engage. */
+async function makeWallSlider(side: 'left' | 'right') {
+  return makePlayer({
+    onGround: false,
+    bodyOverrides: {
+      blocked: { left: side === 'left', right: side === 'right', down: false },
+      // Above WALL_SLIDE_SPEED, and the mock never integrates gravity, so every
+      // frame re-engages the slide exactly as it does in the real game.
+      velocity: { x: 0, y: 200 },
+    },
+  });
+}
+
+/** Run one frame and report the velocity the body is left with — the LAST write of
+ *  the frame, since updateHorizontal writes first and applyWallSlide may overwrite. */
+function stepFrame(player: any, spy: { setVelocityX: number[] }): number {
+  const before = spy.setVelocityX.length;
+  player.update(16.67);
+  const written = spy.setVelocityX.slice(before);
+  return written.length > 0 ? written[written.length - 1] : NaN;
+}
+
+describe('Player — wall-slide steering', () => {
+  it('carries built-up inward speed the frame the wall ends', async () => {
+    // The alcove case. Gripping a wall on the left while steering into it, then the
+    // face runs out. The player should arrive already moving inward at speed, not be
+    // shoved back out into open air.
+    const { player, sprite, spy } = await makeWallSlider('left');
+    imState.tiltFactor = -1; // press into the left-hand wall
+
+    for (let i = 0; i < 20; i++) stepFrame(player, spy);
+
+    sprite.body.blocked.left = false; // alcove mouth: the wall ends
+    const vx = stepFrame(player, spy);
+
+    expect(vx).toBe(-PLAYER_SPEED);
+  });
+
+  it('never drives more than the press cap into the face while gripping', async () => {
+    // Banked momentum must not be spent burying the body in a sloped slab.
+    const { player, spy } = await makeWallSlider('left');
+    imState.tiltFactor = -1;
+
+    const effective: number[] = [];
+    for (let i = 0; i < 20; i++) effective.push(stepFrame(player, spy));
+
+    expect(Math.min(...effective)).toBe(-WALL_SLIDE_PRESS_SPEED);
+  });
+
+  it('still nudges a player who leaves the wall carrying nothing', async () => {
+    const { player, sprite, spy } = await makeWallSlider('left');
+    imState.tiltFactor = 0; // no steering at all
+
+    for (let i = 0; i < 20; i++) stepFrame(player, spy);
+
+    sprite.body.blocked.left = false;
+    const vx = stepFrame(player, spy);
+
+    // updateWallTracking grants the nudge, then updateHorizontal's no-input decay
+    // shaves it slightly within the same frame.
+    expect(vx).toBeGreaterThan(WALL_LEAVE_NUDGE * 0.9);
+    expect(vx).toBeLessThanOrEqual(WALL_LEAVE_NUDGE);
+  });
+
+  it('does not cancel a dash fired while gripping a wall', async () => {
+    // updateDash zeroes momentumX and writes the burst velocity itself, and it runs
+    // BEFORE applyWallSlide. Deriving a press from that zeroed momentum and writing it
+    // would stamp 0 over the burst — the dash would die the frame it fired.
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: {
+        blocked: { left: true, right: false, down: false },
+        velocity: { x: 0, y: 200 },
+      },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    imState.dashJustFired = true;
+    imState.dashDir = 1; // away from the left-hand wall
+
+    const vx = stepFrame(player, spy);
+
+    expect(vx).toBe(PLAYER_DASH_VELOCITY);
+  });
+
+  it('does not throttle a player steering away from the wall', async () => {
+    // The press cap applies to the face only; leaving must stay responsive.
+    const { player, spy } = await makeWallSlider('left');
+    imState.tiltFactor = 1; // steer away from the left-hand wall
+
+    let vx = 0;
+    for (let i = 0; i < 20; i++) vx = stepFrame(player, spy);
+
+    expect(vx).toBeGreaterThan(WALL_SLIDE_PRESS_SPEED * 2);
   });
 });

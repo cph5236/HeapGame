@@ -76,6 +76,16 @@ export const WALL_COYOTE_MS       = 100;  // ms grace window to wall-jump after 
 // (see depenetratePlayerFromWall). 1.0 = snap fully out in one frame (fast pop); lower
 // eases the push-out over several frames (gentler). Tune to taste in [0.2 .. 1.0].
 export const WALL_DEPENETRATION_FACTOR = 0.5;
+// Outward momentum granted the frame the player leaves a wall, so someone who slides
+// off a face holding nothing drifts clear instead of re-catching it. Applied as a
+// FLOOR, not an overwrite (see applyWallLeaveNudge): a player actively steering at
+// the moment the wall ends — an alcove mouth, a ledge — keeps what they built.
+export const WALL_LEAVE_NUDGE     = 80;   // px/s
+// Cap on how hard the player is driven INTO a wall face while sliding. Momentum keeps
+// building past this (see bankWallSlideMomentum) but is not spent on the face: contact
+// only needs a little overlap to hold `blocked`, and pressing in at full speed would
+// bury the body in sloped slabs for depenetratePlayerFromWall to shove back out.
+export const WALL_SLIDE_PRESS_SPEED = 60; // px/s
 export const WALL_JUMP_PUSH       = 375;  // px/s outward velocity applied on wall jump (was PLAYER_SPEED * 1.5)
 export const WALL_JUMP_COOLDOWN_MS = 2000; // ms cooldown after wall-jump fires (same-wall cooldown: different wall bypass)
 export const PLAYER_INVINCIBLE_MS = 400;  // post-stomp / post-spawn invincibility
