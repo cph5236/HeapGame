@@ -96,9 +96,9 @@ export class ScoreScene extends Phaser.Scene {
   private _isAdRun:        boolean = false;
   private _rewardedWatched: boolean = false;
 
-  /** Holds every exit from this scene until the interstitial has been closed —
-   *  see adGate.ts. Rebuilt per run in init(); Phaser reuses scene instances. */
-  private _leave = createAdGate(() => AdClient.showInterstitial());
+  /** Serialises the scene's ad requests and exits — see adGate.ts. Rebuilt per
+   *  run in init(); Phaser reuses scene instances. */
+  private _adGate = createAdGate(() => AdClient.showInterstitial());
 
   private _coinsPanelObjects:  Phaser.GameObjects.GameObject[] = [];
   private _leaderboardObjects: Phaser.GameObjects.GameObject[] = [];
@@ -159,7 +159,7 @@ export class ScoreScene extends Phaser.Scene {
     this._breakdownObjects = [];
     this._isAdRun          = false;
     this._rewardedWatched  = false;
-    this._leave            = createAdGate(() => AdClient.showInterstitial());
+    this._adGate           = createAdGate(() => AdClient.showInterstitial());
     this._coinsPanelObjects  = [];
     this._leaderboardObjects = [];
     this._coinsPanelBottom   = 0;
@@ -839,13 +839,15 @@ export class ScoreScene extends Phaser.Scene {
     // an instant restart (mirrors the checkpoint button's guard).
     this.time.delayedCall(1500, () => {
       btn.setInteractive({ useHandCursor: true });
-      btn.once('pointerup', () => {
+      // `on`, not `once`: the gate can refuse a tap while a rewarded ad is
+      // loading, and a consumed handler would leave the button dead for good.
+      btn.on('pointerup', () => {
         const infinite = this._heapParams.isInfinite;
         const key      = infinite ? 'InfiniteGameScene' : 'GameScene';
         this.commitCoins();
         // Gated: starting the run here rather than after the ad closes booted
         // the next game (audibly) behind the interstitial.
-        void this._leave(this._isAdRun && !this._rewardedWatched, () => {
+        void this._adGate.leave(this._isAdRun && !this._rewardedWatched, () => {
           this.scene.stop('ScoreScene');
           this.scene.stop(key);
           this.scene.start(key);   // fresh run, no checkpoint
@@ -873,11 +875,11 @@ export class ScoreScene extends Phaser.Scene {
 
     this.time.delayedCall(1500, () => {
       btn.setInteractive({ useHandCursor: true });
-      btn.once('pointerup', () => {
+      btn.on('pointerup', () => {
         this.commitCoins();
         // Checkpoint respawns show no ad, but still go through the gate so they
         // cannot race a PLAY AGAIN whose interstitial is still up.
-        void this._leave(false, () => {
+        void this._adGate.leave(false, () => {
           this.scene.stop('ScoreScene');
           this.scene.stop('GameScene');
           this.scene.start('GameScene', { useCheckpoint: true });
@@ -921,7 +923,8 @@ export class ScoreScene extends Phaser.Scene {
     });
 
     btn.on('pointerup', async () => {
-      if (this._rewardedUsed) return;
+      // claim() second: a refused tap must leave the offer re-tappable.
+      if (this._rewardedUsed || !this._adGate.claim()) return;
       this._rewardedUsed = true;
       btn.disableInteractive();
 
@@ -948,7 +951,12 @@ export class ScoreScene extends Phaser.Scene {
         btn.setAlpha(1);
       };
 
-      const watched = await AdClient.showRewarded();
+      let watched = false;
+      try {
+        watched = await AdClient.showRewarded();
+      } finally {
+        this._adGate.release();   // the exits are usable again either way
+      }
       stopLoading();
       if (watched) {
         this._rewardedWatched = true;
@@ -1212,7 +1220,7 @@ export class ScoreScene extends Phaser.Scene {
 
     const goMenu = () => {
       this.commitCoins();
-      void this._leave(this._isAdRun && !this._rewardedWatched, () => {
+      void this._adGate.leave(this._isAdRun && !this._rewardedWatched, () => {
         this.scene.stop(this._heapParams.isInfinite ? 'InfiniteGameScene' : 'GameScene');
         // Cue for the browser page chrome's install prompt; no-op in the Android
         // WebView and inside the itch.io frame. See web/pageChrome.ts.
@@ -1222,14 +1230,14 @@ export class ScoreScene extends Phaser.Scene {
     };
 
     this.time.delayedCall(1500, () => {
-      this.input.keyboard!.once('keydown', goMenu);
+      this.input.keyboard!.on('keydown', goMenu);
       if (im.isMobile) {
         // Full-screen zone at depth -1 so existing buttons (depth 0) stay on top via topOnly.
         this.add.rectangle(
           logicalWidth(this) / 2, logicalHeight(this) / 2,
           logicalWidth(this), logicalHeight(this),
           0x000000, 0,
-        ).setDepth(-1).setInteractive().once('pointerup', goMenu);
+        ).setDepth(-1).setInteractive().on('pointerup', goMenu);
       }
     });
   }

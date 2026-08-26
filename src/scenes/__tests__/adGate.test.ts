@@ -13,7 +13,7 @@ describe('createAdGate', () => {
   it('runs the transition only after the ad closes', async () => {
     const ad = deferred();
     const transition = vi.fn();
-    const leave = createAdGate(() => ad.promise);
+    const { leave } = createAdGate(() => ad.promise);
 
     const pending = leave(true, transition);
     await Promise.resolve();
@@ -28,7 +28,7 @@ describe('createAdGate', () => {
     const showAd = vi.fn();
     const transition = vi.fn();
 
-    await createAdGate(showAd)(false, transition);
+    await createAdGate(showAd).leave(false, transition);
 
     expect(showAd).not.toHaveBeenCalled();
     expect(transition).toHaveBeenCalledOnce();
@@ -39,7 +39,7 @@ describe('createAdGate', () => {
     const showAd = vi.fn(() => ad.promise);
     const playAgain = vi.fn();
     const goMenu = vi.fn();
-    const leave = createAdGate(showAd);
+    const { leave } = createAdGate(showAd);
 
     const pending = leave(true, playAgain);
     await leave(true, goMenu);   // tap on the menu zone while the ad is up
@@ -54,10 +54,57 @@ describe('createAdGate', () => {
 
   it('still transitions when the ad rejects', async () => {
     const transition = vi.fn();
-    const leave = createAdGate(() => Promise.reject(new Error('no fill')));
+    const { leave } = createAdGate(() => Promise.reject(new Error('no fill')));
 
     await leave(true, transition);
 
     expect(transition).toHaveBeenCalledOnce();
+  });
+});
+
+describe('createAdGate exclusivity with the rewarded offer', () => {
+  // The rewarded button and PLAY AGAIN are on screen together on an ad run, and
+  // the score screen stays interactive while a rewarded ad is still loading. A
+  // tap on each used to fire showRewarded() and showInterstitial() concurrently.
+  it('refuses an exit while a rewarded ad holds the gate', async () => {
+    const showAd = vi.fn(() => Promise.resolve());
+    const transition = vi.fn();
+    const gate = createAdGate(showAd);
+
+    expect(gate.claim()).toBe(true);
+    await gate.leave(true, transition);
+
+    expect(showAd).not.toHaveBeenCalled();
+    expect(transition).not.toHaveBeenCalled();
+  });
+
+  it('allows the exit once the rewarded ad releases the gate', async () => {
+    const transition = vi.fn();
+    const gate = createAdGate(() => Promise.resolve());
+
+    gate.claim();
+    gate.release();
+    await gate.leave(true, transition);
+
+    expect(transition).toHaveBeenCalledOnce();
+  });
+
+  it('refuses a rewarded claim while the exit ad is on screen', async () => {
+    const ad = deferred();
+    const gate = createAdGate(() => ad.promise);
+
+    const pending = gate.leave(true, vi.fn());
+    await Promise.resolve();
+    expect(gate.claim()).toBe(false);
+
+    ad.resolve();
+    await pending;
+  });
+
+  it('refuses a rewarded claim once the scene has left', async () => {
+    const gate = createAdGate(() => Promise.resolve());
+    await gate.leave(false, vi.fn());
+
+    expect(gate.claim()).toBe(false);
   });
 });

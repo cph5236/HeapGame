@@ -21,6 +21,11 @@ const PRIVACY_OPTIONS_REQUIRED = 'REQUIRED';
  *  strand the player: past this ceiling we let the game continue regardless. */
 export const INTERSTITIAL_WAIT_CEILING_MS = 60_000;
 
+/** Same ceiling for the rewarded flow, but roomier: this one can cut short an
+ *  ad the player is actively watching, and the reward rides on it. Any reward
+ *  already earned is honoured when it trips. */
+export const REWARDED_WAIT_CEILING_MS = 120_000;
+
 function reason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -138,7 +143,12 @@ export class AdMobProvider implements AdProvider {
       const dismissedHandle = AdMob.addListener(InterstitialAdPluginEvents.Dismissed, () => finish());
       // A broken ad never dismisses, so treat "failed to show" as closed too.
       const failedHandle    = AdMob.addListener(InterstitialAdPluginEvents.FailedToShow, () => finish());
-      const ceiling = setTimeout(finish, INTERSTITIAL_WAIT_CEILING_MS);
+      const ceiling = setTimeout(() => {
+        warn('ads: interstitial dismissal never arrived', {
+          adId: this._interstitialId, waitedMs: INTERSTITIAL_WAIT_CEILING_MS,
+        });
+        finish();
+      }, INTERSTITIAL_WAIT_CEILING_MS);
 
       function finish(): void {
         if (done) return;
@@ -170,22 +180,36 @@ export class AdMobProvider implements AdProvider {
 
       return await new Promise<boolean>((resolve) => {
         let rewarded = false;
+        let done     = false;
 
         const rewardedHandle = AdMob.addListener(RewardAdPluginEvents.Rewarded, () => {
           rewarded = true;
         });
 
-        const dismissedHandle = AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
+        const dismissedHandle = AdMob.addListener(RewardAdPluginEvents.Dismissed, () => finish());
+
+        // Without this the button that awaits us stays on its loading animation
+        // forever if the native event is ever swallowed.
+        const ceiling = setTimeout(() => {
+          warn('ads: rewarded dismissal never arrived', {
+            adId: this._rewardedId, waitedMs: REWARDED_WAIT_CEILING_MS,
+          });
+          finish();
+        }, REWARDED_WAIT_CEILING_MS);
+
+        function finish(): void {
+          if (done) return;
+          done = true;
+          clearTimeout(ceiling);
           Promise.all([rewardedHandle, dismissedHandle])
-            .then(([rh, dh]) => Promise.all([rh.remove(), dh.remove()]));
-          resolve(rewarded);
-        });
+            .then(([rh, dh]) => Promise.all([rh.remove(), dh.remove()]))
+            .catch(() => { /* listener teardown is best-effort */ });
+          resolve(rewarded);   // a reward already earned still counts
+        }
 
         AdMob.showRewardVideoAd().catch((err) => {
           warn('ads: showRewarded show failed', { adId: this._rewardedId, reason: reason(err) });
-          Promise.all([rewardedHandle, dismissedHandle])
-            .then(([rh, dh]) => Promise.all([rh.remove(), dh.remove()]));
-          resolve(false);
+          finish();
         });
       });
     } catch (err) {

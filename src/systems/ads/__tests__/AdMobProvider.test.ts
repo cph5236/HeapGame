@@ -33,7 +33,9 @@ vi.mock('@capacitor-community/admob', () => ({
 }));
 vi.mock('../../../logging', () => ({ getLogger: () => ({ warn }) }));
 
-import { AdMobProvider, INTERSTITIAL_WAIT_CEILING_MS } from '../AdMobProvider';
+import {
+  AdMobProvider, INTERSTITIAL_WAIT_CEILING_MS, REWARDED_WAIT_CEILING_MS,
+} from '../AdMobProvider';
 
 const warnedMessages = (): string[] => warn.mock.calls.map(c => c[0] as string);
 
@@ -239,6 +241,72 @@ describe('AdMobProvider interstitial lifetime', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('reports a ceiling timeout rather than resolving silently', async () => {
+    // A swallowed native event is invisible from the client otherwise, and this
+    // file's history is exactly what silent ad failures cost (see header).
+    const provider = await readyProvider();
+
+    vi.useFakeTimers();
+    try {
+      const pending = provider.showInterstitial();
+      await vi.advanceTimersByTimeAsync(INTERSTITIAL_WAIT_CEILING_MS);
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(warnedMessages()).toContain('ads: interstitial dismissal never arrived');
+  });
+});
+
+describe('AdMobProvider rewarded lifetime', () => {
+  // showRewarded waits on the same kind of native event as showInterstitial, so
+  // it needs the same escape hatch: without one, a swallowed Dismissed leaves
+  // ScoreScene's reward button stuck on its loading animation forever — and now
+  // that the scene gates its exits on ad state, the exits die with it.
+  it('resolves on its own if no dismissal event ever arrives', async () => {
+    const provider = await readyProvider();
+
+    vi.useFakeTimers();
+    try {
+      const pending = provider.showRewarded();
+      await vi.advanceTimersByTimeAsync(REWARDED_WAIT_CEILING_MS);
+      await expect(pending).resolves.toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a reward that was earned before the ceiling tripped', async () => {
+    const provider = await readyProvider();
+
+    vi.useFakeTimers();
+    try {
+      const pending = provider.showRewarded();
+      await vi.advanceTimersByTimeAsync(0);   // let prepare + addListener settle
+      handlers.rewarded();
+      await vi.advanceTimersByTimeAsync(REWARDED_WAIT_CEILING_MS);
+      await expect(pending).resolves.toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports a rewarded ceiling timeout', async () => {
+    const provider = await readyProvider();
+
+    vi.useFakeTimers();
+    try {
+      const pending = provider.showRewarded();
+      await vi.advanceTimersByTimeAsync(REWARDED_WAIT_CEILING_MS);
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(warnedMessages()).toContain('ads: rewarded dismissal never arrived');
   });
 });
 
