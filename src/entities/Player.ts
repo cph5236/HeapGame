@@ -447,9 +447,16 @@ export class Player {
       if (Math.abs(inputDir) > 0.01) {
         const force = inputDir * AIR_TILT_FORCE * delta;
         const opposing = this.momentumX !== 0 && Math.sign(force) !== Math.sign(this.momentumX);
-        // Input can decelerate freely, but can only accelerate up to PLAYER_SPEED;
-        // higher speeds (from dash or swipe-jump) must decay naturally.
-        if (opposing || Math.abs(this.momentumX) < PLAYER_SPEED) {
+        // Input can decelerate freely, but can only accelerate up to moveSpeed —
+        // the same boosted walk speed the ground branch uses, so a speed item
+        // raises air top speed too and a heavy one genuinely slows it. Gating on
+        // the bare PLAYER_SPEED constant made the lever inert airborne: every
+        // multiplier settled at the same ~250, and a boost inherited from a
+        // ground jump could never be regained once the player let go of the stick.
+        // A gate, deliberately, not a clamp: higher speeds (from dash or
+        // swipe-jump) legitimately exceed moveSpeed and must decay naturally
+        // rather than be sanded down to walk speed the moment input is held.
+        if (opposing || Math.abs(this.momentumX) < moveSpeed) {
           this.momentumX += opposing ? force * MOMENTUM_STOP_ADV_FACTOR : force;
         }
       } else {

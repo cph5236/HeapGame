@@ -32,6 +32,7 @@ import {
   WALL_JUMP_PUSH,
   PLAYER_DASH_VELOCITY,
   PLAYER_AIR_MAX_SPEED,
+  AIR_TILT_FORCE,
   WORLD_WIDTH,
   SKY_PAD,
   INFINITE_WORLD_WIDTH,
@@ -2544,5 +2545,90 @@ describe('Player — wall-slide steering', () => {
     for (let i = 0; i < 20; i++) vx = stepFrame(player, spy);
 
     expect(vx).toBeGreaterThan(WALL_SLIDE_PRESS_SPEED * 2);
+  });
+});
+
+// ── Speed modifiers in the air ────────────────────────────────────────────────
+
+describe('Player — speedMult airborne', () => {
+  /** Hold full tilt long enough to saturate air control, and report the top speed
+   *  reached. Two seconds is far past any ramp (~400ms at the highest multiplier). */
+  async function airTopSpeed(
+    apply: (p: any) => void,
+    opts: { seed?: number } = {},
+  ): Promise<number> {
+    const { player, spy } = await makePlayer({ onGround: false });
+    apply(player);
+    if (opts.seed !== undefined) (player as any).momentumX = opts.seed;
+    imState.tiltFactor = 1;
+    for (let i = 0; i < 125; i++) player.update(16);
+    return spy.setVelocityX[spy.setVelocityX.length - 1];
+  }
+
+  /** The accel gate tests the ceiling BEFORE adding a frame's force, so momentum
+   *  settles within one frame's worth above it. Assert the band, not the artifact. */
+  function expectCeiling(actual: number, ceiling: number) {
+    expect(actual).toBeGreaterThanOrEqual(ceiling);
+    expect(actual).toBeLessThan(ceiling + AIR_TILT_FORCE * 16);
+  }
+
+  it('carry speedMult raises air top speed', async () => {
+    const vx = await airTopSpeed(p =>
+      p.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 }));
+    expectCeiling(vx, PLAYER_SPEED * 1.3);
+  });
+
+  it('a slowing carry item lowers air top speed', async () => {
+    const vx = await airTopSpeed(p =>
+      p.setCarryModifiers({ speedMult: 0.75, jumpBonus: 0, extraAirJumps: 0 }));
+    expectCeiling(vx, PLAYER_SPEED * 0.75);
+  });
+
+  it('buff speedMult raises air top speed', async () => {
+    const vx = await airTopSpeed(p =>
+      p.setBuffModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 }));
+    expectCeiling(vx, PLAYER_SPEED * 1.3);
+  });
+
+  it('carry and buff speedMult stack multiplicatively in the air', async () => {
+    const vx = await airTopSpeed(p => {
+      p.setCarryModifiers({ speedMult: 1.2, jumpBonus: 0, extraAirJumps: 0 });
+      p.setBuffModifiers({ speedMult: 1.5, jumpBonus: 0, extraAirJumps: 0 });
+    });
+    expectCeiling(vx, PLAYER_SPEED * 1.2 * 1.5);
+  });
+
+  it('leaves air top speed at the base when no item is carried', async () => {
+    const vx = await airTopSpeed(() => {});
+    expectCeiling(vx, PLAYER_SPEED);
+  });
+
+  it('regains the boosted top speed after the player releases and re-presses', async () => {
+    // The reported symptom. A boost inherited from a ground jump survived only
+    // while input was held; one release decayed it away and re-pressing capped at
+    // the base speed, so the same jump with the same item ran ~20% slower for the
+    // rest of the airtime depending on whether the stick had been touched.
+    const { player, spy } = await makePlayer({ onGround: false });
+    player.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 });
+    (player as any).momentumX = PLAYER_SPEED * 1.3;
+
+    imState.tiltFactor = 0;                       // release for ~300ms
+    for (let i = 0; i < 19; i++) player.update(16);
+    expect(spy.setVelocityX[spy.setVelocityX.length - 1]).toBeLessThan(PLAYER_SPEED);
+
+    imState.tiltFactor = 1;                       // re-press and hold
+    for (let i = 0; i < 125; i++) player.update(16);
+    expectCeiling(spy.setVelocityX[spy.setVelocityX.length - 1], PLAYER_SPEED * 1.3);
+  });
+
+  it('does not sand down momentum that already exceeds the boosted ceiling', async () => {
+    // Dash exit and swipe-jump seed momentum above any walk speed and must decay
+    // naturally, not be clamped to it — the gate blocks acceleration, it is not a
+    // clamp. Holding input must never make an over-speed player slower.
+    const vx = await airTopSpeed(
+      p => p.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 }),
+      { seed: PLAYER_AIR_MAX_SPEED },
+    );
+    expect(vx).toBe(PLAYER_AIR_MAX_SPEED);
   });
 });
