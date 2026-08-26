@@ -2515,6 +2515,26 @@ describe('Player — wall-slide steering', () => {
     expect(vx).toBeLessThanOrEqual(WALL_LEAVE_NUDGE);
   });
 
+  it('does not cancel a dash fired while gripping a wall', async () => {
+    // updateDash zeroes momentumX and writes the burst velocity itself, and it runs
+    // BEFORE applyWallSlide. Deriving a press from that zeroed momentum and writing it
+    // would stamp 0 over the burst — the dash would die the frame it fired.
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: {
+        blocked: { left: true, right: false, down: false },
+        velocity: { x: 0, y: 200 },
+      },
+      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+    });
+    imState.dashJustFired = true;
+    imState.dashDir = 1; // away from the left-hand wall
+
+    const vx = stepFrame(player, spy);
+
+    expect(vx).toBe(PLAYER_DASH_VELOCITY);
+  });
+
   it('does not throttle a player steering away from the wall', async () => {
     // The press cap applies to the face only; leaving must stay responsive.
     const { player, spy } = await makeWallSlider('left');

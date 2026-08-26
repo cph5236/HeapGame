@@ -588,6 +588,12 @@ export class Player {
     if (!ctx.onGround && ctx.onWall && ctx.body.velocity.y > WALL_SLIDE_SPEED) {
       this.sprite.setVelocityY(WALL_SLIDE_SPEED);
 
+      // An active dash owns horizontal velocity outright: updateDash zeroes momentumX
+      // and writes the burst itself, and updateHorizontal early-returns for the whole
+      // duration. Deriving a press from that zeroed momentum would stamp 0 over the
+      // burst and kill the dash. Only the descent cap above applies while dashing.
+      if (this.dashActive > 0) return;
+
       // Steering is banked, not wiped. This runs after updateHorizontal, so zeroing
       // momentum here used to discard the air control built that same frame, leaving a
       // full-tilt slide worth one frame of force (~13px/s). Momentum now accumulates
