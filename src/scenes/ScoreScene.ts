@@ -4,6 +4,7 @@ import { AudioManager } from '../systems/AudioManager';
 import { AdClient } from '../systems/ads/AdClient';
 import { adsAvailable } from '../systems/ads/adsAvailable';
 import * as AdCadence from '../systems/ads/AdCadence';
+import { createAdGate } from './adGate';
 import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N, PLAYER_HEIGHT, PLAYER_WIDTH } from '../constants';
 import {
   addBalance,
@@ -95,6 +96,10 @@ export class ScoreScene extends Phaser.Scene {
   private _isAdRun:        boolean = false;
   private _rewardedWatched: boolean = false;
 
+  /** Holds every exit from this scene until the interstitial has been closed —
+   *  see adGate.ts. Rebuilt per run in init(); Phaser reuses scene instances. */
+  private _leave = createAdGate(() => AdClient.showInterstitial());
+
   private _coinsPanelObjects:  Phaser.GameObjects.GameObject[] = [];
   private _leaderboardObjects: Phaser.GameObjects.GameObject[] = [];
   private _coinsPanelBottom:   number = 0;
@@ -154,6 +159,7 @@ export class ScoreScene extends Phaser.Scene {
     this._breakdownObjects = [];
     this._isAdRun          = false;
     this._rewardedWatched  = false;
+    this._leave            = createAdGate(() => AdClient.showInterstitial());
     this._coinsPanelObjects  = [];
     this._leaderboardObjects = [];
     this._coinsPanelBottom   = 0;
@@ -837,10 +843,13 @@ export class ScoreScene extends Phaser.Scene {
         const infinite = this._heapParams.isInfinite;
         const key      = infinite ? 'InfiniteGameScene' : 'GameScene';
         this.commitCoins();
-        if (this._isAdRun && !this._rewardedWatched) AdClient.showInterstitial();
-        this.scene.stop('ScoreScene');
-        this.scene.stop(key);
-        this.scene.start(key);   // fresh run, no checkpoint
+        // Gated: starting the run here rather than after the ad closes booted
+        // the next game (audibly) behind the interstitial.
+        void this._leave(this._isAdRun && !this._rewardedWatched, () => {
+          this.scene.stop('ScoreScene');
+          this.scene.stop(key);
+          this.scene.start(key);   // fresh run, no checkpoint
+        });
       });
     });
   }
@@ -866,9 +875,13 @@ export class ScoreScene extends Phaser.Scene {
       btn.setInteractive({ useHandCursor: true });
       btn.once('pointerup', () => {
         this.commitCoins();
-        this.scene.stop('ScoreScene');
-        this.scene.stop('GameScene');
-        this.scene.start('GameScene', { useCheckpoint: true });
+        // Checkpoint respawns show no ad, but still go through the gate so they
+        // cannot race a PLAY AGAIN whose interstitial is still up.
+        void this._leave(false, () => {
+          this.scene.stop('ScoreScene');
+          this.scene.stop('GameScene');
+          this.scene.start('GameScene', { useCheckpoint: true });
+        });
       });
     });
   }
@@ -1199,12 +1212,13 @@ export class ScoreScene extends Phaser.Scene {
 
     const goMenu = () => {
       this.commitCoins();
-      if (this._isAdRun && !this._rewardedWatched) AdClient.showInterstitial();
-      this.scene.stop(this._heapParams.isInfinite ? 'InfiniteGameScene' : 'GameScene');
-      // Cue for the browser page chrome's install prompt; no-op in the Android
-      // WebView and inside the itch.io frame. See web/pageChrome.ts.
-      notifyRunFinished();
-      this.scene.start('MenuScene');
+      void this._leave(this._isAdRun && !this._rewardedWatched, () => {
+        this.scene.stop(this._heapParams.isInfinite ? 'InfiniteGameScene' : 'GameScene');
+        // Cue for the browser page chrome's install prompt; no-op in the Android
+        // WebView and inside the itch.io frame. See web/pageChrome.ts.
+        notifyRunFinished();
+        this.scene.start('MenuScene');
+      });
     };
 
     this.time.delayedCall(1500, () => {

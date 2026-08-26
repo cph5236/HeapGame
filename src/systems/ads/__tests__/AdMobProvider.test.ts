@@ -20,6 +20,9 @@ const { admob, warn } = vi.hoisted(() => ({
 vi.mock('@capacitor-community/admob', () => ({
   AdMob: admob,
   RewardAdPluginEvents: { Rewarded: 'rewarded', Dismissed: 'dismissed' },
+  InterstitialAdPluginEvents: {
+    Dismissed: 'interstitialDismissed', FailedToShow: 'interstitialFailedToShow',
+  },
   AdmobConsentStatus: {
     NOT_REQUIRED: 'NOT_REQUIRED', OBTAINED: 'OBTAINED',
     REQUIRED: 'REQUIRED', UNKNOWN: 'UNKNOWN',
@@ -30,7 +33,7 @@ vi.mock('@capacitor-community/admob', () => ({
 }));
 vi.mock('../../../logging', () => ({ getLogger: () => ({ warn }) }));
 
-import { AdMobProvider } from '../AdMobProvider';
+import { AdMobProvider, INTERSTITIAL_WAIT_CEILING_MS } from '../AdMobProvider';
 
 const warnedMessages = (): string[] => warn.mock.calls.map(c => c[0] as string);
 
@@ -48,6 +51,11 @@ let handlers: Record<string, () => void> = {};
 
 /** showRewarded resolves only once Dismissed fires, mirroring the real SDK. */
 const awaitListeners = () => vi.waitFor(() => expect(handlers.dismissed).toBeTypeOf('function'));
+
+/** Same for showInterstitial: the native show() call returns as soon as the ad
+ *  is on screen, so the provider has to wait on the dismissal event instead. */
+const awaitInterstitialListeners = () =>
+  vi.waitFor(() => expect(handlers.interstitialDismissed).toBeTypeOf('function'));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -152,6 +160,85 @@ describe('AdMobProvider rewarded outcome', () => {
     await awaitListeners();
     handlers.dismissed();
     await expect(pending).resolves.toBe(false);
+  });
+});
+
+describe('AdMobProvider interstitial lifetime', () => {
+  // The player tapping PLAY AGAIN restarts the run the moment this resolves, so
+  // resolving at display time boots the next run underneath the ad — the game
+  // was audible behind the interstitial. Native show() resolves on display
+  // (AdInterstitialExecutor calls show() then call.resolve()), so the provider
+  // must wait for the dismissal event itself.
+  it('stays pending while the interstitial is on screen', async () => {
+    const provider = await readyProvider();
+    let settled = false;
+    const pending = provider.showInterstitial().then(() => { settled = true; });
+
+    await awaitInterstitialListeners();
+    expect(settled).toBe(false);
+
+    handlers.interstitialDismissed();
+    await pending;
+    expect(settled).toBe(true);
+  });
+
+  it('resolves when the interstitial fails to show', async () => {
+    const provider = await readyProvider();
+    const pending = provider.showInterstitial();
+
+    await awaitInterstitialListeners();
+    handlers.interstitialFailedToShow();
+
+    await expect(pending).resolves.toBeUndefined();
+  });
+
+  it('preloads the next interstitial only after dismissal', async () => {
+    const provider = await readyProvider();
+    const pending = provider.showInterstitial();
+
+    await awaitInterstitialListeners();
+    expect(admob.prepareInterstitial).not.toHaveBeenCalled();
+
+    handlers.interstitialDismissed();
+    await pending;
+    expect(admob.prepareInterstitial).toHaveBeenCalled();
+  });
+
+  it('removes its listeners once the interstitial closes', async () => {
+    const removals: Array<ReturnType<typeof vi.fn>> = [];
+    admob.addListener.mockImplementation((event: string, cb: () => void) => {
+      handlers[event] = cb;
+      const remove = vi.fn().mockResolvedValue(undefined);
+      removals.push(remove);
+      return Promise.resolve({ remove });
+    });
+
+    const provider = await readyProvider();
+    const pending = provider.showInterstitial();
+    await awaitInterstitialListeners();
+    handlers.interstitialDismissed();
+    await pending;
+
+    await vi.waitFor(() => {
+      expect(removals).toHaveLength(2);
+      for (const remove of removals) expect(remove).toHaveBeenCalled();
+    });
+  });
+
+  it('resolves on its own if no dismissal event ever arrives', async () => {
+    // Belt and braces: a swallowed event must not strand the player on the
+    // score screen with no way to start the next run.
+    const provider = await readyProvider();
+
+    // Fake timers must be in place before the ceiling is scheduled.
+    vi.useFakeTimers();
+    try {
+      const pending = provider.showInterstitial();
+      await vi.advanceTimersByTimeAsync(INTERSTITIAL_WAIT_CEILING_MS);
+      await expect(pending).resolves.toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

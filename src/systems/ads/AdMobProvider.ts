@@ -3,6 +3,7 @@ import {
   AdOptions,
   RewardAdOptions,
   RewardAdPluginEvents,
+  InterstitialAdPluginEvents,
   AdmobConsentStatus,
 } from '@capacitor-community/admob';
 import type { AdmobConsentInfo } from '@capacitor-community/admob';
@@ -14,6 +15,11 @@ import { getLogger } from '../../logging';
  *  does not re-export it, so it cannot be imported from the package entrypoint.
  *  Compare against the enum's string value rather than reaching into dist/. */
 const PRIVACY_OPTIONS_REQUIRED = 'REQUIRED';
+
+/** How long showInterstitial will wait on a dismissal event before giving up.
+ *  Callers gate a scene transition on it, so a swallowed event must never
+ *  strand the player: past this ceiling we let the game continue regardless. */
+export const INTERSTITIAL_WAIT_CEILING_MS = 60_000;
 
 function reason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -114,16 +120,45 @@ export class AdMobProvider implements AdProvider {
     }
   }
 
+  /**
+   * Resolves once the interstitial is **gone**, not once it is on screen.
+   *
+   * The native call resolves the moment `interstitialAd.show()` returns, so
+   * awaiting it still hands control back while the ad is displayed — which is
+   * how the next run used to boot (audibly) underneath the ad. Dismissal is
+   * only observable through the plugin's event, so wait on that instead,
+   * mirroring the rewarded flow below.
+   */
   async showInterstitial(): Promise<void> {
     if (!this._canRequestAds) return;
 
-    try {
-      await AdMob.showInterstitial();
-      this._preloadInterstitial(); // reload for next run
-    } catch (err) {
-      // Most often "not prepared" — the boot-time preload never landed.
-      warn('ads: showInterstitial failed', { adId: this._interstitialId, reason: reason(err) });
-    }
+    const closed = new Promise<void>((resolve) => {
+      let done = false;
+
+      const dismissedHandle = AdMob.addListener(InterstitialAdPluginEvents.Dismissed, () => finish());
+      // A broken ad never dismisses, so treat "failed to show" as closed too.
+      const failedHandle    = AdMob.addListener(InterstitialAdPluginEvents.FailedToShow, () => finish());
+      const ceiling = setTimeout(finish, INTERSTITIAL_WAIT_CEILING_MS);
+
+      function finish(): void {
+        if (done) return;
+        done = true;
+        clearTimeout(ceiling);
+        Promise.all([dismissedHandle, failedHandle])
+          .then(([dh, fh]) => Promise.all([dh.remove(), fh.remove()]))
+          .catch(() => { /* listener teardown is best-effort */ });
+        resolve();
+      }
+
+      AdMob.showInterstitial().catch((err) => {
+        // Most often "not prepared" — the boot-time preload never landed.
+        warn('ads: showInterstitial failed', { adId: this._interstitialId, reason: reason(err) });
+        finish();
+      });
+    });
+
+    await closed;
+    this._preloadInterstitial(); // reload for next run
   }
 
   async showRewarded(): Promise<boolean> {
