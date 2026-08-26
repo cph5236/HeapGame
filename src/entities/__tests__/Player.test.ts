@@ -2506,6 +2506,21 @@ describe('Player — wall-slide steering', () => {
     expect(vx).toBe(-PLAYER_SPEED * 1.3);
   });
 
+  it('does not let placement mode throttle wall-slide banking', async () => {
+    // Same coupling on the wall path: tapping the hotbar while gripping a face
+    // must not cut the banked exit speed to a fifth.
+    const { player, sprite, spy } = await makeWallSlider('left');
+    player.setPlacementMode(true);
+    imState.tiltFactor = -1;
+
+    for (let i = 0; i < 40; i++) stepFrame(player, spy);
+
+    sprite.body.blocked.left = false;
+    const vx = stepFrame(player, spy);
+
+    expect(vx).toBe(-PLAYER_SPEED);
+  });
+
   it('never drives more than the press cap into the face while gripping', async () => {
     // Banked momentum must not be spent burying the body in a sloped slab.
     const { player, spy } = await makeWallSlider('left');
@@ -2635,6 +2650,15 @@ describe('Player — speedMult airborne', () => {
     imState.tiltFactor = 1;                       // re-press and hold
     for (let i = 0; i < 125; i++) player.update(16);
     expectCeiling(spy.setVelocityX[spy.setVelocityX.length - 1], PLAYER_SPEED * 1.3);
+  });
+
+  it('does not let placement mode throttle airborne steering', async () => {
+    // PLACEMENT_MOVE_SPEED is a careful-positioning crawl for the GROUND branch.
+    // The hotbar has no grounded gate (PlaceableManager.openHotbar / selectItem),
+    // so it can be opened mid-air; folding placement into the air ceiling would
+    // drop steering to 50px/s the instant a player taps an item while falling.
+    const vx = await airTopSpeed(p => p.setPlacementMode(true));
+    expectCeiling(vx, PLAYER_SPEED);
   });
 
   it('does not sand down momentum that already exceeds the boosted ceiling', async () => {

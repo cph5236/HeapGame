@@ -180,11 +180,19 @@ export class Player {
    *  buff speed multipliers folded in. A single choke point, like jumpVelocity:
    *  this used to be a local inside updateHorizontal's grounded branch, so every
    *  other consumer silently gated on the bare PLAYER_SPEED constant and speed
-   *  items had no effect in the air or on a wall. */
+   *  items had no effect in the air or on a wall.
+   *
+   *  Deliberately excludes the placement-mode crawl. PLACEMENT_MOVE_SPEED is a
+   *  careful-positioning speed for walking a ghost into place, and it has only
+   *  ever applied to the grounded branch — the hotbar has no grounded gate, so
+   *  folding it in here would throttle air control and wall-slide banking the
+   *  instant a player taps an item mid-fall. On a wall it did worse than throttle:
+   *  50px/s banks below WALL_LEAVE_NUDGE, so the leave nudge's floor reversed the
+   *  player outward at the alcove mouth — the exact push-off-the-wall feel #162
+   *  removed. This getter answers "how fast may this player move", not "what UI
+   *  mode are they in"; callers that care about the latter branch themselves. */
   private get moveSpeed(): number {
-    return this.placementMode
-      ? PLACEMENT_MOVE_SPEED
-      : PLAYER_SPEED * this.carrySpeedMult * this.buffSpeedMult;
+    return PLAYER_SPEED * this.carrySpeedMult * this.buffSpeedMult;
   }
 
   /** Max air jumps including extras granted by carried salvage. */
@@ -435,19 +443,21 @@ export class Player {
 
     if (this.dashActive !== 0) return; // active dash protects horizontal velocity
 
-    const moveSpeed = this.moveSpeed;
+    // Placement mode crawls on the ground only; airborne control below keeps the
+    // player's real top speed (see the moveSpeed getter).
+    const walkSpeed = this.placementMode ? PLACEMENT_MOVE_SPEED : this.moveSpeed;
 
     if (ctx.onGround) {
       // Ground: direct velocity control
       this.momentumX = 0;
       if (keyboardLeft) {
-        this.sprite.setVelocityX(-moveSpeed);
+        this.sprite.setVelocityX(-walkSpeed);
         this.sprite.setFlipX(true);
       } else if (keyboardRight) {
-        this.sprite.setVelocityX(moveSpeed);
+        this.sprite.setVelocityX(walkSpeed);
         this.sprite.setFlipX(false);
       } else {
-        const tiltVx = im.tiltFactor * moveSpeed;
+        const tiltVx = im.tiltFactor * walkSpeed;
         this.sprite.setVelocityX(tiltVx);
         if (tiltVx < 0) this.sprite.setFlipX(true);
         else if (tiltVx > 0) this.sprite.setFlipX(false);
@@ -467,7 +477,7 @@ export class Player {
         // A gate, deliberately, not a clamp: higher speeds (from dash or
         // swipe-jump) legitimately exceed moveSpeed and must decay naturally
         // rather than be sanded down to walk speed the moment input is held.
-        if (opposing || Math.abs(this.momentumX) < moveSpeed) {
+        if (opposing || Math.abs(this.momentumX) < this.moveSpeed) {
           this.momentumX += opposing ? force * MOMENTUM_STOP_ADV_FACTOR : force;
         }
       } else {
