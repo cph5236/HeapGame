@@ -33,6 +33,7 @@ import {
   PLAYER_DASH_VELOCITY,
   PLAYER_AIR_MAX_SPEED,
   AIR_TILT_FORCE,
+  LADDER_CLIMB_FACTOR,
   WORLD_WIDTH,
   SKY_PAD,
   INFINITE_WORLD_WIDTH,
@@ -631,6 +632,41 @@ describe('Player — ladder drag', () => {
 
     const lastVy = spy.setVelocityY[spy.setVelocityY.length - 1];
     expect(lastVy).toBeGreaterThan(0); // positive = down
+  });
+
+  it('a speed item makes the player climb faster', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    player.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 });
+    player.enterLadder();
+    imState.dragUp = true;
+
+    player.update(16);
+
+    const lastVy = spy.setVelocityY[spy.setVelocityY.length - 1];
+    expect(lastVy).toBeCloseTo(-PLAYER_SPEED * LADDER_CLIMB_FACTOR * 1.3, 5);
+  });
+
+  it('a heavy item makes the player climb slower', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    player.setCarryModifiers({ speedMult: 0.75, jumpBonus: 0, extraAirJumps: 0 });
+    player.enterLadder();
+    imState.dragDown = true;
+
+    player.update(16);
+
+    const lastVy = spy.setVelocityY[spy.setVelocityY.length - 1];
+    expect(lastVy).toBeCloseTo(PLAYER_SPEED * LADDER_CLIMB_FACTOR * 0.75, 5);
+  });
+
+  it('climbs at the plain factor with no items carried', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    player.enterLadder();
+    imState.dragUp = true;
+
+    player.update(16);
+
+    const lastVy = spy.setVelocityY[spy.setVelocityY.length - 1];
+    expect(lastVy).toBeCloseTo(-PLAYER_SPEED * LADDER_CLIMB_FACTOR, 5);
   });
 
   it('no drag input while on ladder keeps player stationary (vy=0)', async () => {

@@ -105,6 +105,10 @@ export const CEILING_DEFLECT_MIN_SLOPE_DEG = 15;  // below this the ceiling dead
 
 export const TERRAIN_STICK_SPEED      = 300;  // px/s downward velocity applied while grounded — 300/60fps=5px/frame > 4px SCAN_STEP, bridges slab gaps in ≤1 frame
 export const PLACEMENT_MOVE_SPEED     = 50;   // px/s max horizontal speed while placing an item
+// Ladders are climbed slower than the player walks. Scales with the same carry/buff
+// speed multipliers as ground and air movement (see Player.moveSpeed), so a speed
+// item shortens a climb and a heavy one drags it out.
+export const LADDER_CLIMB_FACTOR      = 0.65; // fraction of moveSpeed used to climb
 
 // ── Air momentum ───────────────────────────────────────────────────────────────
 export const AIR_TILT_FORCE           = 0.8;  // px/s added per ms at full tilt — reach PLAYER_SPEED in ~250ms

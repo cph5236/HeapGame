@@ -23,6 +23,7 @@ import {
   MOMENTUM_STOP_ADV_FACTOR,
   TERRAIN_STICK_SPEED,
   PLACEMENT_MOVE_SPEED,
+  LADDER_CLIMB_FACTOR,
   WORLD_GRAVITY_Y,
   JUMP_BUFFER_MS,
   JUMP_CUT_FACTOR,
@@ -329,7 +330,11 @@ export class Player {
     const goUp   = this.jumpKeys.some(k => k.isDown)  || im.jumpJustPressed || im.dragUp;
     const goDown = this.downKeys.some(k => k.isDown) || im.dragDown;
     this.sprite.setVelocityX(0);
-    this.sprite.setVelocityY(goUp ? -PLAYER_SPEED * 0.65 : goDown ? PLAYER_SPEED * 0.65 : 0);
+    // Climb rate tracks moveSpeed, so carried speed items shorten a climb the same
+    // way they raise ground and air speed. Placement mode is deliberately not folded
+    // in here (see the moveSpeed getter).
+    const climbSpeed = this.moveSpeed * LADDER_CLIMB_FACTOR;
+    this.sprite.setVelocityY(goUp ? -climbSpeed : goDown ? climbSpeed : 0);
     // Ladder counts as grounded: keep jump charges full and coyote window fresh
     this.airJumpsRemaining  = this.effectiveMaxAirJumps;
     this.wallJumpCooldown   = 0;
