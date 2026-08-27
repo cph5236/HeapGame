@@ -1,3 +1,11 @@
-The dash now has its own hand-drawn animation instead of a stretched bag.
+Heap has a new app icon.
 
-Google Play Games sign-in now finishes before the main menu opens, so your scores and Daily Drop streak always save to your signed-in account instead of being stranded on a separate one.
+Speed items now boost you in the air, on wall slides and on ladders, not just on the ground.
+
+Steering along a wall now builds up, so pushing toward an opening actually carries you into it.
+
+Bonking your head on a slope now glances you off to the side instead of stopping you dead.
+
+Tapping Play Again after an ad no longer starts your run behind the ad.
+
+Players in Europe, the UK and Switzerland can manage ad data choices under Privacy options in Settings.
