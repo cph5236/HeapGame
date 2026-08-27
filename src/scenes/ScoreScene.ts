@@ -789,6 +789,12 @@ export class ScoreScene extends Phaser.Scene {
     return labels[type] ?? type;
   }
 
+  /**
+   * One-shot, and it reads `_multiplier` at call time — so it must only run as
+   * part of an accepted exit. Called at tap time instead, an exit the gate
+   * refuses (a rewarded ad is still in flight) would bank the coins at 1x while
+   * that ad goes on to award, and render, a 2x total the player never receives.
+   */
   private commitCoins(): void {
     if (this._coinsCommitted) return;
     this._coinsCommitted = true;
@@ -844,10 +850,11 @@ export class ScoreScene extends Phaser.Scene {
       btn.on('pointerup', () => {
         const infinite = this._heapParams.isInfinite;
         const key      = infinite ? 'InfiniteGameScene' : 'GameScene';
-        this.commitCoins();
         // Gated: starting the run here rather than after the ad closes booted
-        // the next game (audibly) behind the interstitial.
+        // the next game (audibly) behind the interstitial. Coins are committed
+        // inside the transition, not at tap time — see commitCoins().
         void this._adGate.leave(this._isAdRun && !this._rewardedWatched, () => {
+          this.commitCoins();
           this.scene.stop('ScoreScene');
           this.scene.stop(key);
           this.scene.start(key);   // fresh run, no checkpoint
@@ -876,10 +883,10 @@ export class ScoreScene extends Phaser.Scene {
     this.time.delayedCall(1500, () => {
       btn.setInteractive({ useHandCursor: true });
       btn.on('pointerup', () => {
-        this.commitCoins();
         // Checkpoint respawns show no ad, but still go through the gate so they
         // cannot race a PLAY AGAIN whose interstitial is still up.
         void this._adGate.leave(false, () => {
+          this.commitCoins();
           this.scene.stop('ScoreScene');
           this.scene.stop('GameScene');
           this.scene.start('GameScene', { useCheckpoint: true });
@@ -1219,8 +1226,8 @@ export class ScoreScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0.4);
 
     const goMenu = () => {
-      this.commitCoins();
       void this._adGate.leave(this._isAdRun && !this._rewardedWatched, () => {
+        this.commitCoins();
         this.scene.stop(this._heapParams.isInfinite ? 'InfiniteGameScene' : 'GameScene');
         // Cue for the browser page chrome's install prompt; no-op in the Android
         // WebView and inside the itch.io frame. See web/pageChrome.ts.
