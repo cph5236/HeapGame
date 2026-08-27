@@ -76,22 +76,34 @@ describe('wallSlidePressVelocity', () => {
 // outwardDir points away from the wall the player just left.
 describe('applyWallLeaveNudge', () => {
   it('nudges a player who left the wall carrying nothing', () => {
-    expect(applyWallLeaveNudge(0, 1)).toBe(WALL_LEAVE_NUDGE);
+    expect(applyWallLeaveNudge(0, 1, PLAYER_SPEED)).toBe(WALL_LEAVE_NUDGE);
   });
 
   it('nudges away from a wall on the right', () => {
-    expect(applyWallLeaveNudge(0, -1)).toBe(-WALL_LEAVE_NUDGE);
+    expect(applyWallLeaveNudge(0, -1, PLAYER_SPEED)).toBe(-WALL_LEAVE_NUDGE);
   });
 
   it('preserves an inward steer, so an alcove entry is not clobbered on exit', () => {
-    expect(applyWallLeaveNudge(-200, 1)).toBe(-200);
+    expect(applyWallLeaveNudge(-200, 1, PLAYER_SPEED)).toBe(-200);
   });
 
   it('preserves outward momentum faster than the nudge', () => {
-    expect(applyWallLeaveNudge(300, 1)).toBe(300);
+    expect(applyWallLeaveNudge(300, 1, PLAYER_SPEED)).toBe(300);
+  });
+
+  it('never nudges harder than a slowed player can move', () => {
+    // Stacked slow salvage drags moveSpeed under the nudge. A fixed 80px/s floor
+    // would then be unclearable by air control, so every exit reversed the player.
+    const crawling = PLAYER_SPEED * 0.25; // 62.5px/s, below the 80px/s nudge
+    expect(applyWallLeaveNudge(0, 1, crawling)).toBe(crawling);
+  });
+
+  it('lets a slowed player keep a steer that matches their own top speed', () => {
+    const crawling = PLAYER_SPEED * 0.25;
+    expect(applyWallLeaveNudge(-crawling, 1, crawling)).toBe(-crawling);
   });
 
   it('overrides a steer too weak to be deliberate', () => {
-    expect(applyWallLeaveNudge(-40, 1)).toBe(WALL_LEAVE_NUDGE);
+    expect(applyWallLeaveNudge(-40, 1, PLAYER_SPEED)).toBe(WALL_LEAVE_NUDGE);
   });
 });

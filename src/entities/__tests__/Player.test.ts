@@ -2557,6 +2557,24 @@ describe('Player — wall-slide steering', () => {
     expect(vx).toBe(-PLAYER_SPEED);
   });
 
+  it('does not reverse a heavily slowed player off the wall', async () => {
+    // Salvage stacks multiplicatively and PickupManager.grab caps nothing and
+    // dedups nothing, so enough slow items drag moveSpeed under WALL_LEAVE_NUDGE.
+    // Banking below the nudge floor means applyWallLeaveNudge fires every time and
+    // flips the player outward — the push-off-the-wall feel #162 removed, reached
+    // through carried items instead of placement mode.
+    const { player, sprite, spy } = await makeWallSlider('left');
+    player.setCarryModifiers({ speedMult: 0.25, jumpBonus: 0, extraAirJumps: 0 });
+    imState.tiltFactor = -1; // steering INTO the wall, toward the alcove
+
+    for (let i = 0; i < 40; i++) stepFrame(player, spy);
+
+    sprite.body.blocked.left = false;
+    const vx = stepFrame(player, spy);
+
+    expect(vx).toBeLessThan(0); // still heading into the alcove, not shoved out
+  });
+
   it('never drives more than the press cap into the face while gripping', async () => {
     // Banked momentum must not be spent burying the body in a sloped slab.
     const { player, spy } = await makeWallSlider('left');

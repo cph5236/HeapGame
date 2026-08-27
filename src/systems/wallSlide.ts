@@ -76,12 +76,30 @@ export function wallSlidePressVelocity(momentumX: number, inwardDir: -1 | 1): nu
  * It is now a floor. Any momentum worth more than the nudge, in either direction,
  * is the player's decision and survives.
  *
+ * The nudge is never larger than the player's own top speed. Air control cannot
+ * accelerate past Player.moveSpeed, so a fixed 80px/s floor becomes unclearable
+ * once carried items drag moveSpeed beneath it — five or so slow salvage items,
+ * which stack multiplicatively with neither a carry cap nor dedup in
+ * PickupManager.grab. Inward steering then never counts as deliberate, and the
+ * nudge reverses the player outward on every exit: the push-off-the-wall feel this
+ * module exists to remove. Scaling with moveSpeed keeps the "too weak to be
+ * deliberate" threshold meaningful at any speed, and nobody is ever shoved off a
+ * wall faster than they could walk. Capping the bank ceiling instead does nothing —
+ * momentum never reaches that ceiling to be capped by it.
+ *
  * @param momentumX   momentum carried off the wall; negative is leftward
  * @param outwardDir  away from the wall just left: +1 having left a wall on the left
+ * @param maxSpeed    player's top speed under their own power — Player.moveSpeed
  * @returns the momentum to apply
  */
-export function applyWallLeaveNudge(momentumX: number, outwardDir: -1 | 1): number {
-  if (Math.abs(momentumX) >= WALL_LEAVE_NUDGE) return momentumX;
+export function applyWallLeaveNudge(
+  momentumX: number,
+  outwardDir: -1 | 1,
+  maxSpeed: number,
+): number {
+  const nudge = Math.min(WALL_LEAVE_NUDGE, maxSpeed);
 
-  return outwardDir * WALL_LEAVE_NUDGE;
+  if (Math.abs(momentumX) >= nudge) return momentumX;
+
+  return outwardDir * nudge;
 }

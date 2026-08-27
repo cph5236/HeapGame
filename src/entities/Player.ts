@@ -412,7 +412,7 @@ export class Player {
       // exactly when an alcove opens, and steering there must survive. See wallSlide.ts.
       if (this._prevOnWall) {
         const outwardDir: -1 | 1 = this.lastWallSide === -1 ? 1 : -1;
-        this.momentumX = applyWallLeaveNudge(this.momentumX, outwardDir);
+        this.momentumX = applyWallLeaveNudge(this.momentumX, outwardDir, this.moveSpeed);
       }
     }
     // Decay wall-jump cooldown every frame
