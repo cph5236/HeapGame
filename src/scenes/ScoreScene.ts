@@ -4,6 +4,7 @@ import { AudioManager } from '../systems/AudioManager';
 import { AdClient } from '../systems/ads/AdClient';
 import { adsAvailable } from '../systems/ads/adsAvailable';
 import * as AdCadence from '../systems/ads/AdCadence';
+import { createAdGate } from './adGate';
 import { SCORE_TO_COINS_DIVISOR, LEADERBOARD_TOP_N, PLAYER_HEIGHT, PLAYER_WIDTH } from '../constants';
 import {
   addBalance,
@@ -95,6 +96,10 @@ export class ScoreScene extends Phaser.Scene {
   private _isAdRun:        boolean = false;
   private _rewardedWatched: boolean = false;
 
+  /** Serialises the scene's ad requests and exits — see adGate.ts. Rebuilt per
+   *  run in init(); Phaser reuses scene instances. */
+  private _adGate = createAdGate(() => AdClient.showInterstitial());
+
   private _coinsPanelObjects:  Phaser.GameObjects.GameObject[] = [];
   private _leaderboardObjects: Phaser.GameObjects.GameObject[] = [];
   private _coinsPanelBottom:   number = 0;
@@ -154,6 +159,7 @@ export class ScoreScene extends Phaser.Scene {
     this._breakdownObjects = [];
     this._isAdRun          = false;
     this._rewardedWatched  = false;
+    this._adGate           = createAdGate(() => AdClient.showInterstitial());
     this._coinsPanelObjects  = [];
     this._leaderboardObjects = [];
     this._coinsPanelBottom   = 0;
@@ -783,6 +789,12 @@ export class ScoreScene extends Phaser.Scene {
     return labels[type] ?? type;
   }
 
+  /**
+   * One-shot, and it reads `_multiplier` at call time — so it must only run as
+   * part of an accepted exit. Called at tap time instead, an exit the gate
+   * refuses (a rewarded ad is still in flight) would bank the coins at 1x while
+   * that ad goes on to award, and render, a 2x total the player never receives.
+   */
   private commitCoins(): void {
     if (this._coinsCommitted) return;
     this._coinsCommitted = true;
@@ -833,14 +845,20 @@ export class ScoreScene extends Phaser.Scene {
     // an instant restart (mirrors the checkpoint button's guard).
     this.time.delayedCall(1500, () => {
       btn.setInteractive({ useHandCursor: true });
-      btn.once('pointerup', () => {
+      // `on`, not `once`: the gate can refuse a tap while a rewarded ad is
+      // loading, and a consumed handler would leave the button dead for good.
+      btn.on('pointerup', () => {
         const infinite = this._heapParams.isInfinite;
         const key      = infinite ? 'InfiniteGameScene' : 'GameScene';
-        this.commitCoins();
-        if (this._isAdRun && !this._rewardedWatched) AdClient.showInterstitial();
-        this.scene.stop('ScoreScene');
-        this.scene.stop(key);
-        this.scene.start(key);   // fresh run, no checkpoint
+        // Gated: starting the run here rather than after the ad closes booted
+        // the next game (audibly) behind the interstitial. Coins are committed
+        // inside the transition, not at tap time — see commitCoins().
+        void this._adGate.leave(this._isAdRun && !this._rewardedWatched, () => {
+          this.commitCoins();
+          this.scene.stop('ScoreScene');
+          this.scene.stop(key);
+          this.scene.start(key);   // fresh run, no checkpoint
+        });
       });
     });
   }
@@ -864,11 +882,15 @@ export class ScoreScene extends Phaser.Scene {
 
     this.time.delayedCall(1500, () => {
       btn.setInteractive({ useHandCursor: true });
-      btn.once('pointerup', () => {
-        this.commitCoins();
-        this.scene.stop('ScoreScene');
-        this.scene.stop('GameScene');
-        this.scene.start('GameScene', { useCheckpoint: true });
+      btn.on('pointerup', () => {
+        // Checkpoint respawns show no ad, but still go through the gate so they
+        // cannot race a PLAY AGAIN whose interstitial is still up.
+        void this._adGate.leave(false, () => {
+          this.commitCoins();
+          this.scene.stop('ScoreScene');
+          this.scene.stop('GameScene');
+          this.scene.start('GameScene', { useCheckpoint: true });
+        });
       });
     });
   }
@@ -908,7 +930,8 @@ export class ScoreScene extends Phaser.Scene {
     });
 
     btn.on('pointerup', async () => {
-      if (this._rewardedUsed) return;
+      // claim() second: a refused tap must leave the offer re-tappable.
+      if (this._rewardedUsed || !this._adGate.claim()) return;
       this._rewardedUsed = true;
       btn.disableInteractive();
 
@@ -935,7 +958,12 @@ export class ScoreScene extends Phaser.Scene {
         btn.setAlpha(1);
       };
 
-      const watched = await AdClient.showRewarded();
+      let watched = false;
+      try {
+        watched = await AdClient.showRewarded();
+      } finally {
+        this._adGate.release();   // the exits are usable again either way
+      }
       stopLoading();
       if (watched) {
         this._rewardedWatched = true;
@@ -1198,24 +1226,25 @@ export class ScoreScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0.4);
 
     const goMenu = () => {
-      this.commitCoins();
-      if (this._isAdRun && !this._rewardedWatched) AdClient.showInterstitial();
-      this.scene.stop(this._heapParams.isInfinite ? 'InfiniteGameScene' : 'GameScene');
-      // Cue for the browser page chrome's install prompt; no-op in the Android
-      // WebView and inside the itch.io frame. See web/pageChrome.ts.
-      notifyRunFinished();
-      this.scene.start('MenuScene');
+      void this._adGate.leave(this._isAdRun && !this._rewardedWatched, () => {
+        this.commitCoins();
+        this.scene.stop(this._heapParams.isInfinite ? 'InfiniteGameScene' : 'GameScene');
+        // Cue for the browser page chrome's install prompt; no-op in the Android
+        // WebView and inside the itch.io frame. See web/pageChrome.ts.
+        notifyRunFinished();
+        this.scene.start('MenuScene');
+      });
     };
 
     this.time.delayedCall(1500, () => {
-      this.input.keyboard!.once('keydown', goMenu);
+      this.input.keyboard!.on('keydown', goMenu);
       if (im.isMobile) {
         // Full-screen zone at depth -1 so existing buttons (depth 0) stay on top via topOnly.
         this.add.rectangle(
           logicalWidth(this) / 2, logicalHeight(this) / 2,
           logicalWidth(this), logicalHeight(this),
           0x000000, 0,
-        ).setDepth(-1).setInteractive().once('pointerup', goMenu);
+        ).setDepth(-1).setInteractive().on('pointerup', goMenu);
       }
     });
   }

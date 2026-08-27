@@ -3,6 +3,7 @@ import {
   AdOptions,
   RewardAdOptions,
   RewardAdPluginEvents,
+  InterstitialAdPluginEvents,
   AdmobConsentStatus,
 } from '@capacitor-community/admob';
 import type { AdmobConsentInfo } from '@capacitor-community/admob';
@@ -14,6 +15,16 @@ import { getLogger } from '../../logging';
  *  does not re-export it, so it cannot be imported from the package entrypoint.
  *  Compare against the enum's string value rather than reaching into dist/. */
 const PRIVACY_OPTIONS_REQUIRED = 'REQUIRED';
+
+/** How long showInterstitial will wait on a dismissal event before giving up.
+ *  Callers gate a scene transition on it, so a swallowed event must never
+ *  strand the player: past this ceiling we let the game continue regardless. */
+export const INTERSTITIAL_WAIT_CEILING_MS = 60_000;
+
+/** Same ceiling for the rewarded flow, but roomier: this one can cut short an
+ *  ad the player is actively watching, and the reward rides on it. Any reward
+ *  already earned is honoured when it trips. */
+export const REWARDED_WAIT_CEILING_MS = 120_000;
 
 function reason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -114,16 +125,50 @@ export class AdMobProvider implements AdProvider {
     }
   }
 
+  /**
+   * Resolves once the interstitial is **gone**, not once it is on screen.
+   *
+   * The native call resolves the moment `interstitialAd.show()` returns, so
+   * awaiting it still hands control back while the ad is displayed — which is
+   * how the next run used to boot (audibly) underneath the ad. Dismissal is
+   * only observable through the plugin's event, so wait on that instead,
+   * mirroring the rewarded flow below.
+   */
   async showInterstitial(): Promise<void> {
     if (!this._canRequestAds) return;
 
-    try {
-      await AdMob.showInterstitial();
-      this._preloadInterstitial(); // reload for next run
-    } catch (err) {
-      // Most often "not prepared" — the boot-time preload never landed.
-      warn('ads: showInterstitial failed', { adId: this._interstitialId, reason: reason(err) });
-    }
+    const closed = new Promise<void>((resolve) => {
+      let done = false;
+
+      const dismissedHandle = AdMob.addListener(InterstitialAdPluginEvents.Dismissed, () => finish());
+      // A broken ad never dismisses, so treat "failed to show" as closed too.
+      const failedHandle    = AdMob.addListener(InterstitialAdPluginEvents.FailedToShow, () => finish());
+      const ceiling = setTimeout(() => {
+        warn('ads: interstitial dismissal never arrived', {
+          adId: this._interstitialId, waitedMs: INTERSTITIAL_WAIT_CEILING_MS,
+        });
+        finish();
+      }, INTERSTITIAL_WAIT_CEILING_MS);
+
+      function finish(): void {
+        if (done) return;
+        done = true;
+        clearTimeout(ceiling);
+        Promise.all([dismissedHandle, failedHandle])
+          .then(([dh, fh]) => Promise.all([dh.remove(), fh.remove()]))
+          .catch(() => { /* listener teardown is best-effort */ });
+        resolve();
+      }
+
+      AdMob.showInterstitial().catch((err) => {
+        // Most often "not prepared" — the boot-time preload never landed.
+        warn('ads: showInterstitial failed', { adId: this._interstitialId, reason: reason(err) });
+        finish();
+      });
+    });
+
+    await closed;
+    this._preloadInterstitial(); // reload for next run
   }
 
   async showRewarded(): Promise<boolean> {
@@ -135,22 +180,36 @@ export class AdMobProvider implements AdProvider {
 
       return await new Promise<boolean>((resolve) => {
         let rewarded = false;
+        let done     = false;
 
         const rewardedHandle = AdMob.addListener(RewardAdPluginEvents.Rewarded, () => {
           rewarded = true;
         });
 
-        const dismissedHandle = AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
+        const dismissedHandle = AdMob.addListener(RewardAdPluginEvents.Dismissed, () => finish());
+
+        // Without this the button that awaits us stays on its loading animation
+        // forever if the native event is ever swallowed.
+        const ceiling = setTimeout(() => {
+          warn('ads: rewarded dismissal never arrived', {
+            adId: this._rewardedId, waitedMs: REWARDED_WAIT_CEILING_MS,
+          });
+          finish();
+        }, REWARDED_WAIT_CEILING_MS);
+
+        function finish(): void {
+          if (done) return;
+          done = true;
+          clearTimeout(ceiling);
           Promise.all([rewardedHandle, dismissedHandle])
-            .then(([rh, dh]) => Promise.all([rh.remove(), dh.remove()]));
-          resolve(rewarded);
-        });
+            .then(([rh, dh]) => Promise.all([rh.remove(), dh.remove()]))
+            .catch(() => { /* listener teardown is best-effort */ });
+          resolve(rewarded);   // a reward already earned still counts
+        }
 
         AdMob.showRewardVideoAd().catch((err) => {
           warn('ads: showRewarded show failed', { adId: this._rewardedId, reason: reason(err) });
-          Promise.all([rewardedHandle, dismissedHandle])
-            .then(([rh, dh]) => Promise.all([rh.remove(), dh.remove()]));
-          resolve(false);
+          finish();
         });
       });
     } catch (err) {

@@ -1,6 +1,9 @@
 export interface AdProvider {
   readonly enabled: boolean;
   initialize(): Promise<void>;
+  /** Shows an interstitial and resolves once it has been **closed**, so callers
+   *  can hold a scene transition until the player is back in the game. Resolves
+   *  immediately when no ad can be shown. */
   showInterstitial(): Promise<void>;
   showRewarded(): Promise<boolean>;
 
