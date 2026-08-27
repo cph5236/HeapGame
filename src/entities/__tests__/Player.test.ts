@@ -32,6 +32,8 @@ import {
   WALL_JUMP_PUSH,
   PLAYER_DASH_VELOCITY,
   PLAYER_AIR_MAX_SPEED,
+  AIR_TILT_FORCE,
+  LADDER_CLIMB_FACTOR,
   WORLD_WIDTH,
   SKY_PAD,
   INFINITE_WORLD_WIDTH,
@@ -630,6 +632,41 @@ describe('Player — ladder drag', () => {
 
     const lastVy = spy.setVelocityY[spy.setVelocityY.length - 1];
     expect(lastVy).toBeGreaterThan(0); // positive = down
+  });
+
+  it('a speed item makes the player climb faster', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    player.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 });
+    player.enterLadder();
+    imState.dragUp = true;
+
+    player.update(16);
+
+    const lastVy = spy.setVelocityY[spy.setVelocityY.length - 1];
+    expect(lastVy).toBeCloseTo(-PLAYER_SPEED * LADDER_CLIMB_FACTOR * 1.3, 5);
+  });
+
+  it('a heavy item makes the player climb slower', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    player.setCarryModifiers({ speedMult: 0.75, jumpBonus: 0, extraAirJumps: 0 });
+    player.enterLadder();
+    imState.dragDown = true;
+
+    player.update(16);
+
+    const lastVy = spy.setVelocityY[spy.setVelocityY.length - 1];
+    expect(lastVy).toBeCloseTo(PLAYER_SPEED * LADDER_CLIMB_FACTOR * 0.75, 5);
+  });
+
+  it('climbs at the plain factor with no items carried', async () => {
+    const { player, spy } = await makePlayer({ onGround: true });
+    player.enterLadder();
+    imState.dragUp = true;
+
+    player.update(16);
+
+    const lastVy = spy.setVelocityY[spy.setVelocityY.length - 1];
+    expect(lastVy).toBeCloseTo(-PLAYER_SPEED * LADDER_CLIMB_FACTOR, 5);
   });
 
   it('no drag input while on ladder keeps player stationary (vy=0)', async () => {
@@ -2489,6 +2526,55 @@ describe('Player — wall-slide steering', () => {
     expect(vx).toBe(-PLAYER_SPEED);
   });
 
+  it('carries the boosted inward speed when the player holds a speed item', async () => {
+    // A speed item raises what air control may build, so it must raise what the
+    // slide can bank too — otherwise the wall is the one place the item stops
+    // applying, and an alcove entry is no snappier for carrying it.
+    const { player, sprite, spy } = await makeWallSlider('left');
+    player.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 });
+    imState.tiltFactor = -1;
+
+    for (let i = 0; i < 40; i++) stepFrame(player, spy);
+
+    sprite.body.blocked.left = false;
+    const vx = stepFrame(player, spy);
+
+    expect(vx).toBe(-PLAYER_SPEED * 1.3);
+  });
+
+  it('does not let placement mode throttle wall-slide banking', async () => {
+    // Same coupling on the wall path: tapping the hotbar while gripping a face
+    // must not cut the banked exit speed to a fifth.
+    const { player, sprite, spy } = await makeWallSlider('left');
+    player.setPlacementMode(true);
+    imState.tiltFactor = -1;
+
+    for (let i = 0; i < 40; i++) stepFrame(player, spy);
+
+    sprite.body.blocked.left = false;
+    const vx = stepFrame(player, spy);
+
+    expect(vx).toBe(-PLAYER_SPEED);
+  });
+
+  it('does not reverse a heavily slowed player off the wall', async () => {
+    // Salvage stacks multiplicatively and PickupManager.grab caps nothing and
+    // dedups nothing, so enough slow items drag moveSpeed under WALL_LEAVE_NUDGE.
+    // Banking below the nudge floor means applyWallLeaveNudge fires every time and
+    // flips the player outward — the push-off-the-wall feel #162 removed, reached
+    // through carried items instead of placement mode.
+    const { player, sprite, spy } = await makeWallSlider('left');
+    player.setCarryModifiers({ speedMult: 0.25, jumpBonus: 0, extraAirJumps: 0 });
+    imState.tiltFactor = -1; // steering INTO the wall, toward the alcove
+
+    for (let i = 0; i < 40; i++) stepFrame(player, spy);
+
+    sprite.body.blocked.left = false;
+    const vx = stepFrame(player, spy);
+
+    expect(vx).toBeLessThan(0); // still heading into the alcove, not shoved out
+  });
+
   it('never drives more than the press cap into the face while gripping', async () => {
     // Banked momentum must not be spent burying the body in a sloped slab.
     const { player, spy } = await makeWallSlider('left');
@@ -2544,5 +2630,99 @@ describe('Player — wall-slide steering', () => {
     for (let i = 0; i < 20; i++) vx = stepFrame(player, spy);
 
     expect(vx).toBeGreaterThan(WALL_SLIDE_PRESS_SPEED * 2);
+  });
+});
+
+// ── Speed modifiers in the air ────────────────────────────────────────────────
+
+describe('Player — speedMult airborne', () => {
+  /** Hold full tilt long enough to saturate air control, and report the top speed
+   *  reached. Two seconds is far past any ramp (~400ms at the highest multiplier). */
+  async function airTopSpeed(
+    apply: (p: any) => void,
+    opts: { seed?: number } = {},
+  ): Promise<number> {
+    const { player, spy } = await makePlayer({ onGround: false });
+    apply(player);
+    if (opts.seed !== undefined) (player as any).momentumX = opts.seed;
+    imState.tiltFactor = 1;
+    for (let i = 0; i < 125; i++) player.update(16);
+    return spy.setVelocityX[spy.setVelocityX.length - 1];
+  }
+
+  /** The accel gate tests the ceiling BEFORE adding a frame's force, so momentum
+   *  settles within one frame's worth above it. Assert the band, not the artifact. */
+  function expectCeiling(actual: number, ceiling: number) {
+    expect(actual).toBeGreaterThanOrEqual(ceiling);
+    expect(actual).toBeLessThan(ceiling + AIR_TILT_FORCE * 16);
+  }
+
+  it('carry speedMult raises air top speed', async () => {
+    const vx = await airTopSpeed(p =>
+      p.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 }));
+    expectCeiling(vx, PLAYER_SPEED * 1.3);
+  });
+
+  it('a slowing carry item lowers air top speed', async () => {
+    const vx = await airTopSpeed(p =>
+      p.setCarryModifiers({ speedMult: 0.75, jumpBonus: 0, extraAirJumps: 0 }));
+    expectCeiling(vx, PLAYER_SPEED * 0.75);
+  });
+
+  it('buff speedMult raises air top speed', async () => {
+    const vx = await airTopSpeed(p =>
+      p.setBuffModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 }));
+    expectCeiling(vx, PLAYER_SPEED * 1.3);
+  });
+
+  it('carry and buff speedMult stack multiplicatively in the air', async () => {
+    const vx = await airTopSpeed(p => {
+      p.setCarryModifiers({ speedMult: 1.2, jumpBonus: 0, extraAirJumps: 0 });
+      p.setBuffModifiers({ speedMult: 1.5, jumpBonus: 0, extraAirJumps: 0 });
+    });
+    expectCeiling(vx, PLAYER_SPEED * 1.2 * 1.5);
+  });
+
+  it('leaves air top speed at the base when no item is carried', async () => {
+    const vx = await airTopSpeed(() => {});
+    expectCeiling(vx, PLAYER_SPEED);
+  });
+
+  it('regains the boosted top speed after the player releases and re-presses', async () => {
+    // The reported symptom. A boost inherited from a ground jump survived only
+    // while input was held; one release decayed it away and re-pressing capped at
+    // the base speed, so the same jump with the same item ran ~20% slower for the
+    // rest of the airtime depending on whether the stick had been touched.
+    const { player, spy } = await makePlayer({ onGround: false });
+    player.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 });
+    (player as any).momentumX = PLAYER_SPEED * 1.3;
+
+    imState.tiltFactor = 0;                       // release for ~300ms
+    for (let i = 0; i < 19; i++) player.update(16);
+    expect(spy.setVelocityX[spy.setVelocityX.length - 1]).toBeLessThan(PLAYER_SPEED);
+
+    imState.tiltFactor = 1;                       // re-press and hold
+    for (let i = 0; i < 125; i++) player.update(16);
+    expectCeiling(spy.setVelocityX[spy.setVelocityX.length - 1], PLAYER_SPEED * 1.3);
+  });
+
+  it('does not let placement mode throttle airborne steering', async () => {
+    // PLACEMENT_MOVE_SPEED is a careful-positioning crawl for the GROUND branch.
+    // The hotbar has no grounded gate (PlaceableManager.openHotbar / selectItem),
+    // so it can be opened mid-air; folding placement into the air ceiling would
+    // drop steering to 50px/s the instant a player taps an item while falling.
+    const vx = await airTopSpeed(p => p.setPlacementMode(true));
+    expectCeiling(vx, PLAYER_SPEED);
+  });
+
+  it('does not sand down momentum that already exceeds the boosted ceiling', async () => {
+    // Dash exit and swipe-jump seed momentum above any walk speed and must decay
+    // naturally, not be clamped to it — the gate blocks acceleration, it is not a
+    // clamp. Holding input must never make an over-speed player slower.
+    const vx = await airTopSpeed(
+      p => p.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 }),
+      { seed: PLAYER_AIR_MAX_SPEED },
+    );
+    expect(vx).toBe(PLAYER_AIR_MAX_SPEED);
   });
 });

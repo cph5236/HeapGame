@@ -23,6 +23,7 @@ import {
   MOMENTUM_STOP_ADV_FACTOR,
   TERRAIN_STICK_SPEED,
   PLACEMENT_MOVE_SPEED,
+  LADDER_CLIMB_FACTOR,
   WORLD_GRAVITY_Y,
   JUMP_BUFFER_MS,
   JUMP_CUT_FACTOR,
@@ -176,6 +177,25 @@ export class Player {
     return PLAYER_JUMP_VELOCITY - (this.jumpBoost + this.carryJumpBonus + this.buffJumpBonus);
   }
 
+  /** Top speed the player may reach under their own power, with carried-item and
+   *  buff speed multipliers folded in. A single choke point, like jumpVelocity:
+   *  this used to be a local inside updateHorizontal's grounded branch, so every
+   *  other consumer silently gated on the bare PLAYER_SPEED constant and speed
+   *  items had no effect in the air or on a wall.
+   *
+   *  Deliberately excludes the placement-mode crawl. PLACEMENT_MOVE_SPEED is a
+   *  careful-positioning speed for walking a ghost into place, and it has only
+   *  ever applied to the grounded branch — the hotbar has no grounded gate, so
+   *  folding it in here would throttle air control and wall-slide banking the
+   *  instant a player taps an item mid-fall. On a wall it did worse than throttle:
+   *  50px/s banks below WALL_LEAVE_NUDGE, so the leave nudge's floor reversed the
+   *  player outward at the alcove mouth — the exact push-off-the-wall feel #162
+   *  removed. This getter answers "how fast may this player move", not "what UI
+   *  mode are they in"; callers that care about the latter branch themselves. */
+  private get moveSpeed(): number {
+    return PLAYER_SPEED * this.carrySpeedMult * this.buffSpeedMult;
+  }
+
   /** Max air jumps including extras granted by carried salvage. */
   private get effectiveMaxAirJumps(): number {
     return this.maxAirJumps + this.carryExtraAirJumps + this.buffExtraAirJumps;
@@ -310,7 +330,11 @@ export class Player {
     const goUp   = this.jumpKeys.some(k => k.isDown)  || im.jumpJustPressed || im.dragUp;
     const goDown = this.downKeys.some(k => k.isDown) || im.dragDown;
     this.sprite.setVelocityX(0);
-    this.sprite.setVelocityY(goUp ? -PLAYER_SPEED * 0.65 : goDown ? PLAYER_SPEED * 0.65 : 0);
+    // Climb rate tracks moveSpeed, so carried speed items shorten a climb the same
+    // way they raise ground and air speed. Placement mode is deliberately not folded
+    // in here (see the moveSpeed getter).
+    const climbSpeed = this.moveSpeed * LADDER_CLIMB_FACTOR;
+    this.sprite.setVelocityY(goUp ? -climbSpeed : goDown ? climbSpeed : 0);
     // Ladder counts as grounded: keep jump charges full and coyote window fresh
     this.airJumpsRemaining  = this.effectiveMaxAirJumps;
     this.wallJumpCooldown   = 0;
@@ -388,7 +412,7 @@ export class Player {
       // exactly when an alcove opens, and steering there must survive. See wallSlide.ts.
       if (this._prevOnWall) {
         const outwardDir: -1 | 1 = this.lastWallSide === -1 ? 1 : -1;
-        this.momentumX = applyWallLeaveNudge(this.momentumX, outwardDir);
+        this.momentumX = applyWallLeaveNudge(this.momentumX, outwardDir, this.moveSpeed);
       }
     }
     // Decay wall-jump cooldown every frame
@@ -424,19 +448,21 @@ export class Player {
 
     if (this.dashActive !== 0) return; // active dash protects horizontal velocity
 
-    const moveSpeed = this.placementMode ? PLACEMENT_MOVE_SPEED : PLAYER_SPEED * this.carrySpeedMult * this.buffSpeedMult;
+    // Placement mode crawls on the ground only; airborne control below keeps the
+    // player's real top speed (see the moveSpeed getter).
+    const walkSpeed = this.placementMode ? PLACEMENT_MOVE_SPEED : this.moveSpeed;
 
     if (ctx.onGround) {
       // Ground: direct velocity control
       this.momentumX = 0;
       if (keyboardLeft) {
-        this.sprite.setVelocityX(-moveSpeed);
+        this.sprite.setVelocityX(-walkSpeed);
         this.sprite.setFlipX(true);
       } else if (keyboardRight) {
-        this.sprite.setVelocityX(moveSpeed);
+        this.sprite.setVelocityX(walkSpeed);
         this.sprite.setFlipX(false);
       } else {
-        const tiltVx = im.tiltFactor * moveSpeed;
+        const tiltVx = im.tiltFactor * walkSpeed;
         this.sprite.setVelocityX(tiltVx);
         if (tiltVx < 0) this.sprite.setFlipX(true);
         else if (tiltVx > 0) this.sprite.setFlipX(false);
@@ -447,9 +473,16 @@ export class Player {
       if (Math.abs(inputDir) > 0.01) {
         const force = inputDir * AIR_TILT_FORCE * delta;
         const opposing = this.momentumX !== 0 && Math.sign(force) !== Math.sign(this.momentumX);
-        // Input can decelerate freely, but can only accelerate up to PLAYER_SPEED;
-        // higher speeds (from dash or swipe-jump) must decay naturally.
-        if (opposing || Math.abs(this.momentumX) < PLAYER_SPEED) {
+        // Input can decelerate freely, but can only accelerate up to moveSpeed —
+        // the same boosted walk speed the ground branch uses, so a speed item
+        // raises air top speed too and a heavy one genuinely slows it. Gating on
+        // the bare PLAYER_SPEED constant made the lever inert airborne: every
+        // multiplier settled at the same ~250, and a boost inherited from a
+        // ground jump could never be regained once the player let go of the stick.
+        // A gate, deliberately, not a clamp: higher speeds (from dash or
+        // swipe-jump) legitimately exceed moveSpeed and must decay naturally
+        // rather than be sanded down to walk speed the moment input is held.
+        if (opposing || Math.abs(this.momentumX) < this.moveSpeed) {
           this.momentumX += opposing ? force * MOMENTUM_STOP_ADV_FACTOR : force;
         }
       } else {
@@ -601,7 +634,7 @@ export class Player {
       // fraction is driven at the wall itself, enough to hold contact without burying
       // the body in a sloped slab. See wallSlide.ts.
       const inwardDir: -1 | 1 = ctx.body.blocked.left ? -1 : 1;
-      this.momentumX = bankWallSlideMomentum(this.momentumX, inwardDir);
+      this.momentumX = bankWallSlideMomentum(this.momentumX, inwardDir, this.moveSpeed);
       this.sprite.setVelocityX(wallSlidePressVelocity(this.momentumX, inwardDir));
     }
   }
