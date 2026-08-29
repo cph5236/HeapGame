@@ -56,6 +56,23 @@ rewriting rather than moving. ~40 of 160 test files survive.
 
 ---
 
+## Status
+
+Phase A is implemented and open for review as five PRs. Findings that
+contradict what this plan assumed are recorded inline below.
+
+| PR | Branch | Base |
+|---|---|---|
+| #169 A1 SettingsScene | `claude/a1-settings-scene` | `main` |
+| #170 A2 pause → settings | `claude/a2-pause-settings` | A1 |
+| #171 A3 SaveData split | `claude/a3-savedata-split` | `main` |
+| #173 A4 boot sequence | `claude/a4-boot-sequence` | A3 |
+| #172 A5 server split | `claude/a5-server-split` | `main` |
+
+Three independent lines rather than one five-deep stack: A5 touches only
+`server/`, and A1/A2 reach SaveData solely through the barrel, so A3 cannot
+conflict with them. Review feedback on A1 therefore only ever rebases A2.
+
 ## Phase A — in-place seam cutting (HeapGame `main`)
 
 ### PR A1 — `SettingsScene` as a modal overlay; migrate MenuScene
@@ -117,6 +134,11 @@ over the menu doesn't fire a stray tap.
   the shared widget), PauseScene's `View` union, its shared "← Back" button, and
   the sub-view visibility bookkeeping. ~60 lines out of PauseScene.
 - Fold `buildControlsOverlay` into SettingsScene's Controls tab.
+
+> **Found while implementing:** `buildVolumePanel.ts` exported two things — the
+> shared `createVolumeSlider` widget and a standalone panel used only by
+> PauseScene. Deleting the panel leaves only the widget, so the file is renamed
+> `volumeSlider.ts`.
 - Route the game-scene button **through the existing pause button** rather than
   adding a HUD gear: a settings modal over a live game has to pause it anyway,
   `openPauseMenu()` already does that correctly in both GameScene and
@@ -129,6 +151,14 @@ back → resume in both GameScene and InfiniteGameScene, checking no input leaks
 
 ### PR A3 — Split SaveData into core + game
 **Riskiest PR in the plan.** It touches the live save file.
+
+> **Found while implementing:** the pre-split `migrate()` rebuilt the whole
+> record per schema version and only the current-schema branch listed the core
+> fields, so **every** older path dropped some — `playerSecret` on all of v1–v4,
+> which is the permanent 403 lockout this plan set out to make structurally
+> impossible. Making core migrate its own fields version-independently fixes it,
+> which means A3 is not strictly behaviour-neutral. Saves already at v5 are
+> byte-identical.
 
 - `src/systems/save/core.ts` — `schemaVersion`, load/save/cache, `playerGuid`,
   `playerSecret`, `playerName`, `gpgsPlayerId`, `getEffectivePlayerId`,
@@ -158,6 +188,12 @@ pre-split `heap_save` blob and assert a byte-identical round-trip.
   importing `HeapClient` / `infinitePreload` directly.
 - Preserve the ordering constraints already documented in `main.ts` and
   `LoadingScene`, including `MENU_LOADING_MIN_MS` and the consent timeout.
+
+> **Found while implementing:** LoadingScene needed no decoupling at all. Its
+> only game-specific input (which scene to open next) was already passed as
+> scene data, and every gate it waits on is platform. `infinitePreload.ts` was
+> misfiled — generic, Phaser-free loading-bar math, renamed `loadingProgress.ts`.
+> LoadingScene carries over to the template as-is.
 
 Size ~200 moved, ~100 new. Risk: medium — boot-order regressions surface as
 first-launch-only bugs. Verify: smoke test cold start with cleared localStorage,
