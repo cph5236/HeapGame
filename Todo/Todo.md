@@ -22,6 +22,14 @@ Language detection?
 
 2. Communities where the players already are. r/AndroidGaming, r/playmygame, r/WebGames, r/IndieGaming. One post that lands does 1k–10k visits — more than your $300 buys. Needs a good 10-second clip, not a text post. Free, repeatable, and your web build means zero-friction trial.
 
+3. Rename in-game currency "coins" -> "Scrap" (UI strings only).
+The Play Console launch event ("Grand Opening: Founder's Scrap Drop", see
+assets/play-event/README.md) advertises the reward as Scrap, but the game still
+says "coins" in StoreScene, UpgradeScene, applyReward and the HUD. Until this is
+done the store event and the app disagree. Marketing-only naming was a deliberate
+call to ship the event first; the sweep is a UI-string change, not a data change.
+
+
 
 ### UI
 
