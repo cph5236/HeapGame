@@ -8,9 +8,15 @@ AAB or the store listing.
 
 | Field | Value |
 |---|---|
-| Event name | `Grand Opening: Founder's Scrap Drop` |
-| Type | **Special offer** (it carries a reward code; "Major update" is the launch-flavoured alternative) |
+| Event name | `ReleaseCoins` (internal only — players never see it; the tagline and description are the player-facing copy) |
+| Event ID | `4829577521679758303` |
+| Type | **Offer** |
+| Window | Aug 31 – Sep 12 2026 (UTC) |
 | Primary image | `grand-opening-clean.jpg` |
+
+Created 2026-08-28, status *Not started*. The `HEAPDAY` code's `expires_at`
+(`2026-09-12T23:59:59.999Z`) is aligned to the event's end date, so the offer and
+the code lapse together.
 
 **Tagline** (46 / 80 — under the 48-char English threshold, so it stays eligible
 for the Spotlight format):
@@ -58,7 +64,14 @@ Mint in the admin UI before the event goes live. It is not created by this repo.
 | `rewardType` | `coins` |
 | `rewardAmount` | `300` |
 | `maxRedemptions` | `0` for unlimited, or a cap if the spend needs bounding |
-| `expiresAt` | ISO8601 end of launch week — the description promises an expiry, so set one |
+| `expiresAt` | ISO8601, aligned to the event's end date — the description promises an expiry, so set one |
+
+> **Gotcha when minting:** the admin UI's "Expires At" control silently drops the
+> value if you fill the date but leave the time blank — `datetime-local` reports
+> `value === ""` while incomplete, so the code mints as never-expiring with no
+> warning. `HEAPDAY` hit this and its `expires_at` had to be set by hand in D1
+> Studio. Logged in `Todo/Bugs.md` under Admin. Reward codes have no KV cache
+> decorator, so a direct D1 edit takes effect on the next redeem.
 
 Players redeem at **Settings → Player → REDEEM CODE**. One redemption per player is
 enforced server-side, so the description's claim holds without extra config.
