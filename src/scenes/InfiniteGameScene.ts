@@ -475,7 +475,6 @@ export class InfiniteGameScene extends Phaser.Scene {
     if (this.scene.isActive('PauseScene')) return;
     this.scene.launch('PauseScene', {
       gameSceneKey: this.scene.key,
-      isMobile: InputManager.getInstance().isMobile,
     });
     this.scene.pause();
   }
