@@ -5,18 +5,10 @@ import type { Vertex } from '../systems/HeapPolygon';
 import { generateAllTextures } from '../entities/TextureGenerators';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
-import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, setPlayerName, getPlayerName, getEffectivePlayerId, getRawSaveForCloudSync, applyMergedSave, mergeCloudSave, getTutorialDone } from '../systems/SaveData';
-import { PlayerNameClient } from '../systems/PlayerNameClient';
-import { validatePlayerName } from '../../shared/playerName';
-import type { RawSave } from '../systems/SaveData';
+import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, getTutorialDone } from '../systems/SaveData';
 import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
 import { buildInfiniteEntry } from '../data/infiniteCatalog';
-import { initLogger } from '../logging';
-import { PlayGamesClient } from '../systems/PlayGamesClient';
-import { beginSignIn, signInSettled } from '../systems/gpgsSession';
-import { AudioManager } from '../systems/AudioManager';
-import { beginAdConsent } from '../systems/ads/consentGate';
-import { primeConfig } from '../systems/ConfigClient';
+import { initPlatform, startIdentitySession } from '../systems/bootSequence';
 import { loadGameAssets } from './loadGameAssets';
 
 export class BootScene extends Phaser.Scene {
@@ -32,60 +24,22 @@ export class BootScene extends Phaser.Scene {
   create(): void {
     // Procedural textures — synchronous, no network/disk.
     generateAllTextures(this);
-    AudioManager.init(this.sound);
-    beginAdConsent(); // gathers consent, then initializes ads; LoadingScene waits on it
-    primeConfig(); // kicks off the remote-config fetch; LoadingScene awaits configReady() before opening the menu
+
+    // Platform startup: audio, ad consent, remote config, logging. Must precede
+    // the async fetches below so failures in them are logged.
+    initPlatform(this);
 
     // Default registry state so MenuScene can render before catalog resolves.
     this.game.registry.set('heapCatalog',    [] as HeapSummary[]);
     this.game.registry.set('activeHeapId',   '');
     this.game.registry.set('heapPolygon',    [] as Vertex[]);
     this.game.registry.set('heapParams',     DEFAULT_HEAP_PARAMS);
-    this.game.registry.set('gameAssetsReady', false);
     this.game.registry.set('heapCatalogReady', false);
 
-    // Initialize logger after SaveData is importable but before async catalog fetch.
-    initLogger();
-
-    // Kick off GPGS sign-in. LoadingScene gates the menu on this settling, so
-    // the id is already final by the time the player can reach anything that
-    // writes under it — see gpgsSession.ts for why that matters. Adoption of
-    // the id/name happens inside signInSettled(), not here.
-    beginSignIn();
-    void signInSettled().then(async (player) => {
-      if (!player) return;
-      // Sync the GPGS display name to the server's player_name table — score
-      // submit no longer updates names, and GPGS players can't reach the
-      // rename modal, so this is their only refresh path after first seed.
-      // Uses the locally-stored form (setPlayerName truncates to the shared
-      // max) and only when it passes the shared validator — raw GPGS names
-      // can be up to 100 chars and the server would 400 silently.
-      const validated = validatePlayerName(getPlayerName());
-      if (validated.ok) {
-        void PlayerNameClient.updateName(getEffectivePlayerId(), validated.name);
-      }
-
-      // Load cloud snapshot and merge with local SaveData. Deliberately left
-      // outside the gate: the merge only rewrites local save state (balance,
-      // items), nothing keyed on player id server-side, so it can safely land
-      // after the menu has opened. The menu listens for gpgs:save-merged to
-      // refresh the coin balance in place.
-      const cloudJson = await PlayGamesClient.loadSnapshot();
-      if (!cloudJson) return;
-
-      let cloudSave: RawSave;
-      try {
-        cloudSave = JSON.parse(cloudJson) as RawSave;
-      } catch {
-        return; // malformed cloud data — skip merge
-      }
-
-      const localSave = getRawSaveForCloudSync();
-      const merged    = mergeCloudSave(localSave, cloudSave);
-      applyMergedSave(merged);
-      setPlayerName(player.displayName); // GPGS name always wins after merge
-      this.game.events.emit('gpgs:save-merged');
-    }).catch(() => { /* silent — cloud save merge is optional */ });
+    // Kick off sign-in, name sync and cloud-save merge. LoadingScene gates the
+    // menu on sign-in settling, so the id is final by the time the player can
+    // reach anything that writes under it.
+    startIdentitySession(this.game);
 
     // Dev scene shortcut — only active in Vite dev mode, dead code in production builds.
     if (import.meta.env.DEV && typeof window !== 'undefined') {

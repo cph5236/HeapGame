@@ -22,6 +22,7 @@ import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { openFeedbackOverlay } from './FeedbackOverlay';
 import type { SettingsSceneData } from './SettingsScene';
+import { SAVE_MERGED_EVENT } from '../systems/bootSequence';
 import { fetchDailyStatus } from '../systems/DailyDropClient';
 import { hasPlayedToday, deviceUtcOffsetMin } from '../systems/dailyRunGate';
 import { dailyIconState, shouldAutoShowPopup, formatCountdown, type DailyIconState } from '../ui/dailyDropLogic';
@@ -129,7 +130,7 @@ export class MenuScene extends Phaser.Scene {
     // No gpgs:signed-in listener: LoadingScene holds the menu until sign-in has
     // settled, so createPlayerName() above already painted the right label and
     // the id can no longer change underneath us.
-    this.game.events.once('gpgs:save-merged', () => {
+    this.game.events.once(SAVE_MERGED_EVENT, () => {
       if (!this.balanceText?.active) return;
       this.balanceText.setText(`${getBalance()} coins`);
     }, this);
