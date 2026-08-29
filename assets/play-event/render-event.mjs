@@ -340,14 +340,15 @@ function keyArt({ peakX, bagX }) {
 
     ${coinBurst(bagX, bagY - bagH * 0.5, 4242)}
     ${coinsOnSteps(tops, [
-      [bagCol - 5, 18], [bagCol - 3, 13], [bagCol + 4, 17], [bagCol + 6, 12],
-      [bagCol - 11, 16], [bagCol + 10, 14], [bagCol - 16, 12], [bagCol + 15, 13],
-      [bagCol - 21, 11], [bagCol + 20, 12],
+      [bagCol - 3, 18], [bagCol + 2, 17], [bagCol - 10, 16], [bagCol + 10, 14],
+      [bagCol - 15, 12], [bagCol + 14, 13], [bagCol - 20, 11], [bagCol + 19, 12],
     ], 909)}
 
-    <!-- rats working the slopes, planted on step tops -->
-    ${ratOnStep(tops, bagCol - 7, 3.4, 4)}
-    ${ratOnStep(tops, bagCol + 6, 2.9, 10)}
+    <!-- rats working the upper slopes: high enough to stay inside the safe zone
+         and to read as a threat closing on the player, rather than as detail
+         lost in the bottom corners -->
+    ${ratOnStep(tops, bagCol - 6, 4.1, 4)}
+    ${ratOnStep(tops, bagCol + 4, 3.6, 10)}
 
     <g filter="url(#bagShadow)">
       <image href="${BAG}" x="${bagX - bagW / 2}" y="${bagY - bagH + 6}"
