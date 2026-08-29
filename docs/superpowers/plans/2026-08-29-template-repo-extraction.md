@@ -25,7 +25,7 @@ executes against.
 
 | Layer | Platform (template owns) | Game (deleted in the template) |
 |---|---|---|
-| Scenes | Boot, Loading, Menu (shell), Pause, UpdateRequired, FeedbackOverlay | Game, InfiniteGame, Score, HeapSelect, Upgrade, Store, Customization, Tutorial, Leaderboard, TexturePreview |
+| Scenes | Boot, Loading, Menu (shell), **Settings**, Pause, UpdateRequired, FeedbackOverlay | Game, InfiniteGame, Score, HeapSelect, Upgrade, Store, Customization, Tutorial, Leaderboard, TexturePreview |
 | Systems | InputManager, joystick/tilt stack, AudioManager, displayMetrics, SaveData **core**, UpdateGate, ConfigClient, FeedbackClient, PlayGamesClient, gpgsSession, cloudSave, authToken, ads/, logging/ | Heap*, Placeable, Enemy, Pickup, Portal, TrashWall, Bridge, LayerGenerator, Buff, RunSession, ScoreClient, DailyDrop, Customization, cosmetics* |
 | Entities | — | all 14 |
 | Data | soundDefs (stubbed), attributions | the other 20 |
@@ -58,29 +58,76 @@ rewriting rather than moving. ~40 of 160 test files survive.
 
 ## Phase A — in-place seam cutting (HeapGame `main`)
 
-### PR A1 — Extract the settings panel out of MenuScene
-**Why first:** it's the thing the template exists to keep, it's the most tangled,
-and it's independently valuable to HeapGame (PauseScene already duplicates two of
-its widgets).
+### PR A1 — `SettingsScene` as a modal overlay; migrate MenuScene
+**Why first:** it's what the template exists to keep, it's the most tangled, and
+HeapGame currently ships **two divergent settings UIs** — MenuScene's 3-tab inline
+panel, and PauseScene's separate `buildVolumePanel`, which is an independently
+laid-out second copy of the same five sliders. Unifying them is worth doing on its
+own merits.
 
-- Create `src/ui/settingsPanel.ts` — `buildSettingsPanel(scene, opts)` returning
-  a handle with `open()` / `close()` / `refresh()`.
-- Move `MenuScene.createSettingsButton()` (~lines 932–1220, ~290 lines) into it.
-- **Tabs become injected, not hardcoded.** Sounds and Controls tabs are platform
-  and live in the module. The Player tab's rows arrive as a `rows: SettingsRow[]`
-  option so Redeem Code, How to Play, and reset-warning copy stay in MenuScene.
-  Privacy options and analytics-consent stay platform (both are policy, not game).
-- Builder function, not a `SettingsScene`: PauseScene already consumes
-  `buildVolumePanel` / `buildControlsOverlay` this way, and an overlay scene would
-  need its own camera and depth handling for no gain.
-- Keep `forceSettingsOpen` init-data behavior intact.
+**It must be a Scene, not a builder function.** (This reverses the earlier
+recommendation; the modal-over-gameplay requirement decides it.) Settings has to
+render over an arbitrary host scene, so it needs its own camera, input and depth
+space with the host knowing nothing about it. Two concrete reasons a builder
+fails: `MenuScene` is in `RESIZE_SAFE_SCENES` and calls `scene.restart()` on
+resize, which would destroy a panel mid-interaction; and `PauseScene` already
+proves the launched-overlay pattern works in this codebase.
 
-Size ~290 moved / ~150 new. Risk: medium — heavy depth + visibility bookkeeping,
-and the tilt-prompt refresh path (`refreshTiltPrompt`) crosses the boundary.
-Verify: scene-preview of Menu, each of the 3 tabs, at 2 device sizes; smoke test
-that changing control mode from Settings still remounts controls.
+- Create `src/scenes/SettingsScene.ts`, launched as
+  `scene.launch('SettingsScene', { returnTo, context })`.
+- Move MenuScene's `createSettingsButton()` body (~lines 932–1220, ~290 lines) in.
+- **`context: 'menu' | 'game'` gates rows.** Sounds, Controls, analytics consent
+  and privacy options show in both. Reset All Data and How to Play are menu-only —
+  destructive or nonsensical mid-run.
+- Game-specific rows (Redeem Code, How to Play, reset-warning copy) arrive as a
+  `rows: SettingsRow[]` option so they stay owned by the game, not the scene.
+- `returnTo` carries the launching scene key; closing resumes it rather than
+  hardcoding `MenuScene`.
+- MenuScene's `forceSettingsOpen` init flag (currently a 2200ms `delayedCall`)
+  becomes a direct launch.
 
-### PR A2 — Split SaveData into core + game
+**Non-obvious things it must carry over — each is a real bug if dropped:**
+
+1. `InputManager.setSuppressionRect('settings', …)` under **its own key**, not
+   `'pause'`, so a stacked open/close can't clear the pause suppression. And
+   `clearBufferedActions()` on close, exactly as `PauseScene.resumeGame()` does —
+   without it the dismiss tap leaks a jump into the resumed game.
+2. `setupUiCamera(this)` plus `setScrollFactor(0)` on every object.
+3. Double-open guard via `scene.isActive('SettingsScene')`, mirroring
+   `GameScene.openPauseMenu()`.
+4. Sliders must be created at their final position — `createVolumeSlider` captures
+   its track coordinates for the drag math, so nothing may be repositioned after
+   creation. On resize, close or restart; never move.
+5. The tilt-prompt refresh path (`refreshTiltPrompt`) crosses the boundary and
+   needs an explicit callback rather than an implicit MenuScene reference.
+
+Scope note: PauseScene is deliberately **untouched** in A1 and keeps its own
+sub-views for one PR. The duplication is temporary and accepted so that A1
+introduces the scene and migrates exactly one caller.
+
+Size ~290 moved / ~180 new. Risk: medium.
+Verify: scene-preview of all 3 tabs at 2 device sizes; smoke test that changing
+control mode from Settings still remounts controls, and that closing Settings
+over the menu doesn't fire a stray tap.
+
+### PR A2 — Migrate the game path; delete the duplicate
+- `PauseScene`'s **Controls** and **Volume** buttons collapse into one
+  **Settings** button that launches `SettingsScene` with `context: 'game'`.
+- Delete `buildVolumePanel` (the panel variant — `createVolumeSlider` stays, it's
+  the shared widget), PauseScene's `View` union, its shared "← Back" button, and
+  the sub-view visibility bookkeeping. ~60 lines out of PauseScene.
+- Fold `buildControlsOverlay` into SettingsScene's Controls tab.
+- Route the game-scene button **through the existing pause button** rather than
+  adding a HUD gear: a settings modal over a live game has to pause it anyway,
+  `openPauseMenu()` already does that correctly in both GameScene and
+  InfiniteGameScene, and it's one fewer element competing for thumb space on a
+  phone. (Easy to add a dedicated gear later if you'd rather — say the word.)
+
+After A2 there is exactly one settings UI, reachable from the menu and from a run.
+Size: net deletion. Risk: low-medium. Verify: smoke test pause → settings →
+back → resume in both GameScene and InfiniteGameScene, checking no input leaks.
+
+### PR A3 — Split SaveData into core + game
 **Riskiest PR in the plan.** It touches the live save file.
 
 - `src/systems/save/core.ts` — `schemaVersion`, load/save/cache, `playerGuid`,
@@ -95,57 +142,49 @@ that changing control mode from Settings still remounts controls.
 - Core owns `mergeCloudSave`'s structure and takes a game-supplied field-merge
   hook. The `playerSecret` carry-through must be **structural in core**, not a
   documented rule: any merge path that drops it 403-locks a player out of their
-  own data. Add a core test that asserts the secret survives every merge branch.
+  own data. Add a core test asserting the secret survives every merge branch.
 - Core's `RawSave` is `CoreSave & GameSave`; `game.ts` declares its half.
 
-Size ~450 lines redistributed, ~120 new (the extension plumbing). Risk: **high**.
+Size ~450 lines redistributed, ~120 new. Risk: **high**.
 Verify: the existing `SaveData.test.ts` must pass **unmodified** — if it needs
 edits, the split changed behavior. Add core-boundary tests. Manually load a real
-pre-split `heap_save` blob and assert byte-identical round-trip.
+pre-split `heap_save` blob and assert a byte-identical round-trip.
 
-### PR A3 — Extract the boot sequence
+### PR A4 — Extract the boot sequence
 - Create `src/systems/bootSequence.ts` owning the ordered startup: prime config →
   GPGS sign-in → ad consent → cloud-save merge → update gate → asset preload,
-  with game-specific steps (heap catalog fetch, infinite preload) passed in as
-  injected stages.
+  with game-specific stages (heap catalog fetch, infinite preload) injected.
 - `BootScene` and `LoadingScene` consume the sequence's readiness gates instead of
   importing `HeapClient` / `infinitePreload` directly.
 - Preserve the ordering constraints already documented in `main.ts` and
-  `LoadingScene` — including `MENU_LOADING_MIN_MS` and the consent timeout.
+  `LoadingScene`, including `MENU_LOADING_MIN_MS` and the consent timeout.
 
 Size ~200 moved, ~100 new. Risk: medium — boot-order regressions surface as
 first-launch-only bugs. Verify: smoke test cold start with cleared localStorage,
 offline start, and forced-update start.
 
-### PR A4 — Server: platform/ and game/ route split
+### PR A5 — Server: platform/ and game/ route split
 - `server/src/platform/` ← auth, bans, config, feedback, log, players, middleware,
   `cache/` decorators, `playerAuth`, and the D1/Mock/Cached base pattern.
 - `server/src/game/` ← heap, scores, codes, daily, customization, contribution,
-  `db.ts` (which is entirely `HeapDB`), `scoreDb`, `runSession`.
+  `db.ts` (entirely `HeapDB`), `scoreDb`, `runSession`.
 - `createApp` splits: `createPlatformApp(opts)` returns a Hono the game mounts
   onto. `AppOptions` splits the same way.
 - Tests move with their subjects.
 
 Pure file moves plus one wiring change. Risk: low — but **no route path may
-change**; add a route-inventory test that snapshots the mounted path list.
+change**; add a route-inventory test snapshotting the mounted path list.
 
-### PR A5 — Parameterize app identity
+### PR A6 — Parameterize app identity
 - One `app.config.ts` holding app name, bundle id, primary domain, store URLs,
   support email, and the SEO/JSON-LD block.
-- `index.html` (21KB, currently hardcoded to heapgame.com + the itch.io embed
-  path) reads from it via a small Vite HTML transform.
+- `index.html` (21KB, hardcoded to heapgame.com and the itch.io embed path) reads
+  from it via a small Vite HTML transform.
 - `capacitor.config.ts`, `android/app/build.gradle` `applicationId`/`namespace`,
   and `android/app/src/main/res/values/strings.xml` read the same source.
 
 Risk: medium — an SEO/meta regression on the live site is invisible in tests.
 Verify: diff built `dist/index.html` against today's; only intended lines change.
-
-### PR A6 — Split `constants.ts` and tidy `shared/`
-Small cleanup PR: physics/gameplay constants to a game module, display/timing
-constants to platform; same for the handful of `shared/` files that mix both.
-Do this last — earlier PRs will have revealed which constants actually cross.
-
----
 
 ## Phase B — the template repo
 
@@ -160,9 +199,12 @@ expected; T2 restores it. Note it in the PR body.
 
 ### PR T2 — Blank scene + reduced menu
 - `MenuScene` down to ~350 lines: title, Play, Settings, Feedback, name entry.
-- New `GameScene` — blank scene, pause button, camera, a placeholder sprite, and a
-  commented "your game starts here" seam. Wired to PauseScene.
+- New `GameScene` — blank scene, pause button (→ Settings), camera, a placeholder
+  sprite, and a commented "your game starts here" seam. Wired to PauseScene.
 - `main.ts` scene list trimmed. Build green again.
+- Split `constants.ts` here rather than in Phase A: which constants actually cross
+  the seam is obvious once the game is gone, and doing it in HeapGame would be
+  churn for no production benefit.
 
 ### PR T3 — Stub the content layer
 `soundDefs` to 3 stub sounds, `loadGameAssets` to a 3-entry manifest, a single
@@ -207,13 +249,23 @@ a list two people read beats a sync script nobody trusts.
 
 ---
 
+## Settled decisions
+
+- **Settings is a launched overlay Scene**, not a builder — it must render as a
+  modal over an arbitrary host scene, and over gameplay in particular. See A1.
+- **Ads and GPGS ship wired, with `NullProvider` as the default ad provider.**
+  A stubbed integration is the kind of thing nobody finishes later; the null
+  provider already exists and keeps the wiring exercised.
+- **No standalone constants-split PR in Phase A.** It moves into T2, where what
+  crosses the seam is obvious.
+
 ## Open decisions
 
-1. **Template repo name / npm-scope-free package name.**
-2. **Settings panel: builder vs scene** — plan assumes builder (A1). Cheap to
-   revisit before A1 lands, expensive after.
-3. **Does the template keep ads and GPGS wired, or stubbed behind a flag?**
-   Wired-with-null-provider is the recommendation: `NullProvider` already exists
-   and a stubbed integration is the kind of thing nobody finishes later.
-4. **Whether A6 is worth doing at all**, or whether the constants seam is better
-   left for T2 to sort out in the template.
+1. **Template repo name.**
+2. **Game-scene entry point to Settings** — A2 routes it through the existing
+   pause button. A dedicated HUD gear is a small follow-up if preferred; cheap
+   either way once `SettingsScene` exists.
+3. **Resize behavior while Settings is open over MenuScene.** MenuScene restarts
+   on resize (`RESIZE_SAFE_SCENES`); Settings is a separate scene so it survives,
+   but it will be sitting over a freshly rebuilt menu. Either add it to the
+   restart set or close it on resize — decide during A1.
