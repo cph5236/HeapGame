@@ -37,6 +37,13 @@ export type GameEvent =
   | { type: 'placement:made'; heapId: string; itemType: string }
   | { type: 'pickup:grab'; itemId: string; bonus: number }
   | {
+      /** This browser arrived through a link carrying `?ref=<source>` — the
+       *  receiving end of the share loop that `share:run` sends. First touch
+       *  only, so it counts people rather than clicks. */
+      type: 'visit:referred';
+      ref: string;
+    }
+  | {
       /** A player used the score screen's SHARE button. `outcome` separates a
        *  real hand-off from a share sheet they backed out of, so the share loop
        *  can be measured rather than guessed at. */
