@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { AudioManager } from '../systems/AudioManager';
 import { InputManager } from '../systems/InputManager';
-import { createVolumeSlider } from '../ui/buildVolumePanel';
+import { createVolumeSlider } from '../ui/volumeSlider';
 import { controlHelpLines } from '../ui/controlHelp';
 import { privacyRow, PRIVACY_ROW_STYLE } from '../ui/privacyRow';
 import { AdClient } from '../systems/ads/AdClient';

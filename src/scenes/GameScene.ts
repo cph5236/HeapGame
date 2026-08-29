@@ -1006,7 +1006,6 @@ export class GameScene extends Phaser.Scene {
     if (this.scene.isActive('PauseScene')) return; // guard against double-open
     this.scene.launch('PauseScene', {
       gameSceneKey: this.scene.key,
-      isMobile: InputManager.getInstance().isMobile,
     });
     this.scene.pause();
   }
