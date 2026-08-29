@@ -1,6 +1,6 @@
 // server/src/configDb.ts
 
-import type { AppConfig } from '../../shared/configTypes';
+import type { AppConfig } from '../../../shared/configTypes';
 
 /** Abstraction over D1 for global config key/value storage. Allows MockConfigDB in tests. */
 export interface ConfigDB {

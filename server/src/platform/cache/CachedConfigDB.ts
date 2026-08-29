@@ -7,7 +7,7 @@
 // param) to slice around.
 
 import type { ConfigDB } from '../configDb';
-import type { AppConfig } from '../../../shared/configTypes';
+import type { AppConfig } from '../../../../shared/configTypes';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 

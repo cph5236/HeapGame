@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { Vertex } from '../../shared/heapTypes';
-import type { BandRow } from '../../shared/heapPolygon/bandEnvelope';
+import { Vertex } from '../../../shared/heapTypes';
+import type { BandRow } from '../../../shared/heapPolygon/bandEnvelope';
 
 /** SHA-256 hash of a vertex array serialized as JSON. */
 export function hashVertices(vertices: Vertex[]): string {

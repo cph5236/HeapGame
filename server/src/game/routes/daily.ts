@@ -2,18 +2,18 @@
 
 import { Hono } from 'hono';
 import type { DailyClaimDB } from '../dailyDb';
-import type { ConfigDB } from '../configDb';
-import type { PlayerAuthDB } from '../playerAuthDb';
-import type { Sink } from '../logging/Sink';
-import { captureServer } from '../logging/captureServerEvent';
-import { enforcePlayerAuth } from '../playerAuth';
-import { isItemId } from '../../../shared/itemIds';
+import type { ConfigDB } from '../../platform/configDb';
+import type { PlayerAuthDB } from '../../platform/playerAuthDb';
+import type { Sink } from '../../platform/logging/Sink';
+import { captureServer } from '../../platform/logging/captureServerEvent';
+import { enforcePlayerAuth } from '../../platform/playerAuth';
+import { isItemId } from '../../../../shared/itemIds';
 import {
   clampOffsetMin, decideClaim, grantsForDay, grantsToRewards,
   nextEligibleAt, sanitizeRewardTable, stableUntilFor, statusFromState,
   DEFAULT_GRACE_HOURS, DEFAULT_MIN_GAP_HOURS,
-} from '../../../shared/dailyDrop';
-import type { DailyClaimRequest } from '../../../shared/dailyTypes';
+} from '../../../../shared/dailyDrop';
+import type { DailyClaimRequest } from '../../../../shared/dailyTypes';
 
 const MAX_GUID_LEN = 64;
 

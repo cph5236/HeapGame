@@ -7,7 +7,7 @@
 // These tests pin that an edit reaches every layer holding the band.
 
 import { describe, it, expect } from 'vitest';
-import { planBandWrite } from '../src/routes/heap';
+import { planBandWrite } from '../src/game/routes/heap';
 import { BAND_SIZE_PX } from '../../shared/heapPolygon/bandEnvelope';
 
 const FREEZE_BAND = 100;

@@ -1,5 +1,5 @@
 import type { Sink, StampedLogEntry } from './Sink';
-import type { LogLevel } from '../../../shared/logging/Logger';
+import type { LogLevel } from '../../../../shared/logging/Logger';
 
 export async function captureServer(
   sink: Sink,

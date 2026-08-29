@@ -17,7 +17,7 @@ import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { DEFAULT_HEAP_PARAMS, type PlaceResponse, type GetHeapResponse } from '../../shared/heapTypes';
 import { bandOf, verticesToEnvelope, BAND_SIZE_PX, wireToBands } from '../../shared/heapPolygon/bandEnvelope';
-import { LIVE_ZONE_MAX_BANDS, FREEZE_BATCH_BANDS } from '../src/polygon';
+import { LIVE_ZONE_MAX_BANDS, FREEZE_BATCH_BANDS } from '../src/game/polygon';
 
 const NOW = new Date().toISOString();
 

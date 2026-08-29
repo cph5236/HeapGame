@@ -1,6 +1,6 @@
 // server/tests/helpers/mockCodeDb.ts
 
-import type { RewardCodeDB, NormalizedCreateCode } from '../../src/codeDb';
+import type { RewardCodeDB, NormalizedCreateCode } from '../../src/game/codeDb';
 import type { RewardCodeRow, RedeemOutcome } from '../../../shared/codeTypes';
 
 /** In-memory RewardCodeDB for tests. Same outcome semantics as D1RewardCodeDB. */

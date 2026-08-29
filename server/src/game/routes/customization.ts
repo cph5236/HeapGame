@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import type { CustomizationDB } from '../customizationDb';
-import type { PlayerAuthDB } from '../playerAuthDb';
-import type { Sink } from '../logging/Sink';
-import { enforcePlayerAuth } from '../playerAuth';
-import { validateLoadout, MAX_LOADOUT_JSON_LEN } from '../../../shared/cosmeticCatalog';
+import type { PlayerAuthDB } from '../../platform/playerAuthDb';
+import type { Sink } from '../../platform/logging/Sink';
+import { enforcePlayerAuth } from '../../platform/playerAuth';
+import { validateLoadout, MAX_LOADOUT_JSON_LEN } from '../../../../shared/cosmeticCatalog';
 
 const MAX_ID_LEN = 64;
 

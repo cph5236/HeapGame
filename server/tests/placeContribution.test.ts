@@ -9,7 +9,7 @@ import { MockPlayerAuthDB } from './helpers/mockPlayerAuthDb';
 import { MockContributionDB } from './helpers/mockContributionDb';
 import { MockSink } from './helpers/mockSink';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
-import type { ContributionDB } from '../src/contributionDb';
+import type { ContributionDB } from '../src/game/contributionDb';
 
 const HEAP_ID = 'h1';
 const PLAYER = 'player-aaa';

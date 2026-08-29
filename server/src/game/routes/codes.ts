@@ -2,12 +2,12 @@
 
 import { Hono } from 'hono';
 import type { RewardCodeDB } from '../codeDb';
-import type { Sink } from '../logging/Sink';
-import { captureServer } from '../logging/captureServerEvent';
-import { isItemId } from '../../../shared/itemIds';
-import type { CreateCodeRequest, RedeemCodeRequest } from '../../../shared/codeTypes';
-import type { PlayerAuthDB } from '../playerAuthDb';
-import { enforcePlayerAuth } from '../playerAuth';
+import type { Sink } from '../../platform/logging/Sink';
+import { captureServer } from '../../platform/logging/captureServerEvent';
+import { isItemId } from '../../../../shared/itemIds';
+import type { CreateCodeRequest, RedeemCodeRequest } from '../../../../shared/codeTypes';
+import type { PlayerAuthDB } from '../../platform/playerAuthDb';
+import { enforcePlayerAuth } from '../../platform/playerAuth';
 
 const MAX_CODE_LEN = 32;
 const MAX_GUID_LEN = 64;

@@ -1,6 +1,6 @@
-import type { ScoreDB, ScoreRow, AdminScoreRow } from '../../src/scoreDb';
-import type { PlayerNameDB } from '../../src/playerNameDb';
-import type { BanDB } from '../../src/banDb';
+import type { ScoreDB, ScoreRow, AdminScoreRow } from '../../src/game/scoreDb';
+import type { PlayerNameDB } from '../../src/platform/playerNameDb';
+import type { BanDB } from '../../src/platform/banDb';
 
 /**
  * In-memory ScoreDB for use in tests. No D1 or Workers runtime needed.

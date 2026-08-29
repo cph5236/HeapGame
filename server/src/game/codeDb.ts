@@ -5,7 +5,7 @@ import type {
   RewardCodeRow,
   RedeemOutcome,
   RewardType,
-} from '../../shared/codeTypes';
+} from '../../../shared/codeTypes';
 
 /** Normalized, validated mint input (route does the validation). */
 export interface NormalizedCreateCode {

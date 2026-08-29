@@ -6,7 +6,7 @@
 // complete no-op, the replace-not-MIN/MAX upsert, and meta.changes.
 
 import { describe, it, expect } from 'vitest';
-import { D1HeapDB } from '../src/db';
+import { D1HeapDB } from '../src/game/db';
 import { createTestD1 } from './helpers/d1Sqlite';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 

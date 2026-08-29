@@ -7,7 +7,7 @@
 // over-claiming loses data forever.
 
 import { describe, it, expect } from 'vitest';
-import { CachedHeapDB } from '../src/cache/CachedHeapDB';
+import { CachedHeapDB } from '../src/game/cache/CachedHeapDB';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockKV } from './helpers/mockKv';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';

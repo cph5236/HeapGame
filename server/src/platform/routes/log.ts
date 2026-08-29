@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Sink, StampedLogEntry } from '../logging/Sink';
-import type { LogEntry, LogLevel } from '../../../shared/logging/Logger';
-import type { Platform } from '../../../shared/logging/events';
+import type { LogEntry, LogLevel } from '../../../../shared/logging/Logger';
+import type { Platform } from '../../../../shared/logging/events';
 
 const MAX_ENTRIES = 25;
 const MAX_ENTRY_BYTES = 2 * 1024;

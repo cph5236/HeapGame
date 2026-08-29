@@ -1,0 +1,171 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`route inventory > keeps middleware ahead of its handler within every path prefix 1`] = `
+{
+  "/*": [
+    "ALL /*",
+  ],
+  "/auth": [
+    "DELETE /auth/:playerId",
+    "DELETE /auth/:playerId",
+  ],
+  "/bans": [
+    "GET /bans",
+    "GET /bans/:playerId",
+    "PUT /bans/:playerId",
+    "DELETE /bans/:playerId",
+    "GET /bans",
+    "GET /bans/:playerId",
+    "PUT /bans/:playerId",
+    "DELETE /bans/:playerId",
+  ],
+  "/codes": [
+    "POST /codes/redeem",
+    "POST /codes",
+    "GET /codes",
+    "POST /codes/redeem",
+    "POST /codes",
+    "GET /codes",
+  ],
+  "/config": [
+    "PUT /config/:key",
+    "DELETE /config/:key",
+    "GET /config",
+    "PUT /config/:key",
+    "DELETE /config/:key",
+  ],
+  "/customization": [
+    "PUT /customization/:playerId",
+    "PUT /customization/:playerId",
+    "GET /customization/:playerId",
+  ],
+  "/daily": [
+    "POST /daily/claim",
+    "GET /daily/status",
+    "POST /daily/claim",
+  ],
+  "/feedback": [
+    "POST /feedback",
+    "GET /feedback",
+    "POST /feedback",
+    "GET /feedback",
+  ],
+  "/heaps": [
+    "ALL /heaps",
+    "ALL /heaps/*",
+    "POST /heaps/:id/place",
+    "POST /heaps",
+    "PUT /heaps/:id/reset",
+    "PUT /heaps/:id/params",
+    "PUT /heaps/:id/enemy-params",
+    "GET /heaps/:id/bands",
+    "PUT /heaps/:id/bands",
+    "DELETE /heaps/:id",
+    "POST /heaps",
+    "GET /heaps",
+    "GET /heaps/:id/bands",
+    "PUT /heaps/:id/bands",
+    "GET /heaps/:id/base",
+    "GET /heaps/:id/enemy-params",
+    "PUT /heaps/:id/enemy-params",
+    "GET /heaps/:id",
+    "PUT /heaps/:id/reset",
+    "PUT /heaps/:id/params",
+    "POST /heaps/:id/place",
+    "DELETE /heaps/:id",
+  ],
+  "/log": [
+    "POST /log",
+    "POST /log",
+  ],
+  "/players": [
+    "PUT /players/:playerId/name",
+    "PUT /players/:playerId/name",
+  ],
+  "/scores": [
+    "ALL /scores",
+    "ALL /scores/*",
+    "POST /scores",
+    "POST /scores/session",
+    "GET /scores/admin/:heapId",
+    "POST /scores/session",
+    "POST /scores",
+    "GET /scores/admin/:heapId",
+    "GET /scores/player/:playerId",
+    "GET /scores/:heapId/context",
+    "GET /scores/:heapId",
+  ],
+}
+`;
+
+exports[`route inventory > mounts exactly the expected set of routes 1`] = `
+"ALL /*
+ALL /heaps
+ALL /heaps/*
+ALL /scores
+ALL /scores/*
+DELETE /auth/:playerId
+DELETE /auth/:playerId
+DELETE /bans/:playerId
+DELETE /bans/:playerId
+DELETE /config/:key
+DELETE /config/:key
+DELETE /heaps/:id
+DELETE /heaps/:id
+GET /bans
+GET /bans
+GET /bans/:playerId
+GET /bans/:playerId
+GET /codes
+GET /codes
+GET /config
+GET /customization/:playerId
+GET /daily/status
+GET /feedback
+GET /feedback
+GET /heaps
+GET /heaps/:id
+GET /heaps/:id/bands
+GET /heaps/:id/bands
+GET /heaps/:id/base
+GET /heaps/:id/enemy-params
+GET /scores/:heapId
+GET /scores/:heapId/context
+GET /scores/admin/:heapId
+GET /scores/admin/:heapId
+GET /scores/player/:playerId
+POST /codes
+POST /codes
+POST /codes/redeem
+POST /codes/redeem
+POST /daily/claim
+POST /daily/claim
+POST /feedback
+POST /feedback
+POST /heaps
+POST /heaps
+POST /heaps/:id/place
+POST /heaps/:id/place
+POST /log
+POST /log
+POST /scores
+POST /scores
+POST /scores/session
+POST /scores/session
+PUT /bans/:playerId
+PUT /bans/:playerId
+PUT /config/:key
+PUT /config/:key
+PUT /customization/:playerId
+PUT /customization/:playerId
+PUT /heaps/:id/bands
+PUT /heaps/:id/bands
+PUT /heaps/:id/enemy-params
+PUT /heaps/:id/enemy-params
+PUT /heaps/:id/params
+PUT /heaps/:id/params
+PUT /heaps/:id/reset
+PUT /heaps/:id/reset
+PUT /players/:playerId/name
+PUT /players/:playerId/name"
+`;

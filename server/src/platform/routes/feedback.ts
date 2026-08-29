@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { FeedbackDB, NormalizedFeedback } from '../feedbackDb';
-import type { FeedbackCategory } from '../../../shared/feedbackTypes';
+import type { FeedbackCategory } from '../../../../shared/feedbackTypes';
 
 const MAX_MESSAGE_LEN = 3000;
 const MAX_BODY_BYTES = 8 * 1024;
