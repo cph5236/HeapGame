@@ -210,7 +210,7 @@ export class SettingsScene extends Phaser.Scene {
   private buildSoundsTab(cx: number, top: number): void {
     const vols = AudioManager.getVolumes();
     const divider = this.add.rectangle(cx, top + 66, 280, 1, 0x334466)
-      .setScrollFactor(0).setDepth(D_CONTENT);
+      .setScrollFactor(0).setDepth(D_CONTENT).setVisible(false);
     const specs: Array<[string, Parameters<typeof createVolumeSlider>[4], number, number]> = [
       ['MASTER',      'master',    vols.master,    24],
       ['Music',       'music',     vols.music,     96],
@@ -391,8 +391,11 @@ export class SettingsScene extends Phaser.Scene {
           return;
         }
         resetAllData();
-        this.onReset?.();
+        // Close BEFORE handing back, matching the order the inline panel used:
+        // the host is resumed and this scene stopped while the host is still the
+        // scene the callback will act on. onReset typically restarts the host.
         this.close();
+        this.onReset?.();
       });
       items.push(rBg, rLabel, rWarn);
     }
