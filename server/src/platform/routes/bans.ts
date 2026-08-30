@@ -2,9 +2,9 @@
 
 import { Hono } from 'hono';
 import type { BanDB } from '../banDb';
-import type { ScoreDB } from '../scoreDb';
+import type { ScoreDB } from '../../game/scoreDb';
 import type { PlayerNameDB } from '../playerNameDb';
-import { MAX_ID_LEN } from '../constants';
+import { MAX_ID_LEN } from '../../constants';
 
 /**
  * Admin-only shadow-ban surface (adminGate applied in app.ts).

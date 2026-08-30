@@ -26,7 +26,7 @@
 import { describe, it, expect } from 'vitest';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockKV } from './helpers/mockKv';
-import { CachedHeapDB } from '../src/cache/CachedHeapDB';
+import { CachedHeapDB } from '../src/game/cache/CachedHeapDB';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 
 const noWait = (_p: Promise<unknown>) => {};

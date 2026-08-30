@@ -1,4 +1,4 @@
-import type { FeedbackCategory, FeedbackRow } from '../../shared/feedbackTypes';
+import type { FeedbackCategory, FeedbackRow } from '../../../shared/feedbackTypes';
 
 /** Validated, normalized insert input (route does the validation). */
 export interface NormalizedFeedback {

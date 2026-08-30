@@ -5,7 +5,7 @@ import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockDailyDb } from './helpers/mockDailyDb';
 import { MockConfigDB } from './helpers/mockConfigDb';
 import { MockPlayerAuthDB } from './helpers/mockPlayerAuthDb';
-import { hashSecret } from '../src/playerAuth';
+import { hashSecret } from '../src/platform/playerAuth';
 
 const H = 3_600_000;
 // 2026-07-16T02:00:00Z — 10pm July 15 in New York (offset -240)

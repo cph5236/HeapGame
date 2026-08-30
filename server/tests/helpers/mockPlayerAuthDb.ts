@@ -1,4 +1,4 @@
-import type { PlayerAuthDB } from '../../src/playerAuthDb';
+import type { PlayerAuthDB } from '../../src/platform/playerAuthDb';
 
 /** In-memory PlayerAuthDB for tests. Same semantics as D1PlayerAuthDB. */
 export class MockPlayerAuthDB implements PlayerAuthDB {

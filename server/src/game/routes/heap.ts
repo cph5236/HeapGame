@@ -2,19 +2,19 @@
 
 import { Hono } from 'hono';
 import type { HeapDB, HeapRow } from '../db';
-import type { Sink } from '../logging/Sink';
-import { captureServer } from '../logging/captureServerEvent';
+import type { Sink } from '../../platform/logging/Sink';
+import { captureServer } from '../../platform/logging/captureServerEvent';
 import { hashVertices, checkFreezeBands } from '../polygon';
 import {
   BAND_SIZE_PX, bandOf, bandMidY, extendsEnvelope, verticesToEnvelope, envelopeToRows,
   envelopeToVertices, mergeBands, bandsToWire, seedNewBands,
   type BandEnvelope, type BandRow,
-} from '../../../shared/heapPolygon/bandEnvelope';
-import { MAX_ID_LEN } from '../constants';
-import type { PlayerAuthDB } from '../playerAuthDb';
-import { enforcePlayerAuth, PLAYER_TOKEN_HEADER } from '../playerAuth';
+} from '../../../../shared/heapPolygon/bandEnvelope';
+import { MAX_ID_LEN } from '../../constants';
+import type { PlayerAuthDB } from '../../platform/playerAuthDb';
+import { enforcePlayerAuth, PLAYER_TOKEN_HEADER } from '../../platform/playerAuth';
 import type { ContributionDB } from '../contributionDb';
-import type { BanDB } from '../banDb';
+import type { BanDB } from '../../platform/banDb';
 import type {
   CreateHeapRequest,
   CreateHeapResponse,
@@ -33,9 +33,9 @@ import type {
   AdminBandsRequest,
   AdminBandsWriteResponse,
   AdminBandsConflictResponse,
-} from '../../../shared/heapTypes';
-import { DEFAULT_HEAP_PARAMS, INFINITE_HEAP_ID } from '../../../shared/heapTypes';
-import { generateDefaultPolygon } from '../../../shared/heapPolygon';
+} from '../../../../shared/heapTypes';
+import { DEFAULT_HEAP_PARAMS, INFINITE_HEAP_ID } from '../../../../shared/heapTypes';
+import { generateDefaultPolygon } from '../../../../shared/heapPolygon';
 
 // Mirror of src/constants.ts WORLD_WIDTH. Update both if either changes.
 const WORLD_WIDTH = 960;

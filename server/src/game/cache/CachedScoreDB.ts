@@ -12,9 +12,9 @@
 // is then a single delete, keeping writes consistent.
 
 import type { ScoreDB, ScoreRow, AdminScoreRow } from '../scoreDb';
-import type { BanDB } from '../banDb';
-import type { Sink } from '../logging/Sink';
-import { captureServer } from '../logging/captureServerEvent';
+import type { BanDB } from '../../platform/banDb';
+import type { Sink } from '../../platform/logging/Sink';
+import { captureServer } from '../../platform/logging/captureServerEvent';
 
 /** Cache the top this-many rows per heap; matches MAX_LIMIT in routes/scores.ts. */
 const CACHE_TOP_N = 50;

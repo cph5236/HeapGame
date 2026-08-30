@@ -8,7 +8,7 @@ import {
   GRACE_MS,
   MAX_RUN_MS,
   MAX_SESSION_MS,
-} from '../src/runSession';
+} from '../src/game/runSession';
 
 const SECRET  = 'test-secret-0123456789abcdef';
 const PLAYER  = 'player-aaa';

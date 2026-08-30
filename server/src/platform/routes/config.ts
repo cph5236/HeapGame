@@ -2,8 +2,8 @@
 
 import { Hono } from 'hono';
 import type { ConfigDB } from '../configDb';
-import { sanitizeRewardTable } from '../../../shared/dailyDrop';
-import { parseMinVersionConfig, MIN_VERSION_KEY, MAX_GATE_MESSAGE_LENGTH } from '../../../shared/versionGate';
+import { sanitizeRewardTable } from '../../../../shared/dailyDrop';
+import { parseMinVersionConfig, MIN_VERSION_KEY, MAX_GATE_MESSAGE_LENGTH } from '../../../../shared/versionGate';
 
 const KEY_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
 const MAX_VALUE_LENGTH = 8192;

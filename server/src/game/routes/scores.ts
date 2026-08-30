@@ -3,14 +3,14 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { ScoreDB } from '../scoreDb';
-import type { BanDB } from '../banDb';
+import type { BanDB } from '../../platform/banDb';
 import type { HeapDB } from '../db';
-import type { Sink } from '../logging/Sink';
-import { captureServer } from '../logging/captureServerEvent';
-import type { PlayerAuthDB } from '../playerAuthDb';
-import { enforcePlayerAuth, verifyPlayerToken, PLAYER_TOKEN_HEADER } from '../playerAuth';
-import type { PlayerNameDB } from '../playerNameDb';
-import { validatePlayerName, generateDefaultPlayerName } from '../../../shared/playerName';
+import type { Sink } from '../../platform/logging/Sink';
+import { captureServer } from '../../platform/logging/captureServerEvent';
+import type { PlayerAuthDB } from '../../platform/playerAuthDb';
+import { enforcePlayerAuth, verifyPlayerToken, PLAYER_TOKEN_HEADER } from '../../platform/playerAuth';
+import type { PlayerNameDB } from '../../platform/playerNameDb';
+import { validatePlayerName, generateDefaultPlayerName } from '../../../../shared/playerName';
 import { signSession, verifySession, clampElapsedMs, MAX_SESSION_TOKEN_LEN } from '../runSession';
 import type {
   SubmitScoreRequest,
@@ -21,13 +21,13 @@ import type {
   PlayerScoresResponse,
   OpenSessionRequest,
   OpenSessionResponse,
-} from '../../../shared/scoreTypes';
-import { buildRunScore } from '../../../shared/buildRunScore';
-import { MAX_ID_LEN } from '../constants';
-import { ENEMY_DEFS } from '../../../shared/enemyDefs';
-import { computeSalvageBonus, maxSalvageItems, isRarity, SalvageItem } from '../../../shared/pickupScores';
-import { validateLoadout } from '../../../shared/cosmeticCatalog';
-import type { EquippedLoadout } from '../../../shared/cosmeticCatalog';
+} from '../../../../shared/scoreTypes';
+import { buildRunScore } from '../../../../shared/buildRunScore';
+import { MAX_ID_LEN } from '../../constants';
+import { ENEMY_DEFS } from '../../../../shared/enemyDefs';
+import { computeSalvageBonus, maxSalvageItems, isRarity, SalvageItem } from '../../../../shared/pickupScores';
+import { validateLoadout } from '../../../../shared/cosmeticCatalog';
+import type { EquippedLoadout } from '../../../../shared/cosmeticCatalog';
 
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT     = 50;

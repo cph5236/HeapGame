@@ -1,4 +1,4 @@
-import type { Sink, StampedLogEntry } from '../../src/logging/Sink';
+import type { Sink, StampedLogEntry } from '../../src/platform/logging/Sink';
 
 export class MockSink implements Sink {
   written: StampedLogEntry[] = [];

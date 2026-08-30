@@ -12,10 +12,10 @@
 //   cache:base:{baseId} — base vertices           (immutable; long TTL)
 
 import type { HeapDB, HeapRow, HeapSummaryRow, VersionedBandRow, FreezeArgs, AdminReplaceBandsArgs } from '../db';
-import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
-import type { BandRow } from '../../../shared/heapPolygon/bandEnvelope';
-import type { Sink } from '../logging/Sink';
-import { captureServer } from '../logging/captureServerEvent';
+import type { HeapParams, Vertex, HeapEnemyParams } from '../../../../shared/heapTypes';
+import type { BandRow } from '../../../../shared/heapPolygon/bandEnvelope';
+import type { Sink } from '../../platform/logging/Sink';
+import { captureServer } from '../../platform/logging/captureServerEvent';
 
 /** live_zone / top_y change on placement → short TTL backs up write-invalidation. */
 const HEAP_TTL = 60;

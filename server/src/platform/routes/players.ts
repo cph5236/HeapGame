@@ -6,8 +6,8 @@ import type { PlayerAuthDB } from '../playerAuthDb';
 import type { Sink } from '../logging/Sink';
 import { captureServer } from '../logging/captureServerEvent';
 import { enforcePlayerAuth } from '../playerAuth';
-import { MAX_ID_LEN } from '../constants';
-import { validatePlayerName } from '../../../shared/playerName';
+import { MAX_ID_LEN } from '../../constants';
+import { validatePlayerName } from '../../../../shared/playerName';
 
 export function playerRoutes(
   nameDb: PlayerNameDB,

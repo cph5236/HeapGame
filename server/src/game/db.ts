@@ -1,7 +1,7 @@
 // server/src/db.ts
 
-import { HeapParams, Vertex, HeapEnemyParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
-import { bandOf, type BandRow } from '../../shared/heapPolygon/bandEnvelope';
+import { HeapParams, Vertex, HeapEnemyParams, DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
+import { bandOf, type BandRow } from '../../../shared/heapPolygon/bandEnvelope';
 
 /** A band row carrying the version it was last widened at. */
 export type VersionedBandRow = BandRow & { version: number };

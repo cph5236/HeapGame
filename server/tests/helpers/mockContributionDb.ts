@@ -1,4 +1,4 @@
-import type { ContributionDB } from '../../src/contributionDb';
+import type { ContributionDB } from '../../src/game/contributionDb';
 
 /** In-memory ContributionDB for tests. Same semantics as D1ContributionDB. */
 export class MockContributionDB implements ContributionDB {

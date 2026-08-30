@@ -9,7 +9,7 @@ import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockPlayerAuthDB } from './helpers/mockPlayerAuthDb';
 import { MockPlayerNameDB } from './helpers/mockPlayerNameDb';
 import { MockSink } from './helpers/mockSink';
-import { hashSecret } from '../src/playerAuth';
+import { hashSecret } from '../src/platform/playerAuth';
 
 const PLAYER = 'player-aaa';
 const SECRET = 'secret-aaa';

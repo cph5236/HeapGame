@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Hono } from 'hono';
-import { logRoutes } from '../src/routes/log';
-import type { Sink, StampedLogEntry } from '../src/logging/Sink';
+import { logRoutes } from '../src/platform/routes/log';
+import type { Sink, StampedLogEntry } from '../src/platform/logging/Sink';
 
 class MemSink implements Sink {
   written: StampedLogEntry[] = [];

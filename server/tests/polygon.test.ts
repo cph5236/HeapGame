@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hashVertices } from '../src/polygon';
+import { hashVertices } from '../src/game/polygon';
 import { Vertex } from '../../shared/heapTypes';
 
 // A simple 10×10 square with corners at (0,0), (10,0), (10,10), (0,10)

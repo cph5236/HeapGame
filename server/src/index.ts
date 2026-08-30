@@ -1,22 +1,22 @@
 import { createApp } from './app';
-import { D1HeapDB } from './db';
-import { D1ScoreDB } from './scoreDb';
-import { D1RewardCodeDB } from './codeDb';
-import { D1DailyClaimDB } from './dailyDb';
-import { D1FeedbackDB } from './feedbackDb';
-import { D1ConfigDB } from './configDb';
-import { D1CustomizationDB } from './customizationDb';
-import { D1PlayerAuthDB } from './playerAuthDb';
-import { D1ContributionDB } from './contributionDb';
-import { D1PlayerNameDB } from './playerNameDb';
-import { D1BanDB } from './banDb';
-import { CachedHeapDB } from './cache/CachedHeapDB';
-import { CachedScoreDB } from './cache/CachedScoreDB';
-import { CachedConfigDB } from './cache/CachedConfigDB';
-import { MemoBanDB } from './cache/MemoBanDB';
-import { D1Sink } from './logging/D1Sink';
-import { AnalyticsEngineSink } from './logging/AnalyticsEngineSink';
-import type { RateLimiter } from './middleware/rateLimit';
+import { D1HeapDB } from './game/db';
+import { D1ScoreDB } from './game/scoreDb';
+import { D1RewardCodeDB } from './game/codeDb';
+import { D1DailyClaimDB } from './game/dailyDb';
+import { D1FeedbackDB } from './platform/feedbackDb';
+import { D1ConfigDB } from './platform/configDb';
+import { D1CustomizationDB } from './game/customizationDb';
+import { D1PlayerAuthDB } from './platform/playerAuthDb';
+import { D1ContributionDB } from './game/contributionDb';
+import { D1PlayerNameDB } from './platform/playerNameDb';
+import { D1BanDB } from './platform/banDb';
+import { CachedHeapDB } from './game/cache/CachedHeapDB';
+import { CachedScoreDB } from './game/cache/CachedScoreDB';
+import { CachedConfigDB } from './platform/cache/CachedConfigDB';
+import { MemoBanDB } from './platform/cache/MemoBanDB';
+import { D1Sink } from './platform/logging/D1Sink';
+import { AnalyticsEngineSink } from './platform/logging/AnalyticsEngineSink';
+import type { RateLimiter } from './platform/middleware/rateLimit';
 
 export interface Env {
   // Domain-sharded D1 databases (see wrangler.toml).

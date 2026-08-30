@@ -8,7 +8,7 @@ import { MockPlayerNameDB } from './helpers/mockPlayerNameDb';
 import { MockSink } from './helpers/mockSink';
 import { MockCustomizationDB } from './helpers/mockCustomizationDb';
 import { MockCodeDB } from './helpers/mockCodeDb';
-import { hashSecret } from '../src/playerAuth';
+import { hashSecret } from '../src/platform/playerAuth';
 
 const HEAP_ID = 'heap-test-001';
 const PLAYER = 'player-aaa';

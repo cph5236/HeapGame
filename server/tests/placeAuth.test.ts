@@ -8,7 +8,7 @@ import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockPlayerAuthDB } from './helpers/mockPlayerAuthDb';
 import { MockSink } from './helpers/mockSink';
-import { hashSecret } from '../src/playerAuth';
+import { hashSecret } from '../src/platform/playerAuth';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 
 const HEAP_ID = 'h1';

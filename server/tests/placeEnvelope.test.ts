@@ -9,7 +9,7 @@ import { createApp } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { DEFAULT_HEAP_PARAMS, type PlaceResponse } from '../../shared/heapTypes';
-import { GHOST_SPREAD_BANDS } from '../src/routes/heap';
+import { GHOST_SPREAD_BANDS } from '../src/game/routes/heap';
 
 const NOW = new Date().toISOString();
 

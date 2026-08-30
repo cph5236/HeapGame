@@ -8,8 +8,10 @@ at `/heaps`. Tests run via Vitest.
 ## Layout
 - `src/` game client — `scenes/` (Menu, Game, InfiniteGame, Score, …), `systems/`
   (SaveData, clients, physics helpers), `entities/` (Player, Enemy), `ui/`
-- `server/` worker — `routes/` (Hono), `*Db.ts` repos (each has D1 + Mock + Cached
-  variants), `cache/` KV decorators
+- `server/` worker — split `platform/` (auth, bans, config, feedback, logging,
+  middleware) and `game/` (heaps, scores, codes, daily, customization); each half
+  has `routes/` (Hono), `*Db.ts` repos (D1 + Mock + Cached variants) and `cache/`
+  KV decorators
 - `shared/` types + pure logic used by both sides
 - Tests in `__tests__/` dirs across `src/` and `shared/`, and in `server/tests/`
 - Specs/plans/runbooks in `docs/superpowers/`
