@@ -26,8 +26,10 @@ export interface SettingsRow {
   /** Panel fill / stroke / text colors. Defaults to the neutral blue button. */
   color?: { fill: number; stroke: number; text: string };
   /** Invoked on tap. Receives a `setResult` to print a line under the button
-   *  (used by Redeem Code to report success/failure without owning UI). */
-  onTap: (setResult: (msg: string, ok: boolean) => void) => void;
+   *  (used by Redeem Code to report success/failure without owning UI), and a
+   *  `close` to dismiss the modal — a row that navigates elsewhere must call it
+   *  rather than stopping the scene itself, so the host is resumed first. */
+  onTap: (setResult: (msg: string, ok: boolean) => void, close: () => void) => void;
 }
 
 export interface SettingsSceneData {
@@ -178,8 +180,24 @@ export class SettingsScene extends Phaser.Scene {
     // callbacks. Sliders also capture their track coordinates at build time and
     // cannot be re-laid-out. Closing is the honest answer to both.
     this.scale.on(Phaser.Scale.Events.RESIZE, this.onScaleResize);
+
+    // Input teardown hangs off SHUTDOWN rather than close(), because the
+    // suppression rect lives on a SINGLETON InputManager whose map outlives this
+    // scene. A caller that stops this scene directly — `scene.stop('SettingsScene')`
+    // — would otherwise leave a full-screen tap-swallow zone registered for the rest
+    // of the session, silently eating every swipe gesture in every later scene.
+    // Unconditional cleanup is the only version of this that cannot regress.
+    //
+    // Resuming the host deliberately stays in close(): it has to happen
+    // synchronously, before a caller navigates on. Queued from here it would be
+    // processed AFTER the caller's own scene.start() stop, waking the host back up
+    // underneath the new scene.
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.onScaleResize);
+      const im = InputManager.getInstance();
+      im.setSuppressionRect('settings', null);
+      // Drop the dismiss tap so it can't fire a jump on the resumed run.
+      im.clearBufferedActions();
     });
 
     this.input.keyboard?.on('keydown-ESC', () => this.close());
@@ -312,9 +330,10 @@ export class SettingsScene extends Phaser.Scene {
       }).setOrigin(0.5).setScrollFactor(0).setDepth(D_CONTENT);
       const result = this.add.text(cx, y + 34, '', { fontSize: '13px', color: '#88ccff', align: 'center' })
         .setOrigin(0.5).setScrollFactor(0).setDepth(D_CONTENT);
-      bg.on('pointerup', () => row.onTap((msg, ok) => {
-        result.setText(msg).setColor(ok ? '#88ff88' : '#ff9988');
-      }));
+      bg.on('pointerup', () => row.onTap(
+        (msg, ok) => { result.setText(msg).setColor(ok ? '#88ff88' : '#ff9988'); },
+        () => this.close(),
+      ));
       items.push(bg, label, result);
       y += ROW_PITCH;
     }
@@ -408,11 +427,10 @@ export class SettingsScene extends Phaser.Scene {
 
   // ── Close ───────────────────────────────────────────────────────────────────
 
+  /** Resume the host and stop this scene. Input teardown runs from the SHUTDOWN
+   *  handler in create(), so stopping this scene by any other route still cleans
+   *  up — only the host resume is specific to this path. */
   private close(): void {
-    const im = InputManager.getInstance();
-    im.setSuppressionRect('settings', null);
-    // Drop the dismiss tap so it can't fire a jump on the resumed run.
-    im.clearBufferedActions();
     this.scene.resume(this.returnTo);
     this.scene.stop();
   }

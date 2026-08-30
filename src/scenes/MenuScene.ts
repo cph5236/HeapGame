@@ -964,7 +964,12 @@ export class MenuScene extends Phaser.Scene {
         {
           label: 'HOW TO PLAY',
           color: { fill: 0x2a2a4c, stroke: 0x8888cc, text: '#ccccff' },
-          onTap: () => { this.scene.stop('SettingsScene'); this.scene.start('TutorialScene'); },
+          // Close through the modal, not scene.stop(), so its teardown runs and
+          // this scene is resumed before we navigate away from it.
+          onTap: (_setResult: (msg: string, ok: boolean) => void, close: () => void) => {
+            close();
+            this.scene.start('TutorialScene');
+          },
         },
       ],
       // Toggling control mode changes whether the tilt-permission prompt behind
