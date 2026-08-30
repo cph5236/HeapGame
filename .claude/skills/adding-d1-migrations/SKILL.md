@@ -38,10 +38,11 @@ Check applied state: `cd server && npx wrangler d1 migrations list <db> --local`
 ## Ripple effects to check
 
 - **Repo triples**: repository methods exist in three flavors — real D1 repo,
-  the Mock used by `server/tests/`, and the Cached decorator in `server/src/cache/`.
+  the Mock used by `server/tests/`, and the Cached decorator in
+  `server/src/platform/cache/` or `server/src/game/cache/`.
   A new column/method must be implemented in all three or tests/prod diverge.
 - **Cache staleness**: if the change alters data shape served by a cached read,
-  bump/invalidate the relevant KV cache key logic in `server/src/cache/`.
+  bump/invalidate the relevant KV cache key logic in `server/src/*/cache/`.
 - **Shared types**: update `shared/*.ts` types alongside the schema.
 
 ## Rules

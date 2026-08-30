@@ -27,8 +27,8 @@ The backend is split into four domain D1 databases (see the sharding plan/runboo
 in `docs/superpowers/`): `heap_core` (binding `DB_HEAP`), `heap_scores` (`DB_SCORES`),
 `heap_rewards` (`DB_REWARDS`), `heap_telemetry` (`DB_TELEMETRY`) — all declared in
 `server/wrangler.toml`, plus a `CACHE` KV namespace. Read-heavy repos are wrapped by
-the cache decorators in `server/src/cache/`. Pick the DB a table lives in before
-adding a migration.
+the cache decorators in `server/src/platform/cache/` and `server/src/game/cache/`.
+Pick the DB a table lives in before adding a migration.
 
 Schema changes require a migration file — never edit the per-DB schema alone.
 1. Add `server/migrations/<db>/NNNN_description.sql` with only the incremental SQL
