@@ -11,7 +11,8 @@ import { validatePlayerName } from '../../shared/playerName';
 import type { RawSave } from '../systems/SaveData';
 import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
 import { buildInfiniteEntry } from '../data/infiniteCatalog';
-import { initLogger } from '../logging';
+import { initLogger, getLogger } from '../logging';
+import { recordReferral } from '../systems/referral';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { beginSignIn, signInSettled } from '../systems/gpgsSession';
 import { AudioManager } from '../systems/AudioManager';
@@ -46,6 +47,18 @@ export class BootScene extends Phaser.Scene {
 
     // Initialize logger after SaveData is importable but before async catalog fetch.
     initLogger();
+
+    // Acquisition marker from the landing url (`?ref=run` on a shared link).
+    // Must follow initLogger() so the event has somewhere to go, and it is
+    // first-touch only, so a returning player re-emits nothing. No-op in the
+    // Android WebView, whose url never carries one.
+    if (typeof window !== 'undefined') {
+      recordReferral(
+        window.location.search,
+        (() => { try { return window.localStorage; } catch { return undefined; } })(),
+        (event) => getLogger().event(event),
+      );
+    }
 
     // Kick off GPGS sign-in. LoadingScene gates the menu on this settling, so
     // the id is already final by the time the player can reach anything that

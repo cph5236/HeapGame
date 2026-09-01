@@ -35,6 +35,7 @@ import { composeAvatar } from '../ui/avatar';
 import { getPlayConsoleId, LEADERBOARD_HIGH_SCORE_ID } from '../data/achievementDefs';
 import { markRunEnded } from '../systems/dailyRunGate';
 import { notifyRunFinished } from '../web/hostEvents';
+import { buildShareMessage, shareRun, type ShareOutcome } from '../systems/shareRun';
 
 
 /** Top-N entries shown as podium boxes (the avatar-showcase spots). */
@@ -233,6 +234,7 @@ export class ScoreScene extends Phaser.Scene {
     this.createTitle();
     this.createScoreDisplay();
     if (this.isNewHighScore) this.createHighScoreBadge();
+    this.createShareButton();
     this._coinsPanelBottom = this.createCoinsPanel(result.rows, result.finalCoins, balance);
     const leaderboardBottom = this.createLeaderboardPanel(this._coinsPanelBottom);
     this.createBottomButtons(leaderboardBottom);
@@ -1209,6 +1211,84 @@ export class ScoreScene extends Phaser.Scene {
   private playerInPodium(ctx: LeaderboardContext): boolean {
     if (!ctx.player) return false;
     return ctx.top.slice(0, PODIUM_COUNT).some(e => e.playerId === ctx.player!.playerId);
+  }
+
+  // ── Share ─────────────────────────────────────────────────────────────────────
+
+  /** Compact SHARE button on the score row.
+   *
+   *  Deliberately not in the bottom action row: that row's job is to get the
+   *  player back into a run, and a third button there would both crowd it on a
+   *  390px phone and compete with PLAY AGAIN. Up here it sits with the number
+   *  it is bragging about, at the moment the score has just finished counting
+   *  up — and the right margin beside the score is empty on every device.
+   */
+  private createShareButton(): void {
+    // A zero score is not worth a post, and offering to share one reads as a nag.
+    if (this.score <= 0) return;
+
+    const cy  = logicalHeight(this) * 0.19;
+    const btn = this.add.text(logicalWidth(this) - 12, cy, 'SHARE', {
+      fontSize:        '11px',
+      fontFamily:      'monospace',
+      color:           '#aaccee',
+      backgroundColor: '#1a4d8b99',
+      padding:         { x: 8, y: 5 },
+      letterSpacing:   1,
+    }).setOrigin(1, 0.5);
+
+    btn.on('pointerover', () => { btn.setColor('#ffffff'); btn.setBackgroundColor('#2266bbcc'); });
+    btn.on('pointerout',  () => { btn.setColor('#aaccee'); btn.setBackgroundColor('#1a4d8b99'); });
+
+    // Transient result line under the button. The clipboard path especially
+    // needs it: without a word back, a copy is indistinguishable from a dead tap.
+    let toast: Phaser.GameObjects.Text | null = null;
+    const say = (msg: string, color: string) => {
+      if (toast) {
+        // Kill the outgoing fade first: left running, it would keep ticking on a
+        // destroyed object and its onComplete would clear the replacement below.
+        this.tweens.killTweensOf(toast);
+        toast.destroy();
+      }
+      const line = this.add.text(logicalWidth(this) - 12, cy + 18, msg, {
+        fontSize: '9px', fontFamily: 'monospace', color,
+      }).setOrigin(1, 0.5);
+      toast = line;
+      this.tweens.add({
+        targets: line, alpha: 0, delay: 1800, duration: 500,
+        // Captures `line`, not `toast` — a tap during the fade must not let this
+        // completion destroy the toast that replaced it.
+        onComplete: () => { line.destroy(); if (toast === line) toast = null; },
+      });
+    };
+
+    // Same 1500ms arming delay as the bottom buttons: a tap carried over from
+    // gameplay should not pop an OS share sheet in the player's face.
+    this.time.delayedCall(1500, () => {
+      btn.setInteractive({ useHandCursor: true });
+      btn.on('pointerup', () => {
+        const msg = buildShareMessage({
+          score:          this.score,
+          heapName:       this._heapParams.name,
+          isInfinite:     this._heapParams.isInfinite === true,
+          isNewHighScore: this.isNewHighScore,
+          isPeak:         this.isPeak,
+        });
+        void shareRun(msg, typeof navigator === 'undefined' ? undefined : navigator)
+          .then((outcome: ShareOutcome) => {
+            getLogger().event({
+              type: 'share:run', heapId: this.heapId, score: this.score, outcome,
+            });
+            if (outcome === 'copied')           say('link copied', '#44ffaa');
+            else if (outcome === 'unavailable') say('could not share', '#ff8877');
+            // 'shared' and 'dismissed' need no toast: the OS sheet was the feedback.
+          })
+          .catch((err: unknown) => {
+            getLogger().error('share:failed', { stack: String(err) });
+            say('could not share', '#ff8877');
+          });
+      });
+    });
   }
 
   // ── Menu Prompt ───────────────────────────────────────────────────────────────
