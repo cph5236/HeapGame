@@ -15,8 +15,6 @@ const PANEL_W = 300;
 const BTN_W   = 240;
 const BTN_H   = 48;
 const BTN_GAP = 14;
-/** Resume, Settings, Exit — drives the panel and title geometry. */
-const BTN_COUNT = 3;
 
 export class PauseScene extends Phaser.Scene {
   private gameSceneKey!: string;
@@ -38,23 +36,28 @@ export class PauseScene extends Phaser.Scene {
     const bg = this.add.rectangle(cx, cy, logicalWidth(this), logicalHeight(this), 0x000000, 0.72)
       .setScrollFactor(0).setDepth(40).setInteractive();
 
-    const titleY = cy - (BTN_H * BTN_COUNT + BTN_GAP * (BTN_COUNT - 1)) / 2 - 48;
-    const title = this.add.text(cx, titleY, 'PAUSED', {
-      fontSize: '28px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(42);
-
-    const panelH = BTN_H * BTN_COUNT + BTN_GAP * (BTN_COUNT - 1) + 40;
-    const panel = this.add.rectangle(cx, cy, Math.min(PANEL_W, logicalWidth(this) - 32), panelH, 0x0d0d20)
-      .setScrollFactor(0).setDepth(41).setStrokeStyle(2, 0x4455aa).setInteractive();
-
-    this.menuParts = [bg, title, panel];
-
+    // Declared before the geometry below, which is derived from its length —
+    // adding or removing a button re-lays-out the panel with no constant to update.
     const labels: Array<[string, () => void]> = [
       ['Resume',           () => this.resumeGame()],
       ['Settings',         () => this.openSettings()],
       ['Exit to Main Menu', () => this.showView('confirm')],
     ];
-    const top = cy - (BTN_H * BTN_COUNT + BTN_GAP * (BTN_COUNT - 1)) / 2 + BTN_H / 2;
+    const btnCount = labels.length;
+    const stackH   = BTN_H * btnCount + BTN_GAP * (btnCount - 1);
+
+    const titleY = cy - stackH / 2 - 48;
+    const title = this.add.text(cx, titleY, 'PAUSED', {
+      fontSize: '28px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(42);
+
+    const panelH = stackH + 40;
+    const panel = this.add.rectangle(cx, cy, Math.min(PANEL_W, logicalWidth(this) - 32), panelH, 0x0d0d20)
+      .setScrollFactor(0).setDepth(41).setStrokeStyle(2, 0x4455aa).setInteractive();
+
+    this.menuParts = [bg, title, panel];
+
+    const top = cy - stackH / 2 + BTN_H / 2;
     labels.forEach(([text, onTap], i) => {
       const by = top + i * (BTN_H + BTN_GAP);
       const btn = this.add.rectangle(cx, by, BTN_W, BTN_H, 0x1a3a5c)

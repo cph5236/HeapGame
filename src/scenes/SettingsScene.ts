@@ -140,20 +140,24 @@ export class SettingsScene extends Phaser.Scene {
 
     const cx = logicalWidth(this) / 2;
     const cy = logicalHeight(this) / 2;
+    // Clamp to the viewport. 360 CSS px is a very common Android logical width,
+    // which would render the panel exactly edge-to-edge; narrower phones and fold
+    // cover screens would push the close button off-screen entirely.
+    const panelW = Math.min(PANEL_W, logicalWidth(this) - 32);
 
     const overlayBg = this.add.rectangle(cx, cy, logicalWidth(this), logicalHeight(this), 0x000000, 0.72)
       .setScrollFactor(0).setDepth(D_OVERLAY).setInteractive();
     // The panel is interactive so taps landing on it (a slider track, empty panel
     // space) are absorbed here rather than falling through to overlayBg, whose
     // pointerup closes. Only taps on the true backdrop should close.
-    this.add.rectangle(cx, cy, PANEL_W, PANEL_H, 0x0d0d20)
+    this.add.rectangle(cx, cy, panelW, PANEL_H, 0x0d0d20)
       .setScrollFactor(0).setDepth(D_PANEL).setStrokeStyle(2, 0x4455aa).setInteractive();
 
     this.add.text(cx, cy - PANEL_H / 2 + 22, 'SETTINGS', {
       fontSize: '22px', color: '#ffffff', stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(D_CHROME);
 
-    const closeBtn = this.add.text(cx + PANEL_W / 2 - 20, cy - PANEL_H / 2 + 14, '✕', {
+    const closeBtn = this.add.text(cx + panelW / 2 - 20, cy - PANEL_H / 2 + 14, '✕', {
       fontSize: '20px', color: '#aaaaaa',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(D_CHROME).setInteractive({ useHandCursor: true });
 
@@ -162,7 +166,10 @@ export class SettingsScene extends Phaser.Scene {
 
     // ── Tab bar ───────────────────────────────────────────────────────────────
     const TAB_Y = cy - PANEL_H / 2 + 52;
-    const TAB_W = 108, TAB_H = 32, TAB_GAP = 6;
+    const TAB_H = 32, TAB_GAP = 6;
+    // Three tabs plus their gaps have to fit the clamped panel, leaving 12px of
+    // padding each side. Resolves to the full 108 on any panel at full width.
+    const TAB_W = Math.min(108, (panelW - 24 - TAB_GAP * 2) / 3);
     const tabXs = [cx - (TAB_W + TAB_GAP), cx, cx + (TAB_W + TAB_GAP)];
 
     const mkTab = (x: number, label: string, tab: Tab) => {
