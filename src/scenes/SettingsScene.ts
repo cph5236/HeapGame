@@ -70,6 +70,14 @@ const DEFAULT_RESET_WARNING = 'Clears all saved progress.';
 // outside the panel.
 const ROW_PITCH = 72;
 
+/** Paint a text toggle as selected or not. Shared by the control-mode and
+ *  joystick-side pairs so the two can't drift apart. */
+function setToggleStyle(t: Phaser.GameObjects.Text, active: boolean): void {
+  t.setColor(active ? '#ffffff' : '#888888')
+   .setBackgroundColor(active ? '#2244aa' : '#1a1a2e')
+   .setFontStyle(active ? 'bold' : 'normal');
+}
+
 /**
  * The one settings UI, launched as a modal overlay over whatever scene asked for
  * it — the main menu or a paused run. It is a Scene rather than a panel built
@@ -258,12 +266,8 @@ export class SettingsScene extends Phaser.Scene {
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(D_CONTENT);
 
     const paintMode = () => {
-      const on = (t: Phaser.GameObjects.Text, active: boolean) => t
-        .setColor(active ? '#ffffff' : '#888888')
-        .setBackgroundColor(active ? '#2244aa' : '#1a1a2e')
-        .setFontStyle(active ? 'bold' : 'normal');
-      on(tiltOpt, mode === 'tilt');
-      on(joyOpt,  mode === 'joystick');
+      setToggleStyle(tiltOpt, mode === 'tilt');
+      setToggleStyle(joyOpt,  mode === 'joystick');
       const sideDim = mode !== 'joystick';
       [sideLabel, leftOpt, rightOpt].forEach(o => o.setAlpha(sideDim ? 0.4 : 1));
       // The toggle shows the player's CHOICE; the hint must describe the controls
@@ -271,12 +275,8 @@ export class SettingsScene extends Phaser.Scene {
       hint.setText(controlHelpLines(im.isMobile, mountableControlMode(mode, im)).join('\n'));
     };
     const paintSide = () => {
-      const on = (t: Phaser.GameObjects.Text, active: boolean) => t
-        .setColor(active ? '#ffffff' : '#888888')
-        .setBackgroundColor(active ? '#2244aa' : '#1a1a2e')
-        .setFontStyle(active ? 'bold' : 'normal');
-      on(leftOpt,  side === 'left');
-      on(rightOpt, side === 'right');
+      setToggleStyle(leftOpt,  side === 'left');
+      setToggleStyle(rightOpt, side === 'right');
     };
     paintMode(); paintSide();
 

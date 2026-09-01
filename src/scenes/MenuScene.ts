@@ -517,6 +517,11 @@ export class MenuScene extends Phaser.Scene {
     input.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter')  confirm();
       if (e.key === 'Escape') close();
+      // A DOM overlay owns its own keys. Phaser's keyboard plugin listens on
+      // window, so without this the same Escape also reaches whichever scene is
+      // on top — SettingsScene closes on Escape, so cancelling the code entry
+      // would drop the player out of Settings entirely.
+      if (e.key === 'Enter' || e.key === 'Escape') e.stopPropagation();
     });
 
     confirmBtn.addEventListener('click', confirm);
@@ -618,6 +623,9 @@ export class MenuScene extends Phaser.Scene {
     input.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter')  void submit();
       if (e.key === 'Escape') close();
+      // See openNameDialog: stop the key reaching Phaser's window-level listener,
+      // or this Escape closes SettingsScene as well as this dialog.
+      if (e.key === 'Enter' || e.key === 'Escape') e.stopPropagation();
     });
     confirmBtn.addEventListener('click', () => void submit());
     cancelEl.addEventListener('click', close);
