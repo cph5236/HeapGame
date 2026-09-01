@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import {
   getRawSaveForCloudSync, resetCacheForTests, mergeCloudSave,
   getPlayerSecret, getSoundSettings, getControlMode, getJoystickSide,
@@ -116,5 +116,42 @@ describe('save/core — mergeCloudSave keeps the write-auth secret', () => {
   it('takes the name from whichever save has the higher balance', () => {
     expect(mergeCloudSave(base({ balance: 1, playerName: 'Local' }), base({ balance: 9, playerName: 'Cloud' })).playerName).toBe('Cloud');
     expect(mergeCloudSave(base({ balance: 9, playerName: 'Local' }), base({ balance: 1, playerName: 'Cloud' })).playerName).toBe('Local');
+  });
+});
+
+describe('save/core — reaching past the barrel cannot silently truncate a save', () => {
+  beforeEach(() => { localStorage.clear(); resetCacheForTests(); });
+
+  /** Import save/core into a fresh module registry, so save/game never runs and
+   *  no extension is registered — the accidental-direct-import scenario. */
+  async function coreAlone() {
+    vi.resetModules();
+    return await import('../save/core');
+  }
+
+  it('throws rather than dropping game fields it does not own', async () => {
+    localStorage.setItem('heap_save', JSON.stringify({ schemaVersion: 5, ...CORE, balance: 10 }));
+    const core = await coreAlone();
+    expect(() => core.load()).toThrow(/no SaveExtension registered/);
+    // The stored record is untouched — nothing was written back over it.
+    expect(JSON.parse(localStorage.getItem('heap_save')!).balance).toBe(10);
+  });
+
+  it('names the fields that would have been lost', async () => {
+    localStorage.setItem('heap_save', JSON.stringify({ ...CORE, balance: 1, upgrades: {} }));
+    const core = await coreAlone();
+    expect(() => core.load()).toThrow(/balance, upgrades/);
+  });
+
+  it('still loads a core-only save — the platform shell standing alone', async () => {
+    localStorage.setItem('heap_save', JSON.stringify({ schemaVersion: 5, ...CORE }));
+    const core = await coreAlone();
+    expect(core.load().playerSecret).toBe('SECRET');
+  });
+
+  it('still falls back to a fresh save on a corrupt blob', async () => {
+    localStorage.setItem('heap_save', '{not json');
+    const core = await coreAlone();
+    expect(core.load().playerGuid).toBeTruthy();
   });
 });

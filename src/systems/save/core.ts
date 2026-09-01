@@ -72,6 +72,34 @@ const extFresh   = (): object => _ext?.fresh() ?? {};
 const extMigrate = (parsed: any, v: number): object => _ext?.migrate(parsed, v) ?? {};
 const extMerge   = (l: any, c: any): object => _ext?.merge(l, c) ?? {};
 
+/** The fields core owns. Anything else in a stored blob came from a game half. */
+const CORE_KEYS: ReadonlySet<string> = new Set([
+  'schemaVersion', 'playerGuid', 'playerSecret', 'playerName', 'gpgsPlayerId',
+  'verboseLogging', 'soundSettings', 'controlMode', 'joystickSide', 'remoteConfig',
+]);
+
+/** Thrown when core is asked to read a save it would silently truncate. Its own
+ *  class so load() can tell it apart from a corrupt-save parse failure, which is
+ *  recoverable; this one is a wiring bug and must not be swallowed. */
+export class MissingSaveExtensionError extends Error {}
+
+/** A save with no game half is legitimate — that is the platform shell standing
+ *  alone, which is the point of the split. Reading a save that *has* game fields
+ *  without one is not: migrate() drops them and load() writes the truncated
+ *  record straight back, wiping the player's progress with nothing logged. This
+ *  only fires when a module reaches past the `SaveData` barrel into `save/core`,
+ *  so it fails the wiring, never a player. */
+function assertExtensionForBlob(parsed: any): void {
+  if (_ext || !parsed || typeof parsed !== 'object') return;
+  const gameFields = Object.keys(parsed).filter(k => !CORE_KEYS.has(k));
+  if (gameFields.length === 0) return;
+  throw new MissingSaveExtensionError(
+    `save/core: no SaveExtension registered, but the stored save carries game fields ` +
+    `(${gameFields.join(', ')}) that would be dropped. Import the SaveData barrel ` +
+    `rather than save/core, so the game half registers itself before load().`,
+  );
+}
+
 /** The whole stored record: core fields plus whatever the game registered. Game
  *  fields are opaque here — they ride through load/persist/merge untouched. */
 export type RawSave = CoreSave & Record<string, any>;
@@ -127,12 +155,17 @@ export function load(): RawSave {
     const raw = localStorage.getItem(SAVE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      assertExtensionForBlob(parsed);
       const migrated = migrate(parsed);
       _cache = migrated;
       if ((parsed?.schemaVersion ?? 1) !== CURRENT_SCHEMA) persist(migrated);
       return migrated;
     }
-  } catch { /* fall through */ }
+  } catch (err) {
+    // An unreadable or corrupt blob falls through to a fresh save; a missing
+    // extension is a wiring bug, and swallowing it is what loses the data.
+    if (err instanceof MissingSaveExtensionError) throw err;
+  }
   const fresh = freshSave();
   _cache = fresh;
   return fresh;

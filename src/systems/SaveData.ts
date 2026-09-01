@@ -19,6 +19,7 @@ export {
   type CoreSave,
   type RawSave,
   type SaveExtension,
+  MissingSaveExtensionError,
   getStoredRemoteConfig,
   setStoredRemoteConfig,
   resetAllData,
