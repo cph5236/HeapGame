@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { InputManager } from '../systems/InputManager';
-import type { SettingsSceneData } from './SettingsScene';
+import { pauseSettingsData, type ControlHost } from './pauseSettings';
 import { markRunEnded } from '../systems/dailyRunGate';
 
 export interface PauseSceneData {
@@ -116,10 +116,12 @@ export class PauseScene extends Phaser.Scene {
    *  inert; the game scene below remains paused throughout. */
   private openSettings(): void {
     if (this.scene.isActive('SettingsScene')) return; // guard against double-open
-    this.scene.launch('SettingsScene', {
-      returnTo: this.scene.key,
-      context:  'game',
-    } satisfies SettingsSceneData);
+    // The host is resolved per tap, not captured here: it may be stopped while
+    // Settings is open (Exit to Main Menu), and re-mounting a dead scene throws.
+    this.scene.launch('SettingsScene', pauseSettingsData(
+      this.scene.key,
+      () => this.scene.get(this.gameSceneKey) as ControlHost | undefined,
+    ));
   }
 
   private resumeGame(): void {

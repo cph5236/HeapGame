@@ -828,4 +828,14 @@ export class InfiniteGameScene extends Phaser.Scene {
     AudioManager.stopAll('envSfx');
     this._runSession.stop();
   }
+
+  /** Rebuild the on-screen controls against the currently saved mode. Called
+   *  when Settings changes the control scheme mid-run: mountJoystick() is the
+   *  only thing that drives InputManager.setControlMode and builds/tears down
+   *  the stick, and it otherwise runs just once at create(). */
+  remountControls(): void {
+    this.joystick?.destroy();
+    this.joystick = mountJoystick(this, this.im, this.player);
+  }
+
 }

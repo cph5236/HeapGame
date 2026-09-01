@@ -1010,6 +1010,15 @@ export class GameScene extends Phaser.Scene {
     this.scene.pause();
   }
 
+  /** Rebuild the on-screen controls against the currently saved mode. Called
+   *  when Settings changes the control scheme mid-run: mountJoystick() is the
+   *  only thing that drives InputManager.setControlMode and builds/tears down
+   *  the stick, and it otherwise runs just once at create(). */
+  remountControls(): void {
+    this.joystick?.destroy();
+    this.joystick = mountJoystick(this, this.im, this.player);
+  }
+
   /**
    * Teardown. Phaser does NOT auto-call a Scene's `shutdown()` — it only
    * invokes init/preload/create/update — so this only runs because create()
