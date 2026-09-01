@@ -891,3 +891,59 @@ describe('InputManager — tiltPermissionBlocked', () => {
     expect(im.tiltPermissionBlocked).toBe(false);
   });
 });
+
+// ── Leaked full-screen suppression zone ────────────────────────────────────────
+// SettingsScene registers a FULL-SCREEN suppression rect while its modal is up,
+// on this singleton, whose map outlives any one scene. If a scene exits without
+// clearing it (e.g. stopped externally rather than through its own close path),
+// every later touch begins inside the zone and input dies silently for the rest
+// of the session — no error, no visual clue. These pin that consequence so the
+// cost of leaking one is visible in the test suite, not just on a device.
+
+const FULLSCREEN_ZONE = { x: 0, y: 0, w: 400, h: 800 };
+
+describe('InputManager — a leaked full-screen suppression zone', () => {
+  it('swallows every tap anywhere on screen', async () => {
+    const { im, fire } = await makeMobileIM();
+    im.attachScreenTransform(IDENTITY_TRANSFORM);
+    im.setSuppressionRect('settings', FULLSCREEN_ZONE);
+
+    fire('touchstart', { touches: [{ clientX: 200, clientY: 400 }] });
+    vi.spyOn(performance, 'now').mockReturnValue(100);
+    fire('touchend', { changedTouches: [{ clientX: 202, clientY: 402 }] });
+    vi.restoreAllMocks();
+
+    im.update(16, false);
+    expect(im.jumpJustPressed).toBe(false);
+  });
+
+  it('swallows swipe gestures anywhere on screen', async () => {
+    const { im, fire } = await makeMobileIM();
+    im.attachScreenTransform(IDENTITY_TRANSFORM);
+    im.setSuppressionRect('settings', FULLSCREEN_ZONE);
+
+    vi.spyOn(performance, 'now').mockReturnValueOnce(0);
+    fire('touchstart', { touches: [{ clientX: 60, clientY: 400 }] });
+    vi.spyOn(performance, 'now').mockReturnValue(100);
+    fire('touchend', { changedTouches: [{ clientX: 260, clientY: 405 }] }); // would dash
+    vi.restoreAllMocks();
+
+    im.update(16, false);
+    expect(im.dashJustFired).toBe(false);
+  });
+
+  it('clearing it restores input — this is what scene teardown must do', async () => {
+    const { im, fire } = await makeMobileIM();
+    im.attachScreenTransform(IDENTITY_TRANSFORM);
+    im.setSuppressionRect('settings', FULLSCREEN_ZONE);
+    im.setSuppressionRect('settings', null);   // what SettingsScene's SHUTDOWN does
+
+    fire('touchstart', { touches: [{ clientX: 200, clientY: 400 }] });
+    vi.spyOn(performance, 'now').mockReturnValue(100);
+    fire('touchend', { changedTouches: [{ clientX: 202, clientY: 402 }] });
+    vi.restoreAllMocks();
+
+    im.update(16, false);
+    expect(im.jumpJustPressed).toBe(true);
+  });
+});

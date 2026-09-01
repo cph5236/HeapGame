@@ -3,8 +3,8 @@ import Phaser from 'phaser';
 
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { AudioManager } from '../systems/AudioManager';
-import { getBalance, getPlaced, resetAllData, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getEffectivePlayerId, getVerboseLogging, setVerboseLogging, setControlMode, getControlMode, getJoystickSide, setJoystickSide, getEffectiveControlMode, setSessionControlMode, getEquippedCosmetics, getHatAdjustments, getCustomizeHintSeen } from '../systems/SaveData';
-import { tiltPromptKind, mountableControlMode, startupControlOverride, isTiltPendingPermission } from '../systems/tiltAvailability';
+import { getBalance, getPlaced, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getEffectivePlayerId, getControlMode, getEffectiveControlMode, setSessionControlMode, getEquippedCosmetics, getHatAdjustments, getCustomizeHintSeen } from '../systems/SaveData';
+import { tiltPromptKind, isTiltPendingPermission } from '../systems/tiltAvailability';
 import { composeAvatar } from '../ui/avatar';
 import { redeemCode, type RedeemResult } from '../systems/CodeClient';
 import { syncSaveToCloud } from '../systems/cloudSave';
@@ -16,21 +16,46 @@ import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { validatePlayerName, MAX_PLAYER_NAME_LEN } from '../../shared/playerName';
 import { PlayerNameClient } from '../systems/PlayerNameClient';
 import { formatDifficulty } from '../ui/DifficultyStars';
-import { createVolumeSlider } from '../ui/buildVolumePanel';
-import { controlHelpLines } from '../ui/controlHelp';
 import { loadGameAssets } from './loadGameAssets';
 import { entranceScale } from './menuIntro';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { openFeedbackOverlay } from './FeedbackOverlay';
+import type { SettingsSceneData } from './SettingsScene';
 import { fetchDailyStatus } from '../systems/DailyDropClient';
 import { hasPlayedToday, deviceUtcOffsetMin } from '../systems/dailyRunGate';
 import { dailyIconState, shouldAutoShowPopup, formatCountdown, type DailyIconState } from '../ui/dailyDropLogic';
 import { openDailyDropOverlay } from '../ui/DailyDropOverlay';
-import { privacyRow, PRIVACY_ROW_STYLE } from '../ui/privacyRow';
-import { AdClient } from '../systems/ads/AdClient';
 import { localDateKey } from '../../shared/dailyDrop';
 import type { DailyStatusResponse } from '../../shared/dailyTypes';
+
+/**
+ * Make a DOM overlay own every input event that happens inside it.
+ *
+ * Phaser's keyboard and pointer plugins listen on `window`, so a z-indexed
+ * overlay covering the canvas is NOT enough on its own — events still bubble up
+ * and get hit-tested against the scene underneath. Two ways that bites: Escape
+ * closes the modal scene below while this dialog stays orphaned on top, and a
+ * tap on this dialog's close button lands on the row that opened it and reopens
+ * it immediately.
+ *
+ * Guarding at the overlay rather than at the focused field matters — clicking a
+ * button moves focus to it, and a keydown there never passes through the field's
+ * listener. `stopPropagation` only blocks listeners ABOVE the overlay, so the
+ * overlay's own tap-outside-to-close keeps working.
+ *
+ * Escape also closes from anywhere in the dialog, not just from the text field.
+ */
+function isolateOverlayInput(overlay: HTMLElement, close: () => void): void {
+  overlay.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key !== 'Enter' && e.key !== 'Escape') return;
+    if (e.key === 'Escape') close();
+    e.stopPropagation();
+  });
+  for (const type of ['pointerdown', 'pointerup', 'click', 'touchstart', 'touchend']) {
+    overlay.addEventListener(type, (e: Event) => e.stopPropagation());
+  }
+}
 
 export class MenuScene extends Phaser.Scene {
   private farSilhouette!: Phaser.GameObjects.Graphics;
@@ -50,7 +75,6 @@ export class MenuScene extends Phaser.Scene {
   private upgradeText!: Phaser.GameObjects.Text;
   private storeText!: Phaser.GameObjects.Text;
   private twinkleStars: Phaser.GameObjects.Graphics[] = [];
-  private resetConfirmed = false;
   private playerNameText!: Phaser.GameObjects.Text;
   private heapPickerBg!:    Phaser.GameObjects.Graphics;
   private heapPickerText!:  Phaser.GameObjects.Text;
@@ -80,7 +104,6 @@ export class MenuScene extends Phaser.Scene {
     setupUiCamera(this);
     retryPendingLoadoutSync();
     this.twinkleStars = [];
-    this.resetConfirmed = false;
 
     const im = InputManager.getInstance();
 
@@ -479,9 +502,19 @@ export class MenuScene extends Phaser.Scene {
       'font-family:monospace', 'letter-spacing:1px', 'cursor:pointer', 'margin-bottom:10px',
     ].join(';');
 
-    const cancelEl = document.createElement('div');
+    // A real button, not a bare div: the old 12px text had no padding, so the tap
+    // target was only the glyph height — well under a thumb — and with the soft
+    // keyboard up the first tap usually just dismissed the keyboard instead of
+    // hitting it. Reported on device as "close doesn't work".
+    const cancelEl = document.createElement('button');
+    cancelEl.type = 'button';
     cancelEl.textContent = 'cancel';
-    cancelEl.style.cssText = 'color:#556677;font-size:12px;cursor:pointer;letter-spacing:1px';
+    cancelEl.style.cssText = [
+      'width:100%', 'padding:13px', 'background:transparent',
+      'border:1px solid #334455', 'border-radius:8px', 'color:#8899aa',
+      'font-size:14px', 'font-family:monospace', 'letter-spacing:1px',
+      'cursor:pointer', 'touch-action:manipulation', 'box-sizing:border-box',
+    ].join(';');
 
     panel.append(heap, subtitle, input, counterRow, errorMsg, confirmBtn, cancelEl);
     overlay.appendChild(panel);
@@ -520,11 +553,16 @@ export class MenuScene extends Phaser.Scene {
     });
 
     input.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter')  confirm();
-      if (e.key === 'Escape') close();
+      if (e.key === 'Enter') confirm();
     });
+    isolateOverlayInput(overlay, close);
 
     confirmBtn.addEventListener('click', confirm);
+    // On `click` only — deliberately NOT pointerdown. Closing on pointerdown tears
+    // the overlay down mid-gesture, so the pointerup that follows lands on the
+    // Phaser row underneath and reopens this dialog. Keeping the overlay up for
+    // the whole gesture means the canvas never sees the press at all; click is
+    // the last event, so there is nothing left to fall through to.
     cancelEl.addEventListener('click', close);
     overlay.addEventListener('click', (e: MouseEvent) => {
       if (e.target === overlay) close();
@@ -582,9 +620,19 @@ export class MenuScene extends Phaser.Scene {
       'font-family:monospace', 'letter-spacing:1px', 'cursor:pointer', 'margin-bottom:10px',
     ].join(';');
 
-    const cancelEl = document.createElement('div');
+    // A real button, not a bare div: the old 12px text had no padding, so the tap
+    // target was only the glyph height — well under a thumb — and with the soft
+    // keyboard up the first tap usually just dismissed the keyboard instead of
+    // hitting it. Reported on device as "close doesn't work".
+    const cancelEl = document.createElement('button');
+    cancelEl.type = 'button';
     cancelEl.textContent = 'close';
-    cancelEl.style.cssText = 'color:#556677;font-size:12px;cursor:pointer;letter-spacing:1px';
+    cancelEl.style.cssText = [
+      'width:100%', 'padding:13px', 'background:transparent',
+      'border:1px solid #334455', 'border-radius:8px', 'color:#8899aa',
+      'font-size:14px', 'font-family:monospace', 'letter-spacing:1px',
+      'cursor:pointer', 'touch-action:manipulation', 'box-sizing:border-box',
+    ].join(';');
 
     panel.append(heap, subtitle, input, msg, confirmBtn, cancelEl);
     overlay.appendChild(panel);
@@ -621,10 +669,15 @@ export class MenuScene extends Phaser.Scene {
     };
 
     input.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter')  void submit();
-      if (e.key === 'Escape') close();
+      if (e.key === 'Enter') void submit();
     });
+    isolateOverlayInput(overlay, close);
     confirmBtn.addEventListener('click', () => void submit());
+    // On `click` only — deliberately NOT pointerdown. Closing on pointerdown tears
+    // the overlay down mid-gesture, so the pointerup that follows lands on the
+    // Phaser row underneath and reopens this dialog. Keeping the overlay up for
+    // the whole gesture means the canvas never sees the press at all; click is
+    // the last event, so there is nothing left to fall through to.
     cancelEl.addEventListener('click', close);
     overlay.addEventListener('click', (e: MouseEvent) => {
       if (e.target === overlay) close();
@@ -932,306 +985,62 @@ export class MenuScene extends Phaser.Scene {
   private createSettingsButton(): void {
     const bx = logicalWidth(this) - 22;
     const by = 22;
-    const cx = logicalWidth(this) / 2;
-    const cy = logicalHeight(this) / 2;
 
-    // ── Menu button ──────────────────────────────────────────────────────────
     const btnGfx = this.add.graphics().setDepth(20);
     btnGfx.fillStyle(0x000000, 0.65);
     btnGfx.fillCircle(bx, by, 14);
     btnGfx.lineStyle(2, 0x8899bb, 1);
     btnGfx.strokeCircle(bx, by, 14);
-    this.add.text(bx, by, '☰', { fontSize: '16px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5).setDepth(20);
+    this.add.text(bx, by, '\u2630', { fontSize: '16px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5).setDepth(20);
     const hitZone = this.add.zone(bx, by, 36, 36).setDepth(20).setInteractive({ useHandCursor: true });
 
-    // ── Overlay + panel ───────────────────────────────────────────────────────
-    const overlayBg = this.add.rectangle(cx, cy, logicalWidth(this), logicalHeight(this), 0x000000, 0.72)
-      .setDepth(30).setVisible(false).setInteractive();
-    const PANEL_W = 360;
-    const PANEL_H = 420;
-    // Panel is interactive so clicks that land on it (e.g. on a slider track or
-    // empty panel space) are absorbed here rather than falling through to the
-    // full-screen overlayBg, whose pointerup closes the menu. Only clicks on the
-    // true backdrop (outside the panel) should close it.
-    const panel = this.add.rectangle(cx, cy, PANEL_W, PANEL_H, 0x0d0d20)
-      .setDepth(31).setVisible(false).setStrokeStyle(2, 0x4455aa).setInteractive();
-
-    const title = this.add.text(cx, cy - PANEL_H / 2 + 22, 'SETTINGS', {
-      fontSize: '22px', color: '#ffffff', stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5).setDepth(32).setVisible(false);
-
-    const closeBtn = this.add.text(cx + PANEL_W / 2 - 20, cy - PANEL_H / 2 + 14, '✕', {
-      fontSize: '20px', color: '#aaaaaa',
-    }).setOrigin(0.5).setDepth(32).setVisible(false).setInteractive({ useHandCursor: true });
-
-    // ── Tab bar ───────────────────────────────────────────────────────────────
-    const TAB_Y = cy - PANEL_H / 2 + 52;
-    const TAB_W = 108;
-    const TAB_H = 32;
-    const TAB_GAP = 6;
-    const tabXs = [cx - (TAB_W + TAB_GAP), cx, cx + (TAB_W + TAB_GAP)];
-
-    const soundsTabBg   = this.add.rectangle(tabXs[0], TAB_Y, TAB_W, TAB_H, 0x2244aa).setDepth(32).setVisible(false);
-    const soundsTabText = this.add.text(tabXs[0], TAB_Y, 'Sounds', { fontSize: '13px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5).setDepth(33).setVisible(false);
-    const controlsTabBg   = this.add.rectangle(tabXs[1], TAB_Y, TAB_W, TAB_H, 0x1a1a2e).setDepth(32).setVisible(false);
-    const controlsTabText = this.add.text(tabXs[1], TAB_Y, 'Controls', { fontSize: '13px', color: '#888888' }).setOrigin(0.5).setDepth(33).setVisible(false);
-    const devTabBg      = this.add.rectangle(tabXs[2], TAB_Y, TAB_W, TAB_H, 0x1a1a2e).setDepth(32).setVisible(false);
-    const devTabText    = this.add.text(tabXs[2], TAB_Y, 'Player', { fontSize: '13px', color: '#888888' }).setOrigin(0.5).setDepth(33).setVisible(false);
-
-    // ── Tab containers ────────────────────────────────────────────────────────
-    const CONTENT_TOP = TAB_Y + TAB_H / 2 + 12;
-
-    // Player tab content — order: Redeem Code, Analytics, How to Play, Reset (top → bottom)
-
-    // 1. Redeem code (top) — button opens a DOM dialog; result shown below.
-    const codeBtnBg = this.add.rectangle(cx, CONTENT_TOP + 24, 260, 48, 0x1a3a5c)
-      .setDepth(32).setVisible(false).setStrokeStyle(2, 0x4488ff).setInteractive({ useHandCursor: true });
-    const codeBtnLabel = this.add.text(cx, CONTENT_TOP + 24, 'REDEEM CODE', {
-      fontSize: '18px', color: '#aaccff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(33).setVisible(false);
-    const codeResult = this.add.text(cx, CONTENT_TOP + 58, '', {
-      fontSize: '13px', color: '#88ccff', align: 'center',
-    }).setOrigin(0.5).setDepth(33).setVisible(false);
-
-    // 2. Analytics checkbox (middle).
-    let analyticsEnabled = getVerboseLogging();
-    const analyticsBg = this.add.rectangle(cx, CONTENT_TOP + 110, 260, 48, 0x1a3a1a)
-      .setDepth(32).setVisible(false).setStrokeStyle(2, 0x44aa44).setInteractive({ useHandCursor: true });
-    const analyticsCheckbox = this.add.text(cx - 110, CONTENT_TOP + 110, analyticsEnabled ? '☑' : '☐', {
-      fontSize: '20px', color: '#44ff44', fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(33).setVisible(false);
-    const analyticsLabel = this.add.text(cx - 35, CONTENT_TOP + 102, 'Send anonymous\ngameplay analytics', {
-      fontSize: '13px', color: '#aaffaa',
-    }).setOrigin(0, 0.5).setDepth(33).setVisible(false);
-    const analyticsHint = this.add.text(cx - 35, CONTENT_TOP + 119, 'Errors are always reported.', {
-      fontSize: '11px', color: '#88aa88',
-    }).setOrigin(0, 0.5).setDepth(33).setVisible(false);
-
-    // 3. Privacy options — reopens Google's consent form so the player can
-    //    change or withdraw ad consent. Named in PRIVACY_POLICY.md as the
-    //    revocation route, so the wording here and there must stay in step.
-    //    Sits in the gap under the analytics box; no full-height button,
-    //    because the Player tab has no room for a fifth 48px row.
-    //    Built unconditionally but shown from the live flag each time the tab
-    //    opens: consent can settle after the menu is already up (it is bounded
-    //    by CONSENT_TIMEOUT_MS, not guaranteed to beat it), and a row created
-    //    once at scene start would stay missing until the scene was recreated.
-    const privacyLabel = this.add.text(cx, CONTENT_TOP + 150, PRIVACY_ROW_STYLE.label, {
-      fontSize: '14px', color: PRIVACY_ROW_STYLE.color,
-    }).setOrigin(0.5).setDepth(33).setVisible(false)
-      .setInteractive({ useHandCursor: true })
-      .on('pointerup', () => { void AdClient.showPrivacyOptions(); });
-
-    // 4. How to Play — replays the interactive tutorial.
-    const howToPlayBg = this.add.rectangle(cx, CONTENT_TOP + 190, 260, 48, 0x2a2a4c)
-      .setDepth(32).setVisible(false).setStrokeStyle(2, 0x8888cc).setInteractive({ useHandCursor: true });
-    const howToPlayLabel = this.add.text(cx, CONTENT_TOP + 190, 'HOW TO PLAY', {
-      fontSize: '18px', color: '#ccccff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(33).setVisible(false);
-
-    // 5. Reset all data (bottom).
-    const resetBg = this.add.rectangle(cx, CONTENT_TOP + 258, 260, 52, 0x881111)
-      .setDepth(32).setVisible(false).setStrokeStyle(2, 0xff4444).setInteractive({ useHandCursor: true });
-    const resetLabel = this.add.text(cx, CONTENT_TOP + 258, 'Reset All Data', {
-      fontSize: '20px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(33).setVisible(false);
-    const resetWarning = this.add.text(cx, CONTENT_TOP + 300, 'Clears all coins, upgrades\nand placed blocks.', {
-      fontSize: '14px', color: '#aa8888', align: 'center',
-    }).setOrigin(0.5).setDepth(32).setVisible(false);
-
-    // Sounds tab content — 5 volume sliders
-    const vols = AudioManager.getVolumes();
-    const SLIDER_DEPTH = 33;
-    const SLIDER_X = cx;
-    const DIVIDER_Y = CONTENT_TOP + 66;
-
-    const masterSliderParts = createVolumeSlider(this, SLIDER_X, CONTENT_TOP + 24, 'MASTER', 'master', vols.master, SLIDER_DEPTH);
-    const divider = this.add.rectangle(cx, DIVIDER_Y, 280, 1, 0x334466).setDepth(SLIDER_DEPTH).setVisible(false);
-    const musicSliderParts   = createVolumeSlider(this, SLIDER_X, CONTENT_TOP + 96,  'Music',        'music',     vols.music,     SLIDER_DEPTH);
-    const playerSliderParts  = createVolumeSlider(this, SLIDER_X, CONTENT_TOP + 150, 'Player SFX',   'playerSfx', vols.playerSfx, SLIDER_DEPTH);
-    const enemySliderParts   = createVolumeSlider(this, SLIDER_X, CONTENT_TOP + 204, 'Enemy SFX',    'enemySfx',  vols.enemySfx,  SLIDER_DEPTH);
-    const envSliderParts     = createVolumeSlider(this, SLIDER_X, CONTENT_TOP + 258, 'Environment',  'envSfx',    vols.envSfx,    SLIDER_DEPTH);
-
-    const soundsItems: Phaser.GameObjects.GameObject[] = [
-      divider,
-      ...masterSliderParts, ...musicSliderParts, ...playerSliderParts,
-      ...enemySliderParts, ...envSliderParts,
-    ];
-
-    // ── Controls tab content ──────────────────────────────────────────────────────────────────────────
-    // Show the mode actually in effect (an auto-fallback session override, if any,
-    // else the saved pref) so the toggle reflects reality after the tilt watchdog.
-    const im = InputManager.getInstance();
-    let ctrlMode = getEffectiveControlMode();
-    let ctrlSide = getJoystickSide();
-
-    const modeLabel = this.add.text(cx - 130, CONTENT_TOP + 20, 'Control Mode', {
-      fontSize: '14px', color: '#aaaacc',
-    }).setOrigin(0, 0.5).setDepth(33).setVisible(false);
-    const tiltOpt = this.add.text(cx + 16, CONTENT_TOP + 20, 'Tilt', {
-      fontSize: '15px', color: '#ffffff', fontStyle: 'bold', backgroundColor: '#2244aa', padding: { x: 10, y: 4 },
-    }).setOrigin(0.5).setDepth(33).setVisible(false).setInteractive({ useHandCursor: true });
-    const joyOpt = this.add.text(cx + 96, CONTENT_TOP + 20, 'Joystick', {
-      fontSize: '15px', color: '#888888', backgroundColor: '#1a1a2e', padding: { x: 10, y: 4 },
-    }).setOrigin(0.5).setDepth(33).setVisible(false).setInteractive({ useHandCursor: true });
-
-    const sideLabel = this.add.text(cx - 130, CONTENT_TOP + 64, 'Joystick Side', {
-      fontSize: '14px', color: '#aaaacc',
-    }).setOrigin(0, 0.5).setDepth(33).setVisible(false);
-    const leftOpt = this.add.text(cx + 16, CONTENT_TOP + 64, 'Left', {
-      fontSize: '15px', color: '#ffffff', fontStyle: 'bold', backgroundColor: '#2244aa', padding: { x: 10, y: 4 },
-    }).setOrigin(0.5).setDepth(33).setVisible(false).setInteractive({ useHandCursor: true });
-    const rightOpt = this.add.text(cx + 96, CONTENT_TOP + 64, 'Right', {
-      fontSize: '15px', color: '#888888', backgroundColor: '#1a1a2e', padding: { x: 10, y: 4 },
-    }).setOrigin(0.5).setDepth(33).setVisible(false).setInteractive({ useHandCursor: true });
-
-    const ctrlHint = this.add.text(cx, CONTENT_TOP + 108,
-      controlHelpLines(im.isMobile, ctrlMode).join('\n'),
-      { fontSize: '13px', color: '#d8dcf2', align: 'left', lineSpacing: 3 },
-    ).setOrigin(0.5, 0).setDepth(33).setVisible(false);
-
-    const controlsItems = [modeLabel, tiltOpt, joyOpt, sideLabel, leftOpt, rightOpt, ctrlHint];
-
-    const paintMode = () => {
-      tiltOpt.setColor(ctrlMode === 'tilt' ? '#ffffff' : '#888888').setBackgroundColor(ctrlMode === 'tilt' ? '#2244aa' : '#1a1a2e').setFontStyle(ctrlMode === 'tilt' ? 'bold' : 'normal');
-      joyOpt.setColor(ctrlMode === 'joystick' ? '#ffffff' : '#888888').setBackgroundColor(ctrlMode === 'joystick' ? '#2244aa' : '#1a1a2e').setFontStyle(ctrlMode === 'joystick' ? 'bold' : 'normal');
-      const sideDim = ctrlMode !== 'joystick';
-      [sideLabel, leftOpt, rightOpt].forEach(o => o.setAlpha(sideDim ? 0.4 : 1));
-      // The toggle shows the player's CHOICE; the hint must describe the controls
-      // actually on screen, which differ while tilt is awaiting its permission grant.
-      ctrlHint.setText(controlHelpLines(im.isMobile, mountableControlMode(ctrlMode, im)).join('\n'));
-    };
-    const paintSide = () => {
-      leftOpt.setColor(ctrlSide === 'left' ? '#ffffff' : '#888888').setBackgroundColor(ctrlSide === 'left' ? '#2244aa' : '#1a1a2e').setFontStyle(ctrlSide === 'left' ? 'bold' : 'normal');
-      rightOpt.setColor(ctrlSide === 'right' ? '#ffffff' : '#888888').setBackgroundColor(ctrlSide === 'right' ? '#2244aa' : '#1a1a2e').setFontStyle(ctrlSide === 'right' ? 'bold' : 'normal');
-    };
-    paintMode(); paintSide();
-
-    // Toggling mode also refreshes the tilt prompt behind the panel (it only
-    // applies to tilt mode, and only when the device hasn't granted permission).
-    const refreshTiltPrompt = () => {
-      this.setTiltPromptVisible(tiltPromptKind(InputManager.getInstance(), ctrlMode) === 'permission');
-    };
-
-    // An explicit choice clears any auto-fallback session override (it wins) — but
-    // picking Tilt saves the PREFERENCE without making it active on a device that
-    // still can't deliver orientation data. startupControlOverride re-asserts the
-    // joystick there, and the prompt refreshed below offers the permission grant;
-    // without this the player could leave Settings with no working controls.
-    tiltOpt.on('pointerup', () => {
-      ctrlMode = 'tilt';
-      setControlMode('tilt');
-      // Any joystick override left standing here is a capability limit, NOT the
-      // player's choice — they just picked Tilt. Marking it auto is what lets
-      // clearAutoControlOverride() hand tilt back the instant data arrives;
-      // without that flag the player stays pinned to the joystick all session.
-      const override = startupControlOverride(im);
-      setSessionControlMode(override, { auto: override !== null });
-      paintMode();
-      refreshTiltPrompt();
-    });
-    joyOpt.on('pointerup',  () => { ctrlMode = 'joystick'; setControlMode('joystick'); setSessionControlMode(null); paintMode(); refreshTiltPrompt(); });
-    leftOpt.on('pointerup',  () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'left'; setJoystickSide('left'); paintSide(); });
-    rightOpt.on('pointerup', () => { if (ctrlMode !== 'joystick') return; ctrlSide = 'right'; setJoystickSide('right'); paintSide(); });
-
-    // ── Tab switching ─────────────────────────────────────────────────────────
-    const devItems    = [howToPlayBg, howToPlayLabel, codeBtnBg, codeBtnLabel, codeResult, analyticsBg, analyticsCheckbox, analyticsLabel, analyticsHint, privacyLabel, resetBg, resetLabel, resetWarning];
-
-    const showSoundsTab = () => {
-      soundsTabBg.setFillStyle(0x2244aa);  soundsTabText.setColor('#ffffff').setFontStyle('bold');
-      controlsTabBg.setFillStyle(0x1a1a2e); controlsTabText.setColor('#888888').setFontStyle('normal');
-      devTabBg.setFillStyle(0x1a1a2e);      devTabText.setColor('#888888').setFontStyle('normal');
-      controlsItems.forEach(o => o.setVisible(false));
-      devItems.forEach(o => o.setVisible(false));
-      soundsItems.forEach(o => (o as any).setVisible(true));
-    };
-    const showControlsTab = () => {
-      controlsTabBg.setFillStyle(0x2244aa); controlsTabText.setColor('#ffffff').setFontStyle('bold');
-      soundsTabBg.setFillStyle(0x1a1a2e);   soundsTabText.setColor('#888888').setFontStyle('normal');
-      devTabBg.setFillStyle(0x1a1a2e);       devTabText.setColor('#888888').setFontStyle('normal');
-      soundsItems.forEach(o => (o as any).setVisible(false));
-      devItems.forEach(o => o.setVisible(false));
-      controlsItems.forEach(o => o.setVisible(true));
-      paintMode(); paintSide();
-    };
-    const showDevTab = () => {
-      devTabBg.setFillStyle(0x2244aa);       devTabText.setColor('#ffffff').setFontStyle('bold');
-      soundsTabBg.setFillStyle(0x1a1a2e);    soundsTabText.setColor('#888888').setFontStyle('normal');
-      controlsTabBg.setFillStyle(0x1a1a2e);  controlsTabText.setColor('#888888').setFontStyle('normal');
-      soundsItems.forEach(o => (o as any).setVisible(false));
-      controlsItems.forEach(o => o.setVisible(false));
-      devItems.forEach(o => o.setVisible(true));
-      // Re-read consent each time rather than trusting scene-start state; must
-      // follow the sweep above, which has just shown every devItem including
-      // this one. Membership in devItems is what gets it hidden again on close.
-      privacyLabel.setVisible(privacyRow(AdClient.privacyOptionsRequired) !== null);
-    };
-
-    soundsTabBg.setInteractive({ useHandCursor: true }).on('pointerup', showSoundsTab);
-    soundsTabText.setInteractive({ useHandCursor: true }).on('pointerup', showSoundsTab);
-    controlsTabBg.setInteractive({ useHandCursor: true }).on('pointerup', showControlsTab);
-    controlsTabText.setInteractive({ useHandCursor: true }).on('pointerup', showControlsTab);
-    devTabBg.setInteractive({ useHandCursor: true }).on('pointerup', showDevTab);
-    devTabText.setInteractive({ useHandCursor: true }).on('pointerup', showDevTab);
-
-    // ── Wire Player tab buttons ───────────────────────────────────────────────
-    howToPlayBg.on('pointerup', () => this.scene.start('TutorialScene'));
-
-    codeBtnBg.on('pointerup', () => {
-      this.openRedeemDialog((result) => {
-        codeResult.setText(result.message)
-          .setColor(result.status === 'success' ? '#88ff88' : '#ff9988')
-          .setVisible(true);
-        if (result.status === 'success' && result.reward?.rewardType === 'coins') {
-          this.balanceText.setText(`${getBalance()} coins`);
-        }
-      });
-    });
-
-    analyticsBg.on('pointerup', () => {
-      analyticsEnabled = !analyticsEnabled;
-      setVerboseLogging(analyticsEnabled);
-      getLogger().setVerbose(analyticsEnabled);
-      analyticsCheckbox.setText(analyticsEnabled ? '☑' : '☐');
-    });
-
-    // ── Open / close ──────────────────────────────────────────────────────────
-    const alwaysVisible = [overlayBg, panel, title, closeBtn, soundsTabBg, soundsTabText, controlsTabBg, controlsTabText, devTabBg, devTabText];
-
-    const open = () => {
-      alwaysVisible.forEach(o => o.setVisible(true));
-      showSoundsTab(); // default to Sounds tab on open
-    };
-    const close = () => {
-      alwaysVisible.forEach(o => o.setVisible(false));
-      devItems.forEach(o => o.setVisible(false));
-      soundsItems.forEach(o => (o as any).setVisible(false));
-      controlsItems.forEach(o => o.setVisible(false));
-      this.resetConfirmed = false;
-      resetLabel.setText('Reset All Data');
-      resetBg.setFillStyle(0x881111);
-      resetWarning.setText('Clears all coins, upgrades\nand placed blocks.').setColor('#aa8888');
-    };
-
-    hitZone.on('pointerup', open);
-    overlayBg.on('pointerup', close);
-    closeBtn.on('pointerup', close);
-
-    if (this._forceSettingsOpen) this.time.delayedCall(2200, open);
-
-    resetBg.on('pointerup', () => {
-      if (!this.resetConfirmed) {
-        this.resetConfirmed = true;
-        resetLabel.setText('Tap again to confirm');
-        resetBg.setFillStyle(0xcc2222);
-        resetWarning.setText('This cannot be undone.').setColor('#ff6666');
-      } else {
-        resetAllData();
-        close();
-        this.scene.restart();
-      }
-    });
+    hitZone.on('pointerup', () => this.openSettings());
+    if (this._forceSettingsOpen) this.time.delayedCall(2200, () => this.openSettings());
   }
+
+  /** Launch the shared Settings modal over the menu. SettingsScene pauses this
+   *  scene while it is up and resumes it on close, so the menu's own buttons
+   *  cannot be tapped through the dim. */
+  private openSettings(): void {
+    if (this.scene.isActive('SettingsScene')) return; // guard against double-open
+    this.scene.launch('SettingsScene', {
+      returnTo: this.scene.key,
+      context:  'menu',
+      resetWarning: 'Clears all coins, upgrades\nand placed blocks.',
+      rows: [
+        {
+          label: 'REDEEM CODE',
+          onTap: (setResult: (msg: string, ok: boolean) => void) => {
+            this.openRedeemDialog((result) => {
+              setResult(result.message, result.status === 'success');
+              if (result.status === 'success' && result.reward?.rewardType === 'coins') {
+                this.balanceText.setText(`${getBalance()} coins`);
+              }
+            });
+          },
+        },
+        {
+          label: 'HOW TO PLAY',
+          color: { fill: 0x2a2a4c, stroke: 0x8888cc, text: '#ccccff' },
+          // Close through the modal, not scene.stop(), so its teardown runs and
+          // this scene is resumed before we navigate away from it.
+          onTap: (_setResult: (msg: string, ok: boolean) => void, close: () => void) => {
+            close();
+            this.scene.start('TutorialScene');
+          },
+        },
+      ],
+      // Toggling control mode changes whether the tilt-permission prompt behind
+      // the modal applies, so re-evaluate it whenever Settings touches controls.
+      onControlsChanged: () => {
+        this.setTiltPromptVisible(
+          tiltPromptKind(InputManager.getInstance(), getEffectiveControlMode()) === 'permission',
+        );
+      },
+      onReset: () => { this.scene.restart(); },
+    } satisfies SettingsSceneData);
+  }
+
 
   private createFeedbackButton(): void {
     const label = this.add.text(14, 22, 'Send Feedback', {
