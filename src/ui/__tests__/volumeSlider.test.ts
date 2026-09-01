@@ -49,7 +49,7 @@ const mockPhaser = vi.hoisted(() => {
 
 vi.mock('phaser', () => mockPhaser);
 
-import { clampVolume, volumeFromTrackX } from '../buildVolumePanel';
+import { clampVolume, volumeFromTrackX } from '../volumeSlider';
 
 describe('clampVolume', () => {
   it('passes through values in [0,1]', () => {
