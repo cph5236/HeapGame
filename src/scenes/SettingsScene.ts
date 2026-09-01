@@ -321,13 +321,15 @@ export class SettingsScene extends Phaser.Scene {
 
   private buildPlayerTab(cx: number, top: number): void {
     if (this.rows.length > MAX_HOST_ROWS) {
-      // Fail loudly here rather than shipping a panel whose bottom row is drawn
-      // outside its own border.
-      throw new Error(
+      const detail =
         `SettingsScene: ${this.rows.length} Player-tab rows exceeds MAX_HOST_ROWS ` +
         `(${MAX_HOST_ROWS}); the fixed ${PANEL_W}x${PANEL_H} panel cannot fit them. ` +
-        `Add paging or grow the panel before adding another row.`,
-      );
+        `Add paging or grow the panel before adding another row.`;
+      // Loud in development, survivable in production. Throwing here would take
+      // out the whole modal — no volume, no controls — over what is otherwise a
+      // clipped warning label, and reporting it always means it still surfaces.
+      if (import.meta.env.DEV) throw new Error(detail);
+      getLogger().error(detail);
     }
     const items: Phaser.GameObjects.GameObject[] = [];
     let y = top + 24;
