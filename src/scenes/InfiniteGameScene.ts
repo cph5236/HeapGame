@@ -837,5 +837,4 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.joystick?.destroy();
     this.joystick = mountJoystick(this, this.im, this.player);
   }
-
 }
