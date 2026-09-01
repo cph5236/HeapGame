@@ -525,13 +525,17 @@ export class MenuScene extends Phaser.Scene {
     });
 
     input.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter')  confirm();
+      if (e.key === 'Enter') confirm();
+    });
+    // Guard on the OVERLAY, not the field: clicking a button moves focus to it,
+    // and a keydown there never passes through the field's listener. A DOM
+    // overlay owns its own keys — Phaser's keyboard plugin listens on window, so
+    // an unguarded Escape also closes whichever scene is on top, leaving this
+    // dialog orphaned above it.
+    overlay.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' && e.key !== 'Escape') return;
       if (e.key === 'Escape') close();
-      // A DOM overlay owns its own keys. Phaser's keyboard plugin listens on
-      // window, so without this the same Escape also reaches whichever scene is
-      // on top — SettingsScene closes on Escape, so cancelling the code entry
-      // would drop the player out of Settings entirely.
-      if (e.key === 'Enter' || e.key === 'Escape') e.stopPropagation();
+      e.stopPropagation();
     });
 
     confirmBtn.addEventListener('click', confirm);
@@ -644,11 +648,13 @@ export class MenuScene extends Phaser.Scene {
     };
 
     input.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter')  void submit();
+      if (e.key === 'Enter') void submit();
+    });
+    // See openNameDialog: guarded on the overlay so it holds wherever focus sits.
+    overlay.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' && e.key !== 'Escape') return;
       if (e.key === 'Escape') close();
-      // See openNameDialog: stop the key reaching Phaser's window-level listener,
-      // or this Escape closes SettingsScene as well as this dialog.
-      if (e.key === 'Enter' || e.key === 'Escape') e.stopPropagation();
+      e.stopPropagation();
     });
     confirmBtn.addEventListener('click', () => void submit());
     // pointerdown as well as click: with the soft keyboard open, the tap that

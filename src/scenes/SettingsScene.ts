@@ -65,10 +65,14 @@ const BTN_FILL_DEFAULT   = { fill: 0x1a3a5c, stroke: 0x4488ff, text: '#aaccff' }
 const DEFAULT_RESET_WARNING = 'Clears all saved progress.';
 
 // Player-tab vertical rhythm. The panel is a fixed 360x420, so the rows have to
-// fit a 340px content column: at the maximum of two host rows the reset warning
-// lands ~30px above the panel's bottom edge. Widen these and the warning renders
-// outside the panel.
+// fit a 340px content column: at MAX_HOST_ROWS the reset warning lands ~30px
+// above the panel's bottom edge. Widen ROW_PITCH, or add a row beyond the max,
+// and the warning renders outside the panel.
 const ROW_PITCH = 72;
+/** How many host-supplied Player-tab rows the fixed panel can fit. Enforced in
+ *  buildPlayerTab rather than left as a comment: overflow clips silently, with
+ *  no compiler or runtime signal, so it would only ever be caught by eye. */
+const MAX_HOST_ROWS = 2;
 
 /** Paint a text toggle as selected or not. Shared by the control-mode and
  *  joystick-side pairs so the two can't drift apart. */
@@ -316,6 +320,15 @@ export class SettingsScene extends Phaser.Scene {
   // ── Player ──────────────────────────────────────────────────────────────────
 
   private buildPlayerTab(cx: number, top: number): void {
+    if (this.rows.length > MAX_HOST_ROWS) {
+      // Fail loudly here rather than shipping a panel whose bottom row is drawn
+      // outside its own border.
+      throw new Error(
+        `SettingsScene: ${this.rows.length} Player-tab rows exceeds MAX_HOST_ROWS ` +
+        `(${MAX_HOST_ROWS}); the fixed ${PANEL_W}x${PANEL_H} panel cannot fit them. ` +
+        `Add paging or grow the panel before adding another row.`,
+      );
+    }
     const items: Phaser.GameObjects.GameObject[] = [];
     let y = top + 24;
 
