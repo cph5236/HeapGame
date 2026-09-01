@@ -474,9 +474,19 @@ export class MenuScene extends Phaser.Scene {
       'font-family:monospace', 'letter-spacing:1px', 'cursor:pointer', 'margin-bottom:10px',
     ].join(';');
 
-    const cancelEl = document.createElement('div');
+    // A real button, not a bare div: the old 12px text had no padding, so the tap
+    // target was only the glyph height — well under a thumb — and with the soft
+    // keyboard up the first tap usually just dismissed the keyboard instead of
+    // hitting it. Reported on device as "close doesn't work".
+    const cancelEl = document.createElement('button');
+    cancelEl.type = 'button';
     cancelEl.textContent = 'cancel';
-    cancelEl.style.cssText = 'color:#556677;font-size:12px;cursor:pointer;letter-spacing:1px';
+    cancelEl.style.cssText = [
+      'width:100%', 'padding:13px', 'background:transparent',
+      'border:1px solid #334455', 'border-radius:8px', 'color:#8899aa',
+      'font-size:14px', 'font-family:monospace', 'letter-spacing:1px',
+      'cursor:pointer', 'touch-action:manipulation', 'box-sizing:border-box',
+    ].join(';');
 
     panel.append(heap, subtitle, input, counterRow, errorMsg, confirmBtn, cancelEl);
     overlay.appendChild(panel);
@@ -525,6 +535,9 @@ export class MenuScene extends Phaser.Scene {
     });
 
     confirmBtn.addEventListener('click', confirm);
+    // pointerdown as well as click: with the soft keyboard open, the tap that
+    // dismisses it can otherwise swallow the click. close() is idempotent.
+    cancelEl.addEventListener('pointerdown', close);
     cancelEl.addEventListener('click', close);
     overlay.addEventListener('click', (e: MouseEvent) => {
       if (e.target === overlay) close();
@@ -582,9 +595,19 @@ export class MenuScene extends Phaser.Scene {
       'font-family:monospace', 'letter-spacing:1px', 'cursor:pointer', 'margin-bottom:10px',
     ].join(';');
 
-    const cancelEl = document.createElement('div');
+    // A real button, not a bare div: the old 12px text had no padding, so the tap
+    // target was only the glyph height — well under a thumb — and with the soft
+    // keyboard up the first tap usually just dismissed the keyboard instead of
+    // hitting it. Reported on device as "close doesn't work".
+    const cancelEl = document.createElement('button');
+    cancelEl.type = 'button';
     cancelEl.textContent = 'close';
-    cancelEl.style.cssText = 'color:#556677;font-size:12px;cursor:pointer;letter-spacing:1px';
+    cancelEl.style.cssText = [
+      'width:100%', 'padding:13px', 'background:transparent',
+      'border:1px solid #334455', 'border-radius:8px', 'color:#8899aa',
+      'font-size:14px', 'font-family:monospace', 'letter-spacing:1px',
+      'cursor:pointer', 'touch-action:manipulation', 'box-sizing:border-box',
+    ].join(';');
 
     panel.append(heap, subtitle, input, msg, confirmBtn, cancelEl);
     overlay.appendChild(panel);
@@ -628,6 +651,9 @@ export class MenuScene extends Phaser.Scene {
       if (e.key === 'Enter' || e.key === 'Escape') e.stopPropagation();
     });
     confirmBtn.addEventListener('click', () => void submit());
+    // pointerdown as well as click: with the soft keyboard open, the tap that
+    // dismisses it can otherwise swallow the click. close() is idempotent.
+    cancelEl.addEventListener('pointerdown', close);
     cancelEl.addEventListener('click', close);
     overlay.addEventListener('click', (e: MouseEvent) => {
       if (e.target === overlay) close();
