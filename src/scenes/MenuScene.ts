@@ -29,6 +29,34 @@ import { openDailyDropOverlay } from '../ui/DailyDropOverlay';
 import { localDateKey } from '../../shared/dailyDrop';
 import type { DailyStatusResponse } from '../../shared/dailyTypes';
 
+/**
+ * Make a DOM overlay own every input event that happens inside it.
+ *
+ * Phaser's keyboard and pointer plugins listen on `window`, so a z-indexed
+ * overlay covering the canvas is NOT enough on its own — events still bubble up
+ * and get hit-tested against the scene underneath. Two ways that bites: Escape
+ * closes the modal scene below while this dialog stays orphaned on top, and a
+ * tap on this dialog's close button lands on the row that opened it and reopens
+ * it immediately.
+ *
+ * Guarding at the overlay rather than at the focused field matters — clicking a
+ * button moves focus to it, and a keydown there never passes through the field's
+ * listener. `stopPropagation` only blocks listeners ABOVE the overlay, so the
+ * overlay's own tap-outside-to-close keeps working.
+ *
+ * Escape also closes from anywhere in the dialog, not just from the text field.
+ */
+function isolateOverlayInput(overlay: HTMLElement, close: () => void): void {
+  overlay.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key !== 'Enter' && e.key !== 'Escape') return;
+    if (e.key === 'Escape') close();
+    e.stopPropagation();
+  });
+  for (const type of ['pointerdown', 'pointerup', 'click', 'touchstart', 'touchend']) {
+    overlay.addEventListener(type, (e: Event) => e.stopPropagation());
+  }
+}
+
 export class MenuScene extends Phaser.Scene {
   private farSilhouette!: Phaser.GameObjects.Graphics;
   private nearSilhouette!: Phaser.GameObjects.Graphics;
@@ -527,21 +555,14 @@ export class MenuScene extends Phaser.Scene {
     input.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter') confirm();
     });
-    // Guard on the OVERLAY, not the field: clicking a button moves focus to it,
-    // and a keydown there never passes through the field's listener. A DOM
-    // overlay owns its own keys — Phaser's keyboard plugin listens on window, so
-    // an unguarded Escape also closes whichever scene is on top, leaving this
-    // dialog orphaned above it.
-    overlay.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key !== 'Enter' && e.key !== 'Escape') return;
-      if (e.key === 'Escape') close();
-      e.stopPropagation();
-    });
+    isolateOverlayInput(overlay, close);
 
     confirmBtn.addEventListener('click', confirm);
-    // pointerdown as well as click: with the soft keyboard open, the tap that
-    // dismisses it can otherwise swallow the click. close() is idempotent.
-    cancelEl.addEventListener('pointerdown', close);
+    // On `click` only — deliberately NOT pointerdown. Closing on pointerdown tears
+    // the overlay down mid-gesture, so the pointerup that follows lands on the
+    // Phaser row underneath and reopens this dialog. Keeping the overlay up for
+    // the whole gesture means the canvas never sees the press at all; click is
+    // the last event, so there is nothing left to fall through to.
     cancelEl.addEventListener('click', close);
     overlay.addEventListener('click', (e: MouseEvent) => {
       if (e.target === overlay) close();
@@ -650,16 +671,13 @@ export class MenuScene extends Phaser.Scene {
     input.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter') void submit();
     });
-    // See openNameDialog: guarded on the overlay so it holds wherever focus sits.
-    overlay.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key !== 'Enter' && e.key !== 'Escape') return;
-      if (e.key === 'Escape') close();
-      e.stopPropagation();
-    });
+    isolateOverlayInput(overlay, close);
     confirmBtn.addEventListener('click', () => void submit());
-    // pointerdown as well as click: with the soft keyboard open, the tap that
-    // dismisses it can otherwise swallow the click. close() is idempotent.
-    cancelEl.addEventListener('pointerdown', close);
+    // On `click` only — deliberately NOT pointerdown. Closing on pointerdown tears
+    // the overlay down mid-gesture, so the pointerup that follows lands on the
+    // Phaser row underneath and reopens this dialog. Keeping the overlay up for
+    // the whole gesture means the canvas never sees the press at all; click is
+    // the last event, so there is nothing left to fall through to.
     cancelEl.addEventListener('click', close);
     overlay.addEventListener('click', (e: MouseEvent) => {
       if (e.target === overlay) close();
