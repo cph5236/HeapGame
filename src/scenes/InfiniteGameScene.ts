@@ -26,7 +26,7 @@ import { setupGameplayUiCamera, addToGameplayUi } from '../systems/GameplayUiCam
 import { HUD } from '../ui/HUD';
 import { EnemyRadar } from '../ui/EnemyRadar';
 import { InfiniteLoadingOverlay } from '../ui/InfiniteLoadingOverlay';
-import { preloadProgress, preloadComplete } from '../systems/infinitePreload';
+import { preloadProgress, preloadComplete } from '../systems/loadingProgress';
 import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { LayerGenerator } from '../systems/LayerGenerator';
 import { computeBandPolygon, simplifyPolygon, type Vertex } from '../systems/HeapPolygon';

@@ -412,6 +412,17 @@ function migrateGame(parsed: any, version: number): GameSave {
   }
 
   // v2 → v3: remap placed item Y values from 50 000-tall world to 5 000 000-tall world.
+  //
+  // CAUTION — this is the catch-all, not a v2 branch: every version that isn't
+  // 1, 4 or CURRENT lands here and gets the +4 950 000 offset applied. Two
+  // consequences, both currently harmless:
+  //   - A v3 save is offset twice, since v3 already carries it. Never shipped:
+  //     v3 was current 2026-04-24 → 2026-05-19 and the first public build was
+  //     2026-05-26, so no save outside a dev device can be at v3.
+  //   - A save from a NEWER client (a rolled-back install) is offset too.
+  //     Nothing writes a v6 yet, so this is latent.
+  // Before the next CURRENT_SCHEMA bump, narrow this to `version === 2` and give
+  // the fall-through a no-remap path — otherwise the downgrade case goes live.
   const placed: Record<string, PlacedItemSave[]> = parsed.placed ?? {};
   return {
     balance:        parsed.balance        ?? 0,

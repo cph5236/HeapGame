@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { preloadProgress, preloadComplete } from '../infinitePreload';
+import { preloadProgress, preloadComplete } from '../loadingProgress';
 
 describe('preloadProgress', () => {
   it('is 0 at the very start (nothing done, no time elapsed)', () => {

@@ -1,4 +1,4 @@
-// Pure math for the infinite-mode loading screen (see InfiniteGameScene preload).
+// Pure math for a loading bar (the menu loading screen and InfiniteGameScene's preload).
 // Kept Phaser-free so it can be unit-tested in isolation.
 
 /**
