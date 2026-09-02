@@ -102,7 +102,10 @@ DUMP="$WORK/dump.txt"
 dex_count=0
 while IFS= read -r -d '' dex; do
   dex_count=$((dex_count + 1))
-  if ! "$DEXDUMP" "$dex" >> "$DUMP" 2>/dev/null; then
+  # Keep dexdump's stderr: this branch is fatal, so whoever hits it in CI needs
+  # to know why dexdump failed, not just that it did.
+  if ! "$DEXDUMP" "$dex" >> "$DUMP" 2>"$WORK/dexdump.err"; then
+    [ -s "$WORK/dexdump.err" ] && sed 's/^/  dexdump: /' "$WORK/dexdump.err" >&2
     die "dexdump failed on $(basename "$dex") -- refusing to report on a partial disassembly"
   fi
 done < <(find "$WORK" -name 'classes*.dex' -print0)
