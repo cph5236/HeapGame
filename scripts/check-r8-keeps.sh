@@ -34,7 +34,25 @@ CHECKS=(
   "Lcom/google/android/gms/ads/internal/offline/buffering/OfflineNotificationPoster;|WorkManager instantiates Workers via their (Context, WorkerParameters) constructor"
 )
 
+# A class that must always be present with a constructor, used to prove the
+# parser below still understands dexdump's output before we trust any result
+# from it. Derived from the `namespace` in android/app/build.gradle, so it is
+# unaffected by applicationIdSuffix. See canary check further down.
+CANARY="Lcom/hanlinsoftware/heapgame/app/MainActivity;"
+
 die() { echo "error: $*" >&2; exit 2; }
+
+# Slice the dump down to one class, stopping at the end of its method tables.
+# Every check goes through this, canary included -- a canary that used different
+# parsing logic would prove nothing about the real checks.
+section_for() {
+  awk -v want="'$1'" '
+    index($0, "Class descriptor  : ") { inc = (index($0, want) > 0) }
+    inc { print }
+    inc && /Virtual methods/ { exit }' "$DUMP"
+}
+
+has_ctor() { printf '%s' "$1" | grep -q "name          : '<init>'"; }
 
 find_dexdump() {
   local sdk
@@ -92,17 +110,30 @@ done < <(find "$WORK" -name 'classes*.dex' -print0)
 [ "$dex_count" -gt 0 ] || die "no classes*.dex found in $ARTIFACT"
 [ -s "$DUMP" ] || die "dexdump produced no output for $ARTIFACT"
 
+# Canary: a missing class is reported below as a soft SKIP, which is right for
+# a class that genuinely got shrunk away -- but it also means that if dexdump's
+# output format ever drifts (a different build-tools version, different spacing
+# around "Class descriptor  : "), every lookup would miss, every check would
+# report SKIP, and this script would pass while checking nothing at all.
+#
+# So before trusting any result, confirm the parser can still find a class that
+# must be there and must have a constructor. If this fails, the parser is broken
+# rather than the build, and reporting a pass would be actively misleading.
+canary_section=$(section_for "$CANARY")
+if [ -z "$canary_section" ]; then
+  die "parser canary $CANARY not found -- dexdump's output format has probably changed, so these checks can no longer be trusted. Fix section_for() before relying on this script."
+fi
+if ! has_ctor "$canary_section"; then
+  die "parser canary $CANARY found but its constructor was not -- the method-table format has probably changed. Fix has_ctor() before relying on this script."
+fi
+
 echo "Checking reflectively-instantiated classes in $ARTIFACT"
 failed=0
 for entry in "${CHECKS[@]}"; do
   cls="${entry%%|*}"
   why="${entry#*|}"
 
-  # Slice the dump to this class, stopping at the end of its method tables.
-  section=$(awk -v want="'$cls'" '
-    index($0, "Class descriptor  : ") { inc = (index($0, want) > 0) }
-    inc { print }
-    inc && /Virtual methods/ { exit }' "$DUMP")
+  section=$(section_for "$cls")
 
   if [ -z "$section" ]; then
     # Absent is fine only if nothing references it; R8 removing it wholesale
@@ -111,7 +142,7 @@ for entry in "${CHECKS[@]}"; do
     continue
   fi
 
-  if printf '%s' "$section" | grep -q "name          : '<init>'"; then
+  if has_ctor "$section"; then
     n=$(printf '%s' "$section" | grep -c "name          : '<init>'")
     printf '  ok    %s (%s constructor(s))\n' "$cls" "$n"
   else
