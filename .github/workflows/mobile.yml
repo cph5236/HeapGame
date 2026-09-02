@@ -66,15 +66,40 @@ jobs:
           VITE_ADMOB_REWARDED_ID: ${{ secrets.VITE_ADMOB_REWARDED_ID }}
 
       # ---- PR path: unsigned verify build only (no secrets, no AAB upload) ----
+      # This builds *release*, not debug. Debug has minifyEnabled false, so it
+      # never runs R8 — which is how V0.2.29 shipped an R8-only launch crash
+      # through a green PR build. assembleRelease is strictly the stronger
+      # check: it compiles the same sources and exercises the shrinker.
       - name: Build (PR — unsigned verify)
         if: github.event_name == 'pull_request'
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleRelease
+
+      - name: Verify R8 kept reflectively-instantiated constructors (PR)
+        if: github.event_name == 'pull_request'
+        run: ./scripts/check-r8-keeps.sh
 
       # ---- Push / workflow_dispatch path: publish signed AAB to Play Console ----
       - name: Decode keystore
         if: github.event_name != 'pull_request'
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
+
+      # Build the bundle first and inspect it before anything reaches Play.
+      # publishReleaseBundle depends on bundleRelease, so the publish step below
+      # reuses this output rather than rebuilding.
+      - name: Build release bundle
+        if: github.event_name != 'pull_request'
+        working-directory: android
+        run: |
+          ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/android/app/release.keystore \
+            -Pandroid.injected.signing.store.password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.ANDROID_KEY_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Verify R8 kept reflectively-instantiated constructors
+        if: github.event_name != 'pull_request'
+        run: ./scripts/check-r8-keeps.sh android/app/build/outputs/bundle/release/app-release.aab
 
       - name: Publish to Play Console (internal track)
         if: github.event_name != 'pull_request'
