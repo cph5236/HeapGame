@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import type Phaser from 'phaser';
 import { AudioManager } from './AudioManager';
 import { beginAdConsent } from './ads/consentGate';
 import { primeConfig } from './ConfigClient';
