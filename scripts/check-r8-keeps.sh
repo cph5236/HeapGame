@@ -73,10 +73,23 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 unzip -oq "$ARTIFACT" "$DEX_GLOB" -d "$WORK" || die "could not extract $DEX_GLOB from $ARTIFACT"
 
-# One dexdump pass over every dex; the disassembly is large, so do it once.
+# Disassemble every dex once up front and concatenate into one file.
+#
+# Each dexdump invocation is checked individually. A partial dump would be worse
+# than useless here: a class in a dex that failed to disassemble would simply not
+# be found, report as SKIP, and let a genuinely stripped constructor through. So
+# any failure is fatal rather than something to work around.
 DUMP="$WORK/dump.txt"
-find "$WORK" -name 'classes*.dex' -print0 \
-  | xargs -0 -I{} "$DEXDUMP" {} 2>/dev/null > "$DUMP"
+: > "$DUMP"
+dex_count=0
+while IFS= read -r -d '' dex; do
+  dex_count=$((dex_count + 1))
+  if ! "$DEXDUMP" "$dex" >> "$DUMP" 2>/dev/null; then
+    die "dexdump failed on $(basename "$dex") -- refusing to report on a partial disassembly"
+  fi
+done < <(find "$WORK" -name 'classes*.dex' -print0)
+
+[ "$dex_count" -gt 0 ] || die "no classes*.dex found in $ARTIFACT"
 [ -s "$DUMP" ] || die "dexdump produced no output for $ARTIFACT"
 
 echo "Checking reflectively-instantiated classes in $ARTIFACT"
