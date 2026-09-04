@@ -17,6 +17,7 @@ export interface ResolvedCosmetics {
   tieColor:   number;
   tieRainbow: boolean;
   skinTint:   number | null;   // null = no tint
+  skinRainbow: boolean;        // tint is only the still-frame fallback
   hat:        ResolvedHatRender | null;
   face:       FaceRender | EyesRender | null;
   trail:      TrailRender | null;
@@ -44,7 +45,7 @@ export function resolveCosmetics(
 ): ResolvedCosmetics {
   const out: ResolvedCosmetics = {
     tieColor: DEFAULT_TIE_COLOR, tieRainbow: false,
-    skinTint: null, hat: null, face: null, trail: null,
+    skinTint: null, skinRainbow: false, hat: null, face: null, trail: null,
   };
 
   const tieDef = equipped.tie ? getCosmeticDef(equipped.tie) : undefined;
@@ -55,7 +56,8 @@ export function resolveCosmetics(
 
   const skinDef = equipped.skin ? getCosmeticDef(equipped.skin) : undefined;
   if (skinDef?.render.kind === 'skin' && skinDef.render.tint !== 0xffffff) {
-    out.skinTint = skinDef.render.tint;
+    out.skinTint    = skinDef.render.tint;
+    out.skinRainbow = skinDef.render.rainbow ?? false;
   }
 
   const hatDef = equipped.hat ? getCosmeticDef(equipped.hat) : undefined;
@@ -83,7 +85,13 @@ export function resolveCosmetics(
   return out;
 }
 
-const RAINBOW_PERIOD_MS = 3000;
+/** One full hue cycle. Shared so every rainbow surface stays in step. */
+export const RAINBOW_PERIOD_MS = 3000;
+
+/** Six evenly-spaced hues off the same cycle, for still swatches that have to
+ *  stand in for the animation (store cells). */
+export const RAINBOW_WHEEL: readonly number[] =
+  [0, 1, 2, 3, 4, 5].map(i => rainbowColorAt((i / 6) * RAINBOW_PERIOD_MS));
 
 /** Hue-cycling color for the rainbow tie. Pure HSV→RGB, no Phaser. */
 export function rainbowColorAt(timeMs: number): number {

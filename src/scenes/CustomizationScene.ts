@@ -10,7 +10,7 @@ import {
   setCustomizeHintSeen,
 } from '../systems/SaveData';
 import {
-  HAT_ANGLE_LIMIT, HAT_SCALE_MIN, HAT_SCALE_MAX,
+  HAT_ANGLE_LIMIT, HAT_SCALE_MIN, HAT_SCALE_MAX, RAINBOW_WHEEL,
 } from '../systems/cosmeticsLogic';
 import { syncSaveToCloud } from '../systems/cloudSave';
 import { markLoadoutDirty, flushLoadoutSync } from '../systems/cosmeticsSync';
@@ -331,16 +331,18 @@ export class CustomizationScene extends Phaser.Scene {
       const r = def.render;
       const artAlpha = owned ? 1 : 0.55;
       if (r.kind === 'tie' || r.kind === 'skin' || r.kind === 'trail') {
-        let color = r.kind === 'tie' ? r.color : r.kind === 'skin' ? r.tint : r.tint;
+        let color = r.kind === 'tie' ? r.color : r.tint;
         if (def.id === 'skin_default') color = 0x33323c; // show the bag's own dark tone
         const sw = this.add.graphics().setDepth(9).setAlpha(artAlpha);
         // Soft halo behind the swatch so bright colors sit into the card.
         sw.fillStyle(color, 0.18);
         sw.fillCircle(cx, cy - 10, 21);
-        if (def.id === 'tie_rainbow') {
-          // Six-segment color wheel instead of a flat swatch.
-          const wheel = [0xff3344, 0xff9922, 0xffee33, 0x44dd55, 0x3388ff, 0xaa55ff];
-          wheel.forEach((c, i) => {
+        if (r.rainbow) {
+          // Every rainbow item (tie, skin, trail) is a hue cycle at render
+          // time, so a flat swatch would show one arbitrary frame of it —
+          // the trail's was white, which read as a plain white trail. Show
+          // the whole wheel instead.
+          RAINBOW_WHEEL.forEach((c, i) => {
             sw.fillStyle(c, 1);
             sw.slice(cx, cy - 10, 15, (i / 6) * Math.PI * 2, ((i + 1) / 6) * Math.PI * 2, false);
             sw.fillPath();

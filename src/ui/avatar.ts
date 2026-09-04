@@ -21,6 +21,15 @@ const COLLAR_Y = PLAYER_HEIGHT * -1.2 * (PLAYER_HEIGHT / 197);
 const IDLE_STRINGS = { x0: 4, cpX: 8, cpY: 7, endX: 12, endY: 14 };
 const STRING_W = 1.35;
 
+/** Repaint hooks the animated preview drives; the static compositor builds the
+ *  same parts and simply never calls them. */
+export interface AvatarBaseParts {
+  /** Re-tint bag + glaze (rainbow skin). No-op when the skin has no tint. */
+  paintSkin(color: number): void;
+  /** Redraw the collar band + strings in a new color (rainbow tie). */
+  paintTie(color: number): void;
+}
+
 /** Bag + skin glaze + tie band/strings into `container`. Shared by the
  *  static compositor and the animated editor preview. */
 export function composeAvatarBase(
@@ -28,14 +37,15 @@ export function composeAvatarBase(
   container: Phaser.GameObjects.Container,
   r: ResolvedCosmetics,
   s: number,
-): void {
+): AvatarBaseParts {
   const bag = scene.add.image(0, 0, 'trashbag-nostrings')
     .setDisplaySize(PLAYER_WIDTH * s, PLAYER_HEIGHT * s);
   if (r.skinTint !== null) bag.setTint(r.skinTint);
   container.add(bag);
+  let glaze: Phaser.GameObjects.Image | null = null;
   if (r.skinTint !== null) {
     // Flat-color glaze — multiply tint alone is invisible on near-black art.
-    const glaze = scene.add.image(0, 0, 'trashbag-nostrings')
+    glaze = scene.add.image(0, 0, 'trashbag-nostrings')
       .setDisplaySize(PLAYER_WIDTH * s, PLAYER_HEIGHT * s)
       .setTintFill(r.skinTint).setAlpha(0.26);
     container.add(glaze);
@@ -44,12 +54,25 @@ export function composeAvatarBase(
   // Tie: paint the collar band over the baked-in red one, then hang the
   // strings in front of the bag (same as the in-game animator's gfx layer).
   const strings = scene.add.graphics();
-  drawTieBand(strings, r.tieColor, 0, COLLAR_Y * s, s);
-  strings.lineStyle(STRING_W * s, r.tieColor, 1);
-  const st = IDLE_STRINGS;
-  drawBezier(strings, -st.x0 * s, COLLAR_Y * s, -st.cpX * s, st.cpY * s, -st.endX * s, st.endY * s);
-  drawBezier(strings,  st.x0 * s, COLLAR_Y * s,  st.cpX * s, st.cpY * s,  st.endX * s, st.endY * s);
+  const paintTie = (color: number): void => {
+    strings.clear();
+    drawTieBand(strings, color, 0, COLLAR_Y * s, s);
+    strings.lineStyle(STRING_W * s, color, 1);
+    const st = IDLE_STRINGS;
+    drawBezier(strings, -st.x0 * s, COLLAR_Y * s, -st.cpX * s, st.cpY * s, -st.endX * s, st.endY * s);
+    drawBezier(strings,  st.x0 * s, COLLAR_Y * s,  st.cpX * s, st.cpY * s,  st.endX * s, st.endY * s);
+  };
+  paintTie(r.tieColor);
   container.add(strings);
+
+  return {
+    paintSkin(color: number): void {
+      if (r.skinTint === null) return;
+      bag.setTint(color);
+      glaze?.setTintFill(color);
+    },
+    paintTie,
+  };
 }
 
 export function composeAvatar(

@@ -96,14 +96,21 @@ function makeScene(events: ReturnType<typeof makeEmitter>) {
         setTexture:  vi.fn().mockReturnThis(),
         destroy:     vi.fn(),
       })),
-      particles: vi.fn(),
+      particles: vi.fn(() => ({
+        setDepth:    vi.fn().mockReturnThis(),
+        startFollow: vi.fn().mockReturnThis(),
+        start:       vi.fn(),
+        stop:        vi.fn(),
+        emitting:    false,
+        destroy:     vi.fn(),
+      })),
     },
   };
 }
 
 const PLAIN: ResolvedCosmetics = {
   tieColor: 0xff0000, tieRainbow: false,
-  skinTint: null, hat: null, face: null, trail: null,
+  skinTint: null, skinRainbow: false, hat: null, face: null, trail: null,
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -169,7 +176,7 @@ describe('PlayerCosmetics lifecycle', () => {
 describe('PlayerCosmetics skin glaze', () => {
   const TINTED: ResolvedCosmetics = {
     tieColor: 0xff0000, tieRainbow: false,
-    skinTint: 0x00ff00, hat: null, face: null, trail: null,
+    skinTint: 0x00ff00, skinRainbow: false, hat: null, face: null, trail: null,
   };
 
   it('follows the sprite onto the dash frames', () => {
@@ -182,5 +189,73 @@ describe('PlayerCosmetics skin glaze', () => {
     events.emit('postupdate', 0, 16);
 
     expect(glaze.setTexture).toHaveBeenCalledWith('trashbag-dash', '2');
+  });
+});
+
+// ── Rainbow items cycle hue instead of sitting on their fallback color ────────
+
+const TRAIL = {
+  kind: 'trail' as const, textureKey: 'cos-dot', tint: 0xff0000, frequency: 40,
+  speedY: [-10, 10] as [number, number], lifespan: 500,
+  scale: [1.4, 0.2] as [number, number], alpha: 0.9,
+};
+
+describe('PlayerCosmetics rainbow', () => {
+  const RAINBOW_SKIN: ResolvedCosmetics = {
+    tieColor: 0xff0000, tieRainbow: false,
+    skinTint: 0xff0000, skinRainbow: true, hat: null, face: null, trail: null,
+  };
+
+  it('re-tints the bag and its glaze together as time passes', () => {
+    const { events, scene, sprite } = construct(RAINBOW_SKIN);
+    const glaze = (scene.add.image as any).mock.results[0].value;
+
+    const lastTint = () => {
+      const calls = sprite.setTint.mock.calls;
+      return calls[calls.length - 1][0];
+    };
+
+    events.emit('postupdate', 0, 500);
+    const bagFirst = lastTint();
+    const glazeCalls = glaze.setTintFill.mock.calls;
+    expect(glazeCalls[glazeCalls.length - 1][0]).toBe(bagFirst);   // layers never drift apart
+
+    events.emit('postupdate', 0, 500);
+    expect(lastTint()).not.toBe(bagFirst);
+  });
+
+  it('leaves a non-rainbow skin on its flat tint', () => {
+    const { events, sprite } = construct({
+      ...RAINBOW_SKIN, skinRainbow: false,
+    });
+    const atBuild = sprite.setTint.mock.calls.length;
+    events.emit('postupdate', 0, 500);
+    expect(sprite.setTint.mock.calls.length).toBe(atBuild);
+  });
+
+  it('gives the rainbow trail a per-particle tint callback, not a flat color', () => {
+    const { scene } = construct({
+      ...PLAIN, trail: { ...TRAIL, rainbow: true },
+    });
+    const cfg = (scene.add.particles as any).mock.calls[0][3];
+    expect(typeof cfg.tint.onEmit).toBe('function');
+    // Successive emissions must not all land on the same hue.
+    expect(new Set([cfg.tint.onEmit(), cfg.tint.onEmit()]).size).toBeGreaterThanOrEqual(1);
+  });
+
+  it('walks the hue as the run progresses, so the streak holds a spectrum', () => {
+    const { events, scene } = construct({
+      ...PLAIN, trail: { ...TRAIL, rainbow: true },
+    });
+    const cfg = (scene.add.particles as any).mock.calls[0][3];
+    const first = cfg.tint.onEmit();
+    events.emit('postupdate', 0, 40);      // one emission interval later
+    expect(cfg.tint.onEmit()).not.toBe(first);
+  });
+
+  it('keeps a non-rainbow trail on its flat tint', () => {
+    const { scene } = construct({ ...PLAIN, trail: TRAIL });
+    const cfg = (scene.add.particles as any).mock.calls[0][3];
+    expect(cfg.tint).toBe(0xff0000);
   });
 });

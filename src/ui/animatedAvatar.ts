@@ -8,7 +8,7 @@
 
 import Phaser from 'phaser';
 import type { EquippedLoadout } from '../../shared/cosmeticCatalog';
-import { resolveCosmetics, type HatAdjustments } from '../systems/cosmeticsLogic';
+import { resolveCosmetics, rainbowColorAt, type HatAdjustments } from '../systems/cosmeticsLogic';
 import { createAttachmentRig } from '../entities/cosmeticRigs/createAttachmentRig';
 import type { AttachmentRig, AttachmentAnchor } from '../entities/cosmeticRigs/types';
 import { composeAvatarBase } from './avatar';
@@ -33,7 +33,7 @@ export function createAnimatedAvatar(
   const r = resolveCosmetics(loadout, adjustments);
   const s = opts.scale;
   const container = scene.add.container(opts.x, opts.y);
-  composeAvatarBase(scene, container, r, s);
+  const base = composeAvatarBase(scene, container, r, s);
 
   const rigs: AttachmentRig[] = [];
   for (const spec of [r.hat, r.face]) {
@@ -49,7 +49,16 @@ export function createAnimatedAvatar(
 
   let pulseAx = 0, pulseAy = 0, pulseLeftMs = 0;
   let nextPulseMs = PULSE_MIN_GAP_MS / 2;
+  let rainbowMs = 0;
   const onUpdate = (_time: number, delta: number): void => {
+    // Rainbow items are the one cosmetic whose look you can't judge from a
+    // still frame, so the mannequin has to cycle them the way the game does.
+    if (r.tieRainbow || r.skinRainbow) {
+      rainbowMs += delta;
+      const hue = rainbowColorAt(rainbowMs);
+      if (r.tieRainbow)  base.paintTie(hue);
+      if (r.skinRainbow) base.paintSkin(hue);
+    }
     nextPulseMs -= delta;
     if (nextPulseMs <= 0) {
       pulseAx = (Math.random() * 2 - 1) * PULSE_AX;

@@ -4,8 +4,8 @@ import {
 } from '../cosmeticCatalog';
 
 describe('COSMETIC_CATALOG integrity', () => {
-  it('has 88 entries with unique ids', () => {
-    expect(COSMETIC_CATALOG.length).toBe(91);
+  it('has 92 entries with unique ids', () => {
+    expect(COSMETIC_CATALOG.length).toBe(92);
     const ids = COSMETIC_CATALOG.map(e => e.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -19,7 +19,7 @@ describe('COSMETIC_CATALOG integrity', () => {
   it('per-slot counts match the design', () => {
     const count = (slot: string) => COSMETIC_CATALOG.filter(e => e.slot === slot).length;
     expect(count('tie')).toBe(12);
-    expect(count('skin')).toBe(8);
+    expect(count('skin')).toBe(9);
     expect(count('hat')).toBe(50);
     expect(count('face')).toBe(13);
     expect(count('trail')).toBe(8);
