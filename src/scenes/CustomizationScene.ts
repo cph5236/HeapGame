@@ -14,7 +14,7 @@ import {
 } from '../systems/cosmeticsLogic';
 import { syncSaveToCloud } from '../systems/cloudSave';
 import { markLoadoutDirty, flushLoadoutSync } from '../systems/cosmeticsSync';
-import { createAnimatedAvatar, type AnimatedAvatarHandle } from '../ui/animatedAvatar';
+import { createAvatar, type AvatarHandle } from '../ui/avatar';
 
 const SLOT_LABELS: Record<CosmeticSlot, string> = {
   hat: 'Hat', face: 'Face', tie: 'Tie', skin: 'Skin', trail: 'Trail',
@@ -34,7 +34,7 @@ const H_MARGIN      = 8;
 export class CustomizationScene extends Phaser.Scene {
   private activeSlot: CosmeticSlot = 'hat';
   private balanceText!: Phaser.GameObjects.Text;
-  private preview: AnimatedAvatarHandle | null = null;
+  private preview: AvatarHandle | null = null;
   private tabObjects:  Phaser.GameObjects.GameObject[] = [];
   private gridObjects: Phaser.GameObjects.GameObject[] = [];
   private confirmObjects: Phaser.GameObjects.GameObject[] = [];
@@ -169,8 +169,10 @@ export class CustomizationScene extends Phaser.Scene {
 
   private rebuildPreview(): void {
     this.preview?.destroy();
-    this.preview = createAnimatedAvatar(this, getEquippedCosmetics(),
-      { x: logicalWidth(this) / 2, y: PREVIEW_Y, scale: PREVIEW_SCALE }, getHatAdjustments());
+    this.preview = createAvatar(this, getEquippedCosmetics(),
+      // The mannequin is the one place the equipped trail gets to show itself.
+      { x: logicalWidth(this) / 2, y: PREVIEW_Y, scale: PREVIEW_SCALE, trail: true },
+      getHatAdjustments());
     this.preview.container.setDepth(5);
     // Idle breathing
     this.tweens.add({

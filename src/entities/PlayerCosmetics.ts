@@ -6,9 +6,10 @@
 // the physics-synced sprite by a frame. Tie color is PlayerAnimator's job.
 
 import Phaser from 'phaser';
-import { rainbowColorAt, RAINBOW_PERIOD_MS, type ResolvedCosmetics } from '../systems/cosmeticsLogic';
+import { rainbowColorAt, type ResolvedCosmetics } from '../systems/cosmeticsLogic';
 import type { AttachmentRig } from './cosmeticRigs/types';
 import { createAttachmentRig } from './cosmeticRigs/createAttachmentRig';
+import { trailEmitterConfig } from './cosmeticRigs/trailEmitter';
 
 /** Trail emits only while actually moving. */
 const TRAIL_MIN_SPEED = 60;
@@ -58,23 +59,9 @@ export class PlayerCosmetics {
     if (resolved.face) this.faceRig = createAttachmentRig(scene, resolved.face);
 
     if (resolved.trail) {
-      const t = resolved.trail;
-      // A rainbow trail colors each particle as it is born, so the streak holds
-      // a whole spectrum at once rather than flashing one flat hue. Run the hue
-      // fast enough that one particle lifetime spans a full cycle — otherwise
-      // the dozen particles alive at any moment share near-identical hues and
-      // it reads as a plain colored trail that slowly changes.
-      const hueRate = RAINBOW_PERIOD_MS / t.lifespan;
-      this.emitter = scene.add.particles(0, 0, t.textureKey, {
-        // `tint` is an EmitterOp, so an onEmit callback is read per particle.
-        tint:      t.rainbow ? { onEmit: () => rainbowColorAt(this.rainbowMs * hueRate) } : t.tint,
-        frequency: t.frequency,
-        speedY:    { min: t.speedY[0], max: t.speedY[1] },
-        speedX:    { min: -20, max: 20 },
-        lifespan:  t.lifespan,
-        scale:     { start: t.scale[0], end: t.scale[1] },
-        alpha:     { start: t.alpha, end: 0 },
-        emitting:  false,
+      this.emitter = scene.add.particles(0, 0, resolved.trail.textureKey, {
+        ...trailEmitterConfig(resolved.trail, () => this.rainbowMs),
+        emitting: false,
       }).setDepth(9);
       this.emitter.startFollow(sprite);
     }
