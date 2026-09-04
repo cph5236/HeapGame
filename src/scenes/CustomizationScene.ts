@@ -10,11 +10,11 @@ import {
   setCustomizeHintSeen,
 } from '../systems/SaveData';
 import {
-  HAT_ANGLE_LIMIT, HAT_SCALE_MIN, HAT_SCALE_MAX,
+  HAT_ANGLE_LIMIT, HAT_SCALE_MIN, HAT_SCALE_MAX, RAINBOW_WHEEL,
 } from '../systems/cosmeticsLogic';
 import { syncSaveToCloud } from '../systems/cloudSave';
 import { markLoadoutDirty, flushLoadoutSync } from '../systems/cosmeticsSync';
-import { createAnimatedAvatar, type AnimatedAvatarHandle } from '../ui/animatedAvatar';
+import { createAvatar, type AvatarHandle } from '../ui/avatar';
 
 const SLOT_LABELS: Record<CosmeticSlot, string> = {
   hat: 'Hat', face: 'Face', tie: 'Tie', skin: 'Skin', trail: 'Trail',
@@ -34,7 +34,7 @@ const H_MARGIN      = 8;
 export class CustomizationScene extends Phaser.Scene {
   private activeSlot: CosmeticSlot = 'hat';
   private balanceText!: Phaser.GameObjects.Text;
-  private preview: AnimatedAvatarHandle | null = null;
+  private preview: AvatarHandle | null = null;
   private tabObjects:  Phaser.GameObjects.GameObject[] = [];
   private gridObjects: Phaser.GameObjects.GameObject[] = [];
   private confirmObjects: Phaser.GameObjects.GameObject[] = [];
@@ -169,8 +169,10 @@ export class CustomizationScene extends Phaser.Scene {
 
   private rebuildPreview(): void {
     this.preview?.destroy();
-    this.preview = createAnimatedAvatar(this, getEquippedCosmetics(),
-      { x: logicalWidth(this) / 2, y: PREVIEW_Y, scale: PREVIEW_SCALE }, getHatAdjustments());
+    this.preview = createAvatar(this, getEquippedCosmetics(),
+      // The mannequin is the one place the equipped trail gets to show itself.
+      { x: logicalWidth(this) / 2, y: PREVIEW_Y, scale: PREVIEW_SCALE, trail: true },
+      getHatAdjustments());
     this.preview.container.setDepth(5);
     // Idle breathing
     this.tweens.add({
@@ -331,16 +333,18 @@ export class CustomizationScene extends Phaser.Scene {
       const r = def.render;
       const artAlpha = owned ? 1 : 0.55;
       if (r.kind === 'tie' || r.kind === 'skin' || r.kind === 'trail') {
-        let color = r.kind === 'tie' ? r.color : r.kind === 'skin' ? r.tint : r.tint;
+        let color = r.kind === 'tie' ? r.color : r.tint;
         if (def.id === 'skin_default') color = 0x33323c; // show the bag's own dark tone
         const sw = this.add.graphics().setDepth(9).setAlpha(artAlpha);
         // Soft halo behind the swatch so bright colors sit into the card.
         sw.fillStyle(color, 0.18);
         sw.fillCircle(cx, cy - 10, 21);
-        if (def.id === 'tie_rainbow') {
-          // Six-segment color wheel instead of a flat swatch.
-          const wheel = [0xff3344, 0xff9922, 0xffee33, 0x44dd55, 0x3388ff, 0xaa55ff];
-          wheel.forEach((c, i) => {
+        if (r.rainbow) {
+          // Every rainbow item (tie, skin, trail) is a hue cycle at render
+          // time, so a flat swatch would show one arbitrary frame of it —
+          // the trail's was white, which read as a plain white trail. Show
+          // the whole wheel instead.
+          RAINBOW_WHEEL.forEach((c, i) => {
             sw.fillStyle(c, 1);
             sw.slice(cx, cy - 10, 15, (i / 6) * Math.PI * 2, ((i + 1) / 6) * Math.PI * 2, false);
             sw.fillPath();

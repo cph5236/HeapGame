@@ -6,9 +6,10 @@
 // the physics-synced sprite by a frame. Tie color is PlayerAnimator's job.
 
 import Phaser from 'phaser';
-import type { ResolvedCosmetics } from '../systems/cosmeticsLogic';
+import { rainbowColorAt, type ResolvedCosmetics } from '../systems/cosmeticsLogic';
 import type { AttachmentRig } from './cosmeticRigs/types';
 import { createAttachmentRig } from './cosmeticRigs/createAttachmentRig';
+import { trailEmitterConfig } from './cosmeticRigs/trailEmitter';
 
 /** Trail emits only while actually moving. */
 const TRAIL_MIN_SPEED = 60;
@@ -25,6 +26,12 @@ export class PlayerCosmetics {
   private faceRig: AttachmentRig | null = null;
   private skinGlaze: Phaser.GameObjects.Image | null = null;
   private emitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
+  private skinRainbow = false;
+  /** Own clock for the hue cycle: accumulated deltas rather than wall time, so
+   *  it pauses when the scene does. PlayerAnimator's tie clock (tieTimeMs) is
+   *  the same pattern from the same zero — which is what keeps a rainbow tie
+   *  and a rainbow skin in phase on the same player. */
+  private rainbowMs = 0;
   private hidden = false;
   private destroyed = false;
   private prevVx = 0;
@@ -43,6 +50,7 @@ export class PlayerCosmetics {
     if (resolved.skinTint !== null) {
       // Multiply-tint alone is invisible on the near-black bag art, so lay a
       // translucent flat-color copy of the sprite over it (tintFill glaze).
+      this.skinRainbow = resolved.skinRainbow;
       sprite.setTint(resolved.skinTint);
       this.skinGlaze = scene.add.image(sprite.x, sprite.y, sprite.texture.key)
         .setTintFill(resolved.skinTint).setAlpha(SKIN_GLAZE_ALPHA)
@@ -53,16 +61,9 @@ export class PlayerCosmetics {
     if (resolved.face) this.faceRig = createAttachmentRig(scene, resolved.face);
 
     if (resolved.trail) {
-      const t = resolved.trail;
-      this.emitter = scene.add.particles(0, 0, t.textureKey, {
-        tint:      t.tint,
-        frequency: t.frequency,
-        speedY:    { min: t.speedY[0], max: t.speedY[1] },
-        speedX:    { min: -20, max: 20 },
-        lifespan:  t.lifespan,
-        scale:     { start: t.scale[0], end: t.scale[1] },
-        alpha:     { start: t.alpha, end: 0 },
-        emitting:  false,
+      this.emitter = scene.add.particles(0, 0, resolved.trail.textureKey, {
+        ...trailEmitterConfig(resolved.trail, () => this.rainbowMs),
+        emitting: false,
       }).setDepth(9);
       this.emitter.startFollow(sprite);
     }
@@ -102,6 +103,7 @@ export class PlayerCosmetics {
 
   private sync(_time: number, delta: number): void {
     if (this.hidden) return;
+    this.rainbowMs += delta;
     // Squash factors relative to the base display scale, so attachments
     // stretch with the bag through the animator's keyframes.
     const fx = this.sprite.scaleX / this.baseScaleX;
@@ -127,6 +129,14 @@ export class PlayerCosmetics {
 
     this.hatRig?.update(delta, anchor, motion);
     this.faceRig?.update(delta, anchor, motion);
+
+    if (this.skinRainbow) {
+      // Cycle both layers together: the multiply tint on the bag and the
+      // tintFill glaze over it, or the two would drift out of hue.
+      const hue = rainbowColorAt(this.rainbowMs);
+      this.sprite.setTint(hue);
+      this.skinGlaze?.setTintFill(hue);
+    }
 
     if (this.skinGlaze) {
       // The bag swaps to the dash spritesheet mid-run, so the glaze has to track
