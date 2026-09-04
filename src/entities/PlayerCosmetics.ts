@@ -27,8 +27,10 @@ export class PlayerCosmetics {
   private skinGlaze: Phaser.GameObjects.Image | null = null;
   private emitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private skinRainbow = false;
-  /** Own clock for the hue cycle — accumulated deltas, so it pauses with the
-   *  scene instead of racing ahead on scene.time.now like the tie's does. */
+  /** Own clock for the hue cycle: accumulated deltas rather than wall time, so
+   *  it pauses when the scene does. PlayerAnimator's tie clock (tieTimeMs) is
+   *  the same pattern from the same zero — which is what keeps a rainbow tie
+   *  and a rainbow skin in phase on the same player. */
   private rainbowMs = 0;
   private hidden = false;
   private destroyed = false;

@@ -238,9 +238,16 @@ describe('PlayerCosmetics rainbow', () => {
       ...PLAIN, trail: { ...TRAIL, rainbow: true },
     });
     const cfg = (scene.add.particles as any).mock.calls[0][3];
+    // A flat number here would tint every particle identically for the whole
+    // run; the hue has to be a callback the emitter re-reads per particle.
+    expect(typeof cfg.tint).not.toBe('number');
     expect(typeof cfg.tint.onEmit).toBe('function');
-    // Successive emissions must not all land on the same hue.
-    expect(new Set([cfg.tint.onEmit(), cfg.tint.onEmit()]).size).toBeGreaterThanOrEqual(1);
+    const hue = cfg.tint.onEmit();
+    expect(Number.isInteger(hue)).toBe(true);
+    expect(hue).toBeGreaterThanOrEqual(0);
+    expect(hue).toBeLessThanOrEqual(0xffffff);
+    // That the hue actually MOVES is the next test's job — two calls with no
+    // time advanced between them are supposed to agree.
   });
 
   it('walks the hue as the run progresses, so the streak holds a spectrum', () => {

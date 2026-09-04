@@ -130,7 +130,10 @@ export function createAvatar(
   const container = scene.add.container(opts.x, opts.y);
 
   let rainbowMs = 0;
-  // Added before the bag so the wake renders behind the body.
+  // Added before the bag so the wake renders behind the body. Like the bag,
+  // glaze and strings, the emitter needs no explicit destroy — it is a
+  // container child and goes with it. The rigs below are the exception, and
+  // get one because they own state beyond their GameObjects.
   if (opts.trail && r.trail && scene.textures.exists(r.trail.textureKey)) {
     container.add(scene.add.particles(TRAIL_ORIGIN_X * s, TRAIL_ORIGIN_Y * s, r.trail.textureKey,
       trailEmitterConfig(r.trail, () => rainbowMs, {
