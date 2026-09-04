@@ -56,9 +56,12 @@ jobs:
             Review this pull request by running:
             /code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
 
+            The command is deliberately invoked WITHOUT `--comment`, so it will print its
+            findings and post nothing itself. Relaying them is your job.
+
             Then ALWAYS post a single summary comment on the PR describing the outcome:
             - If you found issues, summarize them concisely (file:line — the problem — a
-              suggested fix), in addition to any inline comments.
+              suggested fix).
             - If you found NO issues, post a brief note saying the review found no problems
               (e.g. "✅ Reviewed the diff — no issues found.").
           # The tool allowlist must be spelled out IN FULL here, not as a delta.
@@ -74,12 +77,27 @@ jobs:
           # the run ends early with an unfinished tracking comment and no findings
           # (observed on PR #126: permission_denials_count 6, 2 of 7 todos done).
           #
+          # gh + TodoWrite are the SECOND half of that same lesson, found on PR
+          # #177 (permission_denials_count 59, $7.40, 1 of 3 todos done). The
+          # upstream command declares its own `allowed-tools` — every `gh` verb
+          # below — but this flag is last-wins over that frontmatter, so none of
+          # them survived. Its step 1 is a `gh pr view` eligibility check, so the
+          # run died on its first move; it also opens with "Create a todo list
+          # before starting" and says "Use gh CLI to interact with GitHub ... Do
+          # not use web fetch". Mirror the upstream list when it changes:
+          # https://github.com/anthropics/claude-code/blob/main/plugins/code-review/commands/code-review.md
+          #
           # git diff/log let the reviewer see the diff rather than just the files
-          # at HEAD. Deliberately NOT granted: git add/commit/rm/push. A reviewer
-          # has no business writing to the branch, and the action's base set
-          # includes those only because it shares a tool list with fix-it mode.
+          # at HEAD. Deliberately NOT granted:
+          #   - git add/commit/rm/push — a reviewer has no business writing to the
+          #     branch; the action's base set includes those only because it shares
+          #     a tool list with fix-it mode.
+          #   - gh pr comment / mcp__github_inline_comment__create_inline_comment —
+          #     the command only reaches for these under `--comment`, which we do
+          #     not pass. Findings come back through the sticky tracking comment
+          #     instead, which is the single-comment design documented above.
           claude_args: >-
-            --allowedTools "Glob,Grep,LS,Read,Task,Bash(git diff:*),Bash(git log:*),Bash(git show:*),mcp__github_comment__update_claude_comment"
+            --allowedTools "Glob,Grep,LS,Read,Task,TodoWrite,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),mcp__github_comment__update_claude_comment"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
