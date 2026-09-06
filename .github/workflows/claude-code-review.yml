@@ -78,6 +78,23 @@ jobs:
             passed: the skill reports its findings back to you and posts nothing itself,
             so relaying them is your job.
 
+            CRITICAL — you are running headless. There is no next turn. The moment
+            you end your turn this process exits, so anything still in flight is
+            abandoned and its results are lost.
+
+            This matters because the skill dispatches its finder agents
+            ASYNCHRONOUSLY. Those launches tell you "you will be notified
+            automatically when it completes" — that is true in an interactive
+            session and false here; no notification will ever arrive. Ending your
+            turn to wait for background agents is the single way this job fails,
+            and it has failed that way repeatedly: the parent said "I'll wait for
+            it to complete before compiling the findings", ended its turn, and
+            eight running finder agents died with the process.
+
+            So: never end your turn to wait. If the skill dispatches background
+            agents, collect their results with TaskOutput before you finish. Keep
+            collecting until every dispatched agent has reported.
+
             IMPORTANT — how findings must reach the PR. The ReportFindings tool hands
             findings to a host UI for rendering, and in GitHub Actions there is NO host
             UI: anything reported that way is discarded and nobody ever sees it. If the
@@ -133,7 +150,24 @@ jobs:
           # already granted; these two were not, so it opened blind to its own
           # working tree.
           #
-          # Task stays — the skill still forks finder subagents to sweep the diff.
+          # Task + TaskOutput go together, and the pairing is the whole fix for
+          # the intermittent silent stall. The skill dispatches finder agents
+          # ASYNCHRONOUSLY; without TaskOutput the parent has no way to collect
+          # what they produce, so its only option is to end its turn and wait for
+          # a notification that never comes in a headless run. Captured verbatim
+          # from a failing transcript, as its last act before the process exited:
+          #
+          #   "The code-review skill is running in the background across multiple
+          #    agents. I'll wait for it to complete before compiling the findings
+          #    into the PR comment."
+          #
+          # Eight live finder agents died with that process. The job still exited
+          # success, because nothing errored. That is the failure we spent four
+          # PRs mistaking for a permissions problem.
+          #
+          # It is intermittent because the skill only fans out on a big enough
+          # diff: both runs that ever posted findings made zero Agent calls and
+          # reviewed inline; every stalled run fanned out.
           # gh stays because a PR-number target is fetched with it.
           #
           # git fetch + cat/head/tail/wc are shell plumbing, and they are here
@@ -171,7 +205,7 @@ jobs:
           #     single-comment design documented above.
           #   - gh api — reads a lot, but can POST just as easily.
           claude_args: >-
-            --allowedTools "Glob,Grep,LS,Read,Task,TodoWrite,Skill,SlashCommand,ReportFindings,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git status:*),Bash(git branch:*),Bash(git fetch:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),mcp__github_comment__update_claude_comment"
+            --allowedTools "Glob,Grep,LS,Read,Task,TaskOutput,TodoWrite,Skill,SlashCommand,ReportFindings,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git status:*),Bash(git branch:*),Bash(git fetch:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),mcp__github_comment__update_claude_comment"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
