@@ -1262,11 +1262,20 @@ export class ScoreScene extends Phaser.Scene {
       });
     };
 
+    // A share is in flight. A second `navigator.share()` while the first sheet is
+    // still up rejects with InvalidStateError, not AbortError — which would fall
+    // through to the clipboard path and both copy the link behind an open share
+    // sheet and log a second `share:run`, corrupting the very metric this button
+    // exists to produce.
+    let sharing = false;
+
     // Same 1500ms arming delay as the bottom buttons: a tap carried over from
     // gameplay should not pop an OS share sheet in the player's face.
     this.time.delayedCall(1500, () => {
       btn.setInteractive({ useHandCursor: true });
       btn.on('pointerup', () => {
+        if (sharing) return;
+        sharing = true;
         const msg = buildShareMessage({
           score:          this.score,
           heapName:       this._heapParams.name,
@@ -1276,15 +1285,21 @@ export class ScoreScene extends Phaser.Scene {
         });
         void shareRun(msg, typeof navigator === 'undefined' ? undefined : navigator)
           .then((outcome: ShareOutcome) => {
+            sharing = false;
+            // Logged before the active-scene check: the outcome is worth counting
+            // even when the player has already walked away from the screen.
             getLogger().event({
               type: 'share:run', heapId: this.heapId, score: this.score, outcome,
             });
+            if (!this.scene.isActive()) return; // player navigated away mid-share
             if (outcome === 'copied')           say('link copied', '#44ffaa');
             else if (outcome === 'unavailable') say('could not share', '#ff8877');
             // 'shared' and 'dismissed' need no toast: the OS sheet was the feedback.
           })
           .catch((err: unknown) => {
+            sharing = false;
             getLogger().error('share:failed', { stack: String(err) });
+            if (!this.scene.isActive()) return;
             say('could not share', '#ff8877');
           });
       });
