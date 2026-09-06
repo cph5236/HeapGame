@@ -8,6 +8,11 @@ at `/heaps`. Tests run via Vitest.
 ## Layout
 - `src/` game client — `scenes/` (Menu, Game, InfiniteGame, Score, …), `systems/`
   (SaveData, clients, physics helpers), `entities/` (Player, Enemy), `ui/`
+- The client is split platform/game the same way the worker is:
+  `systems/save/core.ts` (identity, write-auth, schema versioning, device prefs)
+  + `systems/save/game.ts` (this game's fields, registered via `SaveExtension`),
+  re-exported by the `systems/SaveData.ts` barrel; `systems/bootSequence.ts`
+  holds the platform half of startup that `BootScene` calls
 - `server/` worker — split `platform/` (auth, bans, config, feedback, logging,
   middleware) and `game/` (heaps, scores, codes, daily, customization); each half
   has `routes/` (Hono), `*Db.ts` repos (D1 + Mock + Cached variants) and `cache/`
@@ -36,6 +41,17 @@ at `/heaps`. Tests run via Vitest.
 - Player writes are auth-gated (TOFU `playerSecret` + `X-Player-Token`); any code
   path that migrates/merges SaveData **must carry `playerSecret`** or players get
   403-locked out of their own data
+- New save fields go in `save/game.ts` (all three hooks: `fresh`/`migrate`/`merge`),
+  never in `save/core.ts` — core is the half a different game would keep
+- `migrate()` and `mergeCloudSave()` spread the game's contribution first and
+  core's last, so a game rule can never overwrite a core field. **Don't reorder
+  those spreads** — that ordering is what makes the `playerSecret` invariant
+  above structural rather than a convention someone has to remember
+- Import from the `SaveData` barrel, never `save/core` or `save/game` directly —
+  the barrel is what guarantees the extension is registered before `load()` runs
+- A gameplay scene that mounts controls must expose `remountControls()`;
+  `mountJoystick()` is the only caller of `InputManager.setControlMode`, so
+  without it a mid-run control-scheme change silently does nothing
 
 ## Project skills (invoke via Skill tool — don't re-derive these workflows)
 - `adding-d1-migrations` — any schema change (4 domain DBs, two-file rule, remote apply)
