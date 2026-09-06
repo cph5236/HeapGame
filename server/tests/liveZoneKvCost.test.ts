@@ -13,11 +13,11 @@
 
 import { describe, it, expect } from 'vitest';
 import { createApp } from '../src/app';
-import { CachedHeapDB } from '../src/cache/CachedHeapDB';
+import { CachedHeapDB } from '../src/game/cache/CachedHeapDB';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockKV } from './helpers/mockKv';
-import { liveBandsOf } from '../src/routes/heap';
+import { liveBandsOf } from '../src/game/routes/heap';
 import { DEFAULT_HEAP_PARAMS, type GetHeapResponse, type PlaceResponse } from '../../shared/heapTypes';
 import { bandOf, BAND_SIZE_PX } from '../../shared/heapPolygon/bandEnvelope';
 

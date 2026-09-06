@@ -13,4 +13,9 @@ ext {
     androidxJunitVersion = '1.3.0'
     androidxEspressoCoreVersion = '3.7.0'
     cordovaAndroidVersion = '14.0.1'
+    // Overrides @capacitor-community/admob's floating '24.9.+'. Pinned so CI
+    // builds are reproducible, and on 25.x because 24.9 applied the
+    // deprecated LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES unconditionally on
+    // API 28+; 25.x gates it to API <= 34. Play Console flagged this.
+    playServicesAdsVersion = '25.4.0'
 }

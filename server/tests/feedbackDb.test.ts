@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { MockFeedbackDB } from './helpers/mockFeedbackDb';
-import type { NormalizedFeedback } from '../src/feedbackDb';
+import type { NormalizedFeedback } from '../src/platform/feedbackDb';
 
 const base: NormalizedFeedback = {
   category: 'bug', playerGuid: 'g1', sessionId: 's1', message: 'it broke',

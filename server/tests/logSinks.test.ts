@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { D1Sink } from '../src/logging/D1Sink';
-import { AnalyticsEngineSink } from '../src/logging/AnalyticsEngineSink';
-import type { StampedLogEntry } from '../src/logging/Sink';
+import { D1Sink } from '../src/platform/logging/D1Sink';
+import { AnalyticsEngineSink } from '../src/platform/logging/AnalyticsEngineSink';
+import type { StampedLogEntry } from '../src/platform/logging/Sink';
 
 function fakeD1() {
   // NOTE: each prepare() builds a per-statement closure so that concurrent

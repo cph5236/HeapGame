@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { checkFreezeBands, LIVE_ZONE_MAX_BANDS, FREEZE_BATCH_BANDS } from '../src/polygon';
+import { checkFreezeBands, LIVE_ZONE_MAX_BANDS, FREEZE_BATCH_BANDS } from '../src/game/polygon';
 import type { BandRow } from '../../shared/heapPolygon/bandEnvelope';
 
 function bands(from: number, count: number): BandRow[] {

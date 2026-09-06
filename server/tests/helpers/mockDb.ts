@@ -1,6 +1,6 @@
 // server/tests/helpers/mockDb.ts
 
-import type { HeapDB, HeapRow, HeapSummaryRow, VersionedBandRow, FreezeArgs, AdminReplaceBandsArgs } from '../../src/db';
+import type { HeapDB, HeapRow, HeapSummaryRow, VersionedBandRow, FreezeArgs, AdminReplaceBandsArgs } from '../../src/game/db';
 import type { HeapParams, Vertex, HeapEnemyParams } from '../../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../../shared/heapTypes';
 import { bandOf, type BandRow } from '../../../shared/heapPolygon/bandEnvelope';

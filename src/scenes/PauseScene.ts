@@ -1,18 +1,15 @@
 import Phaser from 'phaser';
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
-import { buildControlsOverlay, type ControlsOverlay } from '../ui/buildControlsOverlay';
-import { buildVolumePanel, type VolumePanel } from '../ui/buildVolumePanel';
 import { InputManager } from '../systems/InputManager';
+import { pauseSettingsData, type ControlHost } from './pauseSettings';
 import { markRunEnded } from '../systems/dailyRunGate';
 
 export interface PauseSceneData {
   /** Scene key of the paused game scene to resume/stop. */
   gameSceneKey: string;
-  /** Whether the device is mobile (drives controls-help copy). */
-  isMobile: boolean;
 }
 
-type View = 'menu' | 'controls' | 'volume' | 'confirm';
+type View = 'menu' | 'confirm';
 
 const PANEL_W = 300;
 const BTN_W   = 240;
@@ -21,18 +18,13 @@ const BTN_GAP = 14;
 
 export class PauseScene extends Phaser.Scene {
   private gameSceneKey!: string;
-  private isMobile = false;
   private menuParts: Phaser.GameObjects.GameObject[] = [];
-  private controls?: ControlsOverlay;
-  private volume?: VolumePanel;
-  private backBtn?: Phaser.GameObjects.GameObject[];
   private confirmParts: Phaser.GameObjects.GameObject[] = [];
 
   constructor() { super({ key: 'PauseScene' }); }
 
   init(data: PauseSceneData): void {
     this.gameSceneKey = data.gameSceneKey;
-    this.isMobile     = data.isMobile;
     this.menuParts    = [];
   }
 
@@ -44,24 +36,28 @@ export class PauseScene extends Phaser.Scene {
     const bg = this.add.rectangle(cx, cy, logicalWidth(this), logicalHeight(this), 0x000000, 0.72)
       .setScrollFactor(0).setDepth(40).setInteractive();
 
-    const titleY = cy - (BTN_H * 4 + BTN_GAP * 3) / 2 - 48;
+    // Declared before the geometry below, which is derived from its length —
+    // adding or removing a button re-lays-out the panel with no constant to update.
+    const labels: Array<[string, () => void]> = [
+      ['Resume',           () => this.resumeGame()],
+      ['Settings',         () => this.openSettings()],
+      ['Exit to Main Menu', () => this.showView('confirm')],
+    ];
+    const btnCount = labels.length;
+    const stackH   = BTN_H * btnCount + BTN_GAP * (btnCount - 1);
+
+    const titleY = cy - stackH / 2 - 48;
     const title = this.add.text(cx, titleY, 'PAUSED', {
       fontSize: '28px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(42);
 
-    const panelH = BTN_H * 4 + BTN_GAP * 3 + 40;
+    const panelH = stackH + 40;
     const panel = this.add.rectangle(cx, cy, Math.min(PANEL_W, logicalWidth(this) - 32), panelH, 0x0d0d20)
       .setScrollFactor(0).setDepth(41).setStrokeStyle(2, 0x4455aa).setInteractive();
 
     this.menuParts = [bg, title, panel];
 
-    const labels: Array<[string, () => void]> = [
-      ['Resume',           () => this.resumeGame()],
-      ['Controls',         () => this.showView('controls')],
-      ['Volume',           () => this.showView('volume')],
-      ['Exit to Main Menu', () => this.showView('confirm')],
-    ];
-    const top = cy - (BTN_H * 4 + BTN_GAP * 3) / 2 + BTN_H / 2;
+    const top = cy - stackH / 2 + BTN_H / 2;
     labels.forEach(([text, onTap], i) => {
       const by = top + i * (BTN_H + BTN_GAP);
       const btn = this.add.rectangle(cx, by, BTN_W, BTN_H, 0x1a3a5c)
@@ -76,25 +72,6 @@ export class PauseScene extends Phaser.Scene {
     // Esc / P resume the game (toggle off).
     this.input.keyboard?.on('keydown-ESC', () => this.resumeGame());
     this.input.keyboard?.on('keydown-P',   () => this.resumeGame());
-
-    // Sub-views (hidden until selected). Tapping their dim bg returns to the menu.
-    this.controls = buildControlsOverlay(this, {
-      isMobile: this.isMobile, depth: 44, onBackgroundTap: () => this.showView('menu'),
-    });
-    this.volume = buildVolumePanel(this, {
-      depth: 44, onBackgroundTap: () => this.showView('menu'),
-    });
-
-    // Shared "← Back" button shown on any sub-view.
-    const backY = logicalHeight(this) - 48;
-    const backBg = this.add.rectangle(logicalWidth(this) / 2, backY, 160, 40, 0x222244)
-      .setScrollFactor(0).setDepth(47).setStrokeStyle(2, 0x8899bb).setInteractive({ useHandCursor: true })
-      .setVisible(false);
-    const backLbl = this.add.text(logicalWidth(this) / 2, backY, '← Back', {
-      fontSize: '17px', color: '#ffffff', fontStyle: 'bold',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(48).setVisible(false);
-    backBg.on('pointerup', () => this.showView('menu'));
-    this.backBtn = [backBg, backLbl];
 
     // ── Exit-confirm sub-view (hidden until 'confirm') ─────────────────────────
     const ccx = logicalWidth(this) / 2;
@@ -130,13 +107,21 @@ export class PauseScene extends Phaser.Scene {
   }
 
   private showView(view: View): void {
-    const onMenu = view === 'menu';
-    this.menuParts.forEach(o => (o as any).setVisible(onMenu));
-    this.controls?.setOpen(view === 'controls');
-    this.volume?.setOpen(view === 'volume');
-    const showBack = view === 'controls' || view === 'volume';
-    this.backBtn?.forEach(o => (o as any).setVisible(showBack));
+    this.menuParts.forEach(o => (o as any).setVisible(view === 'menu'));
     this.confirmParts.forEach(o => (o as any).setVisible(view === 'confirm'));
+  }
+
+  /** Open the shared Settings modal over the pause menu. SettingsScene pauses
+   *  this scene and resumes it on close, so the pause buttons underneath stay
+   *  inert; the game scene below remains paused throughout. */
+  private openSettings(): void {
+    if (this.scene.isActive('SettingsScene')) return; // guard against double-open
+    // The host is resolved per tap, not captured here: it may be stopped while
+    // Settings is open (Exit to Main Menu), and re-mounting a dead scene throws.
+    this.scene.launch('SettingsScene', pauseSettingsData(
+      this.scene.key,
+      () => this.scene.get(this.gameSceneKey) as ControlHost | undefined,
+    ));
   }
 
   private resumeGame(): void {

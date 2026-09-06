@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseOriginAllowlist } from '../src/middleware/originAllowlist';
+import { parseOriginAllowlist } from '../src/platform/middleware/originAllowlist';
 
 describe('parseOriginAllowlist', () => {
   describe('wildcard mode', () => {

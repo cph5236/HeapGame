@@ -1,72 +1,30 @@
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import type { HeapDB } from './db';
-import type { ScoreDB } from './scoreDb';
-import type { BanDB } from './banDb';
-import { heapRoutes } from './routes/heap';
-import { scoreRoutes } from './routes/scores';
-import { logRoutes } from './routes/log';
-import { codeRoutes } from './routes/codes';
-import { dailyRoutes } from './routes/daily';
-import { feedbackRoutes } from './routes/feedback';
-import { configRoutes } from './routes/config';
-import { customizationRoutes } from './routes/customization';
-import { playerRoutes } from './routes/players';
-import { authAdminRoutes } from './routes/auth';
-import { banRoutes } from './routes/bans';
-import { requireAdminSecret } from './middleware/adminAuth';
-import { rateLimit, type RateLimiter, setRateLimitSink } from './middleware/rateLimit';
-import { parseOriginAllowlist } from './middleware/originAllowlist';
-import type { Sink } from './logging/Sink';
-import type { RewardCodeDB } from './codeDb';
-import type { DailyClaimDB } from './dailyDb';
-import type { FeedbackDB } from './feedbackDb';
-import type { ConfigDB } from './configDb';
-import type { CustomizationDB } from './customizationDb';
-import type { PlayerAuthDB } from './playerAuthDb';
-import type { ContributionDB } from './contributionDb';
-import type { PlayerNameDB } from './playerNameDb';
+import type { Hono } from 'hono';
+import type { HeapDB } from './game/db';
+import type { ScoreDB } from './game/scoreDb';
+import type { BanDB } from './platform/banDb';
+import { heapRoutes } from './game/routes/heap';
+import { scoreRoutes } from './game/routes/scores';
+import { codeRoutes } from './game/routes/codes';
+import { dailyRoutes } from './game/routes/daily';
+import { customizationRoutes } from './game/routes/customization';
+import { banRoutes } from './platform/routes/bans';
+import { createPlatformApp, type PlatformOptions } from './platform/app';
+import type { RewardCodeDB } from './game/codeDb';
+import type { DailyClaimDB } from './game/dailyDb';
+import type { CustomizationDB } from './game/customizationDb';
+import type { ContributionDB } from './game/contributionDb';
 
-export interface AppOptions {
-  /**
-   * Comma-separated origin list, or '*' to allow all (dev only). Entries may use
-   * a `https://*.example.com` wildcard to match subdomains — see
-   * middleware/originAllowlist.ts.
-   */
-  allowedOrigins?: string;
-  /** When set, mutating heap routes require X-Admin-Secret: <value>. */
-  adminSecret?: string;
-  /** Staging only — when set, a request presenting a matching X-LoadTest-Secret
-   *  header keys the rate limiter on X-LoadTest-Key instead of client IP. */
-  loadTestSecret?: string;
-  /** Cloudflare Rate Limiting API bindings. Any unset = no limit on that bucket. */
-  limiters?: {
-    scores?: RateLimiter;
-    place?:  RateLimiter;
-    global?: RateLimiter;
-    log?:    RateLimiter;
-    codes?:  RateLimiter;
-    feedback?: RateLimiter;
-    session?: RateLimiter;
-  };
+/** Platform options plus this game's own. Everything game-specific is declared
+ *  here; `PlatformOptions` is what a different game would keep. */
+export interface AppOptions extends PlatformOptions {
   /** Reward-code D1 access. If unset, /codes is not mounted. */
   codeDb?: RewardCodeDB;
   /** Daily Drop claims (daily_claims in heap_rewards). If unset, /daily is not mounted. */
   dailyDb?: DailyClaimDB;
-  /** Feedback D1 access. If unset, /feedback is not mounted. */
-  feedbackDb?: FeedbackDB;
-  /** Config D1 access. If unset, /config is not mounted. */
-  configDb?: ConfigDB;
   /** Player-customization D1 access. If unset, /customization is not mounted. */
   customizationDb?: CustomizationDB;
-  /** Player write-auth (player_auth table in heap_scores). If unset, writes are not enforced. */
-  playerAuthDb?: PlayerAuthDB;
   /** Placement contribution counters (player_contribution in heap_scores). If unset, placements don't tick. */
   contributionDb?: ContributionDB;
-  /** Player-name D1 access (player_name in heap_scores). If unset, /players/:id/name is not mounted and score submit doesn't seed names. */
-  playerNameDb?: PlayerNameDB;
-  /** Sink for incoming /log entries. If unset, /log is not mounted. */
-  logSink?: Sink;
   /** HMAC key for run-session tokens. If unset, /scores/session 404s and
    *  score submits skip session verification entirely (legacy behavior). */
   sessionSecret?: string;
@@ -75,30 +33,18 @@ export interface AppOptions {
   banDb?: BanDB;
 }
 
+/**
+ * Heap's worker: the platform app with this game's routes mounted onto it.
+ * Route paths and middleware order are unchanged from before the platform/game
+ * split — only where the code lives has moved.
+ */
 export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {}): Hono {
-  const app = new Hono();
-
-  // Wire in rate limit sink if available
-  if (opts.logSink) {
-    setRateLimitSink(() => opts.logSink);
-  }
-
-  const allowlist = parseOriginAllowlist(opts.allowedOrigins);
-
-  app.use('*', cors({
-    origin: (origin) => {
-      if (allowlist.allowAll) return origin ?? '*';
-      if (!origin) return null;
-      return allowlist.allows(origin) ? origin : null;
-    },
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'X-Admin-Secret', 'X-Player-Token', 'X-LoadTest-Secret', 'X-LoadTest-Key'],
-  }));
+  const { app, adminGate, limit } = createPlatformApp(opts);
 
   // Rate limiting — global circuit breaker on all heap/score traffic
   const lim = opts.limiters ?? {};
   if (lim.global) {
-    const globalMw = rateLimit(lim.global, 'global', opts.loadTestSecret);
+    const globalMw = limit('global', 'global');
     app.use('/heaps',    globalMw);
     app.use('/heaps/*',  globalMw);
     app.use('/scores',   globalMw);
@@ -106,13 +52,11 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   }
 
   // Per-route limiters (mounted as POST handlers; fall through on success)
-  app.post('/scores',          rateLimit(lim.scores, 'scores-submit', opts.loadTestSecret));
-  app.post('/scores/session',  rateLimit(lim.session, 'scores-session', opts.loadTestSecret));
-  app.post('/heaps/:id/place', rateLimit(lim.place,  'place-block',   opts.loadTestSecret));
-  app.post('/log',             rateLimit(lim.log,    'log',           opts.loadTestSecret));
+  app.post('/scores',          limit('scores', 'scores-submit'));
+  app.post('/scores/session',  limit('session', 'scores-session'));
+  app.post('/heaps/:id/place', limit('place', 'place-block'));
 
   // Admin gate on mutating heap routes
-  const adminGate = requireAdminSecret(opts.adminSecret);
   app.post  ('/heaps',                  adminGate);
   app.put   ('/heaps/:id/reset',        adminGate);
   app.put   ('/heaps/:id/params',       adminGate);
@@ -127,7 +71,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
 
   if (opts.codeDb) {
     // Player redeem endpoint — rate-limited, no admin gate.
-    app.post('/codes/redeem', rateLimit(lim.codes, 'codes-redeem', opts.loadTestSecret));
+    app.post('/codes/redeem', limit('codes', 'codes-redeem'));
     // Admin mint + list — behind the admin gate.
     app.post('/codes', adminGate);
     app.get ('/codes', adminGate);
@@ -136,44 +80,19 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
 
   if (opts.dailyDb) {
     // Player claim endpoint — rate-limited, no admin gate.
-    app.post('/daily/claim', rateLimit(lim.codes, 'daily-claim', opts.loadTestSecret));
+    app.post('/daily/claim', limit('codes', 'daily-claim'));
     app.route('/daily', dailyRoutes(opts.dailyDb, opts.configDb, () => opts.logSink, opts.playerAuthDb));
-  }
-
-  if (opts.feedbackDb) {
-    // Public submit — rate-limited, no admin gate.
-    app.post('/feedback', rateLimit(lim.feedback, 'feedback', opts.loadTestSecret));
-    // Admin read — behind the admin gate.
-    app.get('/feedback', adminGate);
-    app.route('/feedback', feedbackRoutes(opts.feedbackDb));
-  }
-
-  if (opts.configDb) {
-    // Public read — no admin gate.
-    // Admin write/delete — behind the admin gate.
-    app.put('/config/:key', adminGate);
-    app.delete('/config/:key', adminGate);
-    app.route('/config', configRoutes(opts.configDb));
   }
 
   if (opts.customizationDb) {
     // Player loadout writes share the scores rate-limit bucket — they're debounced client-side.
-    app.put('/customization/:playerId', rateLimit(lim.scores, 'customization-put', opts.loadTestSecret));
+    app.put('/customization/:playerId', limit('scores', 'customization-put'));
     app.route('/customization', customizationRoutes(opts.customizationDb, () => opts.logSink, opts.playerAuthDb));
   }
 
-  if (opts.playerAuthDb) {
-    // Admin rescue: unclaim a player_auth row.
-    app.delete('/auth/:playerId', adminGate);
-    app.route('/auth', authAdminRoutes(opts.playerAuthDb));
-  }
-
-  if (opts.playerNameDb) {
-    // Player rename writes share the scores rate-limit bucket — same pattern as customization.
-    app.put('/players/:playerId/name', rateLimit(lim.scores, 'players-rename', opts.loadTestSecret));
-    app.route('/players', playerRoutes(opts.playerNameDb, () => opts.logSink, opts.playerAuthDb));
-  }
-
+  // Shadow bans are a platform concern, but banRoutes purges scores on ban and so
+  // depends on ScoreDB. It stays mounted here until that dependency is inverted;
+  // the file itself already lives under platform/.
   if (opts.banDb) {
     // Admin shadow-ban surface — entirely behind the admin gate.
     app.get   ('/bans',           adminGate);
@@ -181,10 +100,6 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
     app.put   ('/bans/:playerId', adminGate);
     app.delete('/bans/:playerId', adminGate);
     app.route('/bans', banRoutes(opts.banDb, scoreDb, opts.playerNameDb));
-  }
-
-  if (opts.logSink) {
-    app.route('/', logRoutes(() => opts.logSink!));
   }
 
   return app;

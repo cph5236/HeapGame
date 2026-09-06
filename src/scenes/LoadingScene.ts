@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { loadGameAssets } from './loadGameAssets';
-import { preloadProgress, preloadComplete } from '../systems/infinitePreload';
+import { preloadProgress, preloadComplete } from '../systems/loadingProgress';
 import { configReady, hasConfig } from '../systems/ConfigClient';
 import { signInSettled } from '../systems/gpgsSession';
 import { consentSettled } from '../systems/ads/consentGate';

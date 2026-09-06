@@ -1,4 +1,4 @@
-import type { CustomizationDB } from '../../src/customizationDb';
+import type { CustomizationDB } from '../../src/game/customizationDb';
 
 /** In-memory CustomizationDB for tests. */
 export class MockCustomizationDB implements CustomizationDB {

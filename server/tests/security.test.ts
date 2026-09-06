@@ -7,7 +7,7 @@ import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockSink } from './helpers/mockSink';
 import type { CreateHeapResponse } from '../../shared/heapTypes';
-import { rateLimit, type RateLimiter } from '../src/middleware/rateLimit';
+import { rateLimit, type RateLimiter } from '../src/platform/middleware/rateLimit';
 
 const VERTICES = [
   { x: 100, y: 400 },

@@ -6,7 +6,7 @@ import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockPlayerAuthDB } from './helpers/mockPlayerAuthDb';
 import type { OpenSessionResponse } from '../../shared/scoreTypes';
-import { signSession } from '../src/runSession';
+import { signSession } from '../src/game/runSession';
 import type { SubmitScoreResponse } from '../../shared/scoreTypes';
 
 const HEAP_ID = 'heap-test-001';

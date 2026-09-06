@@ -1,6 +1,6 @@
 // server/tests/helpers/mockConfigDb.ts
 
-import type { ConfigDB } from '../../src/configDb';
+import type { ConfigDB } from '../../src/platform/configDb';
 import type { AppConfig } from '../../../shared/configTypes';
 
 /** In-memory ConfigDB for tests. Same get/set semantics as D1ConfigDB. */

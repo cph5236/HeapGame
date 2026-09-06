@@ -5,11 +5,11 @@
 // contains a banned player.
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { CachedScoreDB } from '../src/cache/CachedScoreDB';
+import { CachedScoreDB } from '../src/game/cache/CachedScoreDB';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockBanDB } from './helpers/mockBanDb';
 import { MockKV } from './helpers/mockKv';
-import { __resetBanMemo } from '../src/cache/MemoBanDB';
+import { __resetBanMemo } from '../src/platform/cache/MemoBanDB';
 
 // Mirror the KV fake used in cacheDecorators.test.ts.
 const noWait = (_p: Promise<unknown>) => {};

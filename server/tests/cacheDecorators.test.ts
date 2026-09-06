@@ -6,9 +6,9 @@
 // in-memory mocks; KV is MockKV.
 
 import { describe, it, expect } from 'vitest';
-import { CachedHeapDB } from '../src/cache/CachedHeapDB';
-import { CachedScoreDB } from '../src/cache/CachedScoreDB';
-import { CachedConfigDB } from '../src/cache/CachedConfigDB';
+import { CachedHeapDB } from '../src/game/cache/CachedHeapDB';
+import { CachedScoreDB } from '../src/game/cache/CachedScoreDB';
+import { CachedConfigDB } from '../src/platform/cache/CachedConfigDB';
 import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockConfigDB } from './helpers/mockConfigDb';

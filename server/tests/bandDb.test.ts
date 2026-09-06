@@ -1,7 +1,7 @@
 // server/tests/bandDb.test.ts
 import { describe, it, expect } from 'vitest';
 import { MockHeapDB } from './helpers/mockDb';
-import { D1HeapDB } from '../src/db';
+import { D1HeapDB } from '../src/game/db';
 import { createTestD1 } from './helpers/d1Sqlite';
 
 async function seeded() {

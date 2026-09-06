@@ -15,8 +15,8 @@ import { MockHeapDB } from './helpers/mockDb';
 import { MockScoreDB } from './helpers/mockScoreDb';
 import { MockBanDB } from './helpers/mockBanDb';
 import { MockPlayerAuthDB } from './helpers/mockPlayerAuthDb';
-import { hashSecret } from '../src/playerAuth';
-import { __resetBanMemo } from '../src/cache/MemoBanDB';
+import { hashSecret } from '../src/platform/playerAuth';
+import { __resetBanMemo } from '../src/platform/cache/MemoBanDB';
 import type {
   PaginatedLeaderboardResponse,
   LeaderboardContext,

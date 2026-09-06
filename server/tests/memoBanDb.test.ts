@@ -1,9 +1,9 @@
 // server/tests/memoBanDb.test.ts
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { MemoBanDB, __resetBanMemo } from '../src/cache/MemoBanDB';
+import { MemoBanDB, __resetBanMemo } from '../src/platform/cache/MemoBanDB';
 import { MockBanDB } from './helpers/mockBanDb';
-import type { BanDB } from '../src/banDb';
+import type { BanDB } from '../src/platform/banDb';
 
 /** Wraps a MockBanDB and counts isBanned round-trips. */
 class CountingBanDB extends MockBanDB {

@@ -1,6 +1,6 @@
 // server/tests/helpers/mockDailyDb.ts
 
-import type { DailyClaimDB, DailyClaimRow } from '../../src/dailyDb';
+import type { DailyClaimDB, DailyClaimRow } from '../../src/game/dailyDb';
 
 /** In-memory DailyClaimDB with the same conditional-write semantics as D1. */
 export class MockDailyDb implements DailyClaimDB {

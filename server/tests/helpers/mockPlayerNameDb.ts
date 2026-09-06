@@ -1,4 +1,4 @@
-import type { PlayerNameDB } from '../../src/playerNameDb';
+import type { PlayerNameDB } from '../../src/platform/playerNameDb';
 
 /** In-memory PlayerNameDB for tests. Same semantics as D1PlayerNameDB. */
 export class MockPlayerNameDB implements PlayerNameDB {

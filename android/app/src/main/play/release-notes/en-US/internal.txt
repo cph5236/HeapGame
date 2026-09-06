@@ -1,11 +1,5 @@
-Heap has a new app icon.
+The pause menu now opens the full settings panel, so you can reach audio, controls and player options in the middle of a run.
 
-Speed items now boost you in the air, on wall slides and on ladders, not just on the ground.
+Switching between tilt and joystick controls now takes effect right away, instead of only applying from your next run.
 
-Steering along a wall now builds up, so pushing toward an opening actually carries you into it.
-
-Bonking your head on a slope now glances you off to the side instead of stopping you dead.
-
-Tapping Play Again after an ad no longer starts your run behind the ad.
-
-Players in Europe, the UK and Switzerland can manage ad data choices under Privacy options in Settings.
+The app download is a little smaller.

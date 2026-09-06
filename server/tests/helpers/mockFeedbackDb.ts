@@ -1,4 +1,4 @@
-import type { FeedbackDB, NormalizedFeedback } from '../../src/feedbackDb';
+import type { FeedbackDB, NormalizedFeedback } from '../../src/platform/feedbackDb';
 import type { FeedbackRow } from '../../../shared/feedbackTypes';
 
 export class MockFeedbackDB implements FeedbackDB {

@@ -13,7 +13,7 @@
 // subqueries that make a losing batch a no-op, and meta.changes.
 
 import { describe, it, expect } from 'vitest';
-import { D1HeapDB } from '../src/db';
+import { D1HeapDB } from '../src/game/db';
 import { createTestD1 } from './helpers/d1Sqlite';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { BAND_SIZE_PX } from '../../shared/heapPolygon/bandEnvelope';

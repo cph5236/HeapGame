@@ -1,4 +1,4 @@
-import type { BanDB, BanRow } from '../../src/banDb';
+import type { BanDB, BanRow } from '../../src/platform/banDb';
 
 /** In-memory BanDB for tests. No D1 or Workers runtime needed. */
 export class MockBanDB implements BanDB {

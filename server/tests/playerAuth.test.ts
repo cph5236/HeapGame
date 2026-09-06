@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hashSecret, verifyOrClaim } from '../src/playerAuth';
+import { hashSecret, verifyOrClaim } from '../src/platform/playerAuth';
 import { MockPlayerAuthDB } from './helpers/mockPlayerAuthDb';
 
 const NOW = '2026-07-07T00:00:00.000Z';
