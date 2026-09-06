@@ -54,7 +54,12 @@ jobs:
           # keeps it to a single comment across re-pushes.
           track_progress: true
           use_sticky_comment: true
-          # TEMPORARY — remove once the silent stall on #177 is diagnosed.
+          # TEMPORARY — still on for one more cycle. It did its job once: the
+          # transcript showed the denials are compound-Bash rejections, not the
+          # ReportFindings trap I had assumed. But that run PASSED, so the
+          # intermittent stall itself has never been captured. Keep this until a
+          # failing run is caught, or until several clean runs make the case that
+          # the plumbing grants fixed it — then take it out.
           # The reviewer has twice run for 9-13 minutes and then ended without
           # writing findings into the comment, with is_error false and the job
           # green. The action hides the SDK transcript by default, and a
@@ -72,6 +77,23 @@ jobs:
             interactively, and CI has no such history. `--comment` is deliberately NOT
             passed: the skill reports its findings back to you and posts nothing itself,
             so relaying them is your job.
+
+            CRITICAL — you are running headless. There is no next turn. The moment
+            you end your turn this process exits, so anything still in flight is
+            abandoned and its results are lost.
+
+            This matters because the skill dispatches its finder agents
+            ASYNCHRONOUSLY. Those launches tell you "you will be notified
+            automatically when it completes" — that is true in an interactive
+            session and false here; no notification will ever arrive. Ending your
+            turn to wait for background agents is the single way this job fails,
+            and it has failed that way repeatedly: the parent said "I'll wait for
+            it to complete before compiling the findings", ended its turn, and
+            eight running finder agents died with the process.
+
+            So: never end your turn to wait. If the skill dispatches background
+            agents, collect their results with TaskOutput before you finish. Keep
+            collecting until every dispatched agent has reported.
 
             IMPORTANT — how findings must reach the PR. The ReportFindings tool hands
             findings to a host UI for rendering, and in GitHub Actions there is NO host
@@ -128,8 +150,49 @@ jobs:
           # already granted; these two were not, so it opened blind to its own
           # working tree.
           #
-          # Task stays — the skill still forks finder subagents to sweep the diff.
+          # Task + TaskOutput go together, and the pairing is the whole fix for
+          # the intermittent silent stall. The skill dispatches finder agents
+          # ASYNCHRONOUSLY; without TaskOutput the parent has no way to collect
+          # what they produce, so its only option is to end its turn and wait for
+          # a notification that never comes in a headless run. Captured verbatim
+          # from a failing transcript, as its last act before the process exited:
+          #
+          #   "The code-review skill is running in the background across multiple
+          #    agents. I'll wait for it to complete before compiling the findings
+          #    into the PR comment."
+          #
+          # Eight live finder agents died with that process. The job still exited
+          # success, because nothing errored. That is the failure we spent four
+          # PRs mistaking for a permissions problem.
+          #
+          # It is intermittent because the skill only fans out on a big enough
+          # diff: both runs that ever posted findings made zero Agent calls and
+          # reviewed inline; every stalled run fanned out.
           # gh stays because a PR-number target is fetched with it.
+          #
+          # git fetch + cat/head/tail/wc are shell plumbing, and they are here
+          # because the full SDK transcript finally showed what the denials
+          # actually were. Every one was a compound-command rejection:
+          #
+          #   "This Bash command contains multiple operations. The following part
+          #    requires approval: git fetch origin pull/177/head:pr-177 2>&1"
+          #   "...The following parts require approval: gh pr diff 177,
+          #    wc -l /tmp/pr177.diff, head -50 /tmp/pr177.diff"
+          #
+          # Permissions are evaluated per sub-command, so an allowlisted verb
+          # piped into an un-allowlisted one dies as a whole. `gh pr diff` was
+          # granted; `gh pr diff | head` was not. The reviewer writes pipelines
+          # by habit, so it kept losing turns to plumbing.
+          #
+          # Note what this is NOT: ReportFindings was never called even once in a
+          # run that reviewed successfully (Read x21, Grep x16, Bash x10,
+          # update_claude_comment x2, Skill x1). It stays on the list as cheap
+          # insurance, but it was never the blocker it looked like.
+          #
+          # npx/vitest stays DENIED on purpose. Running the suite would execute
+          # code from the PR branch inside CI, and on a public repo that hands
+          # arbitrary execution to anyone who opens a PR. A reviewer reads code;
+          # it does not run it.
           #
           # git diff/log/blame let the reviewer see the change and its history
           # rather than just the files at HEAD. Deliberately NOT granted:
@@ -142,7 +205,7 @@ jobs:
           #     single-comment design documented above.
           #   - gh api — reads a lot, but can POST just as easily.
           claude_args: >-
-            --allowedTools "Glob,Grep,LS,Read,Task,TodoWrite,Skill,SlashCommand,ReportFindings,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git status:*),Bash(git branch:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),mcp__github_comment__update_claude_comment"
+            --allowedTools "Glob,Grep,LS,Read,Task,TaskOutput,TodoWrite,Skill,SlashCommand,ReportFindings,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git status:*),Bash(git branch:*),Bash(git fetch:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),mcp__github_comment__update_claude_comment"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
