@@ -63,11 +63,25 @@ jobs:
             passed: the skill reports its findings back to you and posts nothing itself,
             so relaying them is your job.
 
-            Then ALWAYS post a single summary comment on the PR describing the outcome:
+            IMPORTANT — how findings must reach the PR. The ReportFindings tool hands
+            findings to a host UI for rendering, and in GitHub Actions there is NO host
+            UI: anything reported that way is discarded and nobody ever sees it. If the
+            skill reports through ReportFindings, that does NOT count as delivering the
+            review. You must still restate every finding, in full, in the PR comment.
+
+            So your LAST action in this run is always the same: call
+            mcp__github_comment__update_claude_comment with the completed review. Do not
+            end your turn before that call succeeds — a run that finishes with the
+            checklist unticked and no findings in the comment is a failed run, even
+            though the job goes green.
+
+            The comment must describe the outcome:
             - If it found issues, summarize them concisely (file:line — the problem — a
               suggested fix).
-            - If it found NO issues, post a brief note saying the review found no problems
+            - If it found NO issues, say so explicitly
               (e.g. "✅ Reviewed the diff — no issues found.").
+            - If the review could not be completed, say THAT, and say why. Never leave
+              the comment sitting on an unfinished checklist.
           # The tool allowlist must be spelled out IN FULL here, not as a delta.
           # The action emits its own `--allowedTools "<base>"` and then appends
           # whatever is in claude_args, so a second --allowedTools flag is
