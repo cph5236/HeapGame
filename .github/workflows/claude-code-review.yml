@@ -91,8 +91,20 @@ jobs:
           #          SlashCommand was granted.
           # So: keep the path that worked, and grant the tool that runs it.
           #
-          # Task stays — the skill forks a subagent to do the finding pass when the
-          # structured-findings tool isn't present, which is always the case here.
+          # ReportFindings is what kept the review silent even after the skill
+          # could be invoked. It is a real CLI tool ("Report code-review findings
+          # as a typed list so the host UI can render them") and the skill emits
+          # through it. Un-allowlisted, the review ran to completion and then had
+          # every attempt to hand back its findings denied — exactly what #177
+          # showed three times: turns burned, agents dispatched, is_error false,
+          # job green, tracking comment frozen mid-checklist, zero findings.
+          #
+          # git status + git branch are the skill's frontmatter context
+          # injections (!`git status`, !`git branch --show-current`). git diff was
+          # already granted; these two were not, so it opened blind to its own
+          # working tree.
+          #
+          # Task stays — the skill still forks finder subagents to sweep the diff.
           # gh stays because a PR-number target is fetched with it.
           #
           # git diff/log/blame let the reviewer see the change and its history
@@ -106,7 +118,7 @@ jobs:
           #     single-comment design documented above.
           #   - gh api — reads a lot, but can POST just as easily.
           claude_args: >-
-            --allowedTools "Glob,Grep,LS,Read,Task,TodoWrite,Skill,SlashCommand,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),mcp__github_comment__update_claude_comment"
+            --allowedTools "Glob,Grep,LS,Read,Task,TodoWrite,Skill,SlashCommand,ReportFindings,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git status:*),Bash(git branch:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),mcp__github_comment__update_claude_comment"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
