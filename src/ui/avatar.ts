@@ -155,7 +155,15 @@ export function createAvatar(
   // container transform (breathing/hop tweens) carries them. fx/fy = s
   // reproduces the old static compositor's `offset*s` / `ART_SCALE*s` math.
   const anchor: AttachmentAnchor = { x: 0, y: 0, fx: s, fy: s, angle: 0 };
-  const cycles = r.tieRainbow || r.skinRainbow || (r.trail?.rainbow ?? false);
+  // Two reasons to run the hue clock, and they cost different amounts. A
+  // rainbow tie or skin has to recompute and repaint every frame; a rainbow
+  // trail only needs `rainbowMs` to keep advancing, because the emitter reads
+  // it per particle. Gate the trail half on opts.trail — without it a portrait
+  // that never builds an emitter (every leaderboard row) still ticked a clock
+  // for one.
+  const paintCycles = r.tieRainbow || r.skinRainbow;
+  const trailCycles = (opts.trail ?? false) && (r.trail?.rainbow ?? false);
+  const cycles = paintCycles || trailCycles;
 
   let pulseAx = 0, pulseAy = 0, pulseLeftMs = 0;
   let nextPulseMs = PULSE_MIN_GAP_MS / 2;
@@ -164,9 +172,11 @@ export function createAvatar(
     // so every portrait cycles them the way the game does.
     if (cycles) {
       rainbowMs += delta;
-      const hue = rainbowColorAt(rainbowMs);
-      if (r.tieRainbow)  base.paintTie(hue);
-      if (r.skinRainbow) base.paintSkin(hue);
+      if (paintCycles) {
+        const hue = rainbowColorAt(rainbowMs);
+        if (r.tieRainbow)  base.paintTie(hue);
+        if (r.skinRainbow) base.paintSkin(hue);
+      }
     }
     nextPulseMs -= delta;
     if (nextPulseMs <= 0) {
