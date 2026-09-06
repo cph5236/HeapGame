@@ -54,6 +54,16 @@ jobs:
           # keeps it to a single comment across re-pushes.
           track_progress: true
           use_sticky_comment: true
+          # TEMPORARY — remove once the silent stall on #177 is diagnosed.
+          # The reviewer has twice run for 9-13 minutes and then ended without
+          # writing findings into the comment, with is_error false and the job
+          # green. The action hides the SDK transcript by default, and a
+          # `gh run rerun --debug` does NOT lift that despite what its own
+          # message implies (runner debug was on, output stayed hidden) — this
+          # flag is the only gate. HeapGame is public, so this puts one review
+          # transcript into world-readable logs; that is the deliberate,
+          # time-boxed trade for seeing which tool calls are being denied.
+          show_full_output: true
           prompt: |
             Review this pull request with the built-in code-review skill:
             /code-review high ${{ github.event.pull_request.number }}
