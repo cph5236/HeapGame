@@ -109,6 +109,22 @@ describe('avatar portraits are live', () => {
     expect(rigUpdate).toHaveBeenCalled();
   });
 
+  it('stays static when there is nothing to animate', () => {
+    // A bare loadout on a leaderboard row: no hat, no face, nothing rainbow.
+    // This composed to a plain static container before portraits went live,
+    // and a screen full of these rows should not each be ticking a listener.
+    const scene = makeScene();
+    createAvatar(scene as any, {}, OPTS);
+    expect(scene.events.countOf('update')).toBe(0);
+  });
+
+  it('still tears down cleanly when it never subscribed', () => {
+    const scene = makeScene();
+    const container = composeAvatar(scene as any, {}, OPTS);
+    expect(() => (container as any).destroy()).not.toThrow();
+    expect(() => scene.events.emit('shutdown')).not.toThrow();
+  });
+
   it('unsubscribes when the scene shuts down', () => {
     const scene = makeScene();
     createAvatar(scene as any, { hat: 'hat_propeller' }, OPTS);

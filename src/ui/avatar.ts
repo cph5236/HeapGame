@@ -195,7 +195,13 @@ export function createAvatar(
     const motion = { vx: 0, vy: 0, ax: active ? pulseAx : 0, ay: active ? pulseAy : 0, grounded: true };
     for (const rig of rigs) rig.update(delta, anchor, motion);
   };
-  scene.events.on(Phaser.Scenes.Events.UPDATE, onUpdate);
+  // A portrait with no rigs and nothing cycling has nothing to do per frame:
+  // no hat or face to slosh, no hue to advance. Before this file existed such
+  // a loadout composed to a static container, and a leaderboard full of them
+  // should stay that way rather than each row ticking a listener to allocate a
+  // motion snapshot nobody reads.
+  const animates = rigs.length > 0 || cycles;
+  if (animates) scene.events.on(Phaser.Scenes.Events.UPDATE, onUpdate);
 
   // Unsubscribe on every path that can end the portrait, not just an explicit
   // destroy(): most callers hand their avatar to a parent container or just

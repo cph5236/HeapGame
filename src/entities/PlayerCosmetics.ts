@@ -30,7 +30,9 @@ export class PlayerCosmetics {
   /** Own clock for the hue cycle: accumulated deltas rather than wall time, so
    *  it pauses when the scene does. PlayerAnimator's tie clock (tieTimeMs) is
    *  the same pattern from the same zero — which is what keeps a rainbow tie
-   *  and a rainbow skin in phase on the same player. */
+   *  and a rainbow skin in phase on the same player. The trail reads this same
+   *  clock but scales it up (trailEmitter.ts), so it cycles faster than the tie
+   *  and skin by design; it is not meant to be in phase with them. */
   private rainbowMs = 0;
   private hidden = false;
   private destroyed = false;

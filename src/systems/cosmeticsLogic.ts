@@ -85,7 +85,12 @@ export function resolveCosmetics(
   return out;
 }
 
-/** One full hue cycle. Shared so every rainbow surface stays in step. */
+/** One full hue cycle. Shared by every rainbow surface, but NOT at the same
+ *  rate: tie and skin cycle at 1x, so the two stay in phase on one character.
+ *  A trail deliberately runs faster — see trailEmitter.ts, where the rate is
+ *  scaled so a single particle's lifetime spans a whole cycle. At 1x the dozen
+ *  particles alive at once would share near-identical hues and the plume would
+ *  read as a solid color that slowly drifts, which is not a rainbow trail. */
 export const RAINBOW_PERIOD_MS = 3000;
 
 /** Six evenly-spaced hues off the same cycle, for still swatches that have to
