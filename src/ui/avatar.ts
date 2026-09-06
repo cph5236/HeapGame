@@ -134,9 +134,14 @@ export function createAvatar(
   // glaze and strings, the emitter needs no explicit destroy — it is a
   // container child and goes with it. The rigs below are the exception, and
   // get one because they own state beyond their GameObjects.
-  if (opts.trail && r.trail && scene.textures.exists(r.trail.textureKey)) {
-    container.add(scene.add.particles(TRAIL_ORIGIN_X * s, TRAIL_ORIGIN_Y * s, r.trail.textureKey,
-      trailEmitterConfig(r.trail, () => rainbowMs, {
+  // One binding for "the trail this portrait actually renders", null when it
+  // renders none. Everything downstream keys off it, so no second copy of the
+  // condition can drift out of step with this one.
+  const trail = opts.trail && r.trail && scene.textures.exists(r.trail.textureKey)
+    ? r.trail : null;
+  if (trail) {
+    container.add(scene.add.particles(TRAIL_ORIGIN_X * s, TRAIL_ORIGIN_Y * s, trail.textureKey,
+      trailEmitterConfig(trail, () => rainbowMs, {
         scale: s, driftX: TRAIL_DRIFT_X, driftY: TRAIL_DRIFT_Y,
         lifespanScale: TRAIL_LIFESPAN_SCALE,
       })));
@@ -158,12 +163,12 @@ export function createAvatar(
   // Two reasons to run the hue clock, and they cost different amounts. A
   // rainbow tie or skin has to recompute and repaint every frame; a rainbow
   // trail only needs `rainbowMs` to keep advancing, because the emitter reads
-  // it per particle. Gate the trail half on opts.trail — without it a portrait
-  // that never builds an emitter (every leaderboard row) still ticked a clock
-  // for one.
+  // it per particle. The trail half reads the built emitter's own binding, so
+  // the clock can never tick for one that doesn't exist. Spelling the condition
+  // out a second time is how it drifted before: the guard tested the texture,
+  // the clock didn't.
   const paintCycles = r.tieRainbow || r.skinRainbow;
-  const trailCycles = (opts.trail ?? false) && (r.trail?.rainbow ?? false);
-  const cycles = paintCycles || trailCycles;
+  const cycles = paintCycles || (trail?.rainbow ?? false);
 
   let pulseAx = 0, pulseAy = 0, pulseLeftMs = 0;
   let nextPulseMs = PULSE_MIN_GAP_MS / 2;

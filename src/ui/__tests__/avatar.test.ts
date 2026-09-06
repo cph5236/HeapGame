@@ -199,6 +199,16 @@ describe('avatar trail', () => {
     expect(y).toBeTypeOf('number');
   });
 
+  it('skips the trail when its texture never loaded', () => {
+    const scene = makeScene();
+    scene.textures.exists = () => false;
+    createAvatar(scene as any, { trail: 'trail_embers' }, { ...OPTS, trail: true });
+    // The emitter guard and the hue clock read one shared `trail` binding. If
+    // they are ever spelled out separately again, this is the case that drifts:
+    // asked for a trail, allowed to show one, but no texture to show it with.
+    expect(scene.add.particles).not.toHaveBeenCalled();
+  });
+
   it('renders behind the bag', () => {
     const scene = makeScene();
     createAvatar(scene as any, { trail: 'trail_embers' }, { ...OPTS, trail: true });
