@@ -54,7 +54,12 @@ jobs:
           # keeps it to a single comment across re-pushes.
           track_progress: true
           use_sticky_comment: true
-          # TEMPORARY — remove once the silent stall on #177 is diagnosed.
+          # TEMPORARY — still on for one more cycle. It did its job once: the
+          # transcript showed the denials are compound-Bash rejections, not the
+          # ReportFindings trap I had assumed. But that run PASSED, so the
+          # intermittent stall itself has never been captured. Keep this until a
+          # failing run is caught, or until several clean runs make the case that
+          # the plumbing grants fixed it — then take it out.
           # The reviewer has twice run for 9-13 minutes and then ended without
           # writing findings into the comment, with is_error false and the job
           # green. The action hides the SDK transcript by default, and a
@@ -131,6 +136,30 @@ jobs:
           # Task stays — the skill still forks finder subagents to sweep the diff.
           # gh stays because a PR-number target is fetched with it.
           #
+          # git fetch + cat/head/tail/wc are shell plumbing, and they are here
+          # because the full SDK transcript finally showed what the denials
+          # actually were. Every one was a compound-command rejection:
+          #
+          #   "This Bash command contains multiple operations. The following part
+          #    requires approval: git fetch origin pull/177/head:pr-177 2>&1"
+          #   "...The following parts require approval: gh pr diff 177,
+          #    wc -l /tmp/pr177.diff, head -50 /tmp/pr177.diff"
+          #
+          # Permissions are evaluated per sub-command, so an allowlisted verb
+          # piped into an un-allowlisted one dies as a whole. `gh pr diff` was
+          # granted; `gh pr diff | head` was not. The reviewer writes pipelines
+          # by habit, so it kept losing turns to plumbing.
+          #
+          # Note what this is NOT: ReportFindings was never called even once in a
+          # run that reviewed successfully (Read x21, Grep x16, Bash x10,
+          # update_claude_comment x2, Skill x1). It stays on the list as cheap
+          # insurance, but it was never the blocker it looked like.
+          #
+          # npx/vitest stays DENIED on purpose. Running the suite would execute
+          # code from the PR branch inside CI, and on a public repo that hands
+          # arbitrary execution to anyone who opens a PR. A reviewer reads code;
+          # it does not run it.
+          #
           # git diff/log/blame let the reviewer see the change and its history
           # rather than just the files at HEAD. Deliberately NOT granted:
           #   - git add/commit/rm/push — a reviewer has no business writing to the
@@ -142,7 +171,7 @@ jobs:
           #     single-comment design documented above.
           #   - gh api — reads a lot, but can POST just as easily.
           claude_args: >-
-            --allowedTools "Glob,Grep,LS,Read,Task,TodoWrite,Skill,SlashCommand,ReportFindings,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git status:*),Bash(git branch:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),mcp__github_comment__update_claude_comment"
+            --allowedTools "Glob,Grep,LS,Read,Task,TodoWrite,Skill,SlashCommand,ReportFindings,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git status:*),Bash(git branch:*),Bash(git fetch:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),mcp__github_comment__update_claude_comment"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
