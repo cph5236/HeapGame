@@ -39,6 +39,25 @@ describe('COSMETIC_DEFS integrity', () => {
     }
   });
 
+  it('the rainbow items are flagged so the renderers can hue-cycle them', () => {
+    const tie = getCosmeticDef('tie_rainbow');
+    const skin = getCosmeticDef('skin_rainbow');
+    const trail = getCosmeticDef('trail_rainbow');
+    expect(tie?.render.kind === 'tie' && tie.render.rainbow).toBe(true);
+    expect(skin?.render.kind === 'skin' && skin.render.rainbow).toBe(true);
+    expect(trail?.render.kind === 'trail' && trail.render.rainbow).toBe(true);
+  });
+
+  it('no rainbow item leans on a white tint (it would render colorless)', () => {
+    for (const def of COSMETIC_DEFS) {
+      const r = def.render;
+      const isRainbow = (r.kind === 'tie' || r.kind === 'skin' || r.kind === 'trail') && r.rainbow;
+      if (!isRainbow) continue;
+      const color = r.kind === 'tie' ? r.color : r.tint;
+      expect(color, `${def.id} falls back to white`).not.toBe(0xffffff);
+    }
+  });
+
   it('getCosmeticDef resolves ids', () => {
     expect(getCosmeticDef('tie_gold')?.price).toBeGreaterThan(0);
     expect(getCosmeticDef('missing')).toBeUndefined();

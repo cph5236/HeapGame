@@ -7,6 +7,7 @@ describe('resolveCosmetics', () => {
     expect(r.tieColor).toBe(0xff0000);
     expect(r.tieRainbow).toBe(false);
     expect(r.skinTint).toBeNull();
+    expect(r.skinRainbow).toBe(false);
     expect(r.hat).toBeNull();
     expect(r.face).toBeNull();
     expect(r.trail).toBeNull();
@@ -27,6 +28,23 @@ describe('resolveCosmetics', () => {
 
   it('rainbow tie sets the flag', () => {
     expect(resolveCosmetics({ tie: 'tie_rainbow' }).tieRainbow).toBe(true);
+  });
+
+  it('rainbow skin sets the flag and still resolves a fallback tint', () => {
+    const r = resolveCosmetics({ skin: 'skin_rainbow' });
+    expect(r.skinRainbow).toBe(true);
+    expect(r.skinTint).not.toBeNull();
+  });
+
+  it('a non-rainbow skin leaves the flag clear', () => {
+    const r = resolveCosmetics({ skin: 'skin_frost' });
+    expect(r.skinRainbow).toBe(false);
+    expect(r.skinTint).toBe(0x99bbff);
+  });
+
+  it('the rainbow trail carries the rainbow flag', () => {
+    expect(resolveCosmetics({ trail: 'trail_rainbow' }).trail?.rainbow).toBe(true);
+    expect(resolveCosmetics({ trail: 'trail_embers' }).trail?.rainbow).toBeFalsy();
   });
 
   it('ignores stale/unknown ids (e.g. removed items in an old save)', () => {

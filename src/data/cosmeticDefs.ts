@@ -12,7 +12,11 @@ export type AttachmentAnim =
   | { type: 'sheet'; frameW: number; frameH: number; frameRate: number };
 
 export interface TieRender   { kind: 'tie';   color: number; rainbow?: boolean }
-export interface SkinRender  { kind: 'skin';  tint: number }
+/** `rainbow` items ignore the flat color at render time and hue-cycle instead
+ *  (see rainbowColorAt). The flat value stays as the still-frame fallback for
+ *  static contexts — leaderboard avatars, store thumbnails — so it must never
+ *  be white, which would render as "no tint at all".*/
+export interface SkinRender  { kind: 'skin';  tint: number; rainbow?: boolean }
 export interface HatRender   {
   kind: 'hat';
   textureKey: string;
@@ -55,6 +59,7 @@ export interface TrailRender {
   lifespan:   number;          // ms
   scale:      [number, number]; // start → end
   alpha:      number;
+  rainbow?:   boolean;         // per-particle hue cycle (see PlayerCosmetics)
 }
 export type CosmeticRender = TieRender | SkinRender | HatRender | FaceRender | EyesRender | TrailRender;
 
@@ -78,8 +83,8 @@ const eyes = (id: string, name: string, price: number, offsetX: number, offsetY:
   ({ id, slot: 'face', name, price, render: { kind: 'eyes', textureKey: `cos-${id}`, offsetX, offsetY, eyes: eyeSpecs, physics } });
 const tie  = (id: string, name: string, price: number, color: number, rainbow = false): CosmeticDef =>
   ({ id, slot: 'tie', name, price, render: { kind: 'tie', color, rainbow } });
-const skin = (id: string, name: string, price: number, tint: number): CosmeticDef =>
-  ({ id, slot: 'skin', name, price, render: { kind: 'skin', tint } });
+const skin = (id: string, name: string, price: number, tint: number, rainbow = false): CosmeticDef =>
+  ({ id, slot: 'skin', name, price, render: { kind: 'skin', tint, rainbow } });
 
 export const COSMETIC_DEFS: readonly CosmeticDef[] = [
   // ── Tie colors (strings drawn by PlayerAnimator) ──
@@ -104,6 +109,7 @@ export const COSMETIC_DEFS: readonly CosmeticDef[] = [
   skin('skin_ember',     'Ember',     500, 0xff8866),
   skin('skin_bubblegum', 'Bubblegum', 500, 0xff99cc),
   skin('skin_ghostly',   'Ghostly',   500, 0xaaffdd),
+  skin('skin_rainbow',   'Rainbow',   2000, 0xff0000, true),
   // ── Hats (PNG; offsets from bag center, bag top edge at y=-23) ──
   hat('hat_cone',      'Traffic Cone',  800,  0, -40.23, 0, 1.24),
   hat('hat_wizard',    'Tattered Wizard', 300, -1.41, -32.0),
@@ -198,7 +204,7 @@ export const COSMETIC_DEFS: readonly CosmeticDef[] = [
   { id: 'trail_embers',  slot: 'trail', name: 'Embers',         price: 1200,
     render: { kind: 'trail', textureKey: 'cos-dot',    tint: 0xff6622, frequency: 70,  speedY: [-70, -20], lifespan: 750,  scale: [1, 0.3],   alpha: 0.9 } },
   { id: 'trail_rainbow', slot: 'trail', name: 'Rainbow Streak', price: 1500,
-    render: { kind: 'trail', textureKey: 'cos-dot',    tint: 0xffffff, frequency: 40,  speedY: [-10, 10],  lifespan: 500,  scale: [1.4, 0.2], alpha: 0.9 } },
+    render: { kind: 'trail', textureKey: 'cos-dot',    tint: 0xff0000, frequency: 40,  speedY: [-10, 10],  lifespan: 500,  scale: [1.4, 0.2], alpha: 0.9, rainbow: true } },
 ];
 
 const DEF_BY_ID = new Map(COSMETIC_DEFS.map(d => [d.id, d]));

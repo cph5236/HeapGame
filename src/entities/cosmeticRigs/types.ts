@@ -1,9 +1,9 @@
 // src/entities/cosmeticRigs/types.ts
 //
-// The attachment-rig contract: PlayerCosmetics (in-game) and animatedAvatar
-// (editor preview) compute one anchor + motion snapshot per frame and forward
-// it to every rig. Rigs own their GameObjects; `objects` exists so container
-// hosts (the preview) can reparent them.
+// The attachment-rig contract: PlayerCosmetics (in-game) and ui/avatar (every
+// character portrait) compute one anchor + motion snapshot per frame and
+// forward it to every rig. Rigs own their GameObjects; `objects` exists so
+// container hosts (the portraits) can reparent them.
 
 import Phaser from 'phaser';
 

@@ -31,7 +31,7 @@ export const COSMETIC_CATALOG: readonly CatalogEntry[] = [
   { id: 'tie_neon',    slot: 'tie' },
   { id: 'tie_gold',    slot: 'tie' },
   { id: 'tie_rainbow', slot: 'tie' },
-  // ── Skin (8) ──
+  // ── Skin (9) ──
   { id: 'skin_default',   slot: 'skin' },
   { id: 'skin_frost',     slot: 'skin' },
   { id: 'skin_toxic',     slot: 'skin' },
@@ -40,6 +40,7 @@ export const COSMETIC_CATALOG: readonly CatalogEntry[] = [
   { id: 'skin_ember',     slot: 'skin' },
   { id: 'skin_bubblegum', slot: 'skin' },
   { id: 'skin_ghostly',   slot: 'skin' },
+  { id: 'skin_rainbow',   slot: 'skin' },
   // ── Hat (14) ──
   { id: 'hat_cone',      slot: 'hat' },
   { id: 'hat_bottlecap', slot: 'hat' },
