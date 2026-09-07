@@ -1233,6 +1233,13 @@ export class ScoreScene extends Phaser.Scene {
     // A zero score is not worth a post, and offering to share one reads as a nag.
     if (this.score <= 0) return;
 
+    // err.stack, not String(err): toString() gives "Name: message" with no
+    // trace, and this same field carries a real stack everywhere else
+    // (logging/capture.ts), so crash triage would get nothing useful.
+    const logShareFailure = (err: unknown): void => {
+      getLogger().error('share:failed', { stack: (err as Error)?.stack ?? String(err) });
+    };
+
     const cy  = logicalHeight(this) * 0.19;
     const btn = this.add.text(logicalWidth(this) - 12, cy, 'SHARE', {
       fontSize:        '11px',
@@ -1303,11 +1310,7 @@ export class ScoreScene extends Phaser.Scene {
           // and never rejects, so the `.catch()` below only ever catches a bug
           // in this handler itself, not a device error. This is the only path
           // that still sees the actual error for crash triage.
-          (err: unknown) => {
-            getLogger().error('share:failed', {
-              stack: (err as Error)?.stack ?? String(err),
-            });
-          },
+          logShareFailure,
         )
           .then((outcome: ShareOutcome) => {
             sharing = false;
@@ -1326,15 +1329,12 @@ export class ScoreScene extends Phaser.Scene {
             // 'shared' and 'dismissed' need no toast: the OS sheet was the feedback.
           })
           .catch((err: unknown) => {
-            // shareRun swallows every real device failure itself (see the
-            // onError callback above) and never rejects, so reaching this
-            // means a bug in this handler, not a share failure. Log it the
-            // same way (err.stack, not String(err) — that only gives
-            // "Name: message" with no trace) so it isn't silently lost.
+            // shareRun swallows every real device failure itself (see
+            // logShareFailure passed in above) and never rejects, so reaching
+            // this means a bug in this handler, not a share failure — logged
+            // the same way so it isn't silently lost either way.
             sharing = false;
-            getLogger().error('share:failed', {
-              stack: (err as Error)?.stack ?? String(err),
-            });
+            logShareFailure(err);
             if (!this.scene.isActive() || tapGen !== this._runGen) return;
             say('could not share', '#ff8877');
           });

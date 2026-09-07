@@ -109,8 +109,27 @@ export async function shareRun(
 
   const data = { title: msg.title, text: msg.text, url: msg.url };
 
-  const canUseSheet = typeof nav.share === 'function'
-    && (typeof nav.canShare !== 'function' || nav.canShare(data));
+  // One call per tap, even if both the sheet and the clipboard fail below:
+  // two log entries for a single failed tap would look like two failures.
+  let reported = false;
+  const report = (err: unknown) => {
+    if (reported) return;
+    reported = true;
+    onError?.(err);
+  };
+
+  // `canShare` is spec'd to return a boolean, but real implementations have
+  // thrown on a payload they didn't like — and since this function is async,
+  // an uncaught throw here becomes a rejection, breaking the "never rejects"
+  // contract this module promises its caller.
+  let canUseSheet: boolean;
+  try {
+    canUseSheet = typeof nav.share === 'function'
+      && (typeof nav.canShare !== 'function' || nav.canShare(data));
+  } catch (err) {
+    canUseSheet = false;
+    report(err);
+  }
 
   if (canUseSheet) {
     try {
@@ -121,7 +140,7 @@ export async function shareRun(
       // the player's back after they backed out would be surprising.
       if ((err as { name?: string } | undefined)?.name === 'AbortError') return 'dismissed';
       // Anything else (permission, transient) is worth a clipboard fallback.
-      onError?.(err);
+      report(err);
     }
   }
 
@@ -130,7 +149,7 @@ export async function shareRun(
       await nav.clipboard.writeText(shareClipboardText(msg));
       return 'copied';
     } catch (err) {
-      onError?.(err);
+      report(err);
       return 'unavailable';
     }
   }

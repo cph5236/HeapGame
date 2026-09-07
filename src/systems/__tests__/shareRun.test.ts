@@ -155,6 +155,33 @@ describe('shareRun', () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it('calls onError once, not twice, when both the sheet and the clipboard fail', async () => {
+    const shareErr = new Error('not allowed');
+    const clipErr  = new Error('denied');
+    const nav = {
+      share: vi.fn().mockRejectedValue(shareErr),
+      clipboard: { writeText: vi.fn().mockRejectedValue(clipErr) },
+    } as unknown as Navigator;
+    const onError = vi.fn();
+    await expect(shareRun(msg, nav, onError)).resolves.toBe('unavailable');
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(shareErr);
+  });
+
+  it('never rejects even if canShare throws synchronously', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const canShareErr = new Error('bad payload');
+    const nav = {
+      share: vi.fn(),
+      canShare: vi.fn().mockImplementation(() => { throw canShareErr; }),
+      clipboard: { writeText },
+    } as unknown as Navigator;
+    const onError = vi.fn();
+    await expect(shareRun(msg, nav, onError)).resolves.toBe('copied');
+    expect(nav.share).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(canShareErr);
+  });
+
   it('is a no-op with no navigator at all (node/vitest)', async () => {
     await expect(shareRun(msg, undefined)).resolves.toBe('unavailable');
   });

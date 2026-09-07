@@ -36,6 +36,13 @@ Shared links already carry `?ref=run` (SHARE_URL in src/systems/shareRun.ts) and
 public/play.html forwards it through the browser door, so the marker reaches the
 game today. Nothing reads it yet, on purpose.
 
+Only the browser door forwards it — the Android door on that page is a static
+Play Store link and never gets `?ref=`. Play Store attribution needs its own
+`&referrer=` param, not a generic query string, so this isn't a one-line fix,
+and it costs nothing today since nothing reads `ref` yet either way. Revisit
+alongside whatever reads the marker: half of arrivals from a shared link are
+structurally unattributable until the Android side gets its own mechanism.
+
 The obvious implementation — a `visit:referred` event through RemoteLogger — was
 built and then pulled back out of the share PR, because it does not work where it
 matters. `RemoteLogger.event()` returns early unless the player has enabled
