@@ -66,17 +66,20 @@ export function recordReferral(
   const ref = parseRef(search);
   if (ref === null) return;
 
+  // No storage, or storage that throws, both leave `stored` null — and a null
+  // `stored` is exactly what shouldRecordRef treats as a first touch. So an
+  // unusable store degrades to "report it", which is the intended trade: losing
+  // the dedupe costs a possible repeat, losing the boot costs everything. A
+  // `storageUsable` flag used to guard this line; it could never change the
+  // outcome, because every path that set it false also left `stored` null.
   let stored: string | null = null;
-  let storageUsable = true;
   try {
     stored = storage?.getItem(REF_STORAGE_KEY) ?? null;
   } catch {
-    // Unreadable storage means the dedupe is unavailable, not that the visit
-    // did not happen — fall through and report it.
-    storageUsable = false;
+    /* unreadable — treated as a first touch, see above */
   }
 
-  if (storageUsable && !shouldRecordRef(ref, stored)) return;
+  if (!shouldRecordRef(ref, stored)) return;
 
   try {
     storage?.setItem(REF_STORAGE_KEY, ref);
