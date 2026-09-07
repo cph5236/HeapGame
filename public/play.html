@@ -297,7 +297,10 @@
       //
       // Only `ref` is forwarded, and only if it is lowercase [a-z0-9_-] and at
       // most 32 chars — no reason to pass arbitrary query params onto another
-      // page, and the eventual reader should not have to defend against junk.
+      // page. This is tidiness, not a security boundary: the page is static and
+      // anyone can call the eventual counter directly, so that endpoint has to
+      // validate for itself. playPage.test.ts pins this contract by running
+      // this script, since nothing type-checks the file.
       (function () {
         try {
           var ref = new URLSearchParams(window.location.search).get('ref');
