@@ -183,17 +183,24 @@ export function createAvatar(
         if (r.skinRainbow) base.paintSkin(hue);
       }
     }
-    nextPulseMs -= delta;
-    if (nextPulseMs <= 0) {
-      pulseAx = (Math.random() * 2 - 1) * PULSE_AX;
-      pulseAy = (Math.random() * 2 - 1) * PULSE_AY;
-      pulseLeftMs = PULSE_LEN_MS;
-      nextPulseMs = PULSE_MIN_GAP_MS + Math.random() * PULSE_RAND_MS;
+    // The pulse exists solely to give motion-reactive rigs something to react
+    // to, so it is gated on there being a rig — separately from the hue cycle
+    // above. A rainbow tie with no hat has to keep cycling but has nothing to
+    // slosh, and would otherwise roll dice and allocate a motion snapshot every
+    // frame for a loop with no body.
+    if (rigs.length > 0) {
+      nextPulseMs -= delta;
+      if (nextPulseMs <= 0) {
+        pulseAx = (Math.random() * 2 - 1) * PULSE_AX;
+        pulseAy = (Math.random() * 2 - 1) * PULSE_AY;
+        pulseLeftMs = PULSE_LEN_MS;
+        nextPulseMs = PULSE_MIN_GAP_MS + Math.random() * PULSE_RAND_MS;
+      }
+      const active = pulseLeftMs > 0;
+      if (active) pulseLeftMs -= delta;
+      const motion = { vx: 0, vy: 0, ax: active ? pulseAx : 0, ay: active ? pulseAy : 0, grounded: true };
+      for (const rig of rigs) rig.update(delta, anchor, motion);
     }
-    const active = pulseLeftMs > 0;
-    if (active) pulseLeftMs -= delta;
-    const motion = { vx: 0, vy: 0, ax: active ? pulseAx : 0, ay: active ? pulseAy : 0, grounded: true };
-    for (const rig of rigs) rig.update(delta, anchor, motion);
   };
   // A portrait with no rigs and nothing cycling has nothing to do per frame:
   // no hat or face to slosh, no hue to advance. Before this file existed such
