@@ -35,6 +35,7 @@ import { composeAvatar } from '../ui/avatar';
 import { getPlayConsoleId, LEADERBOARD_HIGH_SCORE_ID } from '../data/achievementDefs';
 import { markRunEnded } from '../systems/dailyRunGate';
 import { notifyRunFinished } from '../web/hostEvents';
+import { buildShareMessage, shareRun, type ShareOutcome } from '../systems/shareRun';
 
 
 /** Top-N entries shown as podium boxes (the avatar-showcase spots). */
@@ -95,6 +96,11 @@ export class ScoreScene extends Phaser.Scene {
 
   private _isAdRun:        boolean = false;
   private _rewardedWatched: boolean = false;
+
+  // Bumped every `create()`. Phaser reuses this scene instance across runs, so
+  // a share promise left in flight from a prior run must not paint its result
+  // over the run that's on screen when it resolves — see createShareButton().
+  private _runGen = 0;
 
   /** Serialises the scene's ad requests and exits — see adGate.ts. Rebuilt per
    *  run in init(); Phaser reuses scene instances. */
@@ -181,6 +187,7 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   create(): void {
+    this._runGen++;
     markRunEnded();
     setupUiCamera(this);
     AudioManager.play('music-score');
@@ -233,6 +240,7 @@ export class ScoreScene extends Phaser.Scene {
     this.createTitle();
     this.createScoreDisplay();
     if (this.isNewHighScore) this.createHighScoreBadge();
+    this.createShareButton();
     this._coinsPanelBottom = this.createCoinsPanel(result.rows, result.finalCoins, balance);
     const leaderboardBottom = this.createLeaderboardPanel(this._coinsPanelBottom);
     this.createBottomButtons(leaderboardBottom);
@@ -353,8 +361,14 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   private createScoreDisplay(): void {
+    // At the base 52px, 7+ digits (reachable on the infinite heap over a long
+    // enough climb) runs wide enough to collide with the SHARE button beside
+    // it — scale down past 6 digits rather than let them overlap.
+    const digits = String(this.score).length;
+    const fontSize = digits > 6 ? Math.round(52 * 6 / digits) : 52;
+
     const scoreText = this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.19, '0', {
-      fontSize:   '52px',
+      fontSize:   `${fontSize}px`,
       fontFamily: 'monospace',
       color:      '#ffdd44',
       fontStyle:  'bold',
@@ -1209,6 +1223,129 @@ export class ScoreScene extends Phaser.Scene {
   private playerInPodium(ctx: LeaderboardContext): boolean {
     if (!ctx.player) return false;
     return ctx.top.slice(0, PODIUM_COUNT).some(e => e.playerId === ctx.player!.playerId);
+  }
+
+  // ── Share ─────────────────────────────────────────────────────────────────────
+
+  /** Compact SHARE button on the score row.
+   *
+   *  Deliberately not in the bottom action row: that row's job is to get the
+   *  player back into a run, and a third button there would both crowd it on a
+   *  390px phone and compete with PLAY AGAIN. Up here it sits with the number
+   *  it is bragging about, at the moment the score has just finished counting
+   *  up — and the right margin beside the score is empty on every device.
+   */
+  private createShareButton(): void {
+    // A zero score is not worth a post, and offering to share one reads as a nag.
+    if (this.score <= 0) return;
+
+    // err.stack, not String(err): toString() gives "Name: message" with no
+    // trace, and this same field carries a real stack everywhere else
+    // (logging/capture.ts), so crash triage would get nothing useful.
+    const logShareFailure = (err: unknown): void => {
+      getLogger().error('share:failed', { stack: (err as Error)?.stack ?? String(err) });
+    };
+
+    const cy  = logicalHeight(this) * 0.19;
+    const btn = this.add.text(logicalWidth(this) - 12, cy, 'SHARE', {
+      fontSize:        '11px',
+      fontFamily:      'monospace',
+      color:           '#aaccee',
+      backgroundColor: '#1a4d8b99',
+      padding:         { x: 8, y: 5 },
+      letterSpacing:   1,
+    }).setOrigin(1, 0.5);
+
+    btn.on('pointerover', () => { btn.setColor('#ffffff'); btn.setBackgroundColor('#2266bbcc'); });
+    btn.on('pointerout',  () => { btn.setColor('#aaccee'); btn.setBackgroundColor('#1a4d8b99'); });
+
+    // Transient result line under the button. The clipboard path especially
+    // needs it: without a word back, a copy is indistinguishable from a dead tap.
+    let toast: Phaser.GameObjects.Text | null = null;
+    const say = (msg: string, color: string) => {
+      if (toast) {
+        // Kill the outgoing fade first: left running, it would keep ticking on a
+        // destroyed object and its onComplete would clear the replacement below.
+        this.tweens.killTweensOf(toast);
+        toast.destroy();
+      }
+      const line = this.add.text(logicalWidth(this) - 12, cy + 18, msg, {
+        fontSize: '9px', fontFamily: 'monospace', color,
+      }).setOrigin(1, 0.5);
+      toast = line;
+      this.tweens.add({
+        targets: line, alpha: 0, delay: 1800, duration: 500,
+        // Captures `line`, not `toast` — a tap during the fade must not let this
+        // completion destroy the toast that replaced it.
+        onComplete: () => { line.destroy(); if (toast === line) toast = null; },
+      });
+    };
+
+    // A share is in flight. A second `navigator.share()` while the first sheet is
+    // still up rejects with InvalidStateError, not AbortError — which would fall
+    // through to the clipboard path and both copy the link behind an open share
+    // sheet and log a second `share:run`, corrupting the very metric this button
+    // exists to produce.
+    let sharing = false;
+
+    // Same 1500ms arming delay as the bottom buttons: a tap carried over from
+    // gameplay should not pop an OS share sheet in the player's face.
+    this.time.delayedCall(1500, () => {
+      btn.setInteractive({ useHandCursor: true });
+      btn.on('pointerup', () => {
+        if (sharing) return;
+        sharing = true;
+        // Capture what the event describes at tap time, alongside the message
+        // itself. Phaser reuses this scene instance, so a share sheet left open
+        // across another full run would otherwise resolve into a `this` that
+        // now holds the NEXT run's heap and score, and log the wrong one.
+        const sharedHeapId = this.heapId;
+        const sharedScore  = this.score;
+        const tapGen       = this._runGen;
+        const msg = buildShareMessage({
+          score:          this.score,
+          heapName:       this._heapParams.name,
+          isInfinite:     this._heapParams.isInfinite === true,
+          isNewHighScore: this.isNewHighScore,
+          isPeak:         this.isPeak,
+        });
+        void shareRun(
+          msg,
+          typeof navigator === 'undefined' ? undefined : navigator,
+          // shareRun normalizes every real failure to 'unavailable' internally
+          // and never rejects, so the `.catch()` below only ever catches a bug
+          // in this handler itself, not a device error. This is the only path
+          // that still sees the actual error for crash triage.
+          logShareFailure,
+        )
+          .then((outcome: ShareOutcome) => {
+            sharing = false;
+            // Logged before the active-scene check: the outcome is worth counting
+            // even when the player has already walked away from the screen.
+            getLogger().event({
+              type: 'share:run', heapId: sharedHeapId, score: sharedScore, outcome,
+            });
+            // isActive() alone isn't enough: Phaser reuses this scene instance,
+            // so a share left open across a full replay would find the scene
+            // active again, just showing a different run. Compare the
+            // generation stamped at tap time instead.
+            if (!this.scene.isActive() || tapGen !== this._runGen) return;
+            if (outcome === 'copied')           say('link copied', '#44ffaa');
+            else if (outcome === 'unavailable') say('could not share', '#ff8877');
+            // 'shared' and 'dismissed' need no toast: the OS sheet was the feedback.
+          })
+          .catch((err: unknown) => {
+            // shareRun swallows every real device failure itself (see
+            // logShareFailure passed in above) and never rejects, so reaching
+            // this means a bug in this handler, not a share failure — logged
+            // the same way so it isn't silently lost either way.
+            sharing = false;
+            logShareFailure(err);
+            if (!this.scene.isActive() || tapGen !== this._runGen) return;
+            say('could not share', '#ff8877');
+          });
+      });
+    });
   }
 
   // ── Menu Prompt ───────────────────────────────────────────────────────────────

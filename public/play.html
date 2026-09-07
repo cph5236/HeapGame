@@ -256,7 +256,7 @@
       <p class="fork">Free either way</p>
 
       <div class="doors">
-        <a class="door door--web" href="https://heapgame.com/">
+        <a class="door door--web" id="door-web" href="https://heapgame.com/">
           <span class="door__eyebrow">In your browser</span>
           <span class="door__note">
             Nothing to install — the climb starts on tap. Progress stays in this browser.
@@ -285,5 +285,32 @@
     </svg>
 
     <footer>Made by Hanlin Software.</footer>
+    <script>
+      // Carry the referral marker through to the game. Shares point at
+      // /play?ref=run, but this door is a static link to heapgame.com/, so
+      // without this the marker dies here.
+      //
+      // Nothing reads it yet — the arrival counter is deliberately not part of
+      // this change (see Todo/Todo.md). It is forwarded anyway so links shared
+      // from today are already attributable once that counter exists, rather
+      // than needing everyone to re-share. An unread query param costs nothing.
+      //
+      // Only `ref` is forwarded, and only if it is lowercase [a-z0-9_-] and at
+      // most 32 chars — no reason to pass arbitrary query params onto another
+      // page. This is tidiness, not a security boundary: the page is static and
+      // anyone can call the eventual counter directly, so that endpoint has to
+      // validate for itself. playPage.test.ts pins this contract by running
+      // this script, since nothing type-checks the file.
+      (function () {
+        try {
+          var ref = new URLSearchParams(window.location.search).get('ref');
+          if (!ref) return;
+          ref = ref.toLowerCase();
+          if (ref.length > 32 || !/^[a-z0-9_-]+$/.test(ref)) return;
+          var door = document.getElementById('door-web');
+          if (door) door.href = 'https://heapgame.com/?ref=' + encodeURIComponent(ref);
+        } catch (e) { /* a broken marker must never break the door */ }
+      })();
+    </script>
   </body>
 </html>

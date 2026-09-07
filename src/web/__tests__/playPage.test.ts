@@ -41,3 +41,54 @@ describe('/play landing page', () => {
     expect(Buffer.byteLength(page)).toBeLessThan(60 * 1024);
   });
 });
+
+// The ref-forwarding script is the one piece of behavior on this page, so it is
+// run rather than string-matched: the script is lifted out of the HTML and
+// executed against stub globals, which means these assert what a visitor
+// actually gets rather than what the source happens to look like.
+describe('/play forwards the referral marker', () => {
+  const script = page.match(/\(function \(\) \{[\s\S]*?\}\)\(\);/)?.[0];
+
+  function hrefAfterVisiting(search: string): string {
+    const door = { href: 'https://heapgame.com/' };
+    const fn = new Function('window', 'document', 'URLSearchParams', script!);
+    fn(
+      { location: { search } },
+      { getElementById: (id: string) => (id === 'door-web' ? door : null) },
+      URLSearchParams,
+    );
+    return door.href;
+  }
+
+  it('is present at all', () => {
+    expect(script).toBeTruthy();
+    expect(page).toContain('id="door-web"');
+  });
+
+  it('carries a shared link\'s marker through to the game', () => {
+    // SHARE_URL points at /play?ref=run, and this door is the browser half of
+    // the chooser. Without this the marker dies on the page it lands on.
+    expect(hrefAfterVisiting('?ref=run')).toBe('https://heapgame.com/?ref=run');
+  });
+
+  it('leaves the door alone for an ordinary visit', () => {
+    expect(hrefAfterVisiting('')).toBe('https://heapgame.com/');
+  });
+
+  it('drops a marker the reader would reject anyway', () => {
+    // Same charset and length contract as the counter that will read it, so
+    // junk never reaches the game in the first place.
+    expect(hrefAfterVisiting('?ref=' + 'a'.repeat(33))).toBe('https://heapgame.com/');
+    expect(hrefAfterVisiting('?ref=bad%20ref')).toBe('https://heapgame.com/');
+    expect(hrefAfterVisiting('?ref=<script>')).toBe('https://heapgame.com/');
+  });
+
+  it('normalizes case, the way the reader will', () => {
+    expect(hrefAfterVisiting('?ref=RUN')).toBe('https://heapgame.com/?ref=run');
+  });
+
+  it('never throws, whatever the query string is', () => {
+    // A broken marker must not take the door down with it.
+    expect(() => hrefAfterVisiting('?%%%')).not.toThrow();
+  });
+});
