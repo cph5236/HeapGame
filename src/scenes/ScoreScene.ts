@@ -97,6 +97,11 @@ export class ScoreScene extends Phaser.Scene {
   private _isAdRun:        boolean = false;
   private _rewardedWatched: boolean = false;
 
+  // Bumped every `create()`. Phaser reuses this scene instance across runs, so
+  // a share promise left in flight from a prior run must not paint its result
+  // over the run that's on screen when it resolves — see createShareButton().
+  private _runGen = 0;
+
   /** Serialises the scene's ad requests and exits — see adGate.ts. Rebuilt per
    *  run in init(); Phaser reuses scene instances. */
   private _adGate = createAdGate(() => AdClient.showInterstitial());
@@ -182,6 +187,7 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   create(): void {
+    this._runGen++;
     markRunEnded();
     setupUiCamera(this);
     AudioManager.play('music-score');
@@ -1282,6 +1288,7 @@ export class ScoreScene extends Phaser.Scene {
         // now holds the NEXT run's heap and score, and log the wrong one.
         const sharedHeapId = this.heapId;
         const sharedScore  = this.score;
+        const tapGen       = this._runGen;
         const msg = buildShareMessage({
           score:          this.score,
           heapName:       this._heapParams.name,
@@ -1289,7 +1296,19 @@ export class ScoreScene extends Phaser.Scene {
           isNewHighScore: this.isNewHighScore,
           isPeak:         this.isPeak,
         });
-        void shareRun(msg, typeof navigator === 'undefined' ? undefined : navigator)
+        void shareRun(
+          msg,
+          typeof navigator === 'undefined' ? undefined : navigator,
+          // shareRun normalizes every real failure to 'unavailable' internally
+          // and never rejects, so the `.catch()` below only ever catches a bug
+          // in this handler itself, not a device error. This is the only path
+          // that still sees the actual error for crash triage.
+          (err: unknown) => {
+            getLogger().error('share:failed', {
+              stack: (err as Error)?.stack ?? String(err),
+            });
+          },
+        )
           .then((outcome: ShareOutcome) => {
             sharing = false;
             // Logged before the active-scene check: the outcome is worth counting
@@ -1297,20 +1316,26 @@ export class ScoreScene extends Phaser.Scene {
             getLogger().event({
               type: 'share:run', heapId: sharedHeapId, score: sharedScore, outcome,
             });
-            if (!this.scene.isActive()) return; // player navigated away mid-share
+            // isActive() alone isn't enough: Phaser reuses this scene instance,
+            // so a share left open across a full replay would find the scene
+            // active again, just showing a different run. Compare the
+            // generation stamped at tap time instead.
+            if (!this.scene.isActive() || tapGen !== this._runGen) return;
             if (outcome === 'copied')           say('link copied', '#44ffaa');
             else if (outcome === 'unavailable') say('could not share', '#ff8877');
             // 'shared' and 'dismissed' need no toast: the OS sheet was the feedback.
           })
           .catch((err: unknown) => {
+            // shareRun swallows every real device failure itself (see the
+            // onError callback above) and never rejects, so reaching this
+            // means a bug in this handler, not a share failure. Log it the
+            // same way (err.stack, not String(err) — that only gives
+            // "Name: message" with no trace) so it isn't silently lost.
             sharing = false;
-            // err.stack, not String(err): toString() gives "Name: message" with
-            // no trace, and this same field carries a real stack everywhere else
-            // (logging/capture.ts), so crash triage would get nothing useful.
             getLogger().error('share:failed', {
               stack: (err as Error)?.stack ?? String(err),
             });
-            if (!this.scene.isActive()) return;
+            if (!this.scene.isActive() || tapGen !== this._runGen) return;
             say('could not share', '#ff8877');
           });
       });

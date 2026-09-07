@@ -93,8 +93,18 @@ export function shareClipboardText(msg: ShareMessage): string {
  *
  * `nav` is injected rather than read off the global so the outcomes are
  * testable; pass `navigator` from a browser caller.
+ *
+ * Every real failure is caught here and normalized to `'unavailable'` — this
+ * function never rejects. That means a `.catch()` at the call site never
+ * fires for a real device error and never sees a stack trace; `onError`
+ * exists so a caller that wants one (crash triage) can still get it, without
+ * changing the outcome contract the tests above pin.
  */
-export async function shareRun(msg: ShareMessage, nav?: Navigator): Promise<ShareOutcome> {
+export async function shareRun(
+  msg: ShareMessage,
+  nav?: Navigator,
+  onError?: (err: unknown) => void,
+): Promise<ShareOutcome> {
   if (!nav) return 'unavailable';
 
   const data = { title: msg.title, text: msg.text, url: msg.url };
@@ -111,6 +121,7 @@ export async function shareRun(msg: ShareMessage, nav?: Navigator): Promise<Shar
       // the player's back after they backed out would be surprising.
       if ((err as { name?: string } | undefined)?.name === 'AbortError') return 'dismissed';
       // Anything else (permission, transient) is worth a clipboard fallback.
+      onError?.(err);
     }
   }
 
@@ -118,7 +129,8 @@ export async function shareRun(msg: ShareMessage, nav?: Navigator): Promise<Shar
     try {
       await nav.clipboard.writeText(shareClipboardText(msg));
       return 'copied';
-    } catch {
+    } catch (err) {
+      onError?.(err);
       return 'unavailable';
     }
   }

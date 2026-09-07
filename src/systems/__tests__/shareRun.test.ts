@@ -123,6 +123,38 @@ describe('shareRun', () => {
     await expect(shareRun(msg, nav)).resolves.toBe('unavailable');
   });
 
+  it('hands a swallowed share-sheet error to onError without rejecting', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const shareErr = new Error('not allowed');
+    const nav = {
+      share: vi.fn().mockRejectedValue(shareErr),
+      clipboard: { writeText },
+    } as unknown as Navigator;
+    const onError = vi.fn();
+    await expect(shareRun(msg, nav, onError)).resolves.toBe('copied');
+    expect(onError).toHaveBeenCalledWith(shareErr);
+  });
+
+  it('hands a swallowed clipboard error to onError without rejecting', async () => {
+    const clipErr = new Error('denied');
+    const nav = {
+      clipboard: { writeText: vi.fn().mockRejectedValue(clipErr) },
+    } as unknown as Navigator;
+    const onError = vi.fn();
+    await expect(shareRun(msg, nav, onError)).resolves.toBe('unavailable');
+    expect(onError).toHaveBeenCalledWith(clipErr);
+  });
+
+  it('does not call onError for a dismissed sheet', async () => {
+    const nav = {
+      share: vi.fn().mockRejectedValue(Object.assign(new Error('x'), { name: 'AbortError' })),
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+    } as unknown as Navigator;
+    const onError = vi.fn();
+    await expect(shareRun(msg, nav, onError)).resolves.toBe('dismissed');
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it('is a no-op with no navigator at all (node/vitest)', async () => {
     await expect(shareRun(msg, undefined)).resolves.toBe('unavailable');
   });
