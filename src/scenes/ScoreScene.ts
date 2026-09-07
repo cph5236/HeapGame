@@ -1276,6 +1276,12 @@ export class ScoreScene extends Phaser.Scene {
       btn.on('pointerup', () => {
         if (sharing) return;
         sharing = true;
+        // Capture what the event describes at tap time, alongside the message
+        // itself. Phaser reuses this scene instance, so a share sheet left open
+        // across another full run would otherwise resolve into a `this` that
+        // now holds the NEXT run's heap and score, and log the wrong one.
+        const sharedHeapId = this.heapId;
+        const sharedScore  = this.score;
         const msg = buildShareMessage({
           score:          this.score,
           heapName:       this._heapParams.name,
@@ -1289,7 +1295,7 @@ export class ScoreScene extends Phaser.Scene {
             // Logged before the active-scene check: the outcome is worth counting
             // even when the player has already walked away from the screen.
             getLogger().event({
-              type: 'share:run', heapId: this.heapId, score: this.score, outcome,
+              type: 'share:run', heapId: sharedHeapId, score: sharedScore, outcome,
             });
             if (!this.scene.isActive()) return; // player navigated away mid-share
             if (outcome === 'copied')           say('link copied', '#44ffaa');
@@ -1298,7 +1304,12 @@ export class ScoreScene extends Phaser.Scene {
           })
           .catch((err: unknown) => {
             sharing = false;
-            getLogger().error('share:failed', { stack: String(err) });
+            // err.stack, not String(err): toString() gives "Name: message" with
+            // no trace, and this same field carries a real stack everywhere else
+            // (logging/capture.ts), so crash triage would get nothing useful.
+            getLogger().error('share:failed', {
+              stack: (err as Error)?.stack ?? String(err),
+            });
             if (!this.scene.isActive()) return;
             say('could not share', '#ff8877');
           });
