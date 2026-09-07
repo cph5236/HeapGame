@@ -1071,7 +1071,9 @@ export class MenuScene extends Phaser.Scene {
       case 'avatar': {
         const cx = W / 2;
         const s = MenuScene.LOGO_AVATAR_SCALE;
-        return { x: cx - 80, y: this.figureY - (46 * s + 16) / 2, w: 160, h: 46 * s + 16 };
+        // Wider than the actual 160px tap zone — purely a visual highlight, so
+        // it can afford more breathing room than the hit target needs.
+        return { x: cx - 110, y: this.figureY - (46 * s + 16) / 2, w: 220, h: 46 * s + 16 };
       }
       case 'heapPicker':
         return { x: W / 2 - 160, y: 480 - shift, w: 264, h: 48 };
