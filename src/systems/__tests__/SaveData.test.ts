@@ -700,16 +700,16 @@ describe('mergeCloudSave — one-time UI / device-local flags', () => {
   const base = baseSave;
   const sound = { master: 0.3, music: 0.1, playerSfx: 0.5, enemySfx: 0.2, envSfx: 0.4 };
 
-  it('keeps customizeHintSeen when seen locally and cloud has not seen it', () => {
-    const local = { ...base(), customizeHintSeen: true };
+  it('keeps menuTutorialSeen when seen locally and cloud has not seen it', () => {
+    const local = { ...base(), menuTutorialSeen: true };
     const cloud = { ...base() };                              // undefined
-    expect(mergeCloudSave(local, cloud).customizeHintSeen).toBe(true);
+    expect(mergeCloudSave(local, cloud).menuTutorialSeen).toBe(true);
   });
 
-  it('keeps customizeHintSeen when seen only in the cloud (seen on either device = seen)', () => {
-    const local = { ...base(), customizeHintSeen: false };
-    const cloud = { ...base(), customizeHintSeen: true };
-    expect(mergeCloudSave(local, cloud).customizeHintSeen).toBe(true);
+  it('keeps menuTutorialSeen when seen only in the cloud (seen on either device = seen)', () => {
+    const local = { ...base(), menuTutorialSeen: false };
+    const cloud = { ...base(), menuTutorialSeen: true };
+    expect(mergeCloudSave(local, cloud).menuTutorialSeen).toBe(true);
   });
 
   it('keeps tutorialDone when done on either device', () => {

@@ -44,7 +44,7 @@ export interface GameSave {
   loadoutSyncPending?: boolean;
   hatAdjustments?:     HatAdjustments;   // per-hat-id fit tweaks (dAngle/dScale)
   tutorialDone?:   boolean;
-  customizeHintSeen?: boolean;  // has the player opened the customizer at least once?
+  menuTutorialSeen?: boolean;  // has the player finished (or skipped) the main-menu coach-mark tour?
   _legacyPlaced?: PlacedItemSave[];
   adRunsSinceLast?: number;
   adRunTarget?:     number;
@@ -223,12 +223,12 @@ export function setTutorialDone(value: boolean): void {
   persist({ ...data, tutorialDone: value });
 }
 
-// ── Customizer hint seen flag ───────────────────────────────────────────────────
+// ── Menu tutorial seen flag ─────────────────────────────────────────────────────
 
-export function getCustomizeHintSeen(): boolean { return load().customizeHintSeen ?? false; }
-export function setCustomizeHintSeen(value: boolean): void {
+export function getMenuTutorialSeen(): boolean { return load().menuTutorialSeen ?? false; }
+export function setMenuTutorialSeen(value: boolean): void {
   const data = load();
-  persist({ ...data, customizeHintSeen: value });
+  persist({ ...data, menuTutorialSeen: value });
 }
 // ── Selected heap ────────────────────────────────────────────────────────────
 
@@ -365,7 +365,7 @@ function migrateGame(parsed: any, version: number): GameSave {
       loadoutSyncPending: parsed.loadoutSyncPending,
       hatAdjustments: parsed.hatAdjustments,
       tutorialDone:   parsed.tutorialDone   ?? true,
-      customizeHintSeen: parsed.customizeHintSeen,
+      menuTutorialSeen: parsed.menuTutorialSeen,
       _legacyPlaced:  parsed._legacyPlaced,
       adRunsSinceLast: parsed.adRunsSinceLast,
       adRunTarget:     parsed.adRunTarget,
@@ -511,7 +511,7 @@ function mergeGame(local: RawSave, cloud: RawSave): GameSave {
     adRunTarget:     local.adRunTarget,
     // One-time UI flags: seen/done on either device counts, so a signed-in merge
     // never re-nags. (Previously dropped here → hint/tutorial reappeared each launch.)
-    customizeHintSeen: local.customizeHintSeen || cloud.customizeHintSeen,
+    menuTutorialSeen: local.menuTutorialSeen || cloud.menuTutorialSeen,
     tutorialDone:      local.tutorialDone      || cloud.tutorialDone,
   };
 }

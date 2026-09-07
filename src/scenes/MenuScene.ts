@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { AudioManager } from '../systems/AudioManager';
-import { getBalance, getPlaced, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getEffectivePlayerId, getControlMode, getEffectiveControlMode, setSessionControlMode, getEquippedCosmetics, getHatAdjustments, getCustomizeHintSeen } from '../systems/SaveData';
+import { getBalance, getPlaced, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getEffectivePlayerId, getControlMode, getEffectiveControlMode, setSessionControlMode, getEquippedCosmetics, getHatAdjustments, getMenuTutorialSeen, setMenuTutorialSeen } from '../systems/SaveData';
 import { tiltPromptKind, isTiltPendingPermission } from '../systems/tiltAvailability';
 import { composeAvatar } from '../ui/avatar';
 import { redeemCode, type RedeemResult } from '../systems/CodeClient';
@@ -17,7 +17,9 @@ import { validatePlayerName, MAX_PLAYER_NAME_LEN } from '../../shared/playerName
 import { PlayerNameClient } from '../systems/PlayerNameClient';
 import { formatDifficulty } from '../ui/DifficultyStars';
 import { loadGameAssets } from './loadGameAssets';
-import { entranceScale } from './menuIntro';
+import { entranceScale, ENTRANCE_FULL_SPAN_MS } from './menuIntro';
+import { CoachMarkTour, type CoachMarkStep, type CoachMarkTarget } from '../ui/CoachMarkTour';
+import { buildMenuTourSteps, type MenuTourStepKind } from '../ui/menuTourLogic';
 import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { openFeedbackOverlay } from './FeedbackOverlay';
@@ -67,7 +69,6 @@ export class MenuScene extends Phaser.Scene {
   private titleShadow!: Phaser.GameObjects.Text;
   private titleText!: Phaser.GameObjects.Text;
   private taglineText!: Phaser.GameObjects.Text;
-  private customizeHint?: Phaser.GameObjects.Text;
   private balanceText!: Phaser.GameObjects.Text;
   private startBg!: Phaser.GameObjects.Graphics;
   private upgradeBg!: Phaser.GameObjects.Graphics;
@@ -141,6 +142,11 @@ export class MenuScene extends Phaser.Scene {
     this.createVersionLabel();
     if (!im.isMobile) this.createHotkeyLegend();
     this.runEntranceSequence();
+    if (!getMenuTutorialSeen()) {
+      // Wait out the (first-visit-only) cinematic so the tour never fights
+      // its fade-ins for the same elements.
+      this.time.delayedCall(ENTRANCE_FULL_SPAN_MS + 200, () => this.startMenuTour());
+    }
     this.registerInput();
     loadGameAssets(this);
     if (this.registry.get('gameAssetsReady')) {
@@ -299,20 +305,6 @@ export class MenuScene extends Phaser.Scene {
     this.add.zone(cx, this.figureY, 160, 46 * s + 16)
       .setDepth(6).setInteractive({ useHandCursor: true })
       .on('pointerup', () => this.scene.start('CustomizationScene'));
-
-    // One-time nudge toward the (otherwise unlabeled) avatar button — hidden
-    // for good once the player has actually opened the customizer.
-    if (!getCustomizeHintSeen()) {
-      // Sits beside the hood, above the HEAP wordmark's bounding box — the
-      // logo text is wide enough that any lower placement gets covered by it.
-      this.customizeHint = this.add.text(cx + 100, this.figureY -50, 'Try out the\nCharacter Customizer!\n<-------', {
-        fontSize: '14px',
-        fontStyle: 'italic',
-        color: '#cc9966',
-        stroke: '#000000',
-        strokeThickness: 2,
-      }).setOrigin(0, 0.5).setAlpha(0).setDepth(8);
-    }
   }
 
   private startFigureBob(): void {
@@ -1006,6 +998,22 @@ export class MenuScene extends Phaser.Scene {
 
     hitZone.on('pointerup', () => this.openSettings());
     if (this._forceSettingsOpen) this.time.delayedCall(2200, () => this.openSettings());
+
+    this.createTourReplayButton(bx - 40, by);
+  }
+
+  /** Small "?" button beside Settings that replays the menu coach-mark tour on
+   *  demand. Lives here rather than as a Settings row \u2014 the Player tab's fixed
+   *  panel is already at its row cap (MAX_HOST_ROWS in SettingsScene). */
+  private createTourReplayButton(bx: number, by: number): void {
+    const btnGfx = this.add.graphics().setDepth(20);
+    btnGfx.fillStyle(0x000000, 0.65);
+    btnGfx.fillCircle(bx, by, 14);
+    btnGfx.lineStyle(2, 0x8899bb, 1);
+    btnGfx.strokeCircle(bx, by, 14);
+    this.add.text(bx, by, '?', { fontSize: '16px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5).setDepth(20);
+    this.add.zone(bx, by, 36, 36).setDepth(20).setInteractive({ useHandCursor: true })
+      .on('pointerup', () => this.startMenuTour());
   }
 
   /** Launch the shared Settings modal over the menu. SettingsScene pauses this
@@ -1051,6 +1059,46 @@ export class MenuScene extends Phaser.Scene {
     } satisfies SettingsSceneData);
   }
 
+
+  // ── Menu tutorial (coach-mark tour) ──────────────────────────────────────────
+
+  /** Target rects per step kind, computed lazily so they track this scene's
+   *  actual runtime layout (layoutShift, avatar scale, live text width). */
+  private menuTourRect(kind: MenuTourStepKind): CoachMarkTarget {
+    const W = logicalWidth(this);
+    const shift = this.layoutShift;
+    switch (kind) {
+      case 'avatar': {
+        const cx = W / 2;
+        const s = MenuScene.LOGO_AVATAR_SCALE;
+        return { x: cx - 80, y: this.figureY - (46 * s + 16) / 2, w: 160, h: 46 * s + 16 };
+      }
+      case 'heapPicker':
+        return { x: W / 2 - 160, y: 480 - shift, w: 264, h: 48 };
+      case 'startRun':
+        return { x: W / 2 - 160, y: 540 - shift, w: 320, h: 56 };
+      case 'upgradesStore':
+        return { x: W / 2 - 160, y: 612 - shift, w: 320, h: 56 };
+      case 'playerName': {
+        const b = this.playerNameText.getBounds();
+        return { x: b.x, y: b.y, w: b.width, h: b.height };
+      }
+      case 'settings':
+        return { x: W - 42, y: 2, w: 40, h: 40 };
+    }
+  }
+
+  /** Runs the full-screen coach-mark tour over the menu's core elements —
+   *  automatically once per player (gated by getMenuTutorialSeen), or on
+   *  demand from Settings → MENU TOUR. */
+  private startMenuTour(): void {
+    const isGpgs = getGpgsPlayerId() !== null;
+    const steps: CoachMarkStep[] = buildMenuTourSteps(isGpgs).map(s => ({
+      caption: s.caption,
+      rect: () => this.menuTourRect(s.kind),
+    }));
+    new CoachMarkTour(this, steps, { onDone: () => setMenuTutorialSeen(true) }).start();
+  }
 
   private createFeedbackButton(): void {
     const label = this.add.text(14, 22, 'Send Feedback', {
@@ -1103,9 +1151,6 @@ export class MenuScene extends Phaser.Scene {
     this.tweens.add({ targets: this.nearSilhouette, alpha: 1,    duration: 600 * s, delay: 300  * s   });
     this.tweens.add({ targets: this.horizonGlow,    alpha: 1,    duration: 400 * s, delay: 600  * s   });
     this.tweens.add({ targets: this.playerFigure,   alpha: 0.85, duration: 500 * s, delay: 700  * s   });
-    if (this.customizeHint) {
-      this.tweens.add({ targets: this.customizeHint, alpha: 0.8, duration: 500 * s, delay: 1200 * s });
-    }
     this.tweens.add({ targets: this.titleShadow,    alpha: 0.65, duration: 400 * s, delay: 900  * s   });
     this.tweens.add({ targets: this.titleText,      alpha: 1,    duration: 500 * s, delay: 1000 * s   });
     this.tweens.add({ targets: this.taglineText,    alpha: 1,    duration: 400 * s, delay: 1300 * s   });
