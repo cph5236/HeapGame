@@ -41,6 +41,12 @@ describe('buildShareMessage', () => {
     expect(msg.text).not.toContain('Infinite');
   });
 
+  it('still mentions a personal best set on the infinite heap', () => {
+    const msg = buildShareMessage({ ...base, isInfinite: true, isNewHighScore: true });
+    expect(msg.text).toMatch(/best/i);
+    expect(msg.text).toMatch(/endless/i);
+  });
+
   it('thousands-separates large scores', () => {
     expect(buildShareMessage({ ...base, score: 1234567 }).text).toContain('1,234,567');
   });

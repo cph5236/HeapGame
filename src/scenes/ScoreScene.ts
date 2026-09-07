@@ -361,8 +361,14 @@ export class ScoreScene extends Phaser.Scene {
   }
 
   private createScoreDisplay(): void {
+    // At the base 52px, 7+ digits (reachable on the infinite heap over a long
+    // enough climb) runs wide enough to collide with the SHARE button beside
+    // it — scale down past 6 digits rather than let them overlap.
+    const digits = String(this.score).length;
+    const fontSize = digits > 6 ? Math.round(52 * 6 / digits) : 52;
+
     const scoreText = this.add.text(logicalWidth(this) / 2, logicalHeight(this) * 0.19, '0', {
-      fontSize:   '52px',
+      fontSize:   `${fontSize}px`,
       fontFamily: 'monospace',
       color:      '#ffdd44',
       fontStyle:  'bold',

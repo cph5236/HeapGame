@@ -65,8 +65,12 @@ export function buildShareMessage(input: ShareRunInput): ShareMessage {
   let brag: string;
   if (input.isInfinite) {
     // The infinite heap has no summit and its name ("Infinite") reads as a mode,
-    // not a place, so it is described rather than named.
-    brag = `${score} points up the endless heap.`;
+    // not a place, so it is described rather than named. It does still track a
+    // local high score, though (ScoreScene's tracking isn't gated on the mode),
+    // so a personal best here is still worth leading with.
+    brag = input.isNewHighScore
+      ? `New personal best — ${score} points up the endless heap.`
+      : `${score} points up the endless heap.`;
   } else if (input.isPeak) {
     brag = `I topped out ${heap} at ${score} points — my junk is on the pile now, so go climb over it.`;
   } else if (input.isNewHighScore) {
