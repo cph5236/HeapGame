@@ -274,7 +274,12 @@ export class MenuScene extends Phaser.Scene {
     } else {
       // Assets not loaded yet — placeholder container, swap when ready.
       this.playerFigure = this.add.container(cx, this.figureY).setDepth(5).setAlpha(0);
-      this.game.events.once('gameAssetsReady', () => {
+      // game.events outlives this scene, so the listener has to come off on
+      // SHUTDOWN. It was harmless while composeAvatar returned a static
+      // container; now it builds a live avatar with its own UPDATE listener,
+      // and a player who leaves the menu while assets are still loading would
+      // get one constructed against a scene that has already shut down.
+      const onAssets = (): void => {
         const oldAlpha = this.playerFigure.alpha;
         this.playerFigure.destroy();
         this.playerFigure = composeAvatar(this, getEquippedCosmetics(),
@@ -283,6 +288,10 @@ export class MenuScene extends Phaser.Scene {
         if (oldAlpha < 0.85) {
           this.tweens.add({ targets: this.playerFigure, alpha: 0.85, duration: 300 });
         }
+      };
+      this.game.events.once('gameAssetsReady', onAssets);
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        this.game.events.off('gameAssetsReady', onAssets);
       });
     }
 

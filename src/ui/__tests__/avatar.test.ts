@@ -178,6 +178,35 @@ describe('avatar portraits are live', () => {
     expect(new Set(colors).size).toBeGreaterThan(1);
   });
 
+  it('repaints a rainbow skin — bag and glaze together — as time passes', () => {
+    const scene = makeScene();
+    createAvatar(scene as any, { skin: 'skin_rainbow' }, OPTS);
+    // Two images: the bag, then the flat-color glaze laid over it.
+    const bag   = (scene.add.image as any).mock.results[0].value;
+    const glaze = (scene.add.image as any).mock.results[1].value;
+
+    scene.events.emit('update', 0, 500);
+    const bagHue   = bag.setTint.mock.calls.at(-1)[0];
+    const glazeHue = glaze.setTintFill.mock.calls.at(-1)[0];
+    // The two layers must never drift apart, or the skin reads as two colors.
+    expect(glazeHue).toBe(bagHue);
+
+    scene.events.emit('update', 0, 500);
+    expect(bag.setTint.mock.calls.at(-1)[0]).not.toBe(bagHue);
+  });
+
+  it('leaves a flat skin on its own color', () => {
+    const scene = makeScene();
+    createAvatar(scene as any, { skin: 'skin_golden' }, OPTS);
+    const bag = (scene.add.image as any).mock.results[0].value;
+    // Tinted once at build — assert that, or an unknown skin id would make the
+    // "no repaint" check below pass for the wrong reason.
+    expect(bag.setTint).toHaveBeenCalledWith(0xddbb55);
+    const atBuild = bag.setTint.mock.calls.length;
+    scene.events.emit('update', 0, 500);
+    expect(bag.setTint.mock.calls.length).toBe(atBuild);
+  });
+
   it('leaves a flat tie alone once painted', () => {
     const scene = makeScene();
     createAvatar(scene as any, { tie: 'tie_gold' }, OPTS);

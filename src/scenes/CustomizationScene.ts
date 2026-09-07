@@ -344,9 +344,13 @@ export class CustomizationScene extends Phaser.Scene {
           // time, so a flat swatch would show one arbitrary frame of it —
           // the trail's was white, which read as a plain white trail. Show
           // the whole wheel instead.
+          // Wedge width comes from the wheel's own length, not a literal 6:
+          // the two are the same today, and a wheel with more stops would
+          // otherwise silently draw overlapping or gapped wedges.
+          const stops = RAINBOW_WHEEL.length;
           RAINBOW_WHEEL.forEach((c, i) => {
             sw.fillStyle(c, 1);
-            sw.slice(cx, cy - 10, 15, (i / 6) * Math.PI * 2, ((i + 1) / 6) * Math.PI * 2, false);
+            sw.slice(cx, cy - 10, 15, (i / stops) * Math.PI * 2, ((i + 1) / stops) * Math.PI * 2, false);
             sw.fillPath();
           });
         } else {
