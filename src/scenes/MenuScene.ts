@@ -88,6 +88,13 @@ export class MenuScene extends Phaser.Scene {
   private tiltPrompt?: Phaser.GameObjects.Container;
   private dailyCanIcon?: Phaser.GameObjects.Container;
   private dailyTick?: Phaser.Time.TimerEvent;
+  /** True once the entrance cinematic has settled — the tour spotlights real
+   *  elements, so it must never start while they're still fading in. */
+  private entranceComplete = false;
+  /** Re-entrancy guard: the auto-trigger and the manual "?" replay button both
+   *  call startMenuTour(), and without this a fast double-tap (or a tap that
+   *  lands right as the auto-trigger fires) would stack two overlapping tours. */
+  private tourActive = false;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -141,12 +148,16 @@ export class MenuScene extends Phaser.Scene {
     this.createFeedbackButton();
     this.createVersionLabel();
     if (!im.isMobile) this.createHotkeyLegend();
-    this.runEntranceSequence();
-    if (!getMenuTutorialSeen()) {
-      // Wait out the (first-visit-only) cinematic so the tour never fights
-      // its fade-ins for the same elements.
-      this.time.delayedCall(ENTRANCE_FULL_SPAN_MS + 200, () => this.startMenuTour());
-    }
+    // Read once, here, so the tour's wait matches the cinematic's actual
+    // scaled length — runEntranceSequence() also sets 'menuIntroSeen', so
+    // computing this after calling it would always see firstTime=false.
+    const firstMenuVisit = this.game.registry.get('menuIntroSeen') !== true;
+    const introScale = entranceScale(firstMenuVisit);
+    this.runEntranceSequence(introScale);
+    this.time.delayedCall(ENTRANCE_FULL_SPAN_MS * introScale + 200, () => {
+      this.entranceComplete = true;
+      if (!getMenuTutorialSeen()) this.startMenuTour();
+    });
     this.registerInput();
     loadGameAssets(this);
     if (this.registry.get('gameAssetsReady')) {
@@ -1085,21 +1096,36 @@ export class MenuScene extends Phaser.Scene {
         const b = this.playerNameText.getBounds();
         return { x: b.x, y: b.y, w: b.width, h: b.height };
       }
-      case 'settings':
-        return { x: W - 42, y: 2, w: 40, h: 40 };
+      case 'settings': {
+        // Covers both the gear AND the "?" replay button beside it (see
+        // createTourReplayButton) — the caption for this step mentions both,
+        // so the cutout should too rather than isolating just the gear.
+        const gearCx = W - 22;
+        const helpCx = gearCx - 40;
+        return { x: helpCx - 14, y: 22 - 14, w: (gearCx + 14) - (helpCx - 14), h: 28 };
+      }
     }
   }
 
   /** Runs the full-screen coach-mark tour over the menu's core elements —
    *  automatically once per player (gated by getMenuTutorialSeen), or on
-   *  demand from Settings → MENU TOUR. */
+   *  demand from the "?" button beside Settings. Guarded against overlapping
+   *  itself (tourActive) and against starting before the entrance cinematic's
+   *  fade-ins have settled (entranceComplete) — see their field comments. */
   private startMenuTour(): void {
+    if (this.tourActive || !this.entranceComplete) return;
+    this.tourActive = true;
     const isGpgs = getGpgsPlayerId() !== null;
     const steps: CoachMarkStep[] = buildMenuTourSteps(isGpgs).map(s => ({
       caption: s.caption,
       rect: () => this.menuTourRect(s.kind),
     }));
-    new CoachMarkTour(this, steps, { onDone: () => setMenuTutorialSeen(true) }).start();
+    new CoachMarkTour(this, steps, {
+      onDone: () => {
+        this.tourActive = false;
+        setMenuTutorialSeen(true);
+      },
+    }).start();
   }
 
   private createFeedbackButton(): void {
@@ -1141,13 +1167,13 @@ export class MenuScene extends Phaser.Scene {
 
   // ── Entrance animation ───────────────────────────────────────────────────────
 
-  private runEntranceSequence(): void {
+  /** @param s Entrance scale from entranceScale() — computed by the caller
+   *  (create()) so it can also size the coach-mark tour's wait to match. */
+  private runEntranceSequence(s: number): void {
     // Play the full cinematic once per app-session; compress every return to the
     // menu (from Game/Upgrade/Store) into a brief window. The registry flag lives
     // for the game instance's lifetime and resets on a true page reload.
-    const firstTime = this.game.registry.get('menuIntroSeen') !== true;
     this.game.registry.set('menuIntroSeen', true);
-    const s = entranceScale(firstTime);
 
     this.tweens.add({ targets: this.farSilhouette,  alpha: 1,    duration: 600 * s, delay: 0          });
     this.tweens.add({ targets: this.nearSilhouette, alpha: 1,    duration: 600 * s, delay: 300  * s   });

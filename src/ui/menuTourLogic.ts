@@ -35,7 +35,7 @@ const STEP_PLAYER_NAME: MenuTourStep = {
 };
 const STEP_SETTINGS: MenuTourStep = {
   kind: 'settings',
-  caption: 'Open Settings anytime to adjust controls, audio, or replay this tour.',
+  caption: 'Open Settings anytime to adjust controls and audio — tap the ? beside it to replay this tour.',
 };
 
 /** Ordered step list for the tour. The player-name step only makes sense for

@@ -347,6 +347,7 @@ function freshGame(): GameSave {
     cosmeticsOwned: [],
     cosmeticsEquipped: {},
     tutorialDone:   false,
+    menuTutorialSeen: false,
   };
 }
 
