@@ -287,15 +287,17 @@
     <footer>Made by Hanlin Software.</footer>
     <script>
       // Carry the referral marker through to the game. Shares point at
-      // /play?ref=run, but this door is a static link to heapgame.com/ — without
-      // this the marker dies here and recordReferral() in BootScene sees an
-      // empty query string, so the arrival half of the share loop never fires
-      // for the Web Share path, which is the common one.
+      // /play?ref=run, but this door is a static link to heapgame.com/, so
+      // without this the marker dies here.
       //
-      // Only `ref` is forwarded, and only if it matches what referral.ts will
-      // accept (lowercase, [a-z0-9_-], <= 32 chars) — no point passing along
-      // anything the game will reject, and no reason to forward arbitrary query
-      // params onto another page.
+      // Nothing reads it yet — the arrival counter is deliberately not part of
+      // this change (see Todo/Todo.md). It is forwarded anyway so links shared
+      // from today are already attributable once that counter exists, rather
+      // than needing everyone to re-share. An unread query param costs nothing.
+      //
+      // Only `ref` is forwarded, and only if it is lowercase [a-z0-9_-] and at
+      // most 32 chars — no reason to pass arbitrary query params onto another
+      // page, and the eventual reader should not have to defend against junk.
       (function () {
         try {
           var ref = new URLSearchParams(window.location.search).get('ref');

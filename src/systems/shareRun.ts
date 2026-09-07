@@ -15,7 +15,11 @@ import type { ShareOutcome } from '../../shared/logging/events';
  *  Android app) and already carries its own OG/Twitter cards, so a pasted link
  *  previews correctly wherever it is posted. The `ref` marks the visit as
  *  share-driven — it is a plain query param on a static page, so nothing has to
- *  read it for Cloudflare Web Analytics to break traffic down by it. */
+ *  read it for Cloudflare Web Analytics to break traffic down by it.
+ *
+ *  There is deliberately no in-game reader for it yet — see Todo/Todo.md. The
+ *  marker ships now so links shared from today are already attributable when
+ *  that lands, instead of only counting shares made after it. */
 export const SHARE_URL = 'https://heapgame.com/play?ref=run';
 
 /** One line of pitch under the brag, for the reader who has never heard of the

@@ -31,6 +31,32 @@ call to ship the event first; the sweep is a UI-string change, not a data change
 
 
 
+4. Referral arrival counter — the receiving end of the share loop.
+Shared links already carry `?ref=run` (SHARE_URL in src/systems/shareRun.ts) and
+public/play.html forwards it through the browser door, so the marker reaches the
+game today. Nothing reads it yet, on purpose.
+
+The obvious implementation — a `visit:referred` event through RemoteLogger — was
+built and then pulled back out of the share PR, because it does not work where it
+matters. `RemoteLogger.event()` returns early unless the player has enabled
+"Send anonymous gameplay analytics", which is off on every fresh save, and a
+first-touch arrival happens on that player's very first boot. The event is
+dropped while the one-shot `heap_ref` marker is spent, so the arrival can never
+be counted afterwards, even if they opt in minutes later. It would have measured
+close to nothing for new installs, which is the entire audience it exists for.
+
+Second problem, unfixed by any gating change: `share:run` is emitted by an
+established player who has had time to opt in, `visit:referred` by a brand-new
+one who has not. Both pass the same consent gate with very different opt-in
+rates, so shares-per-arrival measures opt-in propensity as much as sharing.
+
+Preferred shape: a genuinely anonymous counter — POST `{ ref }` and nothing else,
+no userGuid, no userAgent, on its own route rather than the log pipeline. Then it
+needs no consent argument, because there is nothing personal in it, and the
+settings copy ("Send anonymous gameplay analytics", "Errors are always reported")
+stays true as written. Note that copy and PRIVACY_POLICY.md have to move together
+if the alternative — exempting the event from the gate — is ever chosen instead.
+
 ### UI
 
 

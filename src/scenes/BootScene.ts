@@ -8,8 +8,6 @@ import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, getTutorialDone } from '../systems/SaveData';
 import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
 import { buildInfiniteEntry } from '../data/infiniteCatalog';
-import { getLogger } from '../logging';
-import { recordReferral } from '../systems/referral';
 import { initPlatform, startIdentitySession } from '../systems/bootSequence';
 import { loadGameAssets } from './loadGameAssets';
 
@@ -37,18 +35,6 @@ export class BootScene extends Phaser.Scene {
     this.game.registry.set('heapPolygon',    [] as Vertex[]);
     this.game.registry.set('heapParams',     DEFAULT_HEAP_PARAMS);
     this.game.registry.set('heapCatalogReady', false);
-
-    // Acquisition marker from the landing url (`?ref=run` on a shared link).
-    // Must follow initPlatform() — that is where initLogger() now happens, and
-    // the event needs somewhere to go. First-touch only, so a returning player
-    // re-emits nothing. No-op in the Android WebView, whose url never carries one.
-    if (typeof window !== 'undefined') {
-      recordReferral(
-        window.location.search,
-        (() => { try { return window.localStorage; } catch { return undefined; } })(),
-        (event) => getLogger().event(event),
-      );
-    }
 
     // Kick off sign-in, name sync and cloud-save merge. LoadingScene gates the
     // menu on sign-in settling, so the id is final by the time the player can
