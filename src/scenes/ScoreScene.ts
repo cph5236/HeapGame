@@ -78,6 +78,13 @@ export class ScoreScene extends Phaser.Scene {
   private isFailure:           boolean = false;
   private heapId:              string  = '';
   private isNewHighScore:      boolean = false;
+  // The score display's actual on-screen right edge, measured once in
+  // createScoreDisplay() against the final score string (not the '0' the
+  // count-up tween starts from). createShareButton reads this instead of
+  // trusting a screen-width fraction to clear it — the score's rendered
+  // width doesn't scale down with the viewport, so a fixed budget silently
+  // stops clearing it on narrow phones. Reset every run by being overwritten.
+  private _scoreTextRightEdge = 0;
 
   private _baseHeightPx: number                             = 0;
   private _kills:        Partial<Record<EnemyKind, number>> = {};
@@ -384,6 +391,14 @@ export class ScoreScene extends Phaser.Scene {
       .setShadow(0, 2, '#aa6600', 0, true, true);
 
     if (this.isFailure) scoreText.setAlpha(0.85);
+
+    // Measure against the final score string, then reset to '0' — the count-up
+    // tween below needs to start from zero, but createShareButton (called
+    // later this frame) needs the width the text will actually settle at, not
+    // its width mid-animation.
+    scoreText.setText(String(this.score));
+    this._scoreTextRightEdge = scoreText.getBounds().right;
+    scoreText.setText('0');
 
     // Glow ellipse behind score
     const glow = this.add.graphics();
@@ -1285,6 +1300,19 @@ export class ScoreScene extends Phaser.Scene {
       padding:         { x: 20, y: 10 },
       fontStyle:       'bold',
     }).setOrigin(1, 1);
+
+    // panelRight is a fixed fraction of screen width, but in the score-row
+    // fallback above the score's own on-screen width doesn't shrink with the
+    // viewport the same way — so on a narrow phone (~360px and below, common
+    // real device widths) panelRight can land inside the score text instead
+    // of past it. Push the button clear of the score's *actual* measured
+    // right edge (see createScoreDisplay) rather than trusting the fraction,
+    // clamping to the screen edge so it can't run off on the very narrowest
+    // devices instead.
+    if (this.isNewHighScore) {
+      const minRight = this._scoreTextRightEdge + 10 + btn.displayWidth;
+      btn.setX(Math.min(Math.max(panelRight, minRight), lw - 8));
+    }
 
     btn.on('pointerover', () => { btn.setColor('#aaccff'); btn.setBackgroundColor('#2266bbcc'); });
     btn.on('pointerout',  () => { btn.setColor('#ffffff'); btn.setBackgroundColor('#1a4d8bcc'); });
