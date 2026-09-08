@@ -65,6 +65,12 @@ function truncateToWidth(txt: Phaser.GameObjects.Text, maxW: number): void {
 }
 
 export class ScoreScene extends Phaser.Scene {
+  // Coins-earned panel geometry, shared between createCoinsPanel and
+  // createShareButton (which right-aligns and sits just above it) so the two
+  // can never drift out of alignment with each other.
+  private static readonly COINS_PANEL_TOP_FRAC   = 0.28;
+  private static readonly COINS_PANEL_WIDTH_FRAC = 0.88;
+
   private score:               number  = 0;
   private isPeak:              boolean = false;
   private checkpointAvailable: boolean = false;
@@ -584,8 +590,8 @@ export class ScoreScene extends Phaser.Scene {
     this._coinsPanelObjects = [];
 
     const PANEL_X    = logicalWidth(this) / 2;
-    const PANEL_TOP  = logicalHeight(this) * 0.28;
-    const PANEL_W    = logicalWidth(this) * 0.88;
+    const PANEL_TOP  = logicalHeight(this) * ScoreScene.COINS_PANEL_TOP_FRAC;
+    const PANEL_W    = logicalWidth(this) * ScoreScene.COINS_PANEL_WIDTH_FRAC;
     const ROW_H      = 26;
     const PAD_X      = 16;
 
@@ -1228,16 +1234,18 @@ export class ScoreScene extends Phaser.Scene {
   // ── Share ─────────────────────────────────────────────────────────────────────
 
   /** SHARE button, right-aligned to the coins-earned panel's right edge,
-   *  just above it.
+   *  just above it (or, on a new high score, next to the score instead — see
+   *  below).
    *
    *  Deliberately not in the bottom action row: that row's job is to get the
    *  player back into a run, and a third button there would both crowd it on a
    *  390px phone and compete with PLAY AGAIN. It used to sit pinned to the
    *  score row's right margin, but that read as a stray label floating in
    *  empty space — lined up with the panel below it gives it a clear anchor,
-   *  it's sized up from its original 11px so it isn't a near-invisible tap
-   *  target next to the number it's bragging about, and it borrows PLAY
-   *  AGAIN's pill styling so the two read as a matched pair of actions.
+   *  it's sized up from its original 11px (slightly past PLAY AGAIN's own
+   *  14px) so it isn't a near-invisible tap target next to the number it's
+   *  bragging about, and it borrows PLAY AGAIN's colors/hover states so the
+   *  two read as a matched pair of actions.
    */
   private createShareButton(): void {
     // A zero score is not worth a post, and offering to share one reads as a nag.
@@ -1250,15 +1258,24 @@ export class ScoreScene extends Phaser.Scene {
       getLogger().error('share:failed', { stack: (err as Error)?.stack ?? String(err) });
     };
 
-    // Same top and right edge the coins panel draws from (createCoinsPanel's
-    // PANEL_TOP / PANEL_X + PANEL_W/2) — kept as matching literals rather than
-    // shared constants since the panel is built later, from data this method
-    // doesn't have yet.
-    const panelTop   = logicalHeight(this) * 0.28;
-    const panelRight = logicalWidth(this) / 2 + (logicalWidth(this) * 0.88) / 2;
+    const lw         = logicalWidth(this);
+    const panelTop   = logicalHeight(this) * ScoreScene.COINS_PANEL_TOP_FRAC;
+    const panelRight = lw / 2 + (lw * ScoreScene.COINS_PANEL_WIDTH_FRAC) / 2;
+
+    // On a new high score, createHighScoreBadge() (called just before this,
+    // in create()) centers "NEW HIGH SCORE!" around 0.245*height — wide and
+    // tall enough on a short phone to collide with the button's usual spot
+    // just above the panel. Fall back to the score row's own height there
+    // (the same band the button used to live in full-time), which the badge
+    // sits well below and the score oval's 160px width leaves clear on the
+    // right.
+    const btnBottom = this.isNewHighScore
+      ? logicalHeight(this) * 0.19 + 19
+      : panelTop - 14;
+
     // Styled to match createPlayAgainButtonAt's PLAY AGAIN pill (same fill,
     // hover colors, and bold white label) so the two read as a matched pair.
-    const btn = this.add.text(panelRight, panelTop - 14, 'SHARE', {
+    const btn = this.add.text(panelRight, btnBottom, 'SHARE', {
       fontSize:        '15px',
       fontFamily:      'monospace',
       color:           '#ffffff',
@@ -1281,7 +1298,7 @@ export class ScoreScene extends Phaser.Scene {
         this.tweens.killTweensOf(toast);
         toast.destroy();
       }
-      const line = this.add.text(panelRight, btn.y - btn.displayHeight - 6, msg, {
+      const line = this.add.text(btn.x, btn.y - btn.displayHeight - 6, msg, {
         fontSize: '9px', fontFamily: 'monospace', color,
       }).setOrigin(1, 1);
       toast = line;
