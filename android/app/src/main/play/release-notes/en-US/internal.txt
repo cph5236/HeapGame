@@ -1,5 +1,5 @@
-The pause menu now opens the full settings panel, so you can reach audio, controls and player options in the middle of a run.
+You can now share your run from the score screen — it hands off a link (or copies one) so friends can see how you did.
 
-Switching between tilt and joystick controls now takes effect right away, instead of only applying from your next run.
+New players get a quick guided tour of the main menu instead of a single nag hint, and it's replayable anytime from a new "?" button.
 
-The app download is a little smaller.
+Rainbow trails, skins and ties actually cycle through colors now instead of sitting flat white or red, and your character animates everywhere it's shown — menu, leaderboards, podium — not just in the customizer.
