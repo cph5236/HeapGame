@@ -525,7 +525,7 @@ export class CustomizationScene extends Phaser.Scene {
     const title = this.add.text(cx, cy - 52, `Buy ${def.name}?`, {
       fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(32);
-    const price = this.add.text(cx, cy - 22, `${def.price} coins  (you have ${getBalance()})`, {
+    const price = this.add.text(cx, cy - 22, `${def.price} Scrap  (you have ${getBalance()})`, {
       fontSize: '14px', color: '#ffdd77',
     }).setOrigin(0.5).setDepth(32);
 

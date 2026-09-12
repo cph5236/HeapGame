@@ -15,7 +15,7 @@ describe('applyReward', () => {
   it('applies coins', () => {
     const out = applyReward({ rewardType: 'coins', rewardAmount: 500 });
     expect(out.ok).toBe(true);
-    expect(out.message).toBe('+500 coins');
+    expect(out.message).toBe('+500 Scrap');
     expect(addBalance).toHaveBeenCalledWith(500);
   });
 

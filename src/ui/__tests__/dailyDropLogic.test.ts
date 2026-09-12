@@ -135,7 +135,7 @@ describe('grantPreviewText', () => {
   const itemName = (id: string): string => ({ ladder: 'Ladder', ibeam: 'I-Beam' }[id] ?? id);
 
   it('formats a coins grant', () => {
-    expect(grantPreviewText({ type: 'coins', amount: 75 }, itemName)).toBe('+75 coins');
+    expect(grantPreviewText({ type: 'coins', amount: 75 }, itemName)).toBe('+75 Scrap');
   });
 
   it('formats an item grant, listing the whole pool (not yet randomized)', () => {
@@ -152,7 +152,7 @@ describe('dailyRewardPreview', () => {
       { type: 'coins', amount: 300 },
       { type: 'item', pool: ['revive'], amount: 1 },
     ];
-    expect(dailyRewardPreview(grants, itemName)).toBe('+300 coins\n1x Revive');
+    expect(dailyRewardPreview(grants, itemName)).toBe('+300 Scrap\n1x Revive');
   });
 
   it('empty grants preview to an empty string', () => {

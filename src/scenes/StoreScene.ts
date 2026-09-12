@@ -368,7 +368,7 @@ export class StoreScene extends Phaser.Scene {
   }
 
   private refreshAll(): void {
-    this.balanceText.setText(`Balance: ${getBalance()} coins`);
+    this.balanceText.setText(`Balance: ${getBalance()} Scrap`);
     const balance = getBalance();
     this.rows.forEach((row, i) => {
       const def       = ITEM_DEFS[i];
@@ -476,7 +476,7 @@ class StoreRow {
     }
 
     this.ownText.setText(`Own: ${qty}`).setColor('#ffdd77');
-    this.costText.setText(`${cost} coins`).setColor(canAfford ? '#ff9922' : '#996644');
+    this.costText.setText(`${cost} Scrap`).setColor(canAfford ? '#ff9922' : '#996644');
     this.descText.setText(desc);
 
     const dimmed = !canAfford && !selected;
