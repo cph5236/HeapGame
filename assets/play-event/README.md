@@ -76,8 +76,8 @@ Mint in the admin UI before the event goes live. It is not created by this repo.
 Players redeem at **Settings → Player → REDEEM CODE**. One redemption per player is
 enforced server-side, so the description's claim holds without extra config.
 
-> The currency is called **Scrap** in marketing only — the game still says "coins"
-> in its UI. Tracked in `Todo/Todo.md` under Marketing.
+> The in-game currency was renamed **coins** → **Scrap** in the UI (PR #185) to
+> match this event's marketing name.
 
 ## Images
 
