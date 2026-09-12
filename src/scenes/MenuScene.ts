@@ -140,7 +140,7 @@ export class MenuScene extends Phaser.Scene {
     // the id can no longer change underneath us.
     this.game.events.once(SAVE_MERGED_EVENT, () => {
       if (!this.balanceText?.active) return;
-      this.balanceText.setText(`${getBalance()} coins`);
+      this.balanceText.setText(`${getBalance()} Scrap`);
     }, this);
     this.createPrompts(im);
     this.createHeapPicker();
@@ -407,7 +407,7 @@ export class MenuScene extends Phaser.Scene {
   private createBalanceText(): void {
     const shift = this.layoutShift;
     const y = Math.max(688 - shift, Math.min(logicalHeight(this) - 134, 756));
-    this.balanceText = this.add.text(logicalWidth(this) / 2, y, `${getBalance()} coins`, {
+    this.balanceText = this.add.text(logicalWidth(this) / 2, y, `${getBalance()} Scrap`, {
       fontSize: '16px',
       color: '#ffdd77',
       stroke: '#000000',
@@ -1035,7 +1035,7 @@ export class MenuScene extends Phaser.Scene {
     this.scene.launch('SettingsScene', {
       returnTo: this.scene.key,
       context:  'menu',
-      resetWarning: 'Clears all coins, upgrades\nand placed blocks.',
+      resetWarning: 'Clears all Scrap, upgrades\nand placed blocks.',
       rows: [
         {
           label: 'REDEEM CODE',
@@ -1043,7 +1043,7 @@ export class MenuScene extends Phaser.Scene {
             this.openRedeemDialog((result) => {
               setResult(result.message, result.status === 'success');
               if (result.status === 'success' && result.reward?.rewardType === 'coins') {
-                this.balanceText.setText(`${getBalance()} coins`);
+                this.balanceText.setText(`${getBalance()} Scrap`);
               }
             });
           },
@@ -1390,7 +1390,7 @@ export class MenuScene extends Phaser.Scene {
     openDailyDropOverlay(this, status, (claimed) => {
       if (!claimed) return;
       this.clearDailyCanIcon();
-      if (this.balanceText?.active) this.balanceText.setText(`${getBalance()} coins`);
+      if (this.balanceText?.active) this.balanceText.setText(`${getBalance()} Scrap`);
     });
   }
 

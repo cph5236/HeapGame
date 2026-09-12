@@ -130,7 +130,7 @@ describe('getPlayerConfig – stompBonus', () => {
     }
   });
 
-  // Matches upgradeDefs.ts's description text directly: each level's "+X coins
+  // Matches upgradeDefs.ts's description text directly: each level's "+X Scrap
   // per stomp" IS the total per-stomp reward at that level (not a delta to sum).
   // Level 0 is the un-upgraded baseline reward (25), not part of the description array.
   it.each([
@@ -154,7 +154,7 @@ describe('getPlayerConfig – peakMultiplier', () => {
   });
 
   // Matches upgradeDefs.ts's description text directly: each level's "X.XX× peak
-  // coins" IS the total multiplier at that level (not a delta to sum), and level 0
+  // Scrap" IS the total multiplier at that level (not a delta to sum), and level 0
   // is the neutral 1× baseline (no peak bonus yet).
   it.each([
     [0, 1.0], [1, 1.25], [2, 1.50], [3, 1.75], [4, 2.00],

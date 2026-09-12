@@ -11,7 +11,7 @@ export interface AppliedReward { ok: boolean; message: string }
 export function applyReward(reward: RewardPayload): AppliedReward {
   if (reward.rewardType === 'coins') {
     addBalance(reward.rewardAmount);
-    return { ok: true, message: `+${reward.rewardAmount} coins` };
+    return { ok: true, message: `+${reward.rewardAmount} Scrap` };
   }
   const def = ITEM_DEFS.find((d) => d.id === reward.rewardId);
   if (!def) return { ok: false, message: 'Unknown reward item' };

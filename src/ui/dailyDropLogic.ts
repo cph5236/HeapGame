@@ -90,7 +90,7 @@ export function isGoldenDay(day: number): boolean {
  *  claim time server-side, so a locked-icon preview shows the whole pool
  *  rather than a single (not-yet-decided) item. */
 export function grantPreviewText(grant: DailyGrant, itemName: (id: string) => string): string {
-  if (grant.type === 'coins') return `+${grant.amount} coins`;
+  if (grant.type === 'coins') return `+${grant.amount} Scrap`;
   return `${grant.amount}x ${grant.pool.map(itemName).join(' or ')}`;
 }
 

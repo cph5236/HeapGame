@@ -27,7 +27,7 @@ const STEP_START_RUN: MenuTourStep = {
 };
 const STEP_UPGRADES_STORE: MenuTourStep = {
   kind: 'upgradesStore',
-  caption: 'Spend your coins in UPGRADES to climb faster, or the STORE for placeables and consumables.',
+  caption: 'Spend your Scrap in UPGRADES to climb faster, or the STORE for placeables and consumables.',
 };
 const STEP_PLAYER_NAME: MenuTourStep = {
   kind: 'playerName',

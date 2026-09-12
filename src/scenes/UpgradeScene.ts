@@ -358,7 +358,7 @@ export class UpgradeScene extends Phaser.Scene {
   }
 
   private refreshAll(): void {
-    this.balanceText.setText(`Balance: ${getBalance()} coins`);
+    this.balanceText.setText(`Balance: ${getBalance()} Scrap`);
     const balance = getBalance();
     this.rows.forEach((row, i) => {
       const def       = UPGRADE_DEFS[i];
@@ -483,7 +483,7 @@ class UpgradeRow {
     if (maxed) {
       this.costText.setText('MAXED').setColor('#44ff88');
     } else {
-      this.costText.setText(`${nextCost} coins`)
+      this.costText.setText(`${nextCost} Scrap`)
         .setColor(canAfford ? '#ff9922' : '#996644');
     }
 

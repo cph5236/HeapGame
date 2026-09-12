@@ -33,8 +33,8 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
   },
   {
     id: 'money_mult',
-    name: 'Coin Multiplier',
-    description: (l) => `${formatMult(1 + l * MONEY_MULT_PER_LEVEL)}\u00d7 coins`,
+    name: 'Scrap Multiplier',
+    description: (l) => `${formatMult(1 + l * MONEY_MULT_PER_LEVEL)}\u00d7 Scrap`,
     maxLevel: 20,
     cost: (l) => [100, 300, 500, 700, 900, 1100, 1300, 1500, 1700, 1900, 2100, 2300, 2500, 2700, 2900, 3100, 3300, 3500, 3700, 3900][l - 1],
   },
@@ -48,14 +48,14 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
   {
     id: 'stomp_gold',
     name: 'Stomp Bounty',
-    description: (l) => `+${[40, 50, 60][Math.max(1, l) - 1]} coins per stomp`,
+    description: (l) => `+${[40, 50, 60][Math.max(1, l) - 1]} Scrap per stomp`,
     maxLevel: 3,
     cost: (l) => [250, 500, 1000][l - 1],
   },
   {
     id: 'peak_hunter',
     name: 'Peak Bonus',
-    description: (l) => `${[1.25, 1.50, 1.75, 2.00][Math.max(1, l) - 1].toFixed(2)}\u00d7 peak coins`,
+    description: (l) => `${[1.25, 1.50, 1.75, 2.00][Math.max(1, l) - 1].toFixed(2)}\u00d7 peak Scrap`,
     maxLevel: 4,
     cost: (l) => [400, 800, 1600, 3200][l - 1],
   },

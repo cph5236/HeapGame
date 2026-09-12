@@ -188,7 +188,7 @@ export class HeapSelectScene extends Phaser.Scene {
     }).setOrigin(1, 0.5);
 
     // Coin row
-    this.add.text(lblX, midY, 'COIN', {
+    this.add.text(lblX, midY, 'SCRAP', {
       fontSize: '10px', color: '#7799bb',
     }).setOrigin(1, 0.5);
     this.add.text(valX, midY, `${heap.params.coinMult}\u00D7`, {

@@ -660,10 +660,10 @@ export class ScoreScene extends Phaser.Scene {
     };
     drawBg(shouldCollapse);
 
-    // Header: "+N coins earned"
+    // Header: "+N Scrap earned"
     const headerText = this.add.text(
       PANEL_X, PANEL_TOP + 14,
-      `+${finalCoins} coins earned`,
+      `+${finalCoins} Scrap earned`,
       { fontSize: '22px', fontFamily: 'monospace', color: coinColor, fontStyle: 'bold' },
     ).setOrigin(0.5, 0);
     this._coinsPanelObjects.push(headerText);
@@ -774,7 +774,7 @@ export class ScoreScene extends Phaser.Scene {
     const balLbl     = this.add.text(balLeft, 0, 'NEW BALANCE', {
       fontSize: '11px', fontFamily: 'monospace', color: coinColor,
     }).setOrigin(0, 0.5).setAlpha(0.75);
-    const balVal     = this.add.text(balRight, 0, `${balance} coins`, {
+    const balVal     = this.add.text(balRight, 0, `${balance} Scrap`, {
       fontSize: '12px', fontFamily: 'monospace', color: coinColor, fontStyle: 'bold',
     }).setOrigin(1, 0.5);
     this._coinsPanelObjects.push(balDivG, balLbl, balVal);
@@ -816,8 +816,8 @@ export class ScoreScene extends Phaser.Scene {
 
   private rowLabel(type: 'money_mult' | 'heap_coin_mult' | 'peak_hunter' | 'death_penalty' | 'off_peak_bonus' | 'ad_bonus'): string {
     const labels: Record<string, string> = {
-      money_mult:     'Coin Multiplier',
-      heap_coin_mult: 'Heap Coin Bonus',
+      money_mult:     'Scrap Multiplier',
+      heap_coin_mult: 'Heap Scrap Bonus',
       peak_hunter:    'Peak Bonus \u2736',
       death_penalty:  'Death Penalty \ud83d\udc80',
       off_peak_bonus: 'Off-Peak Bonus',
@@ -940,7 +940,7 @@ export class ScoreScene extends Phaser.Scene {
     const narrow    = logicalWidth(this) < 420;
     const W         = compact ? (narrow ? 150 : 200) : 220;
     const H         = 36;
-    const labelText = compact ? '▶  2× coins' : '▶  Watch ad → 2× coins';
+    const labelText = compact ? '▶  2× Scrap' : '▶  Watch ad → 2× Scrap';
     const fontSize  = compact ? (narrow ? '11px' : '12px') : '13px';
 
     const btn = this.add.container(cx, cy);
@@ -1021,7 +1021,7 @@ export class ScoreScene extends Phaser.Scene {
           });
         }
 
-        label.setText('2× coins awarded!');
+        label.setText('2× Scrap awarded!');
         this.time.delayedCall(1200, () => this.tweens.add({ targets: btn, alpha: 0, duration: 300 }));
       } else {
         this.tweens.add({ targets: btn, alpha: 0, duration: 200 });
