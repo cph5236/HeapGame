@@ -5,14 +5,14 @@ import { clampHatAdjustment, type HatAdjustment, type HatAdjustments } from '../
 import type { EquippedLoadout, CosmeticSlot } from '../../../shared/cosmeticCatalog';
 import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL } from '../../constants';
 import {
-  CURRENT_SCHEMA, load as coreLoad, persist, setSaveExtension, setPrimaryPicker,
+  load as coreLoad, persist, setSaveExtension, setPrimaryPicker,
   type RawSave, type CoreSave,
 } from './core';
 
 /** Core stores game fields opaquely (it must, to stay game-agnostic), so the
  *  accessors below read the same record through this game's own types. Same
  *  cache, same object — a narrowed view, not a copy. */
-function load(): CoreSave & GameSave { return coreLoad() as CoreSave & GameSave; }
+export function load(): CoreSave & GameSave { return coreLoad() as CoreSave & GameSave; }
 
 // World height at each schema version — used to remap placed item Y values.
 const WORLD_HEIGHT_V2 = 50_000;
@@ -352,7 +352,10 @@ function freshGame(): GameSave {
 }
 
 function migrateGame(parsed: any, version: number): GameSave {
-  if (version === CURRENT_SCHEMA) {
+  // v5 and anything newer share this layout. Written as >= so the next
+  // CURRENT_SCHEMA bump doesn't drop every live save into the v2->v3
+  // remap fall-through below (which wipes cosmetics and offsets placed Y).
+  if (version >= 5) {
     return {
       balance:        parsed.balance        ?? 0,
       upgrades:       parsed.upgrades       ?? {},
@@ -412,31 +415,45 @@ function migrateGame(parsed: any, version: number): GameSave {
     };
   }
 
-  // v2 → v3: remap placed item Y values from 50 000-tall world to 5 000 000-tall world.
-  //
-  // CAUTION — this is the catch-all, not a v2 branch: every version that isn't
-  // 1, 4 or CURRENT lands here and gets the +4 950 000 offset applied. Two
-  // consequences, both currently harmless:
-  //   - A v3 save is offset twice, since v3 already carries it. Never shipped:
-  //     v3 was current 2026-04-24 → 2026-05-19 and the first public build was
-  //     2026-05-26, so no save outside a dev device can be at v3.
-  //   - A save from a NEWER client (a rolled-back install) is offset too.
-  //     Nothing writes a v6 yet, so this is latent.
-  // Before the next CURRENT_SCHEMA bump, narrow this to `version === 2` and give
-  // the fall-through a no-remap path — otherwise the downgrade case goes live.
-  const placed: Record<string, PlacedItemSave[]> = parsed.placed ?? {};
+  // v2 -> v3 raised the world height, so placed items need their Y remapped.
+  // Narrowly scoped on purpose: anything that is not 1, 2, 4 or >=5 is an
+  // unknown or rolled-back-client version, and must pass through WITHOUT the
+  // remap rather than being offset by +4 950 000.
+  if (version === 2) {
+    const placed: Record<string, PlacedItemSave[]> = parsed.placed ?? {};
+    return {
+      balance:        parsed.balance        ?? 0,
+      upgrades:       parsed.upgrades       ?? {},
+      inventory:      parsed.inventory      ?? {},
+      placed:         remapPlacedY(placed, WORLD_HEIGHT_V2, WORLD_HEIGHT_V3),
+      selectedHeapId: parsed.selectedHeapId ?? '',
+      highScores:     parsed.highScores     ?? {},
+      beatenHeapIds:  [],
+      cosmeticsOwned: [],
+      cosmeticsEquipped: {},
+      tutorialDone:   parsed.tutorialDone   ?? true,
+      _legacyPlaced:  parsed._legacyPlaced,
+    };
+  }
+
+  // Unknown / newer / v3: pass through with no remap and no field loss.
   return {
     balance:        parsed.balance        ?? 0,
     upgrades:       parsed.upgrades       ?? {},
     inventory:      parsed.inventory      ?? {},
-    placed:         remapPlacedY(placed, WORLD_HEIGHT_V2, WORLD_HEIGHT_V3),
+    placed:         parsed.placed         ?? {},
     selectedHeapId: parsed.selectedHeapId ?? '',
     highScores:     parsed.highScores     ?? {},
-    beatenHeapIds:  [],
-    cosmeticsOwned: [],
-    cosmeticsEquipped: {},
+    beatenHeapIds:  parsed.beatenHeapIds  ?? [],
+    cosmeticsOwned: parsed.cosmeticsOwned ?? [],
+    cosmeticsEquipped: parsed.cosmeticsEquipped ?? {},
+    loadoutSyncPending: parsed.loadoutSyncPending,
+    hatAdjustments: parsed.hatAdjustments,
     tutorialDone:   parsed.tutorialDone   ?? true,
+    menuTutorialSeen: parsed.menuTutorialSeen,
     _legacyPlaced:  parsed._legacyPlaced,
+    adRunsSinceLast: parsed.adRunsSinceLast,
+    adRunTarget:     parsed.adRunTarget,
   };
 }
 

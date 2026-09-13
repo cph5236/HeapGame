@@ -40,6 +40,8 @@ import {
   getPlayerSecret,
   getBeatenHeapIds,
   markHeapBeaten,
+  load,
+  SAVE_KEY,
 } from '../SaveData';
 
 // Stub localStorage — vitest runs in node environment
@@ -818,6 +820,41 @@ describe('soundSettings – schema v4 migration', () => {
     setSoundVolume('music', 0.2);
     resetCacheForTests();
     expect(getSoundSettings().music).toBe(0.2);
+  });
+});
+
+// ── Schema v5 migration ───────────────────────────────────────────────────────
+
+describe('v5 save migration — tripwire for next CURRENT_SCHEMA bump', () => {
+  it('preserves a v5 save intact when CURRENT_SCHEMA moves past 5', () => {
+    // Simulates the next schema bump: a v5 blob must not fall into the
+    // v2->v3 remap branch, which wipes cosmetics and offsets placed items.
+    const v5 = {
+      schemaVersion: 5,
+      balance: 4200,
+      upgrades: { air_jump: 2, dash: 1 },
+      inventory: { medkit: 3 },
+      placed: { heapA: [{ id: 'i1', x: 10, y: 40_000 }] },
+      selectedHeapId: 'heapA',
+      highScores: { heapA: 900 },
+      beatenHeapIds: ['heapA'],
+      cosmeticsOwned: ['hat_cone'],
+      cosmeticsEquipped: { hat: 'hat_cone' },
+      hatAdjustments: { hat_cone: { dAngle: 5, dScale: 1.1 } },
+      menuTutorialSeen: true,
+      tutorialDone: true,
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(v5));
+
+    const loaded = load();
+
+    expect(loaded.cosmeticsOwned).toEqual(['hat_cone']);
+    expect(loaded.cosmeticsEquipped).toEqual({ hat: 'hat_cone' });
+    expect(loaded.beatenHeapIds).toEqual(['heapA']);
+    expect(loaded.hatAdjustments).toEqual({ hat_cone: { dAngle: 5, dScale: 1.1 } });
+    expect(loaded.menuTutorialSeen).toBe(true);
+    // The remap branch would push this to 4_990_000.
+    expect(loaded.placed.heapA[0].y).toBe(40_000);
   });
 });
 
