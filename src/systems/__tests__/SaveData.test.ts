@@ -692,6 +692,18 @@ describe('mergeCloudSave', () => {
     const cloud = { ...base(), playerSecret: 'cloud-secret' };
     expect(mergeCloudSave(local, cloud).playerSecret).toBe('cloud-secret');
   });
+
+  it('mergeGame preserves game fields it does not explicitly merge', () => {
+    // A field written by a NEWER client exists only in the cloud save. The
+    // running build knows nothing about it and must not silently drop it.
+    const local = { ...base(), balance: 100 };
+    const cloud = { ...base(), balance: 50, someFutureField: 'keep-me' } as any;
+
+    const merged = mergeCloudSave(local, cloud) as any;
+
+    expect(merged.someFutureField).toBe('keep-me');
+    expect(merged.balance).toBe(100); // explicit merge rules still win
+  });
 });
 
 // Regression: mergeCloudSave built a hand-listed literal that silently dropped

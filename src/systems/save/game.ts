@@ -514,6 +514,13 @@ function mergeGame(local: RawSave, cloud: RawSave): GameSave {
   ])] as string[];
 
   return {
+    // Spread both inputs first so any game field this build does not know
+    // about survives the merge. Without this, a field written only by a NEWER
+    // client is dropped by the hand-built literal below — the same way the
+    // schema stamp is — and one-time flags like movementRefundApplied become
+    // as fragile as the version they replaced. Explicit rules below still win.
+    ...(secondary as object),
+    ...(primary as object),
     balance:        Math.max(local.balance, cloud.balance),
     upgrades,
     inventory,
