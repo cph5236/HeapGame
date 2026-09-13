@@ -57,7 +57,7 @@ export class BuffManager {
     this.player.setBuffModifiers({
       speedMult: agg.speedMult,
       jumpBonus: agg.jumpBonus,
-      extraAirJumps: agg.extraAirJumps,
+      extraStamina: agg.extraStamina,
       gravityMult: agg.gravityMult,
       cooldownMult: agg.cooldownMult,
     });

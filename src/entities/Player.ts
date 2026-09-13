@@ -772,13 +772,13 @@ export class Player {
   /** Apply aggregated salvage-carry modifiers. Granting a new air jump refills
    *  the air-jump pool so the benefit is usable immediately. */
   setCarryModifiers(
-    mods: Pick<CarryModifiers, 'speedMult' | 'jumpBonus' | 'extraAirJumps'>
+    mods: Pick<CarryModifiers, 'speedMult' | 'jumpBonus' | 'extraStamina'>
         & Partial<Pick<CarryModifiers, 'gravityMult' | 'cooldownMult'>>,
   ): void {
-    const gainedAirJump = mods.extraAirJumps > this.carryExtraAirJumps;
+    const gainedAirJump = mods.extraStamina > this.carryExtraAirJumps;
     this.carrySpeedMult     = mods.speedMult;
     this.carryJumpBonus     = mods.jumpBonus;
-    this.carryExtraAirJumps = mods.extraAirJumps;
+    this.carryExtraAirJumps = mods.extraStamina;
     this.carryGravityMult   = mods.gravityMult  ?? 1;
     this.carryCooldownMult  = mods.cooldownMult ?? 1;
     if (gainedAirJump) {
@@ -787,13 +787,13 @@ export class Player {
   }
 
   setBuffModifiers(
-    mods: { speedMult: number; jumpBonus: number; extraAirJumps: number;
+    mods: { speedMult: number; jumpBonus: number; extraStamina: number;
             gravityMult?: number; cooldownMult?: number },
   ): void {
-    const gainedAirJump = mods.extraAirJumps > this.buffExtraAirJumps;
+    const gainedAirJump = mods.extraStamina > this.buffExtraAirJumps;
     this.buffSpeedMult     = mods.speedMult;
     this.buffJumpBonus     = mods.jumpBonus;
-    this.buffExtraAirJumps = mods.extraAirJumps;
+    this.buffExtraAirJumps = mods.extraStamina;
     this.buffGravityMult   = mods.gravityMult  ?? 1;
     this.buffCooldownMult  = mods.cooldownMult ?? 1;
     if (gainedAirJump) this.airJumpsRemaining = this.effectiveMaxAirJumps;

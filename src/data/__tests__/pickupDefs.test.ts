@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { applyRarity, RARITY_DEFS, PickupEffect, aggregateModifiers, PICKUP_DEFS } from '../pickupDefs';
 
-const skateboard: PickupEffect = { speedMult: 1.15, jumpBonus: -50, extraAirJumps: 0 };
+const skateboard: PickupEffect = { speedMult: 1.15, jumpBonus: -50, extraStamina: 0 };
 
 describe('applyRarity', () => {
   it('is the identity at Rare (1x)', () => {
@@ -24,22 +24,22 @@ describe('applyRarity', () => {
 
   it('treats gravity/cooldown/wallSpeed below 1 as the beneficial direction', () => {
     // feather: gravityMult 0.92 (float = good) -> Mythic pushes further down
-    const feather: PickupEffect = { speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 0.92 };
+    const feather: PickupEffect = { speedMult: 1, jumpBonus: 0, extraStamina: 0, gravityMult: 0.92 };
     const m = applyRarity(feather, 'mythic');
     expect(m.gravityMult!).toBeCloseTo(1 + (0.92 - 1) * 2, 5); // 0.84
   });
 
   it('reduces a harmful gravity penalty toward neutral at Mythic', () => {
     // concrete-boots: gravityMult 1.25 (heavy = bad)
-    const boots: PickupEffect = { speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1.25 };
+    const boots: PickupEffect = { speedMult: 1, jumpBonus: 0, extraStamina: 0, gravityMult: 1.25 };
     const m = applyRarity(boots, 'mythic');
     expect(m.gravityMult!).toBeCloseTo(1 + 0.25 / 2, 5); // 1.125
   });
 
-  it('never scales extraAirJumps (discrete capability)', () => {
-    const balloon: PickupEffect = { speedMult: 1, jumpBonus: 0, extraAirJumps: 1 };
-    expect(applyRarity(balloon, 'mythic').extraAirJumps).toBe(1);
-    expect(applyRarity(balloon, 'common').extraAirJumps).toBe(1);
+  it('never scales extraStamina (discrete capability)', () => {
+    const balloon: PickupEffect = { speedMult: 1, jumpBonus: 0, extraStamina: 1 };
+    expect(applyRarity(balloon, 'mythic').extraStamina).toBe(1);
+    expect(applyRarity(balloon, 'common').extraStamina).toBe(1);
   });
 
   it('leaves undefined optional levers undefined', () => {
@@ -51,7 +51,7 @@ describe('applyRarity', () => {
 
   it('clamps multiplicative levers to a small positive floor', () => {
     // engine-block at Common makes speed slower; ensure it never goes <= 0
-    const block: PickupEffect = { speedMult: 0.75, jumpBonus: 0, extraAirJumps: 0 };
+    const block: PickupEffect = { speedMult: 0.75, jumpBonus: 0, extraStamina: 0 };
     const c = applyRarity(block, 'common');
     expect(c.speedMult).toBeGreaterThan(0);
   });

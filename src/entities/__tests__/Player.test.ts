@@ -637,7 +637,7 @@ describe('Player — ladder drag', () => {
 
   it('a speed item makes the player climb faster', async () => {
     const { player, spy } = await makePlayer({ onGround: true });
-    player.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 });
+    player.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraStamina: 0 });
     player.enterLadder();
     imState.dragUp = true;
 
@@ -649,7 +649,7 @@ describe('Player — ladder drag', () => {
 
   it('a heavy item makes the player climb slower', async () => {
     const { player, spy } = await makePlayer({ onGround: true });
-    player.setCarryModifiers({ speedMult: 0.75, jumpBonus: 0, extraAirJumps: 0 });
+    player.setCarryModifiers({ speedMult: 0.75, jumpBonus: 0, extraStamina: 0 });
     player.enterLadder();
     imState.dragDown = true;
 
@@ -1831,7 +1831,7 @@ describe('Player — carry modifiers', () => {
 
   it('speedMult scales ground walk speed', async () => {
     const { player, spy } = await makePlayer({ onGround: true });
-    player.setCarryModifiers({ speedMult: 1.5, jumpBonus: 0, extraAirJumps: 0 });
+    player.setCarryModifiers({ speedMult: 1.5, jumpBonus: 0, extraStamina: 0 });
     imState.tiltFactor = 1;
 
     player.update(16);
@@ -1844,7 +1844,7 @@ describe('Player — carry modifiers', () => {
       onGround: true,
       config: { maxAirJumps: 0, jumpBoost: 0 },
     });
-    player.setCarryModifiers({ speedMult: 1, jumpBonus: 120, extraAirJumps: 0 });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 120, extraStamina: 0 });
     imState.jumpJustPressed = true;
 
     player.update(16);
@@ -1860,7 +1860,7 @@ describe('Player — carry modifiers', () => {
     });
     (player as any).airJumpsRemaining = 0; // already spent the base air jump
 
-    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 1 });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraStamina: 1 });
 
     // effective max = 1 + 1 = 2; granting the new jump should bump remaining
     expect((player as any).airJumpsRemaining).toBe(2);
@@ -1872,7 +1872,7 @@ describe('Player — carry modifiers', () => {
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
       config: { maxAirJumps: 1, jumpBoost: 0 },
     });
-    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 2 });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraStamina: 2 });
     (player as any).airJumpsRemaining = 0;
 
     // Land
@@ -1895,7 +1895,7 @@ describe('Player — carry gravity & cooldown levers', () => {
       config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
-    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 2, cooldownMult: 1 });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraStamina: 0, gravityMult: 2, cooldownMult: 1 });
 
     player.update(16);
 
@@ -1910,7 +1910,7 @@ describe('Player — carry gravity & cooldown levers', () => {
       config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
-    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 0.5, cooldownMult: 1 });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraStamina: 0, gravityMult: 0.5, cooldownMult: 1 });
 
     player.update(16);
 
@@ -1923,7 +1923,7 @@ describe('Player — carry gravity & cooldown levers', () => {
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
       config: { maxAirJumps: 0, jumpBoost: 0 },
     });
-    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1, cooldownMult: 0.5 });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraStamina: 0, gravityMult: 1, cooldownMult: 0.5 });
     imState.dashJustFired = true;
     imState.dashDir = 1;
 
@@ -1939,7 +1939,7 @@ describe('Player — carry gravity & cooldown levers', () => {
       config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
-    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1, cooldownMult: 0.5 });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraStamina: 0, gravityMult: 1, cooldownMult: 0.5 });
     imState.jumpJustPressed = true;
 
     player.update(16);
@@ -1954,8 +1954,8 @@ describe('Player — carry gravity & cooldown levers', () => {
 describe('Player — buff-modifier layer', () => {
   it('buff speedMult stacks multiplicatively with carry speedMult', async () => {
     const { player, spy } = await makePlayer({ onGround: true });
-    player.setCarryModifiers({ speedMult: 1.2, jumpBonus: 0, extraAirJumps: 0 });
-    player.setBuffModifiers({ speedMult: 1.5, jumpBonus: 0, extraAirJumps: 0 });
+    player.setCarryModifiers({ speedMult: 1.2, jumpBonus: 0, extraStamina: 0 });
+    player.setBuffModifiers({ speedMult: 1.5, jumpBonus: 0, extraStamina: 0 });
     imState.tiltFactor = 1;
 
     player.update(16);
@@ -1966,8 +1966,8 @@ describe('Player — buff-modifier layer', () => {
 
   it('buff jumpBonus adds to carry jumpBonus and jumpBoost', async () => {
     const { player, spy } = await makePlayer({ onGround: true, config: { jumpBoost: 10 } });
-    player.setCarryModifiers({ speedMult: 1, jumpBonus: 20, extraAirJumps: 0 });
-    player.setBuffModifiers({ speedMult: 1, jumpBonus: 75, extraAirJumps: 0 });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 20, extraStamina: 0 });
+    player.setBuffModifiers({ speedMult: 1, jumpBonus: 75, extraStamina: 0 });
     imState.jumpJustPressed = true;
 
     player.update(16);
@@ -2497,7 +2497,7 @@ describe('Player — wall-slide steering', () => {
     // slide can bank too — otherwise the wall is the one place the item stops
     // applying, and an alcove entry is no snappier for carrying it.
     const { player, sprite, spy } = await makeWallSlider('left');
-    player.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 });
+    player.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraStamina: 0 });
     imState.tiltFactor = -1;
 
     for (let i = 0; i < 40; i++) stepFrame(player, spy);
@@ -2530,7 +2530,7 @@ describe('Player — wall-slide steering', () => {
     // flips the player outward — the push-off-the-wall feel #162 removed, reached
     // through carried items instead of placement mode.
     const { player, sprite, spy } = await makeWallSlider('left');
-    player.setCarryModifiers({ speedMult: 0.25, jumpBonus: 0, extraAirJumps: 0 });
+    player.setCarryModifiers({ speedMult: 0.25, jumpBonus: 0, extraStamina: 0 });
     imState.tiltFactor = -1; // steering INTO the wall, toward the alcove
 
     for (let i = 0; i < 40; i++) stepFrame(player, spy);
@@ -2625,26 +2625,26 @@ describe('Player — speedMult airborne', () => {
 
   it('carry speedMult raises air top speed', async () => {
     const vx = await airTopSpeed(p =>
-      p.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 }));
+      p.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraStamina: 0 }));
     expectCeiling(vx, PLAYER_SPEED * 1.3);
   });
 
   it('a slowing carry item lowers air top speed', async () => {
     const vx = await airTopSpeed(p =>
-      p.setCarryModifiers({ speedMult: 0.75, jumpBonus: 0, extraAirJumps: 0 }));
+      p.setCarryModifiers({ speedMult: 0.75, jumpBonus: 0, extraStamina: 0 }));
     expectCeiling(vx, PLAYER_SPEED * 0.75);
   });
 
   it('buff speedMult raises air top speed', async () => {
     const vx = await airTopSpeed(p =>
-      p.setBuffModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 }));
+      p.setBuffModifiers({ speedMult: 1.3, jumpBonus: 0, extraStamina: 0 }));
     expectCeiling(vx, PLAYER_SPEED * 1.3);
   });
 
   it('carry and buff speedMult stack multiplicatively in the air', async () => {
     const vx = await airTopSpeed(p => {
-      p.setCarryModifiers({ speedMult: 1.2, jumpBonus: 0, extraAirJumps: 0 });
-      p.setBuffModifiers({ speedMult: 1.5, jumpBonus: 0, extraAirJumps: 0 });
+      p.setCarryModifiers({ speedMult: 1.2, jumpBonus: 0, extraStamina: 0 });
+      p.setBuffModifiers({ speedMult: 1.5, jumpBonus: 0, extraStamina: 0 });
     });
     expectCeiling(vx, PLAYER_SPEED * 1.2 * 1.5);
   });
@@ -2660,7 +2660,7 @@ describe('Player — speedMult airborne', () => {
     // the base speed, so the same jump with the same item ran ~20% slower for the
     // rest of the airtime depending on whether the stick had been touched.
     const { player, spy } = await makePlayer({ onGround: false });
-    player.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 });
+    player.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraStamina: 0 });
     (player as any).momentumX = PLAYER_SPEED * 1.3;
 
     imState.tiltFactor = 0;                       // release for ~300ms
@@ -2686,7 +2686,7 @@ describe('Player — speedMult airborne', () => {
     // naturally, not be clamped to it — the gate blocks acceleration, it is not a
     // clamp. Holding input must never make an over-speed player slower.
     const vx = await airTopSpeed(
-      p => p.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0 }),
+      p => p.setCarryModifiers({ speedMult: 1.3, jumpBonus: 0, extraStamina: 0 }),
       { seed: PLAYER_AIR_MAX_SPEED },
     );
     expect(vx).toBe(PLAYER_AIR_MAX_SPEED);

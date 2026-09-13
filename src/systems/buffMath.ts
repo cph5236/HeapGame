@@ -3,7 +3,7 @@ import type { PickupEffect } from '../data/pickupDefs';
 export interface BuffAggregate {
   speedMult: number;
   jumpBonus: number;
-  extraAirJumps: number;
+  extraStamina: number;
   gravityMult: number;
   cooldownMult: number;
   wallSpeedMult: number;
@@ -17,7 +17,7 @@ export interface ActiveBuff {
 }
 
 const IDENTITY: BuffAggregate = {
-  speedMult: 1, jumpBonus: 0, extraAirJumps: 0,
+  speedMult: 1, jumpBonus: 0, extraStamina: 0,
   gravityMult: 1, cooldownMult: 1, wallSpeedMult: 1,
 };
 
@@ -26,7 +26,7 @@ export function aggregateBuffEffects(effects: Partial<PickupEffect>[]): BuffAggr
   return effects.reduce<BuffAggregate>((acc, e) => ({
     speedMult:     acc.speedMult     * (e.speedMult     ?? 1),
     jumpBonus:     acc.jumpBonus     + (e.jumpBonus     ?? 0),
-    extraAirJumps: acc.extraAirJumps + (e.extraAirJumps ?? 0),
+    extraStamina: acc.extraStamina + (e.extraStamina ?? 0),
     gravityMult:   acc.gravityMult   * (e.gravityMult   ?? 1),
     cooldownMult:  acc.cooldownMult  * (e.cooldownMult  ?? 1),
     wallSpeedMult: acc.wallSpeedMult * (e.wallSpeedMult ?? 1),

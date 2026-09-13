@@ -4,7 +4,7 @@ import { aggregateBuffEffects, upsertBuff, tickBuffs, ActiveBuff } from '../buff
 describe('aggregateBuffEffects', () => {
   it('returns identity for an empty list', () => {
     expect(aggregateBuffEffects([])).toEqual({
-      speedMult: 1, jumpBonus: 0, extraAirJumps: 0,
+      speedMult: 1, jumpBonus: 0, extraStamina: 0,
       gravityMult: 1, cooldownMult: 1, wallSpeedMult: 1,
     });
   });

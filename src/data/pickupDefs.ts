@@ -17,7 +17,7 @@ export interface PickupEffect {
   /** Added to the player's jumpBoost (px/s). Positive = higher jump. */
   jumpBonus:     number;
   /** Added to the player's max air-jumps. */
-  extraAirJumps: number;
+  extraStamina: number;
   /** Multiplies the player's gravity. <1 floats, >1 sinks. (default 1) */
   gravityMult?:  number;
   /** Multiplies dash + wall-jump cooldowns. <1 = faster recharge. (default 1) */
@@ -61,13 +61,13 @@ function scaleLever(
 }
 
 /** Apply rarity scaling to an effect: good levers grow, bad levers shrink toward
- *  neutral. `extraAirJumps` is discrete and never scaled. */
+ *  neutral. `extraStamina` is discrete and never scaled. */
 export function applyRarity(effect: PickupEffect, rarity: Rarity): PickupEffect {
   const m = RARITY_SCORE_MULT[rarity];
   return {
     speedMult:     scaleLever(effect.speedMult, 1, +1, m, 0.05),
     jumpBonus:     scaleLever(effect.jumpBonus, 0, +1, m),
-    extraAirJumps: effect.extraAirJumps,
+    extraStamina: effect.extraStamina,
     gravityMult:   effect.gravityMult  === undefined ? undefined : scaleLever(effect.gravityMult,  1, -1, m, 0.05),
     cooldownMult:  effect.cooldownMult === undefined ? undefined : scaleLever(effect.cooldownMult, 1, -1, m, 0.05),
     wallSpeedMult: effect.wallSpeedMult === undefined ? undefined : scaleLever(effect.wallSpeedMult, 1, -1, m, 0.05),
@@ -98,7 +98,7 @@ export interface PickupDef {
 export interface CarryModifiers {
   speedMult:     number;
   jumpBonus:     number;
-  extraAirJumps: number;
+  extraStamina: number;
   gravityMult:   number;
   cooldownMult:  number;
   wallSpeedMult: number;
@@ -122,14 +122,14 @@ export function aggregateModifiers(carried: readonly CarriedPickup[]): CarryModi
       return {
         speedMult:     acc.speedMult * e.speedMult,
         jumpBonus:     acc.jumpBonus + e.jumpBonus,
-        extraAirJumps: acc.extraAirJumps + e.extraAirJumps,
+        extraStamina: acc.extraStamina + e.extraStamina,
         gravityMult:   acc.gravityMult * (e.gravityMult ?? 1),
         cooldownMult:  acc.cooldownMult * (e.cooldownMult ?? 1),
         wallSpeedMult: acc.wallSpeedMult * (e.wallSpeedMult ?? 1),
         totalBonus:    acc.totalBonus + Math.round(def.scoreBonus * RARITY_SCORE_MULT[rarity]),
       };
     },
-    { speedMult: 1, jumpBonus: 0, extraAirJumps: 0,
+    { speedMult: 1, jumpBonus: 0, extraStamina: 0,
       gravityMult: 1, cooldownMult: 1, wallSpeedMult: 1, totalBonus: 0 },
   );
 }
@@ -147,9 +147,9 @@ export function formatEffectSummary(effect: PickupEffect): string {
   if (effect.jumpBonus !== 0) {
     parts.push(`${effect.jumpBonus > 0 ? '+' : ''}${Math.round(effect.jumpBonus)} Jump Height`);
   }
-  if (effect.extraAirJumps !== 0) {
-    const n = effect.extraAirJumps;
-    parts.push(`${n > 0 ? '+' : ''}${n} Air Jump${Math.abs(n) === 1 ? '' : 's'}`);
+  if (effect.extraStamina !== 0) {
+    const n = effect.extraStamina;
+    parts.push(`${n > 0 ? '+' : ''}${n} Max Stamina`);
   }
   if ((effect.gravityMult  ?? 1) !== 1) parts.push(effect.gravityMult!  < 1 ? 'Floaty'          : 'Heavy');
   if ((effect.cooldownMult ?? 1) !== 1) parts.push(effect.cooldownMult! < 1 ? 'Faster Cooldown' : 'Slower Cooldown');
@@ -165,7 +165,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Still has some spring left.',
     color:       0x66ddff,
     polarity:    'positive',
-    effect:      { speedMult: 1.0, jumpBonus: 50, extraAirJumps: 0 },
+    effect:      { speedMult: 1.0, jumpBonus: 50, extraStamina: 0 },
     scoreBonus:  PICKUP_BONUS['spring-coil'],
   },
   {
@@ -174,7 +174,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'One careful owner. Mostly.',
     color:       0xc8a060,
     polarity:    'positive',
-    effect:      { speedMult: 1.15, jumpBonus: 0, extraAirJumps: 0 },
+    effect:      { speedMult: 1.15, jumpBonus: 0, extraStamina: 0 },
     scoreBonus:  PICKUP_BONUS['worn-boot'],
   },
   {
@@ -183,7 +183,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: "Leftover from someone's party.",
     color:       0xff77cc,
     polarity:    'positive',
-    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 1 },
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraStamina: 1 },
     scoreBonus:  PICKUP_BONUS['balloon'],
   },
   {
@@ -192,7 +192,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Heavy hunk of nope.',
     color:       0x888888,
     polarity:    'negative',
-    effect:      { speedMult: 0.75, jumpBonus: 0, extraAirJumps: 0 },
+    effect:      { speedMult: 0.75, jumpBonus: 0, extraStamina: 0 },
     scoreBonus:  PICKUP_BONUS['engine-block'],
   },
   {
@@ -201,7 +201,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Going nowhere fast.',
     color:       0x9a5a3a,
     polarity:    'negative',
-    effect:      { speedMult: 0.8, jumpBonus: -40, extraAirJumps: 0 },
+    effect:      { speedMult: 0.8, jumpBonus: -40, extraStamina: 0 },
     scoreBonus:  PICKUP_BONUS['rusty-anchor'],
   },
   {
@@ -210,7 +210,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Light as, well, a feather.',
     color:       0xeeeeaa,
     polarity:    'positive',
-    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, gravityMult: 0.92 },
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraStamina: 0, gravityMult: 0.92 },
     scoreBonus:  PICKUP_BONUS['feather'],
   },
   {
@@ -219,7 +219,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Runs hot. Runs fast.',
     color:       0x44ff44,
     polarity:    'positive',
-    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, cooldownMult: 0.25 },
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraStamina: 0, cooldownMult: 0.25 },
     scoreBonus:  PICKUP_BONUS['overclock-chip'],
   },
   {
@@ -228,7 +228,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Pop in case of emergency.',
     color:       0xaaffff,
     polarity:    'positive',
-    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0 },
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraStamina: 0 },
     scoreBonus:  PICKUP_BONUS['bubble-wrap'],
     grantsShield: true,
   },
@@ -238,7 +238,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'A gift from the mob.',
     color:       0x777788,
     polarity:    'negative',
-    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1.25 },
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraStamina: 0, gravityMult: 1.25 },
     scoreBonus:  PICKUP_BONUS['concrete-boots'],
   },
   {
@@ -247,7 +247,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Do not expose to open flame.',
     color:       0xff5522,
     polarity:    'negative',
-    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, wallSpeedMult: 1.5 },
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraStamina: 0, wallSpeedMult: 1.5 },
     scoreBonus:  PICKUP_BONUS['fuel-canister'],
   },
 
@@ -258,7 +258,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Old worn-out skateboard.',
     color:       0xcc4444,
     polarity:    'negative',
-    effect:      { speedMult: 1.15, jumpBonus: -25, extraAirJumps: 0 },
+    effect:      { speedMult: 1.15, jumpBonus: -25, extraStamina: 0 },
     scoreBonus:  PICKUP_BONUS['skateboard'],
   },
   {
@@ -267,7 +267,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: "Yesterday's mattress, still bouncy.",
     color:       0xbbaa66,
     polarity:    'negative',
-    effect:      { speedMult: 0.85, jumpBonus: 45, extraAirJumps: 0 },
+    effect:      { speedMult: 0.85, jumpBonus: 45, extraStamina: 0 },
     scoreBonus:  PICKUP_BONUS['box-spring'],
   },
   {
@@ -276,7 +276,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Smells like pizza and a good time.',
     color:       0xddaa55,
     polarity:    'negative',
-    effect:      { speedMult: 1.15, jumpBonus: 0, extraAirJumps: 0, cooldownMult: 1.5 },
+    effect:      { speedMult: 1.15, jumpBonus: 0, extraStamina: 0, cooldownMult: 1.5 },
     scoreBonus:  PICKUP_BONUS['greasy-pizza-box'],
   },
   {
@@ -285,7 +285,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: "The party's running out of air.",
     color:       0x99ddee,
     polarity:    'negative',
-    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, gravityMult: 0.85, wallSpeedMult: 1.2 },
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraStamina: 0, gravityMult: 0.85, wallSpeedMult: 1.2 },
     scoreBonus:  PICKUP_BONUS['leaky-helium-tank'],
   },
   {
@@ -294,7 +294,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Still runs. Wakes the whole heap.',
     color:       0x556677,
     polarity:    'negative',
-    effect:      { speedMult: 1.3, jumpBonus: 0, extraAirJumps: 0, wallSpeedMult: 1.3 },
+    effect:      { speedMult: 1.3, jumpBonus: 0, extraStamina: 0, wallSpeedMult: 1.3 },
     scoreBonus:  PICKUP_BONUS['outboard-motor'],
   },
   {
@@ -303,7 +303,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Seen better summers.',
     color:       0x55bb88,
     polarity:    'negative',
-    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 1, gravityMult: 1.15 },
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraStamina: 1, gravityMult: 1.15 },
     scoreBonus:  PICKUP_BONUS['folding-lawn-chair'],
   },
   {
@@ -312,7 +312,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Goes down with the ship.',
     color:       0x667788,
     polarity:    'negative',
-    effect:      { speedMult: 1.0, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1.3, wallSpeedMult: 0.75 },
+    effect:      { speedMult: 1.0, jumpBonus: 0, extraStamina: 0, gravityMult: 1.3, wallSpeedMult: 0.75 },
     scoreBonus:  PICKUP_BONUS['anchor-chain'],
   },
   {
@@ -321,7 +321,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: "Fast. Stopping's your problem.",
     color:       0xbb6644,
     polarity:    'negative',
-    effect:      { speedMult: 1.3, jumpBonus: -35, extraAirJumps: 0 },
+    effect:      { speedMult: 1.3, jumpBonus: -35, extraStamina: 0 },
     scoreBonus:  PICKUP_BONUS['rusted-roller-skates'],
   },
   {
@@ -330,7 +330,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'No pool for miles.',
     color:       0x88aacc,
     polarity:    'negative',
-    effect:      { speedMult: 1.0, jumpBonus: 45, extraAirJumps: 0, cooldownMult: 1.5 },
+    effect:      { speedMult: 1.0, jumpBonus: 45, extraStamina: 0, cooldownMult: 1.5 },
     scoreBonus:  PICKUP_BONUS['diving-board'],
   },
   {
@@ -339,7 +339,7 @@ export const PICKUP_DEFS: PickupDef[] = [
     description: 'Heavy, but it buys you time.',
     color:       0xaa9966,
     polarity:    'negative',
-    effect:      { speedMult: 0.8, jumpBonus: 0, extraAirJumps: 0, wallSpeedMult: 0.7 },
+    effect:      { speedMult: 0.8, jumpBonus: 0, extraStamina: 0, wallSpeedMult: 0.7 },
     scoreBonus:  PICKUP_BONUS['sandbag-vest'],
   },
 ];
