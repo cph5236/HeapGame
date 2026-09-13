@@ -78,6 +78,24 @@ describe('getPlayerConfig – maxWalkableSlopeDeg', () => {
   });
 });
 
+describe('getPlayerConfig – stamina fields', () => {
+  it('getPlayerConfig derives stamina fields from upgrades', () => {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      schemaVersion: 5, balance: 0,
+      upgrades: { air_jump: 1, max_stamina: 2, stamina_regen: 0, wall_jump_cd: 4 },
+      inventory: {}, placed: {}, highScores: {}, beatenHeapIds: [],
+      cosmeticsOwned: [], cosmeticsEquipped: {},
+    }));
+
+    const cfg = getPlayerConfig();
+
+    expect(cfg.maxAirJumps).toBe(2);            // 1 + air_jump level
+    expect(cfg.baseStamina).toBe(5);            // BASE_STAMINA 3 + max_stamina 2
+    expect(cfg.staminaRegenAirMs).toBe(3000);   // level 0 = base rate
+    expect(cfg.wallJumpCooldownMs).toBe(2400);  // 3000 - 4 * 150
+  });
+});
+
 describe('getPlayerConfig – jumpBoost', () => {
   it('is 0 when jump_boost is level 0', () => {
     expect(getPlayerConfig().jumpBoost).toBe(0);

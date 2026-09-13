@@ -210,9 +210,10 @@ async function makePlayer(opts: {
 
   const defaultConfig = {
     maxAirJumps: 1,
-    wallJump: false,
-    dash: false,
-    dive: true,
+    baseStamina: 3,
+    staminaRegenAirMs: 3000,
+    wallJumpCooldownMs: 3000,
+    dashPower: 0,
     jumpBoost: 0,
     ...opts.config,
   } as import('../../systems/SaveData').PlayerConfig;
@@ -407,7 +408,7 @@ describe('Player — tilt-kick jump', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
     });
     // Set coyoteTimer to 0 so no ground jump
     (player as any).coyoteTimer = 0;
@@ -425,7 +426,7 @@ describe('Player — tilt-kick jump', () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     (player as any).wallJumpsRemaining = 1;
@@ -452,7 +453,7 @@ describe('Player — tilt-kick jump', () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 1, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     (player as any).airJumpsRemaining = 1;
@@ -475,7 +476,7 @@ describe('Player — tilt-kick jump', () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 1, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     (player as any).airJumpsRemaining = 1;
@@ -496,7 +497,7 @@ describe('Player — mobile dive', () => {
     const { player, spy, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     imState.diveJustFired = true;
@@ -511,7 +512,7 @@ describe('Player — mobile dive', () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     imState.diveJustFired = true;
@@ -533,7 +534,7 @@ describe('Player — mobile dive', () => {
   it('dive does not fire when player is on ground', async () => {
     const { player, spy } = await makePlayer({
       onGround: true,
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     imState.diveJustFired = true;
 
@@ -546,7 +547,7 @@ describe('Player — mobile dive', () => {
     const { player, spy, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     (player as any).downKeys[0].isDown = true;
@@ -564,7 +565,7 @@ describe('Player — mobile dive', () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
-      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: true, jumpBoost: 50 },
+      config: { maxAirJumps: 1, jumpBoost: 50 },
     });
     // Set up coyote window so ground jump can fire
     (player as any).coyoteTimer = 50;
@@ -595,7 +596,7 @@ describe('Player — mobile dive', () => {
     const { player, spy, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
-      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     (player as any).downKeys[0].isDown = true;
@@ -771,7 +772,7 @@ describe('Player — dive landing', () => {
   it('clears diveActive when player lands while a dive burst is still running', async () => {
     const { player } = await makePlayer({
       onGround: true,
-      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
     });
     // Simulate landing mid-dive: diveActive frozen at 120ms remaining
     (player as any).diveActive = 120;
@@ -787,7 +788,7 @@ describe('Player — dive landing', () => {
     // 2. jump  →  first airborne frame must NOT apply dive velocity
     const { player, spy, sprite } = await makePlayer({
       onGround: true,
-      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
     });
     (player as any).diveActive = 120; // frozen dive from before landing
 
@@ -813,7 +814,7 @@ describe('Player — air momentum', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     imState.tiltFactor = 1;
     player.update(16);
@@ -826,7 +827,7 @@ describe('Player — air momentum', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     // Seed positive momentum
     (player as any).momentumX = 100;
@@ -843,7 +844,7 @@ describe('Player — air momentum', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).momentumX = 100;
     imState.tiltFactor = 0;
@@ -856,7 +857,7 @@ describe('Player — air momentum', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).momentumX = 150;
     // Now simulate landing
@@ -869,7 +870,7 @@ describe('Player — air momentum', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).momentumX = 150; // away from the left-hand wall
     imState.tiltFactor = 0; // No input so no air momentum boost
@@ -884,7 +885,7 @@ describe('Player — air momentum', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     // Arrived at the face far faster than air control could ever accelerate: banking
     // it whole would slingshot the player the frame the wall runs out.
@@ -898,7 +899,7 @@ describe('Player — air momentum', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).momentumX = 150;
     imState.dashJustFired = true;
@@ -910,7 +911,7 @@ describe('Player — air momentum', () => {
   it('seeds momentumX from jumpVx on swipe-jump', async () => {
     const { player } = await makePlayer({
       onGround: true,
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     imState.jumpJustPressed = true;
     imState.jumpVx = 120;
@@ -922,7 +923,7 @@ describe('Player — air momentum', () => {
     const { player } = await makePlayer({
       onGround: true,
       bodyOverrides: { blocked: { left: false, right: false, down: true }, velocity: { x: 150, y: 0 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     imState.jumpJustPressed = true;
     imState.jumpVx = 0;
@@ -938,7 +939,7 @@ describe('Player — dash exit smoothing', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 500, y: 100 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     // Trigger dash
     imState.dashJustFired = true;
@@ -962,7 +963,7 @@ describe('Player — dash exit smoothing', () => {
     const { player } = await makePlayer({
       onGround: true,
       bodyOverrides: { blocked: { left: false, right: false, down: true }, velocity: { x: 500, y: 0 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     // Trigger dash while on ground
     imState.dashJustFired = true;
@@ -982,7 +983,7 @@ describe('Player — dash exit smoothing', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 100, y: 100 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     // Set momentumX directly without triggering dash
     (player as any).momentumX = 42;
@@ -1004,7 +1005,7 @@ describe('Player — jump buffer', () => {
     const { player, spy, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 400 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     (player as any).airJumpsRemaining = 0;
@@ -1029,7 +1030,7 @@ describe('Player — jump buffer', () => {
     const { player, spy, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 400 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     (player as any).airJumpsRemaining = 0;
@@ -1069,7 +1070,7 @@ describe('Player — jump buffer', () => {
     const { player, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 400 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     (player as any).airJumpsRemaining = 0;
@@ -1097,7 +1098,7 @@ describe('Player — variable jump height (jump cut)', () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -300 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
 
@@ -1118,7 +1119,7 @@ describe('Player — variable jump height (jump cut)', () => {
     const { player, spy, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -300 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
 
@@ -1142,7 +1143,7 @@ describe('Player — variable jump height (jump cut)', () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
 
@@ -1161,7 +1162,7 @@ describe('Player — variable jump height (jump cut)', () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -500 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     (player as any).jumpKeys[0].isDown = true;
@@ -1181,7 +1182,7 @@ describe('Player — variable jump height (jump cut)', () => {
     const phaserMod = await import('phaser');
     (phaserMod.default.Input.Keyboard.JustDown as any).mockReturnValueOnce(true);
 
-    const { player, spy } = await makePlayer({ onGround: true, config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 } });
+    const { player, spy } = await makePlayer({ onGround: true, config: { maxAirJumps: 0, jumpBoost: 0 } });
     // jumpKeys[0].isDown stays false — simulating already-released
 
     player.update(16);
@@ -1198,7 +1199,7 @@ describe('Player — variable jump height (jump cut)', () => {
     const { player, spy, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 400 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
 
@@ -1223,7 +1224,7 @@ describe('Player — variable jump height (jump cut)', () => {
     const phaserMod = await import('phaser');
     (phaserMod.default.Input.Keyboard.JustDown as any).mockReturnValueOnce(true);
 
-    const { player, spy } = await makePlayer({ onGround: true, config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 } });
+    const { player, spy } = await makePlayer({ onGround: true, config: { maxAirJumps: 0, jumpBoost: 0 } });
     (player as any).jumpKeys[0].isDown = true; // held
 
     player.update(16);
@@ -1256,7 +1257,7 @@ describe('Player — asymmetric gravity', () => {
     const { player, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 300 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
 
@@ -1271,7 +1272,7 @@ describe('Player — asymmetric gravity', () => {
     const { player, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -50 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
 
@@ -1285,7 +1286,7 @@ describe('Player — asymmetric gravity', () => {
     const { player, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -400 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
 
@@ -1307,7 +1308,7 @@ describe('Player — asymmetric gravity', () => {
     const { player, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: -APEX_VY_THRESHOLD } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
 
@@ -1324,7 +1325,7 @@ describe('Player — coyote consumed on every jump path', () => {
   it('ground jump fired while coyote was active consumes the window', async () => {
     const { player } = await makePlayer({
       onGround: true,
-      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 120;
     imState.jumpJustPressed = true;
@@ -1343,7 +1344,7 @@ describe('Player — coyote consumed on every jump path', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 100;
     (player as any).wallJumpsRemaining = 1;
@@ -1424,7 +1425,7 @@ describe('Player — wall-leave coyote', () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     (player as any).wallJumpsRemaining = 1;
@@ -1457,7 +1458,7 @@ describe('Player — wall-leave coyote', () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     (player as any).wallJumpsRemaining = 1;
@@ -1486,7 +1487,7 @@ describe('Player — wall-leave coyote', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     (player as any).wallJumpsRemaining = 1;
@@ -1504,7 +1505,7 @@ describe('Player — wall-leave coyote', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     (player as any).wallJumpsRemaining = 1;
@@ -1534,7 +1535,7 @@ describe('Player — wall-slide outward momentum', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 200 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).momentumX = 0;
     imState.tiltFactor = 0; // No input, so no air momentum boost
@@ -1549,7 +1550,7 @@ describe('Player — wall-slide outward momentum', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 200 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).momentumX = 0;
     (player as any).lastWallSide = -1; // Mark that player is on left wall
@@ -1573,7 +1574,7 @@ describe('Player — wall-slide outward momentum', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: true, down: false }, velocity: { x: 0, y: 200 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).momentumX = 0;
     (player as any).lastWallSide = 1; // Mark that player is on right wall
@@ -1597,7 +1598,7 @@ describe('Player — wall-slide outward momentum', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 200 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).momentumX = 0;
     imState.tiltFactor = 0; // No input
@@ -1614,7 +1615,7 @@ describe('Player — wall-slide outward momentum', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     // Set tiltFactor to 0 to avoid air momentum boost from controller input
     imState.tiltFactor = 0;
@@ -1641,7 +1642,7 @@ describe('Player — dash ground refresh', () => {
     const { player, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
 
     // Trigger dash while airborne
@@ -1666,7 +1667,7 @@ describe('Player — dash ground refresh', () => {
     const { player, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
 
     // Set up airborne with left wall touch and dash enabled
@@ -1685,25 +1686,6 @@ describe('Player — dash ground refresh', () => {
     expect((player as any).dashCooldown).toBe(expectedCooldown);
   });
 
-  it('dashEnabled: false → no refresh logic runs', async () => {
-    const { player } = await makePlayer({
-      onGround: true,
-      bodyOverrides: { blocked: { left: false, right: false, down: true }, velocity: { x: 0, y: 0 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
-    });
-
-    // Manually set dashCooldown to 500 ms
-    (player as any).dashCooldown = 500;
-
-    // Run update while on ground with dash disabled
-    player.update(16);
-
-    // Since dashEnabled is false, updateDash returns early and never decays dashCooldown.
-    // dashCooldown should remain at 500 (unchanged).
-    // NOTE: This test verifies the guard in updateDash (line 402: if (!this.dashEnabled) return;)
-    // which prevents dashCooldown decay and also protects the handleLandingResets refresh logic.
-    expect((player as any).dashCooldown).toBe(500);
-  });
 });
 
 // ── 23. Wall-jump cooldown (#8) ────────────────────────────────────────────────
@@ -1713,7 +1695,7 @@ describe('Player — wall-jump cooldown (#8)', () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
 
@@ -1744,7 +1726,7 @@ describe('Player — wall-jump cooldown (#8)', () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
 
@@ -1776,7 +1758,7 @@ describe('Player — wall-jump cooldown (#8)', () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
 
@@ -1804,24 +1786,24 @@ describe('Player — wall-jump cooldown (#8)', () => {
     expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
   });
 
-  it('cooldown expires after 2 seconds → can fire on same wall', async () => {
+  it('cooldown expires after WALL_JUMP_COOLDOWN_MS → can fire on same wall', async () => {
     const { player, spy } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
 
-    // Frame A: wall-jump fires, cooldown = 2000ms
+    // Frame A: wall-jump fires, cooldown = WALL_JUMP_COOLDOWN_MS
     imState.jumpJustPressed = true;
     player.update(16);
     expect((player as any)._justWallJumped).toBe(true);
 
-    // Frame B: tick time > 2000ms to expire cooldown, stay on left wall
+    // Frame B: tick time past the cooldown, stay on left wall
     spy.setVelocityX.length = 0;
     spy.setVelocityY.length = 0;
     imState.jumpJustPressed = false;
-    player.update(2001); // Advance past WALL_JUMP_COOLDOWN_MS (2000)
+    player.update(WALL_JUMP_COOLDOWN_MS + 1); // Advance past the cooldown
 
     // Frame C: press jump, still on left wall → should fire (cooldown expired)
     spy.setVelocityX.length = 0;
@@ -1833,22 +1815,6 @@ describe('Player — wall-jump cooldown (#8)', () => {
     expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY);
   });
 
-  it('wall-jump disabled (wallJump: false) → never fires regardless of cooldown', async () => {
-    const { player, spy } = await makePlayer({
-      onGround: false,
-      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
-    });
-    (player as any).coyoteTimer = 0;
-
-    // Press jump on wall with wallJump disabled
-    imState.jumpJustPressed = true;
-    player.update(16);
-
-    // Wall-jump should NOT fire (feature disabled)
-    expect((player as any)._justWallJumped).toBe(false);
-    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
-  });
 });
 
 // ── 24. Carry modifiers (salvage pickups) ─────────────────────────────────────
@@ -1876,7 +1842,7 @@ describe('Player — carry modifiers', () => {
   it('jumpBonus increases jump velocity (more negative)', async () => {
     const { player, spy } = await makePlayer({
       onGround: true,
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     player.setCarryModifiers({ speedMult: 1, jumpBonus: 120, extraAirJumps: 0 });
     imState.jumpJustPressed = true;
@@ -1890,7 +1856,7 @@ describe('Player — carry modifiers', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
     });
     (player as any).airJumpsRemaining = 0; // already spent the base air jump
 
@@ -1904,7 +1870,7 @@ describe('Player — carry modifiers', () => {
     const { player, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
     });
     player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 2 });
     (player as any).airJumpsRemaining = 0;
@@ -1926,7 +1892,7 @@ describe('Player — carry gravity & cooldown levers', () => {
     const { player, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 300 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 2, cooldownMult: 1 });
@@ -1941,7 +1907,7 @@ describe('Player — carry gravity & cooldown levers', () => {
     const { player, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 300 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 0.5, cooldownMult: 1 });
@@ -1955,7 +1921,7 @@ describe('Player — carry gravity & cooldown levers', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1, cooldownMult: 0.5 });
     imState.dashJustFired = true;
@@ -1970,7 +1936,7 @@ describe('Player — carry gravity & cooldown levers', () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraAirJumps: 0, gravityMult: 1, cooldownMult: 0.5 });
@@ -2102,7 +2068,7 @@ describe('Player — player-action events', () => {
     const { player, sceneEvents } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 1, wallJump: false, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     (player as any).airJumpsRemaining = 1;
@@ -2117,7 +2083,7 @@ describe('Player — player-action events', () => {
     const { player, sceneEvents } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
-      config: { maxAirJumps: 0, wallJump: true, dash: false, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     imState.jumpJustPressed = true;
@@ -2139,7 +2105,7 @@ describe('Player — player-action events', () => {
   it('emits player-action "dash" when a dash fires', async () => {
     const { player, sceneEvents } = await makePlayer({
       onGround: true,
-      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     imState.dashJustFired = true;
     imState.dashDir = 1;
@@ -2153,7 +2119,7 @@ describe('Player — player-action events', () => {
     const { player, sceneEvents } = await makePlayer({
       onGround: false, // Start airborne so cooldown doesn't get reset by landing
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     // First dash fires and sets cooldown
     imState.dashJustFired = true;
@@ -2176,7 +2142,7 @@ describe('Player — player-action events', () => {
     const { player, sceneEvents } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 200 } },
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     (player as any).coyoteTimer = 0;
     imState.diveJustFired = true;
@@ -2189,7 +2155,7 @@ describe('Player — player-action events', () => {
   it('does NOT emit player-action "dive" when on ground', async () => {
     const { player, sceneEvents } = await makePlayer({
       onGround: true,
-      config: { maxAirJumps: 0, wallJump: false, dash: false, dive: true, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     imState.diveJustFired = true;
 
@@ -2201,7 +2167,7 @@ describe('Player — player-action events', () => {
   it('emits only once per action — does not retrigger on successive frames', async () => {
     const { player, sceneEvents } = await makePlayer({
       onGround: true,
-      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     imState.dashJustFired = true;
     imState.dashDir = 1;
@@ -2292,7 +2258,7 @@ describe('Player — dash animation state', () => {
   it('raises justDashed with the travel direction when a dash fires', async () => {
     const { player } = await makePlayer({
       onGround: true,
-      config: { maxAirJumps: 1, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
     });
     imState.dashJustFired = true;
     imState.dashDir       = -1;
@@ -2306,7 +2272,7 @@ describe('Player — dash animation state', () => {
   it('clears justDashed on the following frame', async () => {
     const { player } = await makePlayer({
       onGround: true,
-      config: { maxAirJumps: 1, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
     });
     imState.dashJustFired = true;
 
@@ -2320,7 +2286,7 @@ describe('Player — dash animation state', () => {
   it('does not raise justDashed while the dash is on cooldown', async () => {
     const { player } = await makePlayer({
       onGround: false,
-      config: { maxAirJumps: 1, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
     });
     imState.dashJustFired = true;
 
@@ -2447,7 +2413,7 @@ describe('Player — ceiling deflection', () => {
 
 describe('Player — ceiling deflection vs dash', () => {
   async function dashingAirborne(dashDir: 1 | -1) {
-    const h = await makePlayer({ onGround: false, config: { dash: true } });
+    const h = await makePlayer({ onGround: false });
     h.sprite.body.blocked.down = false;
     h.sprite.y = -1000;
     h.player.update(16);
@@ -2611,7 +2577,7 @@ describe('Player — wall-slide steering', () => {
         blocked: { left: true, right: false, down: false },
         velocity: { x: 0, y: 200 },
       },
-      config: { maxAirJumps: 0, wallJump: false, dash: true, dive: false, jumpBoost: 0 },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
     });
     imState.dashJustFired = true;
     imState.dashDir = 1; // away from the left-hand wall

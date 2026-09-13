@@ -1,4 +1,8 @@
-import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL } from '../constants';
+import {
+  MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL,
+  BASE_STAMINA, STAMINA_REGEN_AIR_MS, STAMINA_REGEN_PER_LEVEL,
+  DASH_POWER_PER_LEVEL, WALL_JUMP_COOLDOWN_MS, WALL_JUMP_CD_PER_LEVEL,
+} from '../constants';
 import { formatMult } from '../systems/formatMult';
 
 export interface UpgradeDef {
@@ -16,20 +20,6 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     description: (l) => `${1 + l} air jump${1 + l > 1 ? 's' : ''}`,
     maxLevel: 3,
     cost: (l) => [200, 850, 2000][l - 1],
-  },
-  {
-    id: 'wall_jump',
-    name: 'Wall Jump',
-    description: () => 'Jump off walls',
-    maxLevel: 1,
-    cost: () => 450,
-  },
-  {
-    id: 'dash',
-    name: 'Dash',
-    description: () => 'SHIFT to dash in movement direction',
-    maxLevel: 1,
-    cost: () => 600,
   },
   {
     id: 'money_mult',
@@ -60,13 +50,6 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     cost: (l) => [400, 800, 1600, 3200][l - 1],
   },
   {
-    id: 'dive',
-    name: 'Dive',
-    description: () => 'Down/S to dive',
-    maxLevel: 1,
-    cost: () => 500,
-  },
-  {
     id: 'mountain_climber',
     name: 'Mountain Climber',
     description: (l) => `Walk slopes up to ${MAX_WALKABLE_SLOPE_DEG + l * MOUNTAIN_CLIMBER_INCREMENT}°`,
@@ -79,5 +62,33 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
     description: (l) => `+${l * 10}% off-screen enemy & pickup detection range`,
     maxLevel: 3,
     cost: (l) => [300, 600, 1200][l - 1],
+  },
+  {
+    id: 'max_stamina',
+    name: 'Stamina Tank',
+    description: (l) => `${BASE_STAMINA + l} max stamina`,
+    maxLevel: 3,                                  // designer: 3 takes base 3 -> 6
+    cost: (l) => [400, 900, 1800][l - 1],         // designer: replace with actual costs
+  },
+  {
+    id: 'stamina_regen',
+    name: 'Second Wind',
+    description: (l) => `Recover air stamina ${((STAMINA_REGEN_PER_LEVEL * l) / STAMINA_REGEN_AIR_MS * 100).toFixed(0)}% faster`,
+    maxLevel: 4,                                  // designer: 4 takes 3000ms -> 1800ms
+    cost: (l) => [350, 700, 1400, 2800][l - 1],   // designer: replace with actual costs
+  },
+  {
+    id: 'dash_power',
+    name: 'Dash Power',
+    description: (l) => `+${DASH_POWER_PER_LEVEL * l} dash speed`,
+    maxLevel: 4,
+    cost: (l) => [300, 600, 1200, 2400][l - 1],   // designer: replace with actual costs
+  },
+  {
+    id: 'wall_jump_cd',
+    name: 'Wall Grip',
+    description: (l) => `${((WALL_JUMP_COOLDOWN_MS - WALL_JUMP_CD_PER_LEVEL * l) / 1000).toFixed(2)}s same-wall cooldown`,
+    maxLevel: 10,
+    cost: (l) => 200 + l * 150,                   // designer: replace with actual costs
   },
 ];

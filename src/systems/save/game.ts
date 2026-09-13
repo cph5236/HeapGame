@@ -3,7 +3,12 @@ import { ITEM_DEFS } from '../../data/itemDefs';
 import { getCosmeticDef } from '../../data/cosmeticDefs';
 import { clampHatAdjustment, type HatAdjustment, type HatAdjustments } from '../cosmeticsLogic';
 import type { EquippedLoadout, CosmeticSlot } from '../../../shared/cosmeticCatalog';
-import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL } from '../../constants';
+import {
+  MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL,
+  BASE_STAMINA, STAMINA_REGEN_AIR_MS, STAMINA_REGEN_PER_LEVEL,
+  WALL_JUMP_COOLDOWN_MS, WALL_JUMP_CD_PER_LEVEL, WALL_JUMP_CD_MIN_MS,
+  DASH_POWER_PER_LEVEL,
+} from '../../constants';
 import {
   load as coreLoad, persist, setSaveExtension, setPrimaryPicker,
   type RawSave, type CoreSave,
@@ -188,10 +193,11 @@ export function finalizeLegacyPlaced(heapId: string): void {
 // ── Player config ─────────────────────────────────────────────────────────────
 
 export interface PlayerConfig {
-  maxAirJumps:         number;
-  wallJump:            boolean;
-  dash:                boolean;
-  dive:                boolean;
+  maxAirJumps:         number;  // per-airtime AIR JUMP CAP, not a stamina budget
+  baseStamina:         number;
+  staminaRegenAirMs:   number;
+  wallJumpCooldownMs:  number;
+  dashPower:           number;  // added to PLAYER_DASH_VELOCITY
   moneyMultiplier:     number;
   jumpBoost:           number;
   stompBonus:          number;
@@ -205,9 +211,16 @@ export function getPlayerConfig(): PlayerConfig {
   const pl = getUpgradeLevel('peak_hunter');
   return {
     maxAirJumps:         1 + getUpgradeLevel('air_jump'),
-    wallJump:            getUpgradeLevel('wall_jump') > 0,
-    dash:                getUpgradeLevel('dash') > 0,
-    dive:                getUpgradeLevel('dive') > 0,
+    baseStamina:        BASE_STAMINA + getUpgradeLevel('max_stamina'),
+    staminaRegenAirMs:  Math.max(
+      STAMINA_REGEN_AIR_MS - getUpgradeLevel('stamina_regen') * STAMINA_REGEN_PER_LEVEL,
+      STAMINA_REGEN_PER_LEVEL,
+    ),
+    wallJumpCooldownMs: Math.max(
+      WALL_JUMP_COOLDOWN_MS - getUpgradeLevel('wall_jump_cd') * WALL_JUMP_CD_PER_LEVEL,
+      WALL_JUMP_CD_MIN_MS,
+    ),
+    dashPower:          getUpgradeLevel('dash_power') * DASH_POWER_PER_LEVEL,
     moneyMultiplier:     1 + getUpgradeLevel('money_mult') * MONEY_MULT_PER_LEVEL,
     jumpBoost:           [0, 25, 35, 45, 55, 60, 65, 70, 75][jl],
     stompBonus:          [25, 40, 50, 60][sl],

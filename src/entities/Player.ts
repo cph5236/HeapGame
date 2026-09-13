@@ -227,9 +227,10 @@ export class Player {
     this.sprite.setDepth(10);
 
     this.maxAirJumps        = config.maxAirJumps;
-    this.wallJumpEnabled    = config.wallJump;
-    this.dashEnabled        = config.dash;
-    this.diveEnabled        = config.dive;
+    // wall jump / dash / dive are default-unlocked (Task 6 wires stamina cost/gating).
+    this.wallJumpEnabled    = true;
+    this.dashEnabled        = true;
+    this.diveEnabled        = true;
     this.jumpBoost          = config.jumpBoost;
     this.airJumpsRemaining  = this.effectiveMaxAirJumps;
 

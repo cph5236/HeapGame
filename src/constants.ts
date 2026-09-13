@@ -87,7 +87,14 @@ export const WALL_LEAVE_NUDGE     = 80;   // px/s
 // bury the body in sloped slabs for depenetratePlayerFromWall to shove back out.
 export const WALL_SLIDE_PRESS_SPEED = 60; // px/s
 export const WALL_JUMP_PUSH       = 375;  // px/s outward velocity applied on wall jump (was PLAYER_SPEED * 1.5)
-export const WALL_JUMP_COOLDOWN_MS = 2000; // ms cooldown after wall-jump fires (same-wall cooldown: different wall bypass)
+export const WALL_JUMP_COOLDOWN_MS = 3000; // ms same-wall cooldown (was 2000; wall jump now also costs stamina)
+// wall_jump_cd upgrade: 10 levels x 150ms takes 3000 -> 1500.
+export const WALL_JUMP_CD_PER_LEVEL   = 150;
+export const WALL_JUMP_CD_MIN_MS      = 1500;
+// stamina_regen upgrade: 4 levels x 300ms takes airborne 3000 -> 1800.
+export const STAMINA_REGEN_PER_LEVEL  = 300;
+// dash_power upgrade: each level adds this to PLAYER_DASH_VELOCITY.
+export const DASH_POWER_PER_LEVEL     = 60;
 export const PLAYER_INVINCIBLE_MS = 400;  // post-stomp / post-spawn invincibility
 // ── Stamina ────────────────────────────────────────────────────────────────────
 // One shared pool funds air jump, dash and wall jump (1 each). Jump, dive and
