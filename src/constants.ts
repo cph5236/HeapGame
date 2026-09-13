@@ -89,7 +89,18 @@ export const WALL_SLIDE_PRESS_SPEED = 60; // px/s
 export const WALL_JUMP_PUSH       = 375;  // px/s outward velocity applied on wall jump (was PLAYER_SPEED * 1.5)
 export const WALL_JUMP_COOLDOWN_MS = 2000; // ms cooldown after wall-jump fires (same-wall cooldown: different wall bypass)
 export const PLAYER_INVINCIBLE_MS = 400;  // post-stomp / post-spawn invincibility
-export const MAX_AIR_JUMPS        = 1;    // base value — actual value comes from SaveData/upgrades
+// ── Stamina ────────────────────────────────────────────────────────────────────
+// One shared pool funds air jump, dash and wall jump (1 each). Jump, dive and
+// wall slide are free. Each ability keeps its own limiter on top of the cost —
+// see Player.ts and docs/superpowers/specs/2026-09-11-stamina-movement-design.md
+export const MAX_AIR_JUMPS   = 1;   // base per-airtime AIR JUMP CAP — not a stamina value
+export const BASE_STAMINA    = 3;   // base pool; upgrades and pickups add to it
+export const MAX_STAMINA_CAP = 8;   // hard ceiling; the HUD builds this many segments
+// Grounded regen is fast but NOT instant: a 2-frame bunny-hop banks ~0.15 bars
+// while a half-second pause on a ledge tops the pool up. That gradient is the
+// point — an instant refill would make stamina a rename of the old counter.
+export const STAMINA_REGEN_GROUND_MS = 200;
+export const STAMINA_REGEN_AIR_MS    = 3000; // tune in playtest; upgrade lowers it
 export const DASH_COOLDOWN_MS     = 800;  // ms between dashes
 export const DASH_DURATION_MS     = 200;  // ms the dash velocity is protected from movement override
 
