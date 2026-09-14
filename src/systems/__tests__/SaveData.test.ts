@@ -998,6 +998,28 @@ describe('reconcileMovementRefund', () => {
     reconcileMovementRefund();
     expect(getBalance()).toBe(1550);
   });
+
+  it('returns the refunded amount (1550) on the call that pays', () => {
+    seedSave({ balance: 0, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } });
+    const refunded = reconcileMovementRefund();
+    expect(refunded).toBe(1550);
+  });
+
+  it('returns 0 on every subsequent call after the refund has been applied', () => {
+    seedSave({ balance: 0, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } });
+    const firstCall = reconcileMovementRefund();
+    expect(firstCall).toBe(1550);
+    const secondCall = reconcileMovementRefund();
+    expect(secondCall).toBe(0);
+    const thirdCall = reconcileMovementRefund();
+    expect(thirdCall).toBe(0);
+  });
+
+  it('returns 0 for a genuinely fresh save that owns none of the three upgrades', () => {
+    seedFreshSave();
+    const refunded = reconcileMovementRefund();
+    expect(refunded).toBe(0);
+  });
 });
 
 describe('movement announcement flag', () => {

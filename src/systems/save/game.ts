@@ -13,7 +13,6 @@ import {
   load as coreLoad, persist, setSaveExtension, setPrimaryPicker,
   type RawSave, type CoreSave,
 } from './core';
-import { syncSaveToCloud } from '../cloudSave';
 
 /** Core stores game fields opaquely (it must, to stay game-agnostic), so the
  *  accessors below read the same record through this game's own types. Same
@@ -603,17 +602,28 @@ export const MOVEMENT_ANNOUNCEMENT_ID = 'movement-v0.4';
 /**
  * Pay back Scrap spent on upgrades the movement rework made default-unlocked.
  *
- * MUST run after any cloud merge, never inside migrateGame. Migration happens
- * at load(), the GPGS merge happens later, and mergeGame resolves balance with
- * Math.max — so a refund applied during migration is double-credited the moment
- * one device has already spent it (see cloudSave.ts's syncSaveToCloud doc).
- * Running post-merge against the reconciled upgrade map pays exactly once.
+ * MUST run after any cloud merge has either landed or been ruled out, never
+ * inside migrateGame. Migration happens at load(), the GPGS merge happens
+ * later, and mergeGame resolves balance with Math.max — so a refund applied
+ * while a merge is still pending is double-credited the moment one device has
+ * already spent it. Running post-merge against the reconciled upgrade map
+ * pays exactly once. This module does not know whether a merge is pending or
+ * has already been ruled out — that is a boot-sequencing fact only the caller
+ * has — so it deliberately does not call `syncSaveToCloud()` itself; the
+ * caller does that (and only that) when this returns a positive amount. See
+ * `bootSequence.ts`'s `startIdentitySession` for the one call site and why it
+ * is safe there.
  *
- * Safe to call repeatedly; the flag makes it a no-op after the first payout.
+ * Safe to call repeatedly; the flag makes it a no-op (returns 0) after the
+ * first payout.
+ *
+ * @returns the amount refunded on THIS call — 0 if already applied, or if the
+ *  player owned none of the removed upgrades. Use `getMovementRefundAmount()`
+ *  to read the (persisted) amount from a past call.
  */
-export function reconcileMovementRefund(): void {
+export function reconcileMovementRefund(): number {
   const data = load();
-  if (data.movementRefundApplied) return;
+  if (data.movementRefundApplied) return 0;
 
   let amount = 0;
   for (const [id, price] of Object.entries(MOVEMENT_REFUND_PRICES)) {
@@ -630,7 +640,7 @@ export function reconcileMovementRefund(): void {
   // from CURRENT_SCHEMA, so relying on that side effect would recompute the
   // refund every launch and never save it.
   persist(data);
-  if (amount > 0) syncSaveToCloud();
+  return amount;
 }
 
 export function getMovementRefundAmount(): number {
