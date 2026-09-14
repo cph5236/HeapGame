@@ -25,6 +25,8 @@ import { resolveTutorialExit, type TutorialExitState } from './tutorialExit';
 import type { HeapParams } from '../../shared/heapTypes';
 import { TutorialDirector, type TutorialStep } from '../systems/TutorialDirector';
 import { TutorialOverlay } from '../ui/TutorialOverlay';
+import { AbilityTray } from '../ui/AbilityTray';
+import { showDashIndicator } from '../ui/hudLogic';
 import { loadGameAssets } from './loadGameAssets';
 import {
   TUTORIAL_HEAP,
@@ -68,6 +70,11 @@ export class TutorialScene extends Phaser.Scene {
 
   private director!: TutorialDirector;
   private overlay!: TutorialOverlay;
+  /** Stamina bar + ability glyphs. The tutorial teaches stamina, so the readout
+   *  it teaches has to be on screen — this is the same tray GameScene shows, not
+   *  a tutorial-only mock. The rest of the HUD (score, pause, bag) is
+   *  deliberately left out: none of it applies during the tutorial. */
+  private abilityTray!: AbilityTray;
 
   private gameplayFrozen = false;
   private _ready = false;
@@ -207,6 +214,16 @@ export class TutorialScene extends Phaser.Scene {
     this._holdBar = this.add.graphics().setScrollFactor(0).setDepth(26);
     addToGameplayUi(this, this._holdBar);
 
+    // Ability tray. Built after the joystick so showDashIndicator resolves
+    // against the control scheme actually mounted: on mobile-joystick the stick
+    // carries its own dash button and the tray drops that glyph, exactly as in
+    // GameScene. AbilityTray registers its own SHUTDOWN teardown.
+    this.abilityTray = new AbilityTray(
+      this, this.player,
+      showDashIndicator(this.im.isMobile, getEffectiveControlMode()),
+    );
+    addToGameplayUi(this, this.abilityTray.objects);
+
     // PLACE button (mobile)
     if (this.im.isMobile) {
       const layout = controlClusterLayout(getJoystickSide(), logicalWidth(this), logicalHeight(this), {
@@ -301,12 +318,29 @@ export class TutorialScene extends Phaser.Scene {
       mode: getEffectiveControlMode(),
     });
 
+    // The stamina popup tells the player to look at the bar top-left, so lift
+    // the tray above the overlay's dim while it is up — otherwise we darken the
+    // one thing we are pointing at.
+    this.setTrayAboveDim(step.id === 'stamina');
+
     if (step.mode === 'info') {
       this.freeze();
       this.overlay.showInfo(message);
     } else {
       this.unfreeze();
       this.overlay.showHint(message);
+    }
+  }
+
+  /** Raise (or restore) the ability tray relative to TutorialOverlay's dim
+   *  layer at depth 60. The tray's own depths are 19-21, so a flat offset keeps
+   *  its internal stacking (panel < segments < fills) intact. */
+  private setTrayAboveDim(above: boolean): void {
+    const OFFSET = 45; // 19-21 -> 64-66: clear of the dim (60) and skip (63)
+    for (const obj of this.abilityTray.objects) {
+      const go = obj as unknown as Phaser.GameObjects.Components.Depth & { _trayBaseDepth?: number };
+      go._trayBaseDepth ??= go.depth;
+      go.setDepth(above ? go._trayBaseDepth + OFFSET : go._trayBaseDepth);
     }
   }
 
@@ -371,6 +405,11 @@ export class TutorialScene extends Phaser.Scene {
     // Check if player is in live zone (top area where placement is allowed)
     const inLiveZone = this.player.sprite.y < this.heapGenerator.topY + 100;
     im.update(delta, inLiveZone);
+
+    // Ahead of the frozen check on purpose: the stamina step freezes gameplay to
+    // explain the bar, so the bar it points at has to be drawn and current while
+    // the popup is up.
+    this.abilityTray.update();
 
     if (this.gameplayFrozen) {
       // Still update camera/parallax

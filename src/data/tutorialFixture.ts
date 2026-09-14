@@ -75,11 +75,27 @@ export const TUTORIAL_RAT_SURFACE_Y = H - 590;
 export const TUTORIAL_ITEM_X         = 530;
 export const TUTORIAL_ITEM_SURFACE_Y = H - 590;
 
+/** Stamina is explained once, as a popup, and the copy is control-scheme
+ *  agnostic — it describes the resource rather than which button spends it, so
+ *  both copy maps share it verbatim. The tray it points at is mounted by
+ *  TutorialScene. */
+const STAMINA_EXPLAINER =
+  'Your air moves all share one pool of Stamina — the bar at the top-left. '
+  + 'Air jumps, dashes and wall jumps each cost one bar; plain jumps, dives and '
+  + 'wall slides are free.\n\n'
+  + 'Stamina refills fast once you are back on solid ground, but only trickles '
+  + 'back while you are in the air. Run dry and you will need to land before you '
+  + 'can pull off another air move.';
+
 export const TUTORIAL_STEPS: TutorialStep[] = [
   { id: 'welcome',    message: 'Welcome to Heap! Climb to the top of the Trash Heap.', advanceOn: 'tap',        mode: 'info' },
   { id: 'move',       message: 'Move left and right to start climbing.',               advanceOn: 'move',       mode: 'hint' },
   { id: 'jump',       message: 'Jump up onto the next ledge.',                          advanceOn: 'jump',       mode: 'hint' },
-  { id: 'stamina',    message: 'Air jumps, dashes and wall jumps each spend a bit of Stamina. It refills fast the moment you touch down, but only trickles back while you\'re airborne — run dry and you\'ll need to land before you can pull off another one.', advanceOn: 'jump', mode: 'hint' },
+  // Deliberately an 'info' popup on 'tap', not a 'hint' on 'jump'. As a hint it
+  // advanced on the SAME action as the `jump` step before it, so the player's
+  // next jump — a second later, mid-climb — dismissed it before it could be
+  // read. Stamina is the game's core resource now; it gets a deliberate beat.
+  { id: 'stamina',    message: STAMINA_EXPLAINER,                                 advanceOn: 'tap',        mode: 'info' },
   { id: 'walljump',   message: 'This wall is too tall to jump — wall-jump up it: Jump into the wall, then jump while pressing away from it.', advanceOn: 'walljump', mode: 'hint' },
   { id: 'dash',       message: 'Try a dash — jump and dash to cross big gaps.',          advanceOn: 'dash',       mode: 'hint' },
   { id: 'dive',       message: 'Jump up, then dive straight back down.',                advanceOn: 'dive',       mode: 'hint' },
@@ -101,7 +117,7 @@ const DESKTOP_MESSAGES: Record<string, string> = {
   welcome:    'Welcome to Heap! Climb to the top of the Trash Heap.',
   move:       'Use the ← → arrow keys (or A and D) to move. Tip: walk off one edge of the screen to wrap around to the other side.',
   jump:       'Press ↑ (or W) to jump onto the ledge.',
-  stamina:    'Air jumps, dashes and wall jumps each spend some of your Stamina. It refills fast once you\'re back on solid ground, but only trickles back while you\'re still in the air — run dry and you\'ll need to land before you can pull off another one.',
+  stamina:    STAMINA_EXPLAINER,
   walljump:   'Wall-jump up the tall wall: press → into the wall to cling, then press ↑ and ← together to spring up and off it. Repeat to climb.',
   dash:       'Press Shift to dash. Try it mid-air too (jump, then dash) — a jump-dash is how you cross the big open gap when you wrap to the other side of the heap.',
   dive:       'Jump up, then hold ↓ (or S) to dive straight down.',
@@ -117,7 +133,7 @@ const MOBILE_MESSAGES: Record<string, string> = {
   welcome:    'Welcome to Heap! Climb to the top of the Trash Heap.',
   move:       '', // set from control mode in tutorialMessage
   jump:       'Swipe up to jump onto the ledge.',
-  stamina:    'Air jumps, dashes and wall jumps each spend some of your Stamina. It refills fast once you\'re back on solid ground, but only trickles back while you\'re still in the air — run dry and you\'ll need to land before you can pull off another one.',
+  stamina:    STAMINA_EXPLAINER,
   walljump:   'Wall-jump up the tall wall: move into the wall and tilt to cling to it, then swipe up-and-away from the wall to spring off. Repeat to climb.',
   dash:       'Swipe left or right to dash. Try it mid-air too (jump, then swipe) — a jump-dash is how you cross the big open gap when you wrap to the other side of the heap.',
   dive:       'Jump up, then swipe down to dive straight down.',

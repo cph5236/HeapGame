@@ -94,3 +94,41 @@ describe('tutorial fixture', () => {
     expect(cursor).toBe(required.length); // all appeared, in order
   });
 });
+
+describe('tutorial step pacing', () => {
+  // Regression: the stamina step originally used advanceOn 'jump' — the SAME
+  // action as the `jump` step immediately before it. The player's next jump,
+  // a second later mid-climb, dismissed it before it could be read, so it
+  // looked like the step simply never appeared. Two consecutive steps must
+  // never key on the same action.
+  it('never advances two consecutive steps on the same action', () => {
+    for (let i = 1; i < TUTORIAL_STEPS.length; i++) {
+      const prev = TUTORIAL_STEPS[i - 1], cur = TUTORIAL_STEPS[i];
+      if (prev.advanceOn === 'tap' || cur.advanceOn === 'tap') continue;
+      expect(
+        cur.advanceOn,
+        `"${cur.id}" advances on the same action as "${prev.id}" ("${cur.advanceOn}"), `
+        + 'so the input that clears the earlier step clears this one too',
+      ).not.toBe(prev.advanceOn);
+    }
+  });
+
+  it('teaches stamina as a dismissable popup, not a passing hint', () => {
+    const stamina = TUTORIAL_STEPS.find(s => s.id === 'stamina');
+    expect(stamina).toBeDefined();
+    // 'info' freezes gameplay and shows the panel; 'tap' means only a
+    // deliberate dismissal advances it.
+    expect(stamina!.mode).toBe('info');
+    expect(stamina!.advanceOn).toBe('tap');
+  });
+
+  it('explains stamina the same way in both control schemes', () => {
+    const stamina = TUTORIAL_STEPS.find(s => s.id === 'stamina')!;
+    const desktop = tutorialMessage(stamina, { mobile: false, mode: 'joystick' });
+    const touch   = tutorialMessage(stamina, { mobile: true,  mode: 'joystick' });
+    // The copy describes the resource, not the button, so it is shared verbatim.
+    expect(desktop).toBe(touch);
+    expect(desktop.toLowerCase()).toContain('stamina');
+    expect(desktop).toMatch(/free/i);          // jumps/dives/wall slides cost nothing
+  });
+});
