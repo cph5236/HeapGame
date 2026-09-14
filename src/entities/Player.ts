@@ -204,9 +204,13 @@ export class Player {
     return PLAYER_SPEED * this.carrySpeedMult * this.buffSpeedMult;
   }
 
-  /** Max air jumps including extras granted by carried salvage. */
+  /** Max air jumps. Deliberately excludes carry/buff extraStamina — the
+   *  air-jump cap and the stamina pool are orthogonal upgrade paths (`air_jump`
+   *  buys permission, `max_stamina` buys budget), and extraStamina now feeds
+   *  ONLY effectiveMaxStamina below. A Balloon's +1 becomes +1 max stamina,
+   *  not +1 air-jump cap AND +1 max stamina — do not fold these back together. */
   private get effectiveMaxAirJumps(): number {
-    return this.maxAirJumps + this.carryExtraStamina + this.buffExtraStamina;
+    return this.maxAirJumps;
   }
 
   /** Max stamina including carried salvage and consumable buffs, hard-capped. */
@@ -822,25 +826,23 @@ export class Player {
     this.stamina = Math.min(this.effectiveMaxStamina, this.stamina + bars);
   }
 
-  /** Apply aggregated salvage-carry modifiers. Granting a new air jump refills
-   *  the air-jump pool so the benefit is usable immediately. Stamina, by
-   *  contrast, only grants ONE bar on a rise — a full refill would be a free
-   *  escape mid-chimney — and is always clamped down on a fall so the player
-   *  never holds more bars than their (now-lower) cap. */
+  /** Apply aggregated salvage-carry modifiers. extraStamina now feeds ONLY the
+   *  stamina pool (see effectiveMaxAirJumps) — it grants exactly ONE current
+   *  bar on a rise, never a full refill (a full refill would be a free escape
+   *  mid-chimney), and current stamina is always clamped down on a fall so the
+   *  player never holds more bars than their (now-lower) cap. It does NOT
+   *  touch airJumpsRemaining; the air-jump cap only changes via maxAirJumps. */
   setCarryModifiers(
     mods: Pick<CarryModifiers, 'speedMult' | 'jumpBonus' | 'extraStamina'>
         & Partial<Pick<CarryModifiers, 'gravityMult' | 'cooldownMult'>>,
   ): void {
-    const gainedAirJump  = mods.extraStamina > this.carryExtraStamina;
+    const gainedStamina    = mods.extraStamina > this.carryExtraStamina;
     this.carrySpeedMult    = mods.speedMult;
     this.carryJumpBonus    = mods.jumpBonus;
     this.carryExtraStamina = mods.extraStamina;
     this.carryGravityMult  = mods.gravityMult  ?? 1;
     this.carryCooldownMult = mods.cooldownMult ?? 1;
-    if (gainedAirJump) {
-      this.airJumpsRemaining = this.effectiveMaxAirJumps;
-      this.stamina += 1;
-    }
+    if (gainedStamina) this.stamina += 1;
     this.stamina = Math.min(this.stamina, this.effectiveMaxStamina);
   }
 
@@ -848,16 +850,13 @@ export class Player {
     mods: { speedMult: number; jumpBonus: number; extraStamina: number;
             gravityMult?: number; cooldownMult?: number },
   ): void {
-    const gainedAirJump = mods.extraStamina > this.buffExtraStamina;
+    const gainedStamina   = mods.extraStamina > this.buffExtraStamina;
     this.buffSpeedMult    = mods.speedMult;
     this.buffJumpBonus    = mods.jumpBonus;
     this.buffExtraStamina = mods.extraStamina;
     this.buffGravityMult  = mods.gravityMult  ?? 1;
     this.buffCooldownMult = mods.cooldownMult ?? 1;
-    if (gainedAirJump) {
-      this.airJumpsRemaining = this.effectiveMaxAirJumps;
-      this.stamina += 1;
-    }
+    if (gainedStamina) this.stamina += 1;
     this.stamina = Math.min(this.stamina, this.effectiveMaxStamina);
   }
 

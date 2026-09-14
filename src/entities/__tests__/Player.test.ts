@@ -1852,21 +1852,28 @@ describe('Player — carry modifiers', () => {
     expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY - 120);
   });
 
-  it('extraStamina refreshes available air jumps immediately on pickup', async () => {
+  it('extraStamina grants one current bar immediately, and does NOT touch the air-jump cap', async () => {
+    // air_jump buys permission (the per-airtime cap); max_stamina buys budget
+    // (the pool). The two upgrade paths — and this pickup lever — must stay
+    // orthogonal: a Balloon's +1 becomes +1 max stamina, never +1 air-jump cap.
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
       config: { maxAirJumps: 1, jumpBoost: 0 },
     });
     (player as any).airJumpsRemaining = 0; // already spent the base air jump
+    (player as any).stamina = 0;
 
     player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraStamina: 1 });
 
-    // effective max = 1 + 1 = 2; granting the new jump should bump remaining
-    expect((player as any).airJumpsRemaining).toBe(2);
+    expect(player.staminaCurrent).toBeCloseTo(1); // one bar granted, not a full refill
+    // Regression guard for the air-jump/stamina double-dip bug: this must stay
+    // 0. If effectiveMaxAirJumps or setCarryModifiers is ever changed to fold
+    // carry/buff extraStamina back into the air-jump cap, this fails.
+    expect((player as any).airJumpsRemaining).toBe(0);
   });
 
-  it('extraStamina raises the effective max restored on landing', async () => {
+  it('extraStamina raises the max stamina restored on landing, and leaves the air-jump cap alone', async () => {
     const { player, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
@@ -1875,12 +1882,13 @@ describe('Player — carry modifiers', () => {
     player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraStamina: 2 });
     (player as any).airJumpsRemaining = 0;
 
-    // Land
+    // Land — landing restores the air-jump cap (unaffected by extraStamina).
     sprite.body.blocked.down = true;
     sprite.body.velocity.y = 0;
     player.update(16);
 
-    expect((player as any).airJumpsRemaining).toBe(3); // 1 base + 2 extra
+    expect((player as any).airJumpsRemaining).toBe(1); // maxAirJumps alone, no extra folded in
+    expect(player.staminaMax).toBe(5); // 3 base + 2 extraStamina
   });
 });
 
