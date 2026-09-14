@@ -13,7 +13,7 @@ const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.m
  *  regenerating is partial; everything below it is full and above it empty. */
 export function staminaSegments(current: number, max: number): number[] {
   const c = clamp(current, 0, max);
-  return Array.from({ length: max }, (_, i) => Math.round(clamp(c - i, 0, 1) * 1e6) / 1e6);
+  return Array.from({ length: max }, (_, i) => clamp(c - i, 0, 1));
 }
 
 /** Dash bar fill (0..1): full when ready (cooldown 0), empty mid-cooldown (1). */

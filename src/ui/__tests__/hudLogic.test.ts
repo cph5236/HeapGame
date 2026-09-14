@@ -20,7 +20,11 @@ describe('staminaSegments', () => {
   });
 
   it('partially fills only the regenerating segment', () => {
-    expect(staminaSegments(2.4, 3)).toEqual([1, 1, 0.4]);
+    const segs = staminaSegments(2.4, 3);
+    expect(segs).toHaveLength(3);
+    expect(segs[0]).toBe(1);
+    expect(segs[1]).toBe(1);
+    expect(segs[2]).toBeCloseTo(0.4, 5);
   });
 
   it('is all-empty at zero', () => {
