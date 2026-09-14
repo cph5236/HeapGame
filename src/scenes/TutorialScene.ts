@@ -120,16 +120,14 @@ export class TutorialScene extends Phaser.Scene {
     // floor at y=H is inside the heap body in this fixture. See tutorialFixture.
     this.spawnY = TUTORIAL_SPAWN_Y;
     const playerConfig = getPlayerConfig();
-    // Grant tutorial abilities on the player
-    const cfg = { ...playerConfig, dash: true, dive: true, wallJump: true };
-    this.player = new Player(this, TUTORIAL_SPAWN_X, this.spawnY, cfg);
+    this.player = new Player(this, TUTORIAL_SPAWN_X, this.spawnY, playerConfig);
     // Drive the Player's floor clamp from the tutorial world height (it defaults to
     // MOCK_HEAP_HEIGHT_PX ≈ 5,000,000, which would let the player fall forever). With
     // this set, any fall stops at the world base and the player can't drop off the map.
     this.player.worldHeight = TUTORIAL_WORLD_HEIGHT;
 
     // Collision helpers
-    this.edgeCollider = new HeapEdgeCollider(cfg.maxWalkableSlopeDeg);
+    this.edgeCollider = new HeapEdgeCollider(playerConfig.maxWalkableSlopeDeg);
     this.heapGenerator = new HeapGenerator(
       this,
       this.heapWalkableGroup,
