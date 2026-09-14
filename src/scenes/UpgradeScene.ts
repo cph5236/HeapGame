@@ -17,7 +17,7 @@ const ACCENT_COLORS: Record<string, number> = {
   air_jump:      0x4488ff,
   max_stamina:   0x44ddaa,
   stamina_regen: 0x66ffcc,
-  dash_power:    0xff8844,
+  dash_power:    0x44bbff,
   wall_jump_cd:  0xaa88ff,
   money_mult:    0xffaa22,
   jump_boost:    0x22ccff,

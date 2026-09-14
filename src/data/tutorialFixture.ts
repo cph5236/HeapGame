@@ -79,7 +79,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   { id: 'welcome',    message: 'Welcome to Heap! Climb to the top of the Trash Heap.', advanceOn: 'tap',        mode: 'info' },
   { id: 'move',       message: 'Move left and right to start climbing.',               advanceOn: 'move',       mode: 'hint' },
   { id: 'jump',       message: 'Jump up onto the next ledge.',                          advanceOn: 'jump',       mode: 'hint' },
-  { id: 'stamina',    message: 'The bar top-left is your Stamina. Air jumps, dashes and wall jumps each cost one bar. It refills fast on the ground and slowly in the air.', advanceOn: 'jump', mode: 'hint' },
+  { id: 'stamina',    message: 'Air jumps, dashes and wall jumps each spend a bit of Stamina. It refills fast the moment you touch down, but only trickles back while you\'re airborne — run dry and you\'ll need to land before you can pull off another one.', advanceOn: 'jump', mode: 'hint' },
   { id: 'walljump',   message: 'This wall is too tall to jump — wall-jump up it: Jump into the wall, then jump while pressing away from it.', advanceOn: 'walljump', mode: 'hint' },
   { id: 'dash',       message: 'Try a dash — jump and dash to cross big gaps.',          advanceOn: 'dash',       mode: 'hint' },
   { id: 'dive',       message: 'Jump up, then dive straight back down.',                advanceOn: 'dive',       mode: 'hint' },
@@ -87,7 +87,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   { id: 'pickup',     message: 'Grab the salvage item — carry it up for points.',      advanceOn: 'pickup',     mode: 'hint' },
   { id: 'attop',      message: 'You reached the top of the Trash Heap!',               advanceOn: 'tap',        mode: 'info' },
   { id: 'placeBlock', message: 'Add your block to the Trash Heap.',                     advanceOn: 'placeBlock', mode: 'hint' },
-  { id: 'complete',   message: 'Nice work! Dash, Wall-Jump, and Dive were just for the tutorial — unlock them for real in the Upgrades store. Now go climb!', advanceOn: 'tap', mode: 'info' },
+  { id: 'complete',   message: 'Nice work! Dash, Wall-Jump, and Dive are yours to keep — no unlocking needed. Now go climb!', advanceOn: 'tap', mode: 'info' },
 ];
 
 /** Control scheme the player is using, for instruction copy. */
@@ -101,7 +101,7 @@ const DESKTOP_MESSAGES: Record<string, string> = {
   welcome:    'Welcome to Heap! Climb to the top of the Trash Heap.',
   move:       'Use the ← → arrow keys (or A and D) to move. Tip: walk off one edge of the screen to wrap around to the other side.',
   jump:       'Press ↑ (or W) to jump onto the ledge.',
-  stamina:    'Watch the Stamina bar top-left as you jump — each air move spends a bar, and standing still on the ground refills them.',
+  stamina:    'Air jumps, dashes and wall jumps each spend some of your Stamina. It refills fast once you\'re back on solid ground, but only trickles back while you\'re still in the air — run dry and you\'ll need to land before you can pull off another one.',
   walljump:   'Wall-jump up the tall wall: press → into the wall to cling, then press ↑ and ← together to spring up and off it. Repeat to climb.',
   dash:       'Press Shift to dash. Try it mid-air too (jump, then dash) — a jump-dash is how you cross the big open gap when you wrap to the other side of the heap.',
   dive:       'Jump up, then hold ↓ (or S) to dive straight down.',
@@ -109,7 +109,7 @@ const DESKTOP_MESSAGES: Record<string, string> = {
   pickup:     'Grab the salvage item — carry it to the top for points.',
   attop:      'You reached the top of the Trash Heap!',
   placeBlock: 'Press Space to add your block to the Trash Heap.',
-  complete:   'Nice work! Dash, Wall-Jump, and Dive were just for the tutorial — unlock them for real in the Upgrades store. Now go climb!',
+  complete:   'Nice work! Dash, Wall-Jump, and Dive are yours to keep — no unlocking needed. Now go climb!',
 };
 
 /** Touch (mobile) instruction copy, keyed by step id. `move` is filled per control mode. */
@@ -117,7 +117,7 @@ const MOBILE_MESSAGES: Record<string, string> = {
   welcome:    'Welcome to Heap! Climb to the top of the Trash Heap.',
   move:       '', // set from control mode in tutorialMessage
   jump:       'Swipe up to jump onto the ledge.',
-  stamina:    'Watch the Stamina bar top-left as you jump — each air move spends a bar, and standing still on the ground refills them.',
+  stamina:    'Air jumps, dashes and wall jumps each spend some of your Stamina. It refills fast once you\'re back on solid ground, but only trickles back while you\'re still in the air — run dry and you\'ll need to land before you can pull off another one.',
   walljump:   'Wall-jump up the tall wall: move into the wall and tilt to cling to it, then swipe up-and-away from the wall to spring off. Repeat to climb.',
   dash:       'Swipe left or right to dash. Try it mid-air too (jump, then swipe) — a jump-dash is how you cross the big open gap when you wrap to the other side of the heap.',
   dive:       'Jump up, then swipe down to dive straight down.',
@@ -125,7 +125,7 @@ const MOBILE_MESSAGES: Record<string, string> = {
   pickup:     'Grab the salvage item — carry it to the top for points.',
   attop:      'You reached the top of the Trash Heap!',
   placeBlock: 'Hold the PLACE button to add your block to the Trash Heap.',
-  complete:   'Nice work! Dash, Wall-Jump, and Dive were just for the tutorial — unlock them for real in the Upgrades store. Now go climb!',
+  complete:   'Nice work! Dash, Wall-Jump, and Dive are yours to keep — no unlocking needed. Now go climb!',
 };
 
 /**

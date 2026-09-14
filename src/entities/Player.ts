@@ -114,6 +114,10 @@ export class Player {
   private bufferedJumpVx:            number = 0; // captured im.jumpVx at press time
   private bufferedJumpFromKeyboard:  boolean = false; // true if buffer set by keyboard (cuttable); false for mobile pulses
   private jumpKeyWasHeld:            boolean = false; // for release-edge detection (sustained press → release)
+  // Debounce for the 'stamina-empty' cue: one flash per buffered press, not one
+  // per frame the press sits in the buffer waiting to see if a ledge arrives.
+  // Reset whenever a fresh press (re)primes the buffer.
+  private staminaEmptyEmittedForBuffer: boolean = false;
 
   // Per-frame state captured by updateJumpInputAndCut() and read later in the same
   // update() call by consumeJumpBufferOnFire(). Only meaningful during update().
@@ -168,7 +172,6 @@ export class Player {
   // ── HUD accessors ──────────────────────────────────────────────────────────
   get dashCooldownFraction(): number  { return this.dashCooldown / DASH_COOLDOWN_MS; }
   get airJumpsLeft():         number  { return this.airJumpsRemaining; }
-  get maxAirJumpsCount():     number  { return this.maxAirJumps; }
   get canWallJump():          boolean { return this.wallJumpCooldown === 0; }
   get hasActiveShield():      boolean { return this.shieldActive; }
   get isReviveArmed():        boolean { return this.reviveArmed; }
@@ -295,12 +298,17 @@ export class Player {
     if (wallJumpFired) this.sprite.scene.events.emit('player-action', 'walljump');
     this.consumeJumpBufferOnFire(jumpFired || wallJumpFired);
 
-    // A press that failed only for want of stamina is consumed, not left in the
-    // buffer to fire later on landing. Emits a distinct cue: running dry is the
-    // riskiest feel change in this design and it must be legible.
+    // A press that failed only for want of stamina still has a valid destination:
+    // a GROUND jump costs no stamina, so if this press lands within the buffer
+    // window it must still fire on landing (#4 — do not zero the buffer here, the
+    // natural per-frame decay in updateJumpInputAndCut already retires a press
+    // that never finds a landing). We only emit the feedback cue, once per press,
+    // so a dry press still gets a distinct cue: running dry is the riskiest feel
+    // change in this design and it must be legible.
     if (!jumpFired && !wallJumpFired && this.jumpBufferTimer > 0
-        && !ctx.onGround && !canSpend(this.stamina, 1)) {
-      this.jumpBufferTimer = 0;
+        && !ctx.onGround && !canSpend(this.stamina, 1)
+        && !this.staminaEmptyEmittedForBuffer) {
+      this.staminaEmptyEmittedForBuffer = true;
       this.sprite.scene.events.emit('player-action', 'stamina-empty');
     }
 
@@ -329,12 +337,14 @@ export class Player {
     this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - delta);
     const jumpKeyJustDown = this.jumpKeys.some(k => Phaser.Input.Keyboard.JustDown(k));
     if (jumpKeyJustDown) {
-      this.jumpBufferTimer           = JUMP_BUFFER_MS;
-      this.bufferedJumpVx            = im.jumpVx;
-      this.bufferedJumpFromKeyboard  = true;
+      this.jumpBufferTimer                = JUMP_BUFFER_MS;
+      this.bufferedJumpVx                 = im.jumpVx;
+      this.bufferedJumpFromKeyboard       = true;
+      this.staminaEmptyEmittedForBuffer   = false;
     } else if (im.jumpJustPressed) {
-      this.jumpBufferTimer           = JUMP_BUFFER_MS;
-      this.bufferedJumpVx            = im.jumpVx;
+      this.jumpBufferTimer                = JUMP_BUFFER_MS;
+      this.bufferedJumpVx                 = im.jumpVx;
+      this.staminaEmptyEmittedForBuffer   = false;
       this.bufferedJumpFromKeyboard  = false; // mobile pulse — never cut
     }
 

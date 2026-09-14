@@ -17,7 +17,11 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
   {
     id: 'air_jump',
     name: 'Extra Air Jump',
-    description: (l) => `${1 + l} air jump${1 + l > 1 ? 's' : ''}`,
+    // Raises how many air jumps you may CHAIN per airtime — each one still
+    // spends a Stamina bar, so the cap is only useful up to what the pool can
+    // fund. Say so, or maxLevel 3 promises 4 air jumps against a base pool of
+    // BASE_STAMINA (3) that can't pay for all of them airborne.
+    description: (l) => `${1 + l} air jump${1 + l > 1 ? 's' : ''} (each costs a Stamina bar)`,
     maxLevel: 3,
     cost: (l) => [200, 850, 2000][l - 1],
   },
@@ -73,7 +77,17 @@ export const UPGRADE_DEFS: UpgradeDef[] = [
   {
     id: 'stamina_regen',
     name: 'Second Wind',
-    description: (l) => `Recover air stamina ${((STAMINA_REGEN_PER_LEVEL * l) / STAMINA_REGEN_AIR_MS * 100).toFixed(0)}% faster`,
+    // "% faster" is a RATE claim (how much quicker a bar refills), not a time-
+    // reduction fraction — at maxLevel 4 the airborne regen tick drops
+    // 3000ms -> 1800ms per bar, a 3000/1800 = 1.67x rate, i.e. 67% faster.
+    // (STAMINA_REGEN_PER_LEVEL*l / STAMINA_REGEN_AIR_MS would read "40%" for
+    // that same level — the time SAVED, not the rate gained — which doesn't
+    // match the label.)
+    description: (l) => {
+      const newMs = STAMINA_REGEN_AIR_MS - STAMINA_REGEN_PER_LEVEL * l;
+      const pctFaster = (STAMINA_REGEN_AIR_MS / newMs - 1) * 100;
+      return `Recover air stamina ${pctFaster.toFixed(0)}% faster`;
+    },
     maxLevel: 4,                                  // designer: 4 takes 3000ms -> 1800ms
     cost: (l) => [350, 700, 1400, 2800][l - 1],   // designer: replace with actual costs
   },

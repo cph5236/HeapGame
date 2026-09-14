@@ -1149,6 +1149,13 @@ export class MenuScene extends Phaser.Scene {
    *  callback and the REFUND_SETTLED_EVENT handler call this, and it only
    *  proceeds once both flags are set. */
   private maybeShowPostEntranceUi(): void {
+    // GPGS sign-in (up to a 6s ceiling) can outlive this scene — a player who
+    // taps PLAY before it settles shuts this scene down, and the late
+    // REFUND_SETTLED_EVENT would otherwise build a modal on a dead display
+    // list. Same discipline as the SAVE_MERGED_EVENT handler above. Checked
+    // before latching postEntranceUiHandled so a later visit to the menu (a
+    // fresh instance, or this same instance restarted) still gets to show it.
+    if (!this.balanceText?.active) return;
     if (this.postEntranceUiHandled) return;
     if (!this.entranceComplete || !this.refundSettled) return;
     this.postEntranceUiHandled = true;

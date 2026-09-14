@@ -2723,9 +2723,11 @@ describe('Player — stamina', () => {
   });
 
   it('blocks the air jump at zero stamina even with the cap unspent', async () => {
-    // The design's UX trap in reverse: cap available, empty bar, dead button —
-    // and the failed press must not linger in the jump buffer to fire stale on
-    // a later landing (it emits 'stamina-empty' instead).
+    // The design's UX trap in reverse: cap available, empty bar, dead button.
+    // The press is NOT force-cleared from the buffer here — a ground jump costs
+    // no stamina, so the press still has a valid destination if a landing comes
+    // within the buffer window (#4). It just doesn't fire an air jump this frame,
+    // and it emits 'stamina-empty' once as the failure cue.
     const { player, spy, sceneEvents } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
@@ -2740,8 +2742,74 @@ describe('Player — stamina', () => {
 
     expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
     expect(player.airJumpsLeft).toBe(1); // cap never touched — the jump never fired
-    expect((player as any).jumpBufferTimer).toBe(0);
+    expect((player as any).jumpBufferTimer).toBeGreaterThan(0); // buffer kept alive for a possible landing
     expect(sceneEvents.emit).toHaveBeenCalledWith('player-action', 'stamina-empty');
+
+    // The cue is a one-shot per press, not a per-frame spam while the buffer
+    // waits to see whether a landing arrives.
+    const staminaEmptyCalls = (sceneEvents.emit as any).mock.calls
+      .filter((c: unknown[]) => c[0] === 'player-action' && c[1] === 'stamina-empty');
+    expect(staminaEmptyCalls.length).toBe(1);
+
+    imState.jumpJustPressed = false;
+    player.update(16);
+    const staminaEmptyCallsAfter = (sceneEvents.emit as any).mock.calls
+      .filter((c: unknown[]) => c[0] === 'player-action' && c[1] === 'stamina-empty');
+    expect(staminaEmptyCallsAfter.length).toBe(1); // still just the one, on the second frame too
+  });
+
+  it('lets a stamina-blocked press decay away with no stale jump if no landing ever comes', async () => {
+    // Original intent, preserved: a press that is genuinely nowhere near a
+    // landing must not linger forever and fire a stale jump much later (e.g.
+    // once airborne regen eventually refills the bar).
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 1, jumpBoost: 0, staminaRegenAirMs: 3000 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).stamina = 0;
+    (player as any).airJumpsRemaining = 1;
+
+    imState.jumpJustPressed = true;
+    player.update(16);
+    imState.jumpJustPressed = false;
+
+    // Keep falling, well past JUMP_BUFFER_MS, with no landing.
+    for (let t = 0; t < JUMP_BUFFER_MS + 200; t += 16) {
+      player.update(16);
+    }
+
+    expect((player as any).jumpBufferTimer).toBe(0);
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('still lands a ground jump for a buffered press blocked only by stamina (#4)', async () => {
+    // Failure scenario from the review: airborne, air jump cap and stamina both
+    // spent, falling toward a ledge, press ~80ms before landing. A GROUND jump
+    // costs no stamina and JUMP_BUFFER_MS exists exactly to cover this gap.
+    const { player, spy, sprite } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 1, jumpBoost: 0, staminaRegenAirMs: 3000 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).stamina = 0.4;
+    (player as any).airJumpsRemaining = 0;
+
+    // Press ~80ms before landing.
+    imState.jumpJustPressed = true;
+    player.update(16);
+    imState.jumpJustPressed = false;
+
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY); // no air jump fired
+
+    // Land within the buffer window.
+    sprite.body.blocked.down = true;
+    sprite.body.velocity.y = 0;
+    player.update(16);
+
+    expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY); // buffered press still fires as a ground jump
   });
 
   it('blocks the air jump at a spent cap even with a full bar', async () => {

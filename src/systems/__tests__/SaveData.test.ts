@@ -1031,6 +1031,30 @@ describe('movement announcement flag', () => {
     expect(hasSeenAnnouncement(MOVEMENT_ANNOUNCEMENT_ID)).toBe(true);
   });
 
+  it('a genuinely fresh save with a zero payout stays silently suppressed', () => {
+    seedFreshSave();
+    const refunded = reconcileMovementRefund();
+    expect(refunded).toBe(0);
+    expect(hasSeenAnnouncement(MOVEMENT_ANNOUNCEMENT_ID)).toBe(true);
+  });
+
+  it('the Android reinstall path (fresh save + cloud merge pays out) is NOT suppressed', () => {
+    // Fresh local save pre-seeds the flag (nothing to explain yet) — then a
+    // GPGS merge pulls in a pre-update cloud save that owned the removed
+    // upgrades, and reconcile pays out. That payout is exactly the case the
+    // pre-seed can't foresee, so it must clear the flag and let the modal
+    // explain the balance jump.
+    seedFreshSave();
+    expect(hasSeenAnnouncement(MOVEMENT_ANNOUNCEMENT_ID)).toBe(true);
+
+    const cloud = { ...baseSave(), balance: 900, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } };
+    applyMergedSave(mergeCloudSave(getRawSaveForCloudSync(), cloud as any));
+
+    const refunded = reconcileMovementRefund();
+    expect(refunded).toBe(1550);
+    expect(hasSeenAnnouncement(MOVEMENT_ANNOUNCEMENT_ID)).toBe(false);
+  });
+
   it('marks and persists an arbitrary announcement as seen', () => {
     expect(hasSeenAnnouncement('some-other-announcement')).toBe(false);
     markAnnouncementSeen('some-other-announcement');

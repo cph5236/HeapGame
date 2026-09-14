@@ -6,6 +6,7 @@ import { HUD_INSET, HUD_TRAY_PAD, MAX_STAMINA_CAP } from '../constants';
 
 export class AbilityTray {
   readonly objects: Phaser.GameObjects.GameObject[] = [];
+  private readonly scene: Phaser.Scene;
   private readonly player: Player;
   private readonly showDash: boolean;
   private readonly segBacks: Phaser.GameObjects.Rectangle[] = [];
@@ -13,8 +14,11 @@ export class AbilityTray {
   private readonly cloudIcon: Phaser.GameObjects.Image;
   private readonly wallIcon: Phaser.GameObjects.Image;
   private readonly dashIcon?: Phaser.GameObjects.Image;
+  private staminaFlashTween?: Phaser.Tweens.Tween;
+  private destroyed = false;
 
   constructor(scene: Phaser.Scene, player: Player, showDashIndicator: boolean) {
+    this.scene = scene;
     this.player = player;
     this.showDash = showDashIndicator;
 
@@ -64,6 +68,46 @@ export class AbilityTray {
       this.wallIcon  = makeWallJumpIcon(scene, cx + 18, glyphY).setDepth(20);
       this.objects.push(this.cloudIcon, this.wallIcon);
     }
+
+    // Stamina-empty feedback: Player emits this when a press fails purely for
+    // want of stamina (there is deliberately no sound for it — the flash IS
+    // the feedback). scene.events is a persistent EventEmitter that survives a
+    // scene shutdown, so — same discipline as PlayerAnimator/PlayerCosmetics —
+    // we must unsubscribe ourselves on SHUTDOWN rather than rely on Phaser's
+    // GameObject auto-teardown, which doesn't touch listeners at all.
+    scene.events.on('player-action', this.onPlayerAction, this);
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this);
+  }
+
+  private readonly onPlayerAction = (action: string): void => {
+    if (action === 'stamina-empty') this.flashStamina();
+  };
+
+  /** Brief pulse on the stamina segments — the whole feedback cue for running
+   *  dry, since there's no sound for it. Re-triggering while already flashing
+   *  restarts the pulse rather than stacking tweens. */
+  private flashStamina(): void {
+    this.staminaFlashTween?.stop();
+    const targets = [...this.segBacks, ...this.segFills];
+    for (const t of targets) t.setAlpha(1);
+    this.staminaFlashTween = this.scene.tweens.add({
+      targets,
+      alpha: 0.15,
+      duration: 70,
+      yoyo: true,
+      repeat: 1,
+      ease: 'Sine.easeInOut',
+      onComplete: () => { for (const t of targets) t.setAlpha(1); },
+    });
+  }
+
+  /** Idempotent: reachable from both the scene's own teardown and SHUTDOWN. */
+  destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.staminaFlashTween?.stop();
+    this.scene.events.off('player-action', this.onPlayerAction, this);
+    this.scene.events.off(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this);
   }
 
   update(): void {

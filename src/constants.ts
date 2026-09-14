@@ -100,7 +100,6 @@ export const PLAYER_INVINCIBLE_MS = 400;  // post-stomp / post-spawn invincibili
 // One shared pool funds air jump, dash and wall jump (1 each). Jump, dive and
 // wall slide are free. Each ability keeps its own limiter on top of the cost —
 // see Player.ts and docs/superpowers/specs/2026-09-11-stamina-movement-design.md
-export const MAX_AIR_JUMPS   = 1;   // base per-airtime AIR JUMP CAP — not a stamina value
 export const BASE_STAMINA    = 3;   // base pool; upgrades and pickups add to it
 export const MAX_STAMINA_CAP = 8;   // hard ceiling; the HUD builds this many segments
 // Grounded regen is fast but NOT instant: a 2-frame bunny-hop banks ~0.15 bars

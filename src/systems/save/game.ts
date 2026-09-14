@@ -636,6 +636,18 @@ export function reconcileMovementRefund(): number {
   data.balance              += amount;
   data.movementRefundAmount  = amount;
   data.movementRefundApplied = true;
+  // A payout means this save actually owned one of the removed upgrades — the
+  // reinstall path (fresh save → GPGS merge pulls a pre-update cloud save with
+  // the upgrades already bought) is exactly this case, and freshGame() had
+  // pre-seeded seenAnnouncements with MOVEMENT_ANNOUNCEMENT_ID since it had no
+  // way to know a merge would later reveal spend history. Clear it here so the
+  // modal still renders and explains the balance jump. Do NOT clear it on a
+  // zero-amount reconcile: that path is what lets a genuinely fresh save (or
+  // one that never owned any of the three) stay silently suppressed.
+  if (amount > 0) {
+    data.seenAnnouncements = (data.seenAnnouncements ?? [])
+      .filter(id => id !== MOVEMENT_ANNOUNCEMENT_ID);
+  }
   // Persist unconditionally: load() only writes when the stored version differs
   // from CURRENT_SCHEMA, so relying on that side effect would recompute the
   // refund every launch and never save it.

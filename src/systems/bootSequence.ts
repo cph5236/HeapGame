@@ -63,6 +63,15 @@ export function isRefundSettled(): boolean {
   return refundSettled;
 }
 
+// ── Test helpers ──────────────────────────────────────────────────────────────
+
+/** Reset the module-level {@link refundSettled} latch between tests. Without
+ *  this, its describe block had to run first in the file (before any test set
+ *  it true) — matches SaveData's `resetCacheForTests()`. */
+export function resetRefundSettledForTests(): void {
+  refundSettled = false;
+}
+
 /**
  * Synchronous platform init: audio, ad consent, remote config, logging.
  * Consent and config are kicked off here and awaited later by the loading
