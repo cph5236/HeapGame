@@ -9,10 +9,11 @@ export function showDashIndicator(isMobile: boolean, mode: ControlMode): boolean
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
-/** One boolean per air-jump slot: first `left` are available, rest used. */
-export function airJumpPipStates(left: number, max: number): boolean[] {
-  const l = clamp(left, 0, max);
-  return Array.from({ length: max }, (_, i) => i < l);
+/** Per-segment fill (0..1) for the stamina bar. Only the bar currently
+ *  regenerating is partial; everything below it is full and above it empty. */
+export function staminaSegments(current: number, max: number): number[] {
+  const c = clamp(current, 0, max);
+  return Array.from({ length: max }, (_, i) => Math.round(clamp(c - i, 0, 1) * 1e6) / 1e6);
 }
 
 /** Dash bar fill (0..1): full when ready (cooldown 0), empty mid-cooldown (1). */

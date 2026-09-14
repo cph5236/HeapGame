@@ -170,10 +170,6 @@ export class Player {
   get airJumpsLeft():         number  { return this.airJumpsRemaining; }
   get maxAirJumpsCount():     number  { return this.maxAirJumps; }
   get canWallJump():          boolean { return this.wallJumpCooldown === 0; }
-  // Wall jump / dash are always unlocked now — stamina is the real gate. These
-  // stay as literal `true` for the HUD until Task 8 removes their call sites.
-  get hasWallJump():          boolean { return true; }
-  get hasDash():              boolean { return true; }
   get hasActiveShield():      boolean { return this.shieldActive; }
   get isReviveArmed():        boolean { return this.reviveArmed; }
   get isStunned():            boolean { return this._stunned; }
