@@ -1852,7 +1852,7 @@ describe('Player — carry modifiers', () => {
     expect(spy.setVelocityY).toContain(PLAYER_JUMP_VELOCITY - 120);
   });
 
-  it('extraAirJumps refreshes available air jumps immediately on pickup', async () => {
+  it('extraStamina refreshes available air jumps immediately on pickup', async () => {
     const { player } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
@@ -1866,7 +1866,7 @@ describe('Player — carry modifiers', () => {
     expect((player as any).airJumpsRemaining).toBe(2);
   });
 
-  it('extraAirJumps raises the effective max restored on landing', async () => {
+  it('extraStamina raises the effective max restored on landing', async () => {
     const { player, sprite } = await makePlayer({
       onGround: false,
       bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
@@ -2690,5 +2690,181 @@ describe('Player — speedMult airborne', () => {
       { seed: PLAYER_AIR_MAX_SPEED },
     );
     expect(vx).toBe(PLAYER_AIR_MAX_SPEED);
+  });
+});
+
+// ── 33. Stamina ────────────────────────────────────────────────────────────────
+
+describe('Player — stamina', () => {
+  it('spends a bar on an air jump', async () => {
+    const { player } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      // Air regen effectively disabled so the spend is exact and not muddied by
+      // a fractional gain from the same frame's regen step.
+      config: { maxAirJumps: 1, jumpBoost: 0, staminaRegenAirMs: 1e9 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).stamina = 3;
+    (player as any).airJumpsRemaining = 1;
+
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    expect(player.staminaCurrent).toBeCloseTo(2);
+  });
+
+  it('blocks the air jump at zero stamina even with the cap unspent', async () => {
+    // The design's UX trap in reverse: cap available, empty bar, dead button —
+    // and the failed press must not linger in the jump buffer to fire stale on
+    // a later landing (it emits 'stamina-empty' instead).
+    const { player, spy, sceneEvents } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).stamina = 0;
+    (player as any).airJumpsRemaining = 1;
+
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+    expect(player.airJumpsLeft).toBe(1); // cap never touched — the jump never fired
+    expect((player as any).jumpBufferTimer).toBe(0);
+    expect(sceneEvents.emit).toHaveBeenCalledWith('player-action', 'stamina-empty');
+  });
+
+  it('blocks the air jump at a spent cap even with a full bar', async () => {
+    // The design's UX trap: full bar, dead button. The HUD must show both
+    // gates, and the mechanic must genuinely refuse.
+    const { player, spy } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 1, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).stamina = 3;
+    (player as any).airJumpsRemaining = 0;
+
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    expect(spy.setVelocityY).not.toContain(PLAYER_JUMP_VELOCITY);
+  });
+
+  it('clamps current stamina down when carried modifiers reduce the max', async () => {
+    // Salvage is dropped/delivered mid-run; without the clamp the player holds
+    // bars above their cap and the HUD renders more segments than exist.
+    const { player } = await makePlayer({ onGround: true });
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraStamina: 2 });
+    (player as any).stamina = 5;
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraStamina: 0 });
+
+    expect(player.staminaCurrent).toBeLessThanOrEqual(player.staminaMax);
+    expect(player.staminaMax).toBe(3); // harness's defaultConfig.baseStamina
+  });
+
+  it('grants one bar (not a full refill) when max stamina rises', async () => {
+    const { player } = await makePlayer({ onGround: true });
+    (player as any).stamina = 0;
+    player.setCarryModifiers({ speedMult: 1, jumpBonus: 0, extraStamina: 1 });
+
+    expect(player.staminaCurrent).toBeCloseTo(1);
+  });
+
+  it('refundStamina restores bars up to the max', async () => {
+    const { player } = await makePlayer({ onGround: true });
+    (player as any).stamina = 1;
+    player.refundStamina(1);
+    expect(player.staminaCurrent).toBeCloseTo(2);
+    player.refundStamina(99);
+    expect(player.staminaCurrent).toBe(player.staminaMax);
+  });
+
+  it('dash spends a bar and is blocked at zero stamina', async () => {
+    const { player, sceneEvents } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: false, right: false, down: false }, velocity: { x: 0, y: 100 } },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
+    });
+    (player as any).stamina = 0;
+    imState.dashJustFired = true;
+    imState.dashDir = 1;
+
+    player.update(16);
+
+    expect(sceneEvents.emit).not.toHaveBeenCalledWith('player-action', 'dash');
+  });
+
+  it('dash is gated by placement mode even with stamina available', async () => {
+    // tryWallJump and tryGroundOrAirJump both already check placementMode;
+    // updateDash did not, so a player positioning an item could drain the pool.
+    const { player, sceneEvents } = await makePlayer({ onGround: true });
+    player.setPlacementMode(true);
+    imState.dashJustFired = true;
+    imState.dashDir = 1;
+
+    player.update(16);
+
+    expect(sceneEvents.emit).not.toHaveBeenCalledWith('player-action', 'dash');
+  });
+
+  it('wall jump is blocked at zero stamina', async () => {
+    const { player, sceneEvents } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, jumpBoost: 0 },
+    });
+    (player as any).coyoteTimer = 0;
+    (player as any).stamina = 0;
+
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    expect(sceneEvents.emit).not.toHaveBeenCalledWith('player-action', 'walljump');
+  });
+
+  it('the different-wall cooldown bypass still fires while stamina lasts', async () => {
+    // Chimney-climbing: alternating walls must keep firing wall jumps despite the
+    // same-wall cooldown, as long as the stamina pool can pay for each one. Default
+    // harness stamina (baseStamina=3) affords two 1-bar wall jumps.
+    const { player, sceneEvents } = await makePlayer({
+      onGround: false,
+      bodyOverrides: { blocked: { left: true, right: false, down: false }, velocity: { x: 0, y: 50 } },
+      config: { maxAirJumps: 0, jumpBoost: 0, staminaRegenAirMs: 1e9 },
+    });
+    (player as any).coyoteTimer = 0;
+
+    imState.jumpJustPressed = true;
+    player.update(16);
+    expect(sceneEvents.emit).toHaveBeenCalledWith('player-action', 'walljump');
+    expect(player.staminaCurrent).toBeCloseTo(2);
+
+    sceneEvents.emit.mockClear();
+    imState.jumpJustPressed = false;
+    player.sprite.body.blocked.left = false;
+    player.sprite.body.blocked.right = true;
+    player.update(16);
+
+    sceneEvents.emit.mockClear();
+    imState.jumpJustPressed = true;
+    player.update(16);
+
+    expect(sceneEvents.emit).toHaveBeenCalledWith('player-action', 'walljump');
+    expect(player.staminaCurrent).toBeCloseTo(1);
+  });
+
+  it('regenerates stamina while parked on a ladder (grounded rate)', async () => {
+    // handleLadder() early-returns out of runUpdate before updateStamina's call
+    // site would run, so ladder regen must be applied inline.
+    const { player } = await makePlayer({ onGround: true });
+    player.enterLadder();
+    (player as any).stamina = 0;
+
+    player.update(200); // 200ms at the 200ms-per-bar grounded rate = 1 full bar
+
+    expect(player.staminaCurrent).toBeCloseTo(1, 1);
   });
 });
