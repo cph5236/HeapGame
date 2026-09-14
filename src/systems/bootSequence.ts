@@ -10,6 +10,7 @@ import { validatePlayerName } from '../../shared/playerName';
 import {
   getPlayerName, setPlayerName, getEffectivePlayerId,
   getRawSaveForCloudSync, applyMergedSave, mergeCloudSave, type RawSave,
+  reconcileMovementRefund,
 } from './SaveData';
 
 /**
@@ -83,6 +84,7 @@ export function startIdentitySession(game: Phaser.Game): void {
     const localSave = getRawSaveForCloudSync();
     const merged    = mergeCloudSave(localSave, cloudSave);
     applyMergedSave(merged);
+    reconcileMovementRefund(); // after the merge, never inside migrate()
     setPlayerName(player.displayName); // GPGS name always wins after merge
     game.events.emit(SAVE_MERGED_EVENT);
   }).catch(() => { /* silent — cloud save merge is optional */ });

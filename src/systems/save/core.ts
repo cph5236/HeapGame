@@ -2,7 +2,7 @@ import type { AppConfig } from '../../../shared/configTypes';
 import { generateDefaultPlayerName, MAX_PLAYER_NAME_LEN } from '../../../shared/playerName';
 
 const SAVE_KEY = 'heap_save';
-const CURRENT_SCHEMA = 5;
+const CURRENT_SCHEMA = 6;
 
 export { SAVE_KEY, CURRENT_SCHEMA };
 

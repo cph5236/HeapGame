@@ -13,6 +13,7 @@ import {
   load as coreLoad, persist, setSaveExtension, setPrimaryPicker,
   type RawSave, type CoreSave,
 } from './core';
+import { syncSaveToCloud } from '../cloudSave';
 
 /** Core stores game fields opaquely (it must, to stay game-agnostic), so the
  *  accessors below read the same record through this game's own types. Same
@@ -53,6 +54,15 @@ export interface GameSave {
   _legacyPlaced?: PlacedItemSave[];
   adRunsSinceLast?: number;
   adRunTarget?:     number;
+  /** One-time flag: the movement-rework refund has been paid for this save
+   *  lineage. Merged with || like the other one-time flags. NOT keyed on
+   *  schemaVersion — an old client can downgrade the stamp on a save that has
+   *  already been refunded. See the design doc's Migration section. */
+  movementRefundApplied?: boolean;
+  /** What this player actually got back, for the announcement to display. */
+  movementRefundAmount?:  number;
+  /** Ids of one-time announcements this player has dismissed. */
+  seenAnnouncements?:     string[];
 }
 
 function remapPlacedY(placed: Record<string, PlacedItemSave[]>, oldHeight: number, newHeight: number): Record<string, PlacedItemSave[]> {
@@ -361,6 +371,10 @@ function freshGame(): GameSave {
     cosmeticsEquipped: {},
     tutorialDone:   false,
     menuTutorialSeen: false,
+    // A genuinely new player never used air-jump charges / paid for dash,
+    // wall jump or dive, so there is nothing to explain to them — and this
+    // must NOT set movementRefundApplied (see reconcileMovementRefund below).
+    seenAnnouncements: [MOVEMENT_ANNOUNCEMENT_ID],
   };
 }
 
@@ -386,6 +400,9 @@ function migrateGame(parsed: any, version: number): GameSave {
       _legacyPlaced:  parsed._legacyPlaced,
       adRunsSinceLast: parsed.adRunsSinceLast,
       adRunTarget:     parsed.adRunTarget,
+      movementRefundApplied: parsed.movementRefundApplied,
+      movementRefundAmount:  parsed.movementRefundAmount,
+      seenAnnouncements:     parsed.seenAnnouncements,
     };
   }
 
@@ -467,6 +484,9 @@ function migrateGame(parsed: any, version: number): GameSave {
     _legacyPlaced:  parsed._legacyPlaced,
     adRunsSinceLast: parsed.adRunsSinceLast,
     adRunTarget:     parsed.adRunTarget,
+    movementRefundApplied: parsed.movementRefundApplied,
+    movementRefundAmount:  parsed.movementRefundAmount,
+    seenAnnouncements:     parsed.seenAnnouncements,
   };
 }
 
@@ -551,6 +571,16 @@ function mergeGame(local: RawSave, cloud: RawSave): GameSave {
     // never re-nags. (Previously dropped here → hint/tutorial reappeared each launch.)
     menuTutorialSeen: local.menuTutorialSeen || cloud.menuTutorialSeen,
     tutorialDone:      local.tutorialDone      || cloud.tutorialDone,
+    // Explicit `||` merge key, not left to the spreads above: the refund
+    // reconciliation DELETES the wall_jump/dash/dive upgrade keys, and a stale
+    // side of the merge that still carries them will resurrect them via the
+    // upgrades union above. Only this flag — never key-absence — prevents a
+    // resurrected key from paying the refund a second time.
+    movementRefundApplied: local.movementRefundApplied || cloud.movementRefundApplied,
+    movementRefundAmount:  Math.max(local.movementRefundAmount ?? 0, cloud.movementRefundAmount ?? 0),
+    seenAnnouncements: [...new Set([
+      ...(local.seenAnnouncements ?? []), ...(cloud.seenAnnouncements ?? []),
+    ])],
   };
 }
 
@@ -558,6 +588,66 @@ function mergeGame(local: RawSave, cloud: RawSave): GameSave {
 // extension is always installed before anything can call load().
 setSaveExtension({ fresh: freshGame, migrate: migrateGame, merge: mergeGame });
 setPrimaryPicker(primaryOf);
+
+// ── Movement rework: one-time Scrap refund + announcement ─────────────────────
+
+/** Purchase prices of the upgrades removed by the movement rework, frozen as
+ *  historical constants. Deliberately NOT read from UPGRADE_DEFS: those entries
+ *  are deleted, so a lookup would return 0 and silently refund nothing. */
+const MOVEMENT_REFUND_PRICES: Record<string, number> = {
+  wall_jump: 450, dash: 600, dive: 500,
+};
+
+export const MOVEMENT_ANNOUNCEMENT_ID = 'movement-v0.4';
+
+/**
+ * Pay back Scrap spent on upgrades the movement rework made default-unlocked.
+ *
+ * MUST run after any cloud merge, never inside migrateGame. Migration happens
+ * at load(), the GPGS merge happens later, and mergeGame resolves balance with
+ * Math.max — so a refund applied during migration is double-credited the moment
+ * one device has already spent it (see cloudSave.ts's syncSaveToCloud doc).
+ * Running post-merge against the reconciled upgrade map pays exactly once.
+ *
+ * Safe to call repeatedly; the flag makes it a no-op after the first payout.
+ */
+export function reconcileMovementRefund(): void {
+  const data = load();
+  if (data.movementRefundApplied) return;
+
+  let amount = 0;
+  for (const [id, price] of Object.entries(MOVEMENT_REFUND_PRICES)) {
+    if ((data.upgrades[id] ?? 0) > 0) {
+      amount += price;
+      delete data.upgrades[id];
+    }
+  }
+
+  data.balance              += amount;
+  data.movementRefundAmount  = amount;
+  data.movementRefundApplied = true;
+  // Persist unconditionally: load() only writes when the stored version differs
+  // from CURRENT_SCHEMA, so relying on that side effect would recompute the
+  // refund every launch and never save it.
+  persist(data);
+  if (amount > 0) syncSaveToCloud();
+}
+
+export function getMovementRefundAmount(): number {
+  return load().movementRefundAmount ?? 0;
+}
+
+export function hasSeenAnnouncement(id: string): boolean {
+  return (load().seenAnnouncements ?? []).includes(id);
+}
+
+export function markAnnouncementSeen(id: string): void {
+  const data = load();
+  const seen = new Set(data.seenAnnouncements ?? []);
+  seen.add(id);
+  data.seenAnnouncements = [...seen];
+  persist(data);
+}
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 

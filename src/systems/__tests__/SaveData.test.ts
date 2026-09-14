@@ -473,7 +473,7 @@ describe('SaveData v1→v2 migration', () => {
 
     expect(getPlaced('any-heap')).toEqual([]);                 // fresh key is empty
     expect(getLegacyPlacedForTests()).toEqual([{ id: 'ibeam', x: 10, y: 20 }]);
-    expect(getSchemaVersionForTests()).toBe(5);
+    expect(getSchemaVersionForTests()).toBe(6);
   });
 
   it('finalizeLegacyPlaced moves items onto a heap id', () => {
@@ -824,7 +824,7 @@ describe('soundSettings – schema v4 migration', () => {
     expect(settings.playerSfx).toBe(1.0);
     expect(settings.enemySfx).toBe(0.8);
     expect(settings.envSfx).toBe(0.9);
-    expect(getSchemaVersionForTests()).toBe(5);
+    expect(getSchemaVersionForTests()).toBe(6);
   });
 
   it('preserves existing soundSettings when loading a v4 save', () => {
@@ -885,6 +885,136 @@ describe('v5 save migration — tripwire for next CURRENT_SCHEMA bump', () => {
     expect(loaded.menuTutorialSeen).toBe(true);
     // The remap branch would push this to 4_990_000.
     expect(loaded.placed.heapA[0].y).toBe(40_000);
+  });
+});
+
+// ── Movement rework refund reconciliation ───────────────────────────────────
+
+import {
+  reconcileMovementRefund,
+  getMovementRefundAmount,
+  hasSeenAnnouncement,
+  markAnnouncementSeen,
+  MOVEMENT_ANNOUNCEMENT_ID,
+  getUpgrades,
+  applyMergedSave,
+} from '../SaveData';
+
+const LEGACY_MOVEMENT_UPGRADES = { wall_jump: 1, dash: 1, dive: 1 };
+
+/** Seed a schema-6 save directly (bypassing migrate) with the given balance
+ *  and upgrades — matches this suite's `baseSave` fixture style. */
+function seedSave(overrides: { balance: number; upgrades: Record<string, number> }): void {
+  store[SAVE_KEY] = JSON.stringify({
+    ...baseSave(),
+    schemaVersion: 6,
+    ...overrides,
+  });
+  resetCacheForTests();
+}
+
+/** A genuinely new save — no prior device, no prior cloud data. */
+function seedFreshSave(): void {
+  localStorage.clear();
+  resetCacheForTests();
+  getBalance(); // materialize the fresh save into the cache/store
+}
+
+describe('reconcileMovementRefund', () => {
+  beforeEach(() => { localStorage.clear(); resetCacheForTests(); });
+
+  it('refunds 1550 for all three removed upgrades and deletes the keys', () => {
+    seedSave({ balance: 100, upgrades: { ...LEGACY_MOVEMENT_UPGRADES, air_jump: 2 } });
+    reconcileMovementRefund();
+    expect(getBalance()).toBe(1650);
+    expect(getUpgrades()).toEqual({ air_jump: 2 });
+    expect(getMovementRefundAmount()).toBe(1550);
+  });
+
+  it('refunds only what the player actually owned', () => {
+    seedSave({ balance: 0, upgrades: { dash: 1 } });
+    reconcileMovementRefund();
+    expect(getBalance()).toBe(600);
+  });
+
+  it('is idempotent across repeated launches', () => {
+    seedSave({ balance: 0, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } });
+    reconcileMovementRefund();
+    reconcileMovementRefund();
+    reconcileMovementRefund();
+    expect(getBalance()).toBe(1550);
+  });
+
+  it('pays a returning player whose cloud save restores the old upgrades', () => {
+    // The Android reinstall path: fresh local save, then a pre-update cloud save
+    // merges in. freshGame() must NOT pre-set the flag or this player is robbed.
+    seedFreshSave();
+    const cloud = { ...baseSave(), balance: 900, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } };
+    applyMergedSave(mergeCloudSave(getRawSaveForCloudSync(), cloud as any));
+    reconcileMovementRefund();
+    expect(getBalance()).toBe(900 + 1550);
+  });
+
+  it('pays a genuinely new player nothing', () => {
+    seedFreshSave();
+    reconcileMovementRefund();
+    expect(getBalance()).toBe(0);
+    expect(getMovementRefundAmount()).toBe(0);
+  });
+
+  it('persists the refund on the launch it fires', () => {
+    seedSave({ balance: 0, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } });
+    reconcileMovementRefund();
+    const stored = JSON.parse(localStorage.getItem(SAVE_KEY)!);
+    expect(stored.balance).toBe(1550);
+    expect(stored.movementRefundApplied).toBe(true);
+  });
+
+  // Not in the brief, added per Task 2's review note: mergeGame spreads both
+  // saves before its explicit literal, so unknown/deleted-by-absence keys can
+  // be resurrected by a stale side that still carries them (see the upgrades
+  // union rule below). movementRefundApplied MUST be an explicit `||` merge
+  // key so a resurrected wall_jump/dash/dive key cannot trigger a second
+  // payout — without this, a stale pre-update cloud snapshot merging in after
+  // the refund already ran would re-grant the refunded upgrades for free.
+  it('does not pay twice when a cloud merge resurrects a refunded upgrade key', () => {
+    seedSave({ balance: 0, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } });
+    reconcileMovementRefund();
+    expect(getBalance()).toBe(1550);
+
+    // A stale cloud snapshot captured before the refund still carries the keys
+    // and has not been stamped movementRefundApplied.
+    const staleCloud = {
+      ...baseSave(), balance: 0,
+      upgrades: { ...LEGACY_MOVEMENT_UPGRADES },
+      movementRefundApplied: false,
+    };
+    const merged = mergeCloudSave(getRawSaveForCloudSync(), staleCloud as any);
+    applyMergedSave(merged);
+
+    // The upgrades union resurrects the deleted keys...
+    expect(getUpgrades()).toEqual(expect.objectContaining({ ...LEGACY_MOVEMENT_UPGRADES }));
+    // ...but the || flag must have survived the merge and block a second payout.
+    reconcileMovementRefund();
+    expect(getBalance()).toBe(1550);
+  });
+});
+
+describe('movement announcement flag', () => {
+  beforeEach(() => { localStorage.clear(); resetCacheForTests(); });
+
+  it('a genuinely new save is pre-seeded as having seen the movement announcement', () => {
+    // A player who never touched the removed upgrades should not be told
+    // what changed about a system they never used.
+    expect(hasSeenAnnouncement(MOVEMENT_ANNOUNCEMENT_ID)).toBe(true);
+  });
+
+  it('marks and persists an arbitrary announcement as seen', () => {
+    expect(hasSeenAnnouncement('some-other-announcement')).toBe(false);
+    markAnnouncementSeen('some-other-announcement');
+    expect(hasSeenAnnouncement('some-other-announcement')).toBe(true);
+    resetCacheForTests();
+    expect(hasSeenAnnouncement('some-other-announcement')).toBe(true);
   });
 });
 
