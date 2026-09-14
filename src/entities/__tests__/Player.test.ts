@@ -2791,6 +2791,15 @@ describe('Player — stamina', () => {
     expect(player.staminaCurrent).toBe(player.staminaMax);
   });
 
+  it('stomp refunds both a stamina bar and the air-jump cap', async () => {
+    const { player } = await makePlayer({ config: { maxAirJumps: 1 } });
+    (player as any).stamina = 0;
+    (player as any).airJumpsRemaining = 0;
+    player.refundAirJump();
+    expect(player.staminaCurrent).toBeCloseTo(1);
+    expect(player.airJumpsLeft).toBe(1);
+  });
+
   it('dash spends a bar and is blocked at zero stamina', async () => {
     const { player, sceneEvents } = await makePlayer({
       onGround: false,

@@ -817,8 +817,13 @@ export class Player {
     this.sprite.body.setAllowGravity(true);
   }
 
+  /** Stomp reward: restores BOTH the air-jump cap and one stamina bar.
+   *  Refunding only the bar would leave the cap spent and silently break
+   *  stomp-chaining — the most expressive movement in the game. Called from
+   *  GameScene, InfiniteGameScene (stomp + debug noclip) and TutorialScene. */
   refundAirJump(): void {
     this.airJumpsRemaining = Math.min(this.effectiveMaxAirJumps, this.airJumpsRemaining + 1);
+    this.refundStamina(1);
   }
 
   /** Restore bars, capped. Used by stomp (see the four refundAirJump sites). */
