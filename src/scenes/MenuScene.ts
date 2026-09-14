@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { AudioManager } from '../systems/AudioManager';
-import { getBalance, getPlaced, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getEffectivePlayerId, getControlMode, getEffectiveControlMode, setSessionControlMode, getEquippedCosmetics, getHatAdjustments, getMenuTutorialSeen, setMenuTutorialSeen } from '../systems/SaveData';
+import { getBalance, getPlaced, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getEffectivePlayerId, getControlMode, getEffectiveControlMode, setSessionControlMode, getEquippedCosmetics, getHatAdjustments, getMenuTutorialSeen, setMenuTutorialSeen, hasSeenAnnouncement, getMovementRefundAmount, MOVEMENT_ANNOUNCEMENT_ID } from '../systems/SaveData';
 import { tiltPromptKind, isTiltPendingPermission } from '../systems/tiltAvailability';
 import { composeAvatar } from '../ui/avatar';
 import { redeemCode, type RedeemResult } from '../systems/CodeClient';
@@ -24,7 +24,9 @@ import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { openFeedbackOverlay } from './FeedbackOverlay';
 import type { SettingsSceneData } from './SettingsScene';
-import { SAVE_MERGED_EVENT } from '../systems/bootSequence';
+import { SAVE_MERGED_EVENT, REFUND_SETTLED_EVENT } from '../systems/bootSequence';
+import { buildAnnouncementBeats } from '../ui/announcementLogic';
+import { AnnouncementModal } from '../ui/AnnouncementModal';
 import { fetchDailyStatus } from '../systems/DailyDropClient';
 import { hasPlayedToday, deviceUtcOffsetMin } from '../systems/dailyRunGate';
 import { dailyIconState, shouldAutoShowPopup, formatCountdown, type DailyIconState } from '../ui/dailyDropLogic';
@@ -91,6 +93,11 @@ export class MenuScene extends Phaser.Scene {
   /** True once the entrance cinematic has settled — the tour spotlights real
    *  elements, so it must never start while they're still fading in. */
   private entranceComplete = false;
+  /** True once the movement-refund reconciliation has settled for this boot
+   *  (REFUND_SETTLED_EVENT). The announcement modal reads the refund amount
+   *  only after this, and its ordering vs. entranceComplete is not fixed —
+   *  see maybeShowPostEntranceUi(). */
+  private refundSettled = false;
   /** Re-entrancy guard: the auto-trigger and the manual "?" replay button both
    *  call startMenuTour(), and without this a fast double-tap (or a tap that
    *  lands right as the auto-trigger fires) would stack two overlapping tours. */
@@ -142,6 +149,14 @@ export class MenuScene extends Phaser.Scene {
       if (!this.balanceText?.active) return;
       this.balanceText.setText(`${getBalance()} Scrap`);
     }, this);
+    // The refund reconciliation (Task 9) runs on every boot-chain completion
+    // path and settles asynchronously — it can land before OR after the
+    // entrance cinematic finishes. Read the amount only once both have
+    // happened; see maybeShowPostEntranceUi().
+    this.game.events.once(REFUND_SETTLED_EVENT, () => {
+      this.refundSettled = true;
+      this.maybeShowPostEntranceUi();
+    }, this);
     this.createPrompts(im);
     this.createHeapPicker();
     this.createSettingsButton();
@@ -156,7 +171,7 @@ export class MenuScene extends Phaser.Scene {
     this.runEntranceSequence(introScale);
     this.time.delayedCall(ENTRANCE_FULL_SPAN_MS * introScale + 200, () => {
       this.entranceComplete = true;
-      if (!getMenuTutorialSeen()) this.startMenuTour();
+      this.maybeShowPostEntranceUi();
     });
     this.registerInput();
     loadGameAssets(this);
@@ -1105,6 +1120,36 @@ export class MenuScene extends Phaser.Scene {
         return { x: helpCx - 14, y: 22 - 14, w: (gearCx + 14) - (helpCx - 14), h: 28 };
       }
     }
+  }
+
+  /** Guards {@link maybeShowPostEntranceUi} so it only ever acts once, no
+   *  matter which of its two prerequisite events fires second. */
+  private postEntranceUiHandled = false;
+
+  /** Gate for the movement-rework announcement modal vs. the auto-tour: both
+   *  want to run once the entrance cinematic settles, but the modal also
+   *  needs the refund reconciliation (Task 9, `REFUND_SETTLED_EVENT`) to have
+   *  landed first so it can show the player's real refund number. The two
+   *  prerequisites — entranceComplete and refundSettled — finish in either
+   *  order (the refund settles on a network-bound GPGS chain with up to a
+   *  6s ceiling; the entrance is a fixed ~1-2s timer), so both the entrance
+   *  callback and the REFUND_SETTLED_EVENT handler call this, and it only
+   *  proceeds once both flags are set. */
+  private maybeShowPostEntranceUi(): void {
+    if (this.postEntranceUiHandled) return;
+    if (!this.entranceComplete || !this.refundSettled) return;
+    this.postEntranceUiHandled = true;
+
+    if (!hasSeenAnnouncement(MOVEMENT_ANNOUNCEMENT_ID)) {
+      new AnnouncementModal(
+        this,
+        MOVEMENT_ANNOUNCEMENT_ID,
+        'Movement Rework',
+        buildAnnouncementBeats(getMovementRefundAmount()),
+      );
+      return; // don't stack the coach-mark tour on top of the modal
+    }
+    if (!getMenuTutorialSeen()) this.startMenuTour();
   }
 
   /** Runs the full-screen coach-mark tour over the menu's core elements —
