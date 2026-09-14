@@ -16,8 +16,8 @@ export interface PickupEffect {
   speedMult:     number;
   /** Added to the player's jumpBoost (px/s). Positive = higher jump. */
   jumpBonus:     number;
-  /** Added to the player's max air-jumps. */
-  extraStamina: number;
+  /** Added to the player's max stamina pool. */
+  extraStamina:  number;
   /** Multiplies the player's gravity. <1 floats, >1 sinks. (default 1) */
   gravityMult?:  number;
   /** Multiplies dash + wall-jump cooldowns. <1 = faster recharge. (default 1) */
@@ -98,7 +98,7 @@ export interface PickupDef {
 export interface CarryModifiers {
   speedMult:     number;
   jumpBonus:     number;
-  extraStamina: number;
+  extraStamina:  number;
   gravityMult:   number;
   cooldownMult:  number;
   wallSpeedMult: number;
@@ -113,7 +113,7 @@ export interface CarriedPickup {
 
 /** Aggregate a carried stack into a single set of modifiers + total bonus.
  *  Multiplier levers compose multiplicatively (omitted = identity 1); jump,
- *  air-jumps, and bonus sum. Rarity scaling is applied to each item's effect
+ *  stamina, and bonus sum. Rarity scaling is applied to each item's effect
  *  and the score bonus. */
 export function aggregateModifiers(carried: readonly CarriedPickup[]): CarryModifiers {
   return carried.reduce<CarryModifiers>(
@@ -122,7 +122,7 @@ export function aggregateModifiers(carried: readonly CarriedPickup[]): CarryModi
       return {
         speedMult:     acc.speedMult * e.speedMult,
         jumpBonus:     acc.jumpBonus + e.jumpBonus,
-        extraStamina: acc.extraStamina + e.extraStamina,
+        extraStamina:  acc.extraStamina + e.extraStamina,
         gravityMult:   acc.gravityMult * (e.gravityMult ?? 1),
         cooldownMult:  acc.cooldownMult * (e.cooldownMult ?? 1),
         wallSpeedMult: acc.wallSpeedMult * (e.wallSpeedMult ?? 1),
@@ -136,7 +136,7 @@ export function aggregateModifiers(carried: readonly CarriedPickup[]): CarryModi
 
 /** Human-readable summary of an effect, for the proximity overlay. Uses plain
  *  words rather than jargon so players can tell at a glance what each lever does:
- *  signed % Speed, signed Jump Height, ± Air Jumps, Floaty/Heavy (gravity),
+ *  signed % Speed, signed Jump Height, ± Max Stamina, Floaty/Heavy (gravity),
  *  Faster/Slower Cooldown, and Slower/Faster Rising Wall (the rising wall is the
  *  hazard, so slower is good). Empty when the item has no stat effect (the shield). */
 export function formatEffectSummary(effect: PickupEffect): string {
