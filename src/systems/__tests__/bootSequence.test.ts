@@ -34,7 +34,7 @@ vi.mock('../ads/consentGate', () => ({ beginAdConsent: vi.fn() }));
 vi.mock('../ConfigClient', () => ({ primeConfig: vi.fn() }));
 vi.mock('../../logging', () => ({ initLogger: vi.fn() }));
 
-const { startIdentitySession, SAVE_MERGED_EVENT, REFUND_SETTLED_EVENT } = await import('../bootSequence');
+const { startIdentitySession, SAVE_MERGED_EVENT, REFUND_SETTLED_EVENT, isRefundSettled } = await import('../bootSequence');
 const {
   resetCacheForTests, getPlayerSecret, getPlayerName, getBalance,
   getRawSaveForCloudSync,
@@ -87,6 +87,24 @@ beforeEach(() => {
   emit = vi.fn();
   signInSettled.mockResolvedValue(PLAYER);
   loadSnapshot.mockResolvedValue(null);
+});
+
+// Placed first deliberately: isRefundSettled() is backed by module-level state
+// with no reset hook (mirroring the real app, where it settles at most once
+// per page load), so its "still false" case can only be observed before any
+// other test in this file has driven a chain to completion.
+describe('isRefundSettled', () => {
+  it('is false before this boot\'s chain has settled', () => {
+    expect(isRefundSettled()).toBe(false);
+  });
+
+  it('becomes true once the chain settles on the no-player path', async () => {
+    seedLocal();
+    signInSettled.mockResolvedValue(null);
+    startIdentitySession(fakeGame());
+    await settle();
+    expect(isRefundSettled()).toBe(true);
+  });
 });
 
 describe('startIdentitySession — sign-in gate', () => {

@@ -24,7 +24,7 @@ import { getLogger } from '../logging';
 import { PlayGamesClient } from '../systems/PlayGamesClient';
 import { openFeedbackOverlay } from './FeedbackOverlay';
 import type { SettingsSceneData } from './SettingsScene';
-import { SAVE_MERGED_EVENT, REFUND_SETTLED_EVENT } from '../systems/bootSequence';
+import { SAVE_MERGED_EVENT, REFUND_SETTLED_EVENT, isRefundSettled } from '../systems/bootSequence';
 import { buildAnnouncementBeats } from '../ui/announcementLogic';
 import { AnnouncementModal } from '../ui/AnnouncementModal';
 import { fetchDailyStatus } from '../systems/DailyDropClient';
@@ -153,10 +153,23 @@ export class MenuScene extends Phaser.Scene {
     // path and settles asynchronously — it can land before OR after the
     // entrance cinematic finishes. Read the amount only once both have
     // happened; see maybeShowPostEntranceUi().
-    this.game.events.once(REFUND_SETTLED_EVENT, () => {
+    //
+    // Off Android (and on Android when sign-in is declined/unavailable),
+    // PlayGamesClient.signIn() resolves synchronously, so the whole
+    // startIdentitySession chain — including this event — can finish as
+    // microtasks before BootScene even changes scene, let alone before this
+    // scene exists to listen. isRefundSettled() covers that "already
+    // happened" case; the .once() below still covers the genuinely-late
+    // GPGS merge case, so both routes are kept.
+    if (isRefundSettled()) {
       this.refundSettled = true;
       this.maybeShowPostEntranceUi();
-    }, this);
+    } else {
+      this.game.events.once(REFUND_SETTLED_EVENT, () => {
+        this.refundSettled = true;
+        this.maybeShowPostEntranceUi();
+      }, this);
+    }
     this.createPrompts(im);
     this.createHeapPicker();
     this.createSettingsButton();

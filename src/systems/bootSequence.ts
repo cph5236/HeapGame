@@ -41,6 +41,29 @@ export const SAVE_MERGED_EVENT = 'gpgs:save-merged';
 export const REFUND_SETTLED_EVENT = 'save:refund-settled';
 
 /**
+ * Set true in the same `.finally()` that emits {@link REFUND_SETTLED_EVENT},
+ * immediately before the emit.
+ *
+ * Exists because off Android `PlayGamesClient.signIn()` resolves null
+ * *synchronously* (see gpgsSession.ts), so the whole `.then/.catch/.finally`
+ * chain below drains as microtasks before BootScene's `scene.start(...)` even
+ * runs — REFUND_SETTLED_EVENT fires before LoadingScene, let alone MenuScene,
+ * exists to listen for it. A scene arriving after the emit needs a
+ * synchronous way to ask "did this already happen?" since the event itself
+ * is gone by the time anyone can hear it — `game.events` is a plain
+ * EventEmitter with no replay or last-value retention.
+ */
+let refundSettled = false;
+
+/** See {@link refundSettled}: true once this boot's refund reconciliation has
+ *  concluded (settled, not necessarily paid). A listener registered after
+ *  that point must check this instead of waiting on the event, which may
+ *  already have fired and gone. */
+export function isRefundSettled(): boolean {
+  return refundSettled;
+}
+
+/**
  * Synchronous platform init: audio, ad consent, remote config, logging.
  * Consent and config are kicked off here and awaited later by the loading
  * screen — neither blocks this call.
@@ -123,6 +146,7 @@ export function startIdentitySession(game: Phaser.Game): void {
       // caller closes the stale-snapshot window instead, exactly once, only
       // when a payout actually happened.
       if (refunded > 0) syncSaveToCloud();
+      refundSettled = true;
       game.events.emit(REFUND_SETTLED_EVENT);
     });
 }
