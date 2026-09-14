@@ -62,8 +62,22 @@ export class AnnouncementModal {
     const PAD_TOP = 24;
     const GAP = 18;
     const PAD_BOTTOM = 24;
+    // Clamp to the viewport and shrink the body copy to fit, the same way
+    // TutorialOverlay.layoutInfoPanel() does. Sizing purely from content means
+    // a three-beat refund message runs off the bottom of a short (landscape)
+    // screen, taking the dismiss button with it. Tapping the backdrop still
+    // closes the modal, so it is never a trap — but the player would lose the
+    // refund figure, which is the one number this modal exists to show.
+    const MAX_PANEL_H = h - 48;
+    const MIN_BODY_FONT_PX = 10;
+    const chrome = PAD_TOP + titleText.height + GAP + GAP + dismissBtn.height + PAD_BOTTOM;
+    let bodyFontPx = 15;
+    while (chrome + bodyText.height > MAX_PANEL_H && bodyFontPx > MIN_BODY_FONT_PX) {
+      bodyFontPx -= 1;
+      bodyText.setFontSize(bodyFontPx);
+    }
     const contentH = titleText.height + GAP + bodyText.height + GAP + dismissBtn.height;
-    const panelH = PAD_TOP + contentH + PAD_BOTTOM;
+    const panelH = Math.min(MAX_PANEL_H, PAD_TOP + contentH + PAD_BOTTOM);
     const panelTop = Math.max(24, (h - panelH) / 2);
 
     titleText.setPosition(cx, panelTop + PAD_TOP);

@@ -1166,8 +1166,14 @@ export class MenuScene extends Phaser.Scene {
         MOVEMENT_ANNOUNCEMENT_ID,
         'Movement Rework',
         buildAnnouncementBeats(getMovementRefundAmount()),
+        // Chain the tour off the dismiss rather than dropping it. The two must
+        // not stack, but a player can be owed both: anyone who last played
+        // before the menu tour shipped and who also bought the removed
+        // movement upgrades. Without this they lose the tour for the session,
+        // since postEntranceUiHandled has already latched.
+        () => { if (!getMenuTutorialSeen()) this.startMenuTour(); },
       );
-      return; // don't stack the coach-mark tour on top of the modal
+      return; // the tour, if owed, now runs from the dismiss callback above
     }
     if (!getMenuTutorialSeen()) this.startMenuTour();
   }
