@@ -80,12 +80,11 @@ export const TUTORIAL_ITEM_SURFACE_Y = H - 590;
  *  both copy maps share it verbatim. The tray it points at is mounted by
  *  TutorialScene. */
 const STAMINA_EXPLAINER =
-  'Your air moves all share one pool of Stamina — the bar at the top-left. '
-  + 'Air jumps, dashes and wall jumps each cost one bar; plain jumps, dives and '
+  'Your air moves all share one pool of Stamina. It is the bar at the top left.\n\n'
+  + 'Air jumps, dashes and wall jumps each cost one bar. Plain jumps, dives and '
   + 'wall slides are free.\n\n'
-  + 'Stamina refills fast once you are back on solid ground, but only trickles '
-  + 'back while you are in the air. Run dry and you will need to land before you '
-  + 'can pull off another air move.';
+  + 'Stamina refills fast when you are standing on solid ground. In the air it '
+  + 'comes back slowly. If you run out, land to refill before your next air move.';
 
 export const TUTORIAL_STEPS: TutorialStep[] = [
   { id: 'welcome',    message: 'Welcome to Heap! Climb to the top of the Trash Heap.', advanceOn: 'tap',        mode: 'info' },
@@ -96,14 +95,14 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   // next jump — a second later, mid-climb — dismissed it before it could be
   // read. Stamina is the game's core resource now; it gets a deliberate beat.
   { id: 'stamina',    message: STAMINA_EXPLAINER,                                 advanceOn: 'tap',        mode: 'info' },
-  { id: 'walljump',   message: 'This wall is too tall to jump — wall-jump up it: Jump into the wall, then jump while pressing away from it.', advanceOn: 'walljump', mode: 'hint' },
-  { id: 'dash',       message: 'Try a dash — jump and dash to cross big gaps.',          advanceOn: 'dash',       mode: 'hint' },
+  { id: 'walljump',   message: 'This wall is too tall for one jump. Jump into the wall, then jump again while pressing away from it.', advanceOn: 'walljump', mode: 'hint' },
+  { id: 'dash',       message: 'Try a dash. Jump first, then dash to cross big gaps.',          advanceOn: 'dash',       mode: 'hint' },
   { id: 'dive',       message: 'Jump up, then dive straight back down.',                advanceOn: 'dive',       mode: 'hint' },
   { id: 'stomp',      message: 'A rat! Land on top of it to squash it.',               advanceOn: 'stomp',      mode: 'hint' },
-  { id: 'pickup',     message: 'Grab the salvage item — carry it up for points.',      advanceOn: 'pickup',     mode: 'hint' },
+  { id: 'pickup',     message: 'Grab the salvage item. Carry it up for points.',      advanceOn: 'pickup',     mode: 'hint' },
   { id: 'attop',      message: 'You reached the top of the Trash Heap!',               advanceOn: 'tap',        mode: 'info' },
   { id: 'placeBlock', message: 'Add your block to the Trash Heap.',                     advanceOn: 'placeBlock', mode: 'hint' },
-  { id: 'complete',   message: 'Nice work! Dash, Wall-Jump, and Dive are yours to keep — no unlocking needed. Now go climb!', advanceOn: 'tap', mode: 'info' },
+  { id: 'complete',   message: 'Nice work! Dash, Wall Jump and Dive are yours to keep. There is nothing to unlock. Now go climb!', advanceOn: 'tap', mode: 'info' },
 ];
 
 /** Control scheme the player is using, for instruction copy. */
@@ -115,17 +114,17 @@ export interface ControlHintOpts {
 /** Keyboard (desktop) instruction copy, keyed by step id. */
 const DESKTOP_MESSAGES: Record<string, string> = {
   welcome:    'Welcome to Heap! Climb to the top of the Trash Heap.',
-  move:       'Use the ← → arrow keys (or A and D) to move. Tip: walk off one edge of the screen to wrap around to the other side.',
-  jump:       'Press ↑ (or W) to jump onto the ledge.',
+  move:       'Use the ← → arrow keys, or A and D, to move. You can walk off one edge of the screen to wrap around to the other side.',
+  jump:       'Press ↑ or W to jump onto the ledge.',
   stamina:    STAMINA_EXPLAINER,
-  walljump:   'Wall-jump up the tall wall: press → into the wall to cling, then press ↑ and ← together to spring up and off it. Repeat to climb.',
-  dash:       'Press Shift to dash. Try it mid-air too (jump, then dash) — a jump-dash is how you cross the big open gap when you wrap to the other side of the heap.',
-  dive:       'Jump up, then hold ↓ (or S) to dive straight down.',
+  walljump:   'Wall jump up the tall wall. Press → into the wall to cling to it, then press ↑ and ← together to spring off. Repeat to climb.',
+  dash:       'Press Shift to dash. Try it in mid air too. Jump first, then dash. That is how you cross the big open gap when you wrap to the other side of the heap.',
+  dive:       'Jump up, then hold ↓ or S to dive straight down.',
   stomp:      'A rat! Land on top of it to squash it.',
-  pickup:     'Grab the salvage item — carry it to the top for points.',
+  pickup:     'Grab the salvage item. Carry it to the top for points.',
   attop:      'You reached the top of the Trash Heap!',
   placeBlock: 'Press Space to add your block to the Trash Heap.',
-  complete:   'Nice work! Dash, Wall-Jump, and Dive are yours to keep — no unlocking needed. Now go climb!',
+  complete:   'Nice work! Dash, Wall Jump and Dive are yours to keep. There is nothing to unlock. Now go climb!',
 };
 
 /** Touch (mobile) instruction copy, keyed by step id. `move` is filled per control mode. */
@@ -134,14 +133,14 @@ const MOBILE_MESSAGES: Record<string, string> = {
   move:       '', // set from control mode in tutorialMessage
   jump:       'Swipe up to jump onto the ledge.',
   stamina:    STAMINA_EXPLAINER,
-  walljump:   'Wall-jump up the tall wall: move into the wall and tilt to cling to it, then swipe up-and-away from the wall to spring off. Repeat to climb.',
-  dash:       'Swipe left or right to dash. Try it mid-air too (jump, then swipe) — a jump-dash is how you cross the big open gap when you wrap to the other side of the heap.',
+  walljump:   'Wall jump up the tall wall. Move into the wall and tilt to cling to it, then swipe up and away from the wall to spring off. Repeat to climb.',
+  dash:       'Swipe left or right to dash. Try it in mid air too. Jump first, then swipe. That is how you cross the big open gap when you wrap to the other side of the heap.',
   dive:       'Jump up, then swipe down to dive straight down.',
   stomp:      'A rat! Land on top of it to squash it.',
-  pickup:     'Grab the salvage item — carry it to the top for points.',
+  pickup:     'Grab the salvage item. Carry it to the top for points.',
   attop:      'You reached the top of the Trash Heap!',
   placeBlock: 'Hold the PLACE button to add your block to the Trash Heap.',
-  complete:   'Nice work! Dash, Wall-Jump, and Dive are yours to keep — no unlocking needed. Now go climb!',
+  complete:   'Nice work! Dash, Wall Jump and Dive are yours to keep. There is nothing to unlock. Now go climb!',
 };
 
 /**
@@ -152,8 +151,8 @@ export function tutorialMessage(step: TutorialStep, opts: ControlHintOpts): stri
   if (opts.mobile) {
     if (step.id === 'move') {
       return opts.mode === 'joystick'
-        ? 'Use the joystick to move and start climbing. Tip: go off one edge of the screen to wrap around to the other side.'
-        : 'Tilt your device left and right to move. Tip: go off one edge of the screen to wrap around to the other side.';
+        ? 'Use the joystick to move and start climbing. You can go off one edge of the screen to wrap around to the other side.'
+        : 'Tilt your device left and right to move. You can go off one edge of the screen to wrap around to the other side.';
     }
     return MOBILE_MESSAGES[step.id] ?? step.message;
   }
