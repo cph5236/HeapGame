@@ -94,6 +94,23 @@ describe('getPlayerConfig – stamina fields', () => {
     expect(cfg.staminaRegenAirMs).toBe(3000);   // level 0 = base rate
     expect(cfg.wallJumpCooldownMs).toBe(2400);  // 3000 - 4 * 150
   });
+
+  // Regression (PR #186 review): the stamina_regen clamp floored at
+  // STAMINA_REGEN_PER_LEVEL (300ms) instead of its own floor, so any level
+  // past the designed max collapsed air regen 6x faster than intended.
+  it('floors air regen at the designed minimum, not the per-level step', () => {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      ...baseSave(), schemaVersion: 6, upgrades: { stamina_regen: 4 },
+    }));
+    resetCacheForTests();
+    expect(getPlayerConfig().staminaRegenAirMs).toBe(1800);  // 3000 - 4 * 300
+
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      ...baseSave(), schemaVersion: 6, upgrades: { stamina_regen: 99 },
+    }));
+    resetCacheForTests();
+    expect(getPlayerConfig().staminaRegenAirMs).toBe(1800);  // clamped, not 300
+  });
 });
 
 describe('getPlayerConfig – jumpBoost', () => {
@@ -960,6 +977,33 @@ describe('reconcileMovementRefund', () => {
     reconcileMovementRefund();
     expect(getBalance()).toBe(0);
     expect(getMovementRefundAmount()).toBe(0);
+  });
+
+  // Regression (PR #186 review): a zero-amount reconcile must NOT latch the
+  // flag. The boot sequence reconciles in a .finally() that also fires on the
+  // "sign-in declined / timed out" early returns, so on a reinstall the first
+  // post-update boot can run against a bare freshGame() with the pre-update
+  // cloud save still unmerged. Latching there, then OR-ing that true through
+  // mergeGame, made the refund permanently unreachable.
+  it('still pays after a boot that reconciled before the cloud merge landed', () => {
+    seedFreshSave();
+    reconcileMovementRefund();            // boot 1: sign-in failed, nothing to refund
+    expect(getBalance()).toBe(0);
+
+    const cloud = { ...baseSave(), balance: 900, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } };
+    applyMergedSave(mergeCloudSave(getRawSaveForCloudSync(), cloud as any));
+    reconcileMovementRefund();            // boot 2: sign-in worked, merge landed
+    expect(getBalance()).toBe(900 + 1550);
+    expect(getMovementRefundAmount()).toBe(1550);
+  });
+
+  it('leaves the flag unset when there is nothing to refund', () => {
+    seedFreshSave();
+    reconcileMovementRefund();
+    // Asserted on the cloud-sync view rather than localStorage: a zero-amount
+    // reconcile writes nothing at all, and it is this value that a later
+    // mergeCloudSave() OR-s against the incoming snapshot.
+    expect(getRawSaveForCloudSync().movementRefundApplied).toBeFalsy();
   });
 
   it('persists the refund on the launch it fires', () => {

@@ -79,6 +79,12 @@ export class HUD {
     this.scoreText.setText(text);
   }
 
+  /** Passthrough for a mid-run control-scheme change; see
+   *  AbilityTray.setShowDash. */
+  setShowDashIndicator(show: boolean): void {
+    this.tray.setShowDash(show);
+  }
+
   update(): void {
     this.tray.update();
     this.reviveBadge.setVisible(this.player.isReviveArmed);

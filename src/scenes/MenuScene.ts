@@ -165,10 +165,17 @@ export class MenuScene extends Phaser.Scene {
       this.refundSettled = true;
       this.maybeShowPostEntranceUi();
     } else {
-      this.game.events.once(REFUND_SETTLED_EVENT, () => {
+      // game.events outlives this scene, so an un-fired .once() would pin a
+      // dead MenuScene alive until the boot chain settles (up to ~6s) if the
+      // player leaves the menu first. Drop it on SHUTDOWN.
+      const onRefundSettled = (): void => {
         this.refundSettled = true;
         this.maybeShowPostEntranceUi();
-      }, this);
+      };
+      this.game.events.once(REFUND_SETTLED_EVENT, onRefundSettled, this);
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        this.game.events.off(REFUND_SETTLED_EVENT, onRefundSettled, this, true);
+      });
     }
     this.createPrompts(im);
     this.createHeapPicker();

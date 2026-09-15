@@ -107,6 +107,11 @@ export const MAX_STAMINA_CAP = 8;   // hard ceiling; the HUD builds this many se
 // point — an instant refill would make stamina a rename of the old counter.
 export const STAMINA_REGEN_GROUND_MS = 200;
 export const STAMINA_REGEN_AIR_MS    = 3000; // tune in playtest; upgrade lowers it
+// Floor for the stamina_regen upgrade, matching the designed max level (4 x 300ms
+// off 3000ms). Must be its own constant rather than reusing PER_LEVEL as the
+// clamp: that floored air regen at 300ms, six times faster than designed, the
+// moment a maxLevel bump or a corrupt save pushed the level past 4.
+export const STAMINA_REGEN_AIR_MIN_MS = 1800;
 export const DASH_COOLDOWN_MS     = 800;  // ms between dashes
 export const DASH_DURATION_MS     = 200;  // ms the dash velocity is protected from movement override
 

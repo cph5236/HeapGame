@@ -6,6 +6,7 @@ import type { EquippedLoadout, CosmeticSlot } from '../../../shared/cosmeticCata
 import {
   MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL,
   BASE_STAMINA, STAMINA_REGEN_AIR_MS, STAMINA_REGEN_PER_LEVEL,
+  STAMINA_REGEN_AIR_MIN_MS,
   WALL_JUMP_COOLDOWN_MS, WALL_JUMP_CD_PER_LEVEL, WALL_JUMP_CD_MIN_MS,
   DASH_POWER_PER_LEVEL,
 } from '../../constants';
@@ -223,7 +224,7 @@ export function getPlayerConfig(): PlayerConfig {
     baseStamina:        BASE_STAMINA + getUpgradeLevel('max_stamina'),
     staminaRegenAirMs:  Math.max(
       STAMINA_REGEN_AIR_MS - getUpgradeLevel('stamina_regen') * STAMINA_REGEN_PER_LEVEL,
-      STAMINA_REGEN_PER_LEVEL,
+      STAMINA_REGEN_AIR_MIN_MS,
     ),
     wallJumpCooldownMs: Math.max(
       WALL_JUMP_COOLDOWN_MS - getUpgradeLevel('wall_jump_cd') * WALL_JUMP_CD_PER_LEVEL,
@@ -614,8 +615,8 @@ export const MOVEMENT_ANNOUNCEMENT_ID = 'movement-v0.4';
  * `bootSequence.ts`'s `startIdentitySession` for the one call site and why it
  * is safe there.
  *
- * Safe to call repeatedly; the flag makes it a no-op (returns 0) after the
- * first payout.
+ * Safe to call repeatedly: after a payout the flag short-circuits it, and
+ * before one the scan simply finds nothing to refund and changes nothing.
  *
  * @returns the amount refunded on THIS call — 0 if already applied, or if the
  *  player owned none of the removed upgrades. Use `getMovementRefundAmount()`
@@ -633,21 +634,30 @@ export function reconcileMovementRefund(): number {
     }
   }
 
+  // Latch ONLY on an actual payout. A zero-amount reconcile means this save
+  // owned none of the removed upgrades *as far as we can currently see* — and
+  // on a reinstall whose GPGS sign-in declined or timed out, that view is
+  // incomplete: the pre-update cloud save holding wall_jump/dash/dive has not
+  // merged yet. Latching there would stamp movementRefundApplied on a bare
+  // freshGame(), and mergeGame's `local || cloud` OR would carry that true
+  // into the merged save, so the refund could never be paid. Leaving the flag
+  // false costs one no-op scan per boot and keeps the payout reachable on the
+  // boot where the merge finally lands.
+  if (amount === 0) return 0;
+
   data.balance              += amount;
   data.movementRefundAmount  = amount;
   data.movementRefundApplied = true;
-  // A payout means this save actually owned one of the removed upgrades — the
-  // reinstall path (fresh save → GPGS merge pulls a pre-update cloud save with
-  // the upgrades already bought) is exactly this case, and freshGame() had
+  // Reaching here means this save actually owned one of the removed upgrades —
+  // the reinstall path (fresh save → GPGS merge pulls a pre-update cloud save
+  // with the upgrades already bought) is exactly this case, and freshGame() had
   // pre-seeded seenAnnouncements with MOVEMENT_ANNOUNCEMENT_ID since it had no
   // way to know a merge would later reveal spend history. Clear it here so the
-  // modal still renders and explains the balance jump. Do NOT clear it on a
-  // zero-amount reconcile: that path is what lets a genuinely fresh save (or
-  // one that never owned any of the three) stay silently suppressed.
-  if (amount > 0) {
-    data.seenAnnouncements = (data.seenAnnouncements ?? [])
-      .filter(id => id !== MOVEMENT_ANNOUNCEMENT_ID);
-  }
+  // modal still renders and explains the balance jump. The zero-amount return
+  // above is what lets a genuinely fresh save (or one that never owned any of
+  // the three) stay silently suppressed.
+  data.seenAnnouncements = (data.seenAnnouncements ?? [])
+    .filter(id => id !== MOVEMENT_ANNOUNCEMENT_ID);
   // Persist unconditionally: load() only writes when the stored version differs
   // from CURRENT_SCHEMA, so relying on that side effect would recompute the
   // refund every launch and never save it.
