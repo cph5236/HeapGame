@@ -14,14 +14,16 @@ const FOOTER_HEIGHT = 50;
 const HEADER_BOTTOM = 115;
 
 const ACCENT_COLORS: Record<string, number> = {
-  air_jump:    0x4488ff,
-  wall_jump:   0x4488ff,
-  dash:        0x44bbff,
-  money_mult:  0xffaa22,
-  jump_boost:  0x22ccff,
-  stomp_gold:  0xff8844,
-  peak_hunter: 0xcc44ff,
-  enemy_radar: 0xff3b30,
+  air_jump:      0x4488ff,
+  max_stamina:   0x44ddaa,
+  stamina_regen: 0x66ffcc,
+  dash_power:    0x44bbff,
+  wall_jump_cd:  0xaa88ff,
+  money_mult:    0xffaa22,
+  jump_boost:    0x22ccff,
+  stomp_gold:    0xff8844,
+  peak_hunter:   0xcc44ff,
+  enemy_radar:   0xff3b30,
 };
 
 export class UpgradeScene extends Phaser.Scene {

@@ -7,7 +7,7 @@ export const HUD_THEME = {
   border:      0xffffff, borderAlpha: 0.12,
   accent:      0xff9922,           // orange (primary action)
   accentDark:  0xb3650f,
-  dash:        0x44aaff, dashGlow: 0x5cc8ff, dashDim: 0x225588,
+  dash:        0x44aaff,
   dashStroke:  0xff7755,           // dash button ring/stroke
   dashChevron: 0xff5a33,           // orange-red dash-indicator chevrons
   cloud:       0xdce8ff,

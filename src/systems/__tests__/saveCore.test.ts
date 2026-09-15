@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import {
   getRawSaveForCloudSync, resetCacheForTests, mergeCloudSave,
   getPlayerSecret, getSoundSettings, getControlMode, getJoystickSide,
-  getGpgsPlayerId, getStoredRemoteConfig, type RawSave,
+  getGpgsPlayerId, getStoredRemoteConfig, CURRENT_SCHEMA, type RawSave,
 } from '../SaveData';
 
 const store: Record<string, string> = {};
@@ -72,7 +72,7 @@ describe('save/core — core fields survive every schema migration', () => {
 
     it(`${version}: lands on the current schema`, () => {
       seed(blob);
-      expect(getRawSaveForCloudSync().schemaVersion).toBe(5);
+      expect(getRawSaveForCloudSync().schemaVersion).toBe(CURRENT_SCHEMA);
     });
   }
 

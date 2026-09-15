@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  showDashIndicator, airJumpPipStates, dashBarFillFraction, controlClusterLayout,
+  showDashIndicator, staminaSegments, dashBarFillFraction, controlClusterLayout,
 } from '../hudLogic';
 
 describe('showDashIndicator', () => {
@@ -14,15 +14,29 @@ describe('showDashIndicator', () => {
   });
 });
 
-describe('airJumpPipStates', () => {
-  it('marks the first `left` pips available, rest used', () => {
-    expect(airJumpPipStates(2, 3)).toEqual([true, true, false]);
-    expect(airJumpPipStates(0, 3)).toEqual([false, false, false]);
-    expect(airJumpPipStates(3, 3)).toEqual([true, true, true]);
+describe('staminaSegments', () => {
+  it('returns one entry per max bar, full when topped up', () => {
+    expect(staminaSegments(3, 3)).toEqual([1, 1, 1]);
   });
-  it('clamps left into [0, max]', () => {
-    expect(airJumpPipStates(5, 2)).toEqual([true, true]);
-    expect(airJumpPipStates(-1, 2)).toEqual([false, false]);
+
+  it('partially fills only the regenerating segment', () => {
+    const segs = staminaSegments(2.4, 3);
+    expect(segs).toHaveLength(3);
+    expect(segs[0]).toBe(1);
+    expect(segs[1]).toBe(1);
+    expect(segs[2]).toBeCloseTo(0.4, 5);
+  });
+
+  it('is all-empty at zero', () => {
+    expect(staminaSegments(0, 3)).toEqual([0, 0, 0]);
+  });
+
+  it('clamps current above max', () => {
+    expect(staminaSegments(9, 3)).toEqual([1, 1, 1]);
+  });
+
+  it('never returns negative fills', () => {
+    expect(staminaSegments(-2, 2)).toEqual([0, 0]);
   });
 });
 

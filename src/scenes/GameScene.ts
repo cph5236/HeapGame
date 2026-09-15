@@ -1017,6 +1017,10 @@ export class GameScene extends Phaser.Scene {
   remountControls(): void {
     this.joystick?.destroy();
     this.joystick = mountJoystick(this, this.im, this.player);
+    // The tray's dash glyph is gated on the control mode too, and it is built
+    // once at create() — without this, switching Tilt <-> Joystick mid-run
+    // shows the dash cooldown twice or not at all.
+    this.hud.setShowDashIndicator(showDashIndicator(this.im.isMobile, getEffectiveControlMode()));
   }
 
   /**

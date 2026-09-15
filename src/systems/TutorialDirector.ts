@@ -1,6 +1,6 @@
 export type PlayerAction =
   | 'move' | 'jump' | 'walljump' | 'dash' | 'dive'
-  | 'stomp' | 'pickup' | 'placeBlock';
+  | 'stomp' | 'pickup' | 'placeBlock' | 'stamina-empty';
 
 export interface TutorialStep {
   id: string;

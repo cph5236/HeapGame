@@ -17,7 +17,6 @@ import {
   WALL_SLIDE_SPEED,
   WALL_COYOTE_MS,
   WALL_JUMP_PUSH,
-  WALL_JUMP_COOLDOWN_MS,
   AIR_TILT_FORCE,
   AIR_MOMENTUM_DECAY,
   MOMENTUM_STOP_ADV_FACTOR,
@@ -30,6 +29,7 @@ import {
   APEX_VY_THRESHOLD,
   APEX_GRAVITY_FACTOR,
   FALL_GRAVITY_FACTOR,
+  MAX_STAMINA_CAP,
 } from '../constants';
 import { PlayerConfig } from '../systems/SaveData';
 import type { CarryModifiers } from '../data/pickupDefs';
@@ -41,6 +41,7 @@ import {
   applyWallLeaveNudge,
 } from '../systems/wallSlide';
 import { AudioManager } from '../systems/AudioManager';
+import { regenStamina, canSpend, spend } from '../systems/stamina';
 
 const { KeyCodes } = Phaser.Input.Keyboard;
 
@@ -79,10 +80,13 @@ export class Player {
   private readonly dashKey:          Phaser.Input.Keyboard.Key;
 
   private readonly maxAirJumps:      number;
-  private readonly wallJumpEnabled:  boolean;
-  private readonly dashEnabled:      boolean;
-  private readonly diveEnabled:      boolean;
   private readonly jumpBoost:        number;
+
+  private stamina: number = 0;
+  private readonly baseStamina:        number;
+  private readonly staminaRegenAirMs:  number;
+  private readonly wallJumpCooldownMs: number;
+  private readonly dashPower:          number;
 
   private airJumpsRemaining:   number = 0;
   private wallJumpCooldown:    number = 0; // ms remaining of wall-jump cooldown (same-wall gating)
@@ -110,6 +114,10 @@ export class Player {
   private bufferedJumpVx:            number = 0; // captured im.jumpVx at press time
   private bufferedJumpFromKeyboard:  boolean = false; // true if buffer set by keyboard (cuttable); false for mobile pulses
   private jumpKeyWasHeld:            boolean = false; // for release-edge detection (sustained press → release)
+  // Debounce for the 'stamina-empty' cue: one flash per buffered press, not one
+  // per frame the press sits in the buffer waiting to see if a ledge arrives.
+  // Reset whenever a fresh press (re)primes the buffer.
+  private staminaEmptyEmittedForBuffer: boolean = false;
 
   // Per-frame state captured by updateJumpInputAndCut() and read later in the same
   // update() call by consumeJumpBufferOnFire(). Only meaningful during update().
@@ -132,13 +140,13 @@ export class Player {
   // Salvage-carry modifiers (aggregated from carried pickups). Identity = no effect.
   private carrySpeedMult:     number = 1;
   private carryJumpBonus:     number = 0;
-  private carryExtraAirJumps: number = 0;
+  private carryExtraStamina:  number = 0;
   private carryGravityMult:   number = 1;
   private carryCooldownMult:  number = 1;
   // Consumable buff layer — composes with the carry layer (mults multiply, additive add).
   private buffSpeedMult:     number = 1;
   private buffJumpBonus:     number = 0;
-  private buffExtraAirJumps: number = 0;
+  private buffExtraStamina:  number = 0;
   private buffGravityMult:   number = 1;
   private buffCooldownMult:  number = 1;
   private shieldActive: boolean = false;
@@ -164,13 +172,12 @@ export class Player {
   // ── HUD accessors ──────────────────────────────────────────────────────────
   get dashCooldownFraction(): number  { return this.dashCooldown / DASH_COOLDOWN_MS; }
   get airJumpsLeft():         number  { return this.airJumpsRemaining; }
-  get maxAirJumpsCount():     number  { return this.maxAirJumps; }
   get canWallJump():          boolean { return this.wallJumpCooldown === 0; }
-  get hasWallJump():          boolean { return this.wallJumpEnabled; }
-  get hasDash():              boolean { return this.dashEnabled; }
   get hasActiveShield():      boolean { return this.shieldActive; }
   get isReviveArmed():        boolean { return this.reviveArmed; }
   get isStunned():            boolean { return this._stunned; }
+  get staminaCurrent():       number  { return this.stamina; }
+  get staminaMax():           number  { return this.effectiveMaxStamina; }
 
   /** Jump launch velocity including base jumpBoost and any carried jump bonus. */
   private get jumpVelocity(): number {
@@ -196,9 +203,21 @@ export class Player {
     return PLAYER_SPEED * this.carrySpeedMult * this.buffSpeedMult;
   }
 
-  /** Max air jumps including extras granted by carried salvage. */
+  /** Max air jumps. Deliberately excludes carry/buff extraStamina — the
+   *  air-jump cap and the stamina pool are orthogonal upgrade paths (`air_jump`
+   *  buys permission, `max_stamina` buys budget), and extraStamina now feeds
+   *  ONLY effectiveMaxStamina below. A Balloon's +1 becomes +1 max stamina,
+   *  not +1 air-jump cap AND +1 max stamina — do not fold these back together. */
   private get effectiveMaxAirJumps(): number {
-    return this.maxAirJumps + this.carryExtraAirJumps + this.buffExtraAirJumps;
+    return this.maxAirJumps;
+  }
+
+  /** Max stamina including carried salvage and consumable buffs, hard-capped. */
+  private get effectiveMaxStamina(): number {
+    return Math.min(
+      MAX_STAMINA_CAP,
+      this.baseStamina + this.carryExtraStamina + this.buffExtraStamina,
+    );
   }
 
   get animState(): PlayerAnimState {
@@ -227,10 +246,12 @@ export class Player {
     this.sprite.setDepth(10);
 
     this.maxAirJumps        = config.maxAirJumps;
-    this.wallJumpEnabled    = config.wallJump;
-    this.dashEnabled        = config.dash;
-    this.diveEnabled        = config.dive;
     this.jumpBoost          = config.jumpBoost;
+    this.baseStamina        = config.baseStamina;
+    this.staminaRegenAirMs  = config.staminaRegenAirMs;
+    this.wallJumpCooldownMs = config.wallJumpCooldownMs;
+    this.dashPower          = config.dashPower;
+    this.stamina            = this.effectiveMaxStamina;
     this.airJumpsRemaining  = this.effectiveMaxAirJumps;
 
     const kb = scene.input.keyboard!;
@@ -254,25 +275,42 @@ export class Player {
     this.clearOneFrameFlags();
     this.updateJumpInputAndCut(delta);
 
-    if (this.handleLadder()) return;
+    if (this.handleLadder(delta)) return;
     if (!this.controlsEnabled) return;
 
     const ctx = this.computeGroundContext();
     this.applyGravityScaling(ctx);
     this.updateWallTracking(ctx, delta);
     this.handleLandingResets(ctx, delta);
+    this.updateStamina(ctx, delta);
     this.updateHorizontal(ctx, delta);
     this.applyTerrainStick(ctx);
     this.updateDash(ctx, delta);
 
-    // Wall jump is tried first so it takes priority when it can actually fire
-    // (it costs no air jump). When it can't fire — e.g. same-wall cooldown — we
-    // fall through to the ground/air jump path instead of swallowing the press.
+    // Wall jump is tried first so it takes priority when it can actually fire.
+    // Both paths now cost the same single bar, but a wall jump adds horizontal
+    // push and spares the per-airtime air-jump cap, so it is strictly the better
+    // spend when available. When it can't fire — same-wall cooldown, or no
+    // stamina — we fall through instead of swallowing the press.
     const wallJumpFired = this.tryWallJump(ctx);
     const jumpFired     = wallJumpFired ? false : this.tryGroundOrAirJump(ctx);
     if (jumpFired)     this.sprite.scene.events.emit('player-action', 'jump');
     if (wallJumpFired) this.sprite.scene.events.emit('player-action', 'walljump');
     this.consumeJumpBufferOnFire(jumpFired || wallJumpFired);
+
+    // A press that failed only for want of stamina still has a valid destination:
+    // a GROUND jump costs no stamina, so if this press lands within the buffer
+    // window it must still fire on landing (#4 — do not zero the buffer here, the
+    // natural per-frame decay in updateJumpInputAndCut already retires a press
+    // that never finds a landing). We only emit the feedback cue, once per press,
+    // so a dry press still gets a distinct cue: running dry is the riskiest feel
+    // change in this design and it must be legible.
+    if (!jumpFired && !wallJumpFired && this.jumpBufferTimer > 0
+        && !ctx.onGround && !canSpend(this.stamina, 1)
+        && !this.staminaEmptyEmittedForBuffer) {
+      this.staminaEmptyEmittedForBuffer = true;
+      this.sprite.scene.events.emit('player-action', 'stamina-empty');
+    }
 
     this.applyWallSlide(ctx);
     this.updateDive(ctx, delta);
@@ -299,12 +337,14 @@ export class Player {
     this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - delta);
     const jumpKeyJustDown = this.jumpKeys.some(k => Phaser.Input.Keyboard.JustDown(k));
     if (jumpKeyJustDown) {
-      this.jumpBufferTimer           = JUMP_BUFFER_MS;
-      this.bufferedJumpVx            = im.jumpVx;
-      this.bufferedJumpFromKeyboard  = true;
+      this.jumpBufferTimer                = JUMP_BUFFER_MS;
+      this.bufferedJumpVx                 = im.jumpVx;
+      this.bufferedJumpFromKeyboard       = true;
+      this.staminaEmptyEmittedForBuffer   = false;
     } else if (im.jumpJustPressed) {
-      this.jumpBufferTimer           = JUMP_BUFFER_MS;
-      this.bufferedJumpVx            = im.jumpVx;
+      this.jumpBufferTimer                = JUMP_BUFFER_MS;
+      this.bufferedJumpVx                 = im.jumpVx;
+      this.staminaEmptyEmittedForBuffer   = false;
       this.bufferedJumpFromKeyboard  = false; // mobile pulse — never cut
     }
 
@@ -318,7 +358,7 @@ export class Player {
   }
 
   /** Returns true if the ladder consumed this frame (caller should early-return). */
-  private handleLadder(): boolean {
+  private handleLadder(delta: number): boolean {
     if (!this.onLadder) return false;
     const im = InputManager.getInstance();
     const goLeft  = this.leftKeys.some(k => k.isDown)  || im.goLeft;
@@ -339,6 +379,11 @@ export class Player {
     this.airJumpsRemaining  = this.effectiveMaxAirJumps;
     this.wallJumpCooldown   = 0;
     this.coyoteTimer        = 120;
+    // Ladder counts as grounded for stamina too. Applied here rather than in
+    // updateStamina because this method early-returns out of runUpdate.
+    this.stamina = regenStamina(
+      this.stamina, this.effectiveMaxStamina, delta, true, this.staminaRegenAirMs,
+    );
     // Still allow X-wrap so player doesn't get stuck at world edge on ladder
     this.applyWorldBoundsX();
     return true;
@@ -433,12 +478,19 @@ export class Player {
         ctx.body.setMaxVelocityY(PLAYER_MAX_FALL_SPEED);
       }
       // Ground-touch dash refresh: allow chaining dash → land → dash within cooldown window
-      if (this.dashEnabled) {
-        this.dashCooldown = 0;
-      }
+      this.dashCooldown = 0;
     } else {
       this.coyoteTimer = Math.max(0, this.coyoteTimer - delta);
     }
+  }
+
+  /** Advance the pool. Called after handleLandingResets so `grounded` is fresh
+   *  and a bar completing this frame is spendable by the jump paths below. */
+  private updateStamina(ctx: FrameCtx, delta: number): void {
+    this.stamina = regenStamina(
+      this.stamina, this.effectiveMaxStamina, delta,
+      ctx.onGround, this.staminaRegenAirMs,
+    );
   }
 
   private updateHorizontal(ctx: FrameCtx, delta: number): void {
@@ -507,7 +559,6 @@ export class Player {
   }
 
   private updateDash(ctx: FrameCtx, delta: number): void {
-    if (!this.dashEnabled) return;
     const im = InputManager.getInstance();
     const keyboardLeft  = this.leftKeys.some(k => k.isDown);
     const keyboardRight = this.rightKeys.some(k => k.isDown);
@@ -521,9 +572,13 @@ export class Player {
       this.momentumX = Math.max(-PLAYER_AIR_MAX_SPEED, Math.min(PLAYER_AIR_MAX_SPEED, ctx.body.velocity.x));
     }
 
+    // tryWallJump and tryGroundOrAirJump both already check placementMode; without
+    // this, dashing while positioning an item would drain the stamina pool.
+    if (this.placementMode) return;
+
     this.dashCooldown = Math.max(0, this.dashCooldown - delta);
     const dashTriggered = Phaser.Input.Keyboard.JustDown(this.dashKey) || im.dashJustFired;
-    if (dashTriggered && this.dashCooldown === 0) {
+    if (dashTriggered && this.dashCooldown === 0 && canSpend(this.stamina, 1)) {
       // The no-input fallback reads flipX, which PlayerAnimator now owns: it is
       // set for the length of the dash animation and cleared after. So a dash
       // chained off a landing mid-animation continues the previous direction
@@ -531,9 +586,10 @@ export class Player {
       // flipX the same way for the mobile fallback.
       const dir = im.dashJustFired ? im.dashDir : (keyboardLeft ? -1 : keyboardRight ? 1 : (this.sprite.flipX ? -1 : 1));
       this.momentumX = 0;
-      this.sprite.setVelocityX(dir * PLAYER_DASH_VELOCITY);
+      this.sprite.setVelocityX(dir * (PLAYER_DASH_VELOCITY + this.dashPower));
       this.dashCooldown = DASH_COOLDOWN_MS * this.carryCooldownMult * this.buffCooldownMult;
       this.dashActive   = DASH_DURATION_MS;
+      this.stamina      = spend(this.stamina, 1);
       this._justDashed  = true;
       this._dashDir     = dir;
       this.sprite.scene.events.emit('player-action', 'dash');
@@ -558,11 +614,12 @@ export class Player {
     }
     // Air jump: a wall jump, when applicable, already fired earlier this frame and
     // short-circuited this call — so reaching here means no wall jump took the press.
-    if (this.airJumpsRemaining > 0) {
+    if (this.airJumpsRemaining > 0 && canSpend(this.stamina, 1)) {
       this.momentumX = this.bufferedJumpVx !== 0 ? this.bufferedJumpVx : body.velocity.x;
       this.sprite.setVelocityX(this.momentumX);
       this.sprite.setVelocityY(this.jumpVelocity);
       this.airJumpsRemaining--;
+      this.stamina = spend(this.stamina, 1);
       AudioManager.play('player-jump');
       this._justAirJumped = true;
       return true;
@@ -576,7 +633,7 @@ export class Player {
    *  Returns whether a wall jump fired. */
   private tryWallJump(ctx: FrameCtx): boolean {
     const jumpPressed = !this.placementMode && this.jumpBufferTimer > 0;
-    if (!this.wallJumpEnabled || ctx.onGround || !jumpPressed) return false;
+    if (ctx.onGround || !jumpPressed) return false;
     // Accept jump if touching wall OR within coyote window after leaving wall
     const canWallJump = ctx.onWall || this.wallCoyoteTimer > 0;
     if (!canWallJump) return false;
@@ -586,12 +643,14 @@ export class Player {
     // Check cooldown gate: can fire if cooldown expired OR touching a different wall
     const canFireOnThisWall = this.wallJumpCooldown === 0 || currentWallSide !== this.lastWallJumpSide;
     if (!canFireOnThisWall) return false;
+    if (!canSpend(this.stamina, 1)) return false;
     // Direction: use current blocked state if touching wall, otherwise use lastWallSide from coyote
     const dir = body.blocked.left ? 1 : body.blocked.right ? -1 : -this.lastWallSide;
     this.momentumX = dir * WALL_JUMP_PUSH;
     this.sprite.setVelocityX(this.momentumX);
     this.sprite.setVelocityY(this.jumpVelocity);
-    this.wallJumpCooldown = WALL_JUMP_COOLDOWN_MS * this.carryCooldownMult * this.buffCooldownMult;
+    this.wallJumpCooldown = this.wallJumpCooldownMs * this.carryCooldownMult * this.buffCooldownMult;
+    this.stamina = spend(this.stamina, 1);
     this.lastWallJumpSide = currentWallSide;
     this.wallCoyoteTimer = 0; // Consume coyote window on wall-jump fire
     AudioManager.play('player-jump');
@@ -641,7 +700,7 @@ export class Player {
 
   /** Slam downward while airborne; release to return to normal fall speed. */
   private updateDive(ctx: FrameCtx, delta: number): void {
-    if (!this.diveEnabled || ctx.onGround) { this.wasDiving = false; return; }
+    if (ctx.onGround) { this.wasDiving = false; return; }
     const im = InputManager.getInstance();
     const holdingDown = this.downKeys.some(k => k.isDown) || im.diveHeld;
     this.diveActive = Math.max(0, this.diveActive - delta);
@@ -764,38 +823,52 @@ export class Player {
     this.sprite.body.setAllowGravity(true);
   }
 
+  /** Stomp reward: restores BOTH the air-jump cap and one stamina bar.
+   *  Refunding only the bar would leave the cap spent and silently break
+   *  stomp-chaining — the most expressive movement in the game. Called from
+   *  GameScene, InfiniteGameScene (stomp + debug noclip) and TutorialScene. */
   refundAirJump(): void {
     this.airJumpsRemaining = Math.min(this.effectiveMaxAirJumps, this.airJumpsRemaining + 1);
+    this.refundStamina(1);
   }
 
-  /** Apply aggregated salvage-carry modifiers. Granting a new air jump refills
-   *  the air-jump pool so the benefit is usable immediately. */
+  /** Restore bars, capped. Used by stomp (see the four refundAirJump sites). */
+  refundStamina(bars: number): void {
+    this.stamina = Math.min(this.effectiveMaxStamina, this.stamina + bars);
+  }
+
+  /** Apply aggregated salvage-carry modifiers. extraStamina now feeds ONLY the
+   *  stamina pool (see effectiveMaxAirJumps) — it grants exactly ONE current
+   *  bar on a rise, never a full refill (a full refill would be a free escape
+   *  mid-chimney), and current stamina is always clamped down on a fall so the
+   *  player never holds more bars than their (now-lower) cap. It does NOT
+   *  touch airJumpsRemaining; the air-jump cap only changes via maxAirJumps. */
   setCarryModifiers(
-    mods: Pick<CarryModifiers, 'speedMult' | 'jumpBonus' | 'extraAirJumps'>
+    mods: Pick<CarryModifiers, 'speedMult' | 'jumpBonus' | 'extraStamina'>
         & Partial<Pick<CarryModifiers, 'gravityMult' | 'cooldownMult'>>,
   ): void {
-    const gainedAirJump = mods.extraAirJumps > this.carryExtraAirJumps;
-    this.carrySpeedMult     = mods.speedMult;
-    this.carryJumpBonus     = mods.jumpBonus;
-    this.carryExtraAirJumps = mods.extraAirJumps;
-    this.carryGravityMult   = mods.gravityMult  ?? 1;
-    this.carryCooldownMult  = mods.cooldownMult ?? 1;
-    if (gainedAirJump) {
-      this.airJumpsRemaining = this.effectiveMaxAirJumps;
-    }
+    const gainedStamina    = mods.extraStamina > this.carryExtraStamina;
+    this.carrySpeedMult    = mods.speedMult;
+    this.carryJumpBonus    = mods.jumpBonus;
+    this.carryExtraStamina = mods.extraStamina;
+    this.carryGravityMult  = mods.gravityMult  ?? 1;
+    this.carryCooldownMult = mods.cooldownMult ?? 1;
+    if (gainedStamina) this.stamina += 1;
+    this.stamina = Math.min(this.stamina, this.effectiveMaxStamina);
   }
 
   setBuffModifiers(
-    mods: { speedMult: number; jumpBonus: number; extraAirJumps: number;
+    mods: { speedMult: number; jumpBonus: number; extraStamina: number;
             gravityMult?: number; cooldownMult?: number },
   ): void {
-    const gainedAirJump = mods.extraAirJumps > this.buffExtraAirJumps;
-    this.buffSpeedMult     = mods.speedMult;
-    this.buffJumpBonus     = mods.jumpBonus;
-    this.buffExtraAirJumps = mods.extraAirJumps;
-    this.buffGravityMult   = mods.gravityMult  ?? 1;
-    this.buffCooldownMult  = mods.cooldownMult ?? 1;
-    if (gainedAirJump) this.airJumpsRemaining = this.effectiveMaxAirJumps;
+    const gainedStamina   = mods.extraStamina > this.buffExtraStamina;
+    this.buffSpeedMult    = mods.speedMult;
+    this.buffJumpBonus    = mods.jumpBonus;
+    this.buffExtraStamina = mods.extraStamina;
+    this.buffGravityMult  = mods.gravityMult  ?? 1;
+    this.buffCooldownMult = mods.cooldownMult ?? 1;
+    if (gainedStamina) this.stamina += 1;
+    this.stamina = Math.min(this.stamina, this.effectiveMaxStamina);
   }
 
   /** Arm a one-use revive (consumed on the next fatal hit). */

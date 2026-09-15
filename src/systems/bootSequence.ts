@@ -7,10 +7,13 @@ import { beginSignIn, signInSettled } from './gpgsSession';
 import { PlayGamesClient } from './PlayGamesClient';
 import { PlayerNameClient } from './PlayerNameClient';
 import { validatePlayerName } from '../../shared/playerName';
+import { syncSaveToCloud } from './cloudSave';
 import {
   getPlayerName, setPlayerName, getEffectivePlayerId,
   getRawSaveForCloudSync, applyMergedSave, mergeCloudSave, type RawSave,
+  reconcileMovementRefund,
 } from './SaveData';
+import { GPGS_SNAPSHOT_TIMEOUT_MS } from '../constants';
 
 /**
  * The platform half of startup, in the order it has to happen. A game's boot
@@ -28,6 +31,47 @@ import {
 /** Emitted on the game's event bus once a cloud save has been merged into local
  *  state, so an already-open menu can refresh in place. */
 export const SAVE_MERGED_EVENT = 'gpgs:save-merged';
+
+/** Emitted once the movement-rework refund reconciliation has run to
+ *  completion for this boot — win, lose, or draw (already applied, nothing
+ *  owed, or a fresh payout). Task 10's announcement modal must wait on this
+ *  rather than calling `reconcileMovementRefund()` itself: only this module
+ *  knows whether a cloud merge is still pending, and running the reconcile
+ *  before a pending merge lands reopens the double-credit bug documented at
+ *  the call site below. */
+export const REFUND_SETTLED_EVENT = 'save:refund-settled';
+
+/**
+ * Set true in the same `.finally()` that emits {@link REFUND_SETTLED_EVENT},
+ * immediately before the emit.
+ *
+ * Exists because off Android `PlayGamesClient.signIn()` resolves null
+ * *synchronously* (see gpgsSession.ts), so the whole `.then/.catch/.finally`
+ * chain below drains as microtasks before BootScene's `scene.start(...)` even
+ * runs — REFUND_SETTLED_EVENT fires before LoadingScene, let alone MenuScene,
+ * exists to listen for it. A scene arriving after the emit needs a
+ * synchronous way to ask "did this already happen?" since the event itself
+ * is gone by the time anyone can hear it — `game.events` is a plain
+ * EventEmitter with no replay or last-value retention.
+ */
+let refundSettled = false;
+
+/** See {@link refundSettled}: true once this boot's refund reconciliation has
+ *  concluded (settled, not necessarily paid). A listener registered after
+ *  that point must check this instead of waiting on the event, which may
+ *  already have fired and gone. */
+export function isRefundSettled(): boolean {
+  return refundSettled;
+}
+
+// ── Test helpers ──────────────────────────────────────────────────────────────
+
+/** Reset the module-level {@link refundSettled} latch between tests. Without
+ *  this, its describe block had to run first in the file (before any test set
+ *  it true) — matches SaveData's `resetCacheForTests()`. */
+export function resetRefundSettledForTests(): void {
+  refundSettled = false;
+}
 
 /**
  * Synchronous platform init: audio, ad consent, remote config, logging.
@@ -53,11 +97,16 @@ export function initPlatform(scene: Phaser.Scene): void {
  * The merge is deliberately NOT gated on: it only rewrites local save state,
  * nothing keyed on player id server-side, so it can safely land after the menu
  * has opened. The menu listens for {@link SAVE_MERGED_EVENT} to refresh in place.
+ *
+ * The movement-refund reconciliation (see the `.finally` below) is wired into
+ * this same chain — not a second, independent call site — because it is the
+ * one place that knows, for every possible outcome of this boot's identity
+ * session, whether a cloud merge did or did not happen.
  */
 export function startIdentitySession(game: Phaser.Game): void {
   beginSignIn();
   void signInSettled().then(async (player) => {
-    if (!player) return;
+    if (!player) return; // web/itch, or Android declined/timed-out sign-in — no merge coming
 
     // Sync the GPGS display name to the server's player_name table — score
     // submit no longer updates names, and GPGS players can't reach the rename
@@ -70,20 +119,56 @@ export function startIdentitySession(game: Phaser.Game): void {
       void PlayerNameClient.updateName(getEffectivePlayerId(), validated.name);
     }
 
-    const cloudJson = await PlayGamesClient.loadSnapshot();
-    if (!cloudJson) return;
+    // Unlike signInSettled(), loadSnapshot() has no built-in ceiling — race it
+    // against one so a stalled native call can't withhold refundSettled (and
+    // the tour/announcement it unblocks) for the whole session. A snapshot
+    // that resolves after losing the race is simply dropped, same as a late
+    // sign-in above; the .catch keeps that drop from surfacing as an
+    // unhandled rejection.
+    const snapshotPromise = PlayGamesClient.loadSnapshot().catch(() => null);
+    let snapshotTimer: ReturnType<typeof setTimeout> | undefined;
+    const snapshotDeadline = new Promise<null>((resolve) => {
+      snapshotTimer = setTimeout(() => resolve(null), GPGS_SNAPSHOT_TIMEOUT_MS);
+    });
+    const cloudJson = await Promise.race([snapshotPromise, snapshotDeadline]);
+    clearTimeout(snapshotTimer);
+    if (!cloudJson) return; // signed in, but no cloud snapshot yet (or timed out) — no merge coming
 
     let cloudSave: RawSave;
     try {
       cloudSave = JSON.parse(cloudJson) as RawSave;
     } catch {
-      return; // malformed cloud data — skip merge
+      return; // malformed cloud data — skip merge, no merge coming
     }
 
     const localSave = getRawSaveForCloudSync();
     const merged    = mergeCloudSave(localSave, cloudSave);
-    applyMergedSave(merged);
+    applyMergedSave(merged); // merge has now happened — safe for the refund below to run
     setPlayerName(player.displayName); // GPGS name always wins after merge
     game.events.emit(SAVE_MERGED_EVENT);
-  }).catch(() => { /* silent — cloud save merge is optional */ });
+  })
+    .catch(() => { /* silent — cloud save merge is optional */ }) // merge attempt failed — no merge landed
+    .finally(() => {
+      // Runs exactly once per boot, after every path above has definitively
+      // concluded: the merge succeeded and is already applied (immediately
+      // above), or one of the three early returns fired, or the whole chain
+      // rejected — in every one of those non-merge cases no merge is coming,
+      // ever, for this boot. Do NOT move this call earlier or duplicate it
+      // inside the `.then` above: a refund applied while a merge is still
+      // pending is double-credited the instant another device has already
+      // spent it — mergeGame resolves balance with Math.max, so the merge
+      // would restore the pre-refund balance *and* pull in the upgrade that
+      // refund money bought elsewhere. reconcileMovementRefund() is
+      // idempotent (a no-op once already applied), so calling it here on
+      // every completion path — including a save that never merges at all,
+      // e.g. every web/itch.io player — is what actually pays them.
+      const refunded = reconcileMovementRefund();
+      // reconcileMovementRefund() never touches the cloud itself (that would
+      // reintroduce the save/game.ts <-> cloudSave.ts import cycle); the
+      // caller closes the stale-snapshot window instead, exactly once, only
+      // when a payout actually happened.
+      if (refunded > 0) syncSaveToCloud();
+      refundSettled = true;
+      game.events.emit(REFUND_SETTLED_EVENT);
+    });
 }

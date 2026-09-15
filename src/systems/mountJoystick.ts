@@ -55,32 +55,35 @@ export function mountJoystick(
 
   const dashX = layout.dash.x, dashY = layout.dash.y;
   const dashBtn = scene.add.circle(dashX, dashY, DASH_BUTTON_RADIUS, 0x14100c, 0.5)
-    .setStrokeStyle(2, HUD_THEME.dashStroke).setScrollFactor(0).setDepth(40).setVisible(player.hasDash);
+    .setStrokeStyle(2, HUD_THEME.dashStroke).setScrollFactor(0).setDepth(40);
   const dashLabel = scene.add.text(dashX, dashY, '»', {
     fontSize: '26px', color: '#ffd0c2', fontStyle: 'bold',
-  }).setOrigin(0.5).setScrollFactor(0).setDepth(41).setVisible(player.hasDash);
-  const dashRing = scene.add.graphics().setScrollFactor(0).setDepth(41).setVisible(player.hasDash);
+  }).setOrigin(0.5).setScrollFactor(0).setDepth(41);
+  const dashRing = scene.add.graphics().setScrollFactor(0).setDepth(41);
   addToGameplayUi(scene, [dashBtn, dashLabel, dashRing]);
 
-  if (player.hasDash) {
-    dashBtn.setInteractive({ useHandCursor: true });
-    dashBtn.on('pointerdown', () => {
-      const dir: 1 | -1 = im.tiltFactor > 0.05 ? 1
-        : im.tiltFactor < -0.05 ? -1
-        : (player.sprite.flipX ? -1 : 1);
-      im.pulseDash(dir);
-    });
-    // Suppress so the tap never leaks into a gesture (belt-and-suspenders).
-    im.setSuppressionRect(DASH_SUPPRESS_ID, {
-      x: dashX - DASH_BUTTON_RADIUS, y: dashY - DASH_BUTTON_RADIUS,
-      w: DASH_BUTTON_RADIUS * 2, h: DASH_BUTTON_RADIUS * 2,
-    });
-  }
+  dashBtn.setInteractive({ useHandCursor: true });
+  dashBtn.on('pointerdown', () => {
+    const dir: 1 | -1 = im.tiltFactor > 0.05 ? 1
+      : im.tiltFactor < -0.05 ? -1
+      : (player.sprite.flipX ? -1 : 1);
+    im.pulseDash(dir);
+  });
+  // Suppress so the tap never leaks into a gesture (belt-and-suspenders).
+  im.setSuppressionRect(DASH_SUPPRESS_ID, {
+    x: dashX - DASH_BUTTON_RADIUS, y: dashY - DASH_BUTTON_RADIUS,
+    w: DASH_BUTTON_RADIUS * 2, h: DASH_BUTTON_RADIUS * 2,
+  });
 
   const RING_R = DASH_BUTTON_RADIUS + 3;
   const TWO_PI = Math.PI * 2;
   const drawRing = (): void => {
-    if (!player.hasDash) return;
+    // Dim the whole dash affordance at zero stamina so it doesn't look live
+    // while doing nothing — the button (unlike the tray) has no separate
+    // "can afford anything" indicator of its own.
+    const affordable = player.staminaCurrent >= 1;
+    const a = affordable ? 1 : 0.35;
+    dashBtn.setAlpha(a); dashLabel.setAlpha(a); dashRing.setAlpha(a);
     const filled = 1 - Math.max(0, Math.min(1, player.dashCooldownFraction));
     dashRing.clear();
     dashRing.lineStyle(4, filled >= 1 ? 0xff7755 : 0xaa5544, 1);

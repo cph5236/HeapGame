@@ -34,7 +34,10 @@ vi.mock('../ads/consentGate', () => ({ beginAdConsent: vi.fn() }));
 vi.mock('../ConfigClient', () => ({ primeConfig: vi.fn() }));
 vi.mock('../../logging', () => ({ initLogger: vi.fn() }));
 
-const { startIdentitySession, SAVE_MERGED_EVENT } = await import('../bootSequence');
+const {
+  startIdentitySession, SAVE_MERGED_EVENT, REFUND_SETTLED_EVENT, isRefundSettled,
+  resetRefundSettledForTests,
+} = await import('../bootSequence');
 const {
   resetCacheForTests, getPlayerSecret, getPlayerName, getBalance,
   getRawSaveForCloudSync,
@@ -84,9 +87,24 @@ beforeEach(() => {
   vi.clearAllMocks();
   Object.keys(store).forEach(k => delete store[k]);
   resetCacheForTests();
+  resetRefundSettledForTests();
   emit = vi.fn();
   signInSettled.mockResolvedValue(PLAYER);
   loadSnapshot.mockResolvedValue(null);
+});
+
+describe('isRefundSettled', () => {
+  it('is false before this boot\'s chain has settled', () => {
+    expect(isRefundSettled()).toBe(false);
+  });
+
+  it('becomes true once the chain settles on the no-player path', async () => {
+    seedLocal();
+    signInSettled.mockResolvedValue(null);
+    startIdentitySession(fakeGame());
+    await settle();
+    expect(isRefundSettled()).toBe(true);
+  });
 });
 
 describe('startIdentitySession — sign-in gate', () => {
@@ -104,7 +122,7 @@ describe('startIdentitySession — sign-in gate', () => {
     await settle();
     expect(loadSnapshot).not.toHaveBeenCalled();
     expect(updateName).not.toHaveBeenCalled();
-    expect(emit).not.toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith(REFUND_SETTLED_EVENT);
   });
 
   it('stays silent when sign-in rejects', async () => {
@@ -112,7 +130,7 @@ describe('startIdentitySession — sign-in gate', () => {
     signInSettled.mockRejectedValue(new Error('sign-in blew up'));
     startIdentitySession(fakeGame());
     await settle();
-    expect(emit).not.toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith(REFUND_SETTLED_EVENT);
   });
 });
 
@@ -138,7 +156,7 @@ describe('startIdentitySession — cloud merge', () => {
     loadSnapshot.mockResolvedValue(null);
     startIdentitySession(fakeGame());
     await settle();
-    expect(emit).not.toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith(REFUND_SETTLED_EVENT);
     expect(getBalance()).toBe(10);
   });
 
@@ -147,7 +165,7 @@ describe('startIdentitySession — cloud merge', () => {
     loadSnapshot.mockResolvedValue('{not json');
     startIdentitySession(fakeGame());
     await settle();
-    expect(emit).not.toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith(REFUND_SETTLED_EVENT);
     expect(getBalance()).toBe(10);
     expect(getPlayerSecret()).toBe('LOCAL-SECRET');
   });
@@ -157,7 +175,7 @@ describe('startIdentitySession — cloud merge', () => {
     loadSnapshot.mockRejectedValue(new Error('snapshot unavailable'));
     startIdentitySession(fakeGame());
     await settle();
-    expect(emit).not.toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith(REFUND_SETTLED_EVENT);
     expect(getBalance()).toBe(10);
   });
 
@@ -168,6 +186,7 @@ describe('startIdentitySession — cloud merge', () => {
     await settle();
     expect(getBalance()).toBe(900);          // higher balance wins
     expect(emit).toHaveBeenCalledWith(SAVE_MERGED_EVENT);
+    expect(emit).toHaveBeenCalledWith(REFUND_SETTLED_EVENT);
   });
 
   it('persists the merge, so it survives the next load', async () => {

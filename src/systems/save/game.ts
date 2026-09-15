@@ -3,16 +3,22 @@ import { ITEM_DEFS } from '../../data/itemDefs';
 import { getCosmeticDef } from '../../data/cosmeticDefs';
 import { clampHatAdjustment, type HatAdjustment, type HatAdjustments } from '../cosmeticsLogic';
 import type { EquippedLoadout, CosmeticSlot } from '../../../shared/cosmeticCatalog';
-import { MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL } from '../../constants';
 import {
-  CURRENT_SCHEMA, load as coreLoad, persist, setSaveExtension, setPrimaryPicker,
+  MAX_WALKABLE_SLOPE_DEG, MOUNTAIN_CLIMBER_INCREMENT, MONEY_MULT_PER_LEVEL,
+  BASE_STAMINA, STAMINA_REGEN_AIR_MS, STAMINA_REGEN_PER_LEVEL,
+  STAMINA_REGEN_AIR_MIN_MS,
+  WALL_JUMP_COOLDOWN_MS, WALL_JUMP_CD_PER_LEVEL, WALL_JUMP_CD_MIN_MS,
+  DASH_POWER_PER_LEVEL,
+} from '../../constants';
+import {
+  load as coreLoad, persist, setSaveExtension, setPrimaryPicker,
   type RawSave, type CoreSave,
 } from './core';
 
 /** Core stores game fields opaquely (it must, to stay game-agnostic), so the
  *  accessors below read the same record through this game's own types. Same
  *  cache, same object — a narrowed view, not a copy. */
-function load(): CoreSave & GameSave { return coreLoad() as CoreSave & GameSave; }
+export function load(): CoreSave & GameSave { return coreLoad() as CoreSave & GameSave; }
 
 // World height at each schema version — used to remap placed item Y values.
 const WORLD_HEIGHT_V2 = 50_000;
@@ -48,6 +54,15 @@ export interface GameSave {
   _legacyPlaced?: PlacedItemSave[];
   adRunsSinceLast?: number;
   adRunTarget?:     number;
+  /** One-time flag: the movement-rework refund has been paid for this save
+   *  lineage. Merged with || like the other one-time flags. NOT keyed on
+   *  schemaVersion — an old client can downgrade the stamp on a save that has
+   *  already been refunded. See the design doc's Migration section. */
+  movementRefundApplied?: boolean;
+  /** What this player actually got back, for the announcement to display. */
+  movementRefundAmount?:  number;
+  /** Ids of one-time announcements this player has dismissed. */
+  seenAnnouncements?:     string[];
 }
 
 function remapPlacedY(placed: Record<string, PlacedItemSave[]>, oldHeight: number, newHeight: number): Record<string, PlacedItemSave[]> {
@@ -188,10 +203,11 @@ export function finalizeLegacyPlaced(heapId: string): void {
 // ── Player config ─────────────────────────────────────────────────────────────
 
 export interface PlayerConfig {
-  maxAirJumps:         number;
-  wallJump:            boolean;
-  dash:                boolean;
-  dive:                boolean;
+  maxAirJumps:         number;  // per-airtime AIR JUMP CAP, not a stamina budget
+  baseStamina:         number;
+  staminaRegenAirMs:   number;
+  wallJumpCooldownMs:  number;
+  dashPower:           number;  // added to PLAYER_DASH_VELOCITY
   moneyMultiplier:     number;
   jumpBoost:           number;
   stompBonus:          number;
@@ -205,9 +221,16 @@ export function getPlayerConfig(): PlayerConfig {
   const pl = getUpgradeLevel('peak_hunter');
   return {
     maxAirJumps:         1 + getUpgradeLevel('air_jump'),
-    wallJump:            getUpgradeLevel('wall_jump') > 0,
-    dash:                getUpgradeLevel('dash') > 0,
-    dive:                getUpgradeLevel('dive') > 0,
+    baseStamina:        BASE_STAMINA + getUpgradeLevel('max_stamina'),
+    staminaRegenAirMs:  Math.max(
+      STAMINA_REGEN_AIR_MS - getUpgradeLevel('stamina_regen') * STAMINA_REGEN_PER_LEVEL,
+      STAMINA_REGEN_AIR_MIN_MS,
+    ),
+    wallJumpCooldownMs: Math.max(
+      WALL_JUMP_COOLDOWN_MS - getUpgradeLevel('wall_jump_cd') * WALL_JUMP_CD_PER_LEVEL,
+      WALL_JUMP_CD_MIN_MS,
+    ),
+    dashPower:          getUpgradeLevel('dash_power') * DASH_POWER_PER_LEVEL,
     moneyMultiplier:     1 + getUpgradeLevel('money_mult') * MONEY_MULT_PER_LEVEL,
     jumpBoost:           [0, 25, 35, 45, 55, 60, 65, 70, 75][jl],
     stompBonus:          [25, 40, 50, 60][sl],
@@ -348,11 +371,18 @@ function freshGame(): GameSave {
     cosmeticsEquipped: {},
     tutorialDone:   false,
     menuTutorialSeen: false,
+    // A genuinely new player never used air-jump charges / paid for dash,
+    // wall jump or dive, so there is nothing to explain to them — and this
+    // must NOT set movementRefundApplied (see reconcileMovementRefund below).
+    seenAnnouncements: [MOVEMENT_ANNOUNCEMENT_ID],
   };
 }
 
 function migrateGame(parsed: any, version: number): GameSave {
-  if (version === CURRENT_SCHEMA) {
+  // v5 and anything newer share this layout. Written as >= so the next
+  // CURRENT_SCHEMA bump doesn't drop every live save into the v2->v3
+  // remap fall-through below (which wipes cosmetics and offsets placed Y).
+  if (version >= 5) {
     return {
       balance:        parsed.balance        ?? 0,
       upgrades:       parsed.upgrades       ?? {},
@@ -370,6 +400,9 @@ function migrateGame(parsed: any, version: number): GameSave {
       _legacyPlaced:  parsed._legacyPlaced,
       adRunsSinceLast: parsed.adRunsSinceLast,
       adRunTarget:     parsed.adRunTarget,
+      movementRefundApplied: parsed.movementRefundApplied,
+      movementRefundAmount:  parsed.movementRefundAmount,
+      seenAnnouncements:     parsed.seenAnnouncements,
     };
   }
 
@@ -412,31 +445,48 @@ function migrateGame(parsed: any, version: number): GameSave {
     };
   }
 
-  // v2 → v3: remap placed item Y values from 50 000-tall world to 5 000 000-tall world.
-  //
-  // CAUTION — this is the catch-all, not a v2 branch: every version that isn't
-  // 1, 4 or CURRENT lands here and gets the +4 950 000 offset applied. Two
-  // consequences, both currently harmless:
-  //   - A v3 save is offset twice, since v3 already carries it. Never shipped:
-  //     v3 was current 2026-04-24 → 2026-05-19 and the first public build was
-  //     2026-05-26, so no save outside a dev device can be at v3.
-  //   - A save from a NEWER client (a rolled-back install) is offset too.
-  //     Nothing writes a v6 yet, so this is latent.
-  // Before the next CURRENT_SCHEMA bump, narrow this to `version === 2` and give
-  // the fall-through a no-remap path — otherwise the downgrade case goes live.
-  const placed: Record<string, PlacedItemSave[]> = parsed.placed ?? {};
+  // v2 -> v3 raised the world height, so placed items need their Y remapped.
+  // Narrowly scoped on purpose: anything that is not 1, 2, 4 or >=5 is an
+  // unknown or rolled-back-client version, and must pass through WITHOUT the
+  // remap rather than being offset by +4 950 000.
+  if (version === 2) {
+    const placed: Record<string, PlacedItemSave[]> = parsed.placed ?? {};
+    return {
+      balance:        parsed.balance        ?? 0,
+      upgrades:       parsed.upgrades       ?? {},
+      inventory:      parsed.inventory      ?? {},
+      placed:         remapPlacedY(placed, WORLD_HEIGHT_V2, WORLD_HEIGHT_V3),
+      selectedHeapId: parsed.selectedHeapId ?? '',
+      highScores:     parsed.highScores     ?? {},
+      beatenHeapIds:  [],
+      cosmeticsOwned: [],
+      cosmeticsEquipped: {},
+      tutorialDone:   parsed.tutorialDone   ?? true,
+      _legacyPlaced:  parsed._legacyPlaced,
+    };
+  }
+
+  // Unknown / newer / v3: pass through with no remap and no field loss.
   return {
     balance:        parsed.balance        ?? 0,
     upgrades:       parsed.upgrades       ?? {},
     inventory:      parsed.inventory      ?? {},
-    placed:         remapPlacedY(placed, WORLD_HEIGHT_V2, WORLD_HEIGHT_V3),
+    placed:         parsed.placed         ?? {},
     selectedHeapId: parsed.selectedHeapId ?? '',
     highScores:     parsed.highScores     ?? {},
-    beatenHeapIds:  [],
-    cosmeticsOwned: [],
-    cosmeticsEquipped: {},
+    beatenHeapIds:  parsed.beatenHeapIds  ?? [],
+    cosmeticsOwned: parsed.cosmeticsOwned ?? [],
+    cosmeticsEquipped: parsed.cosmeticsEquipped ?? {},
+    loadoutSyncPending: parsed.loadoutSyncPending,
+    hatAdjustments: parsed.hatAdjustments,
     tutorialDone:   parsed.tutorialDone   ?? true,
+    menuTutorialSeen: parsed.menuTutorialSeen,
     _legacyPlaced:  parsed._legacyPlaced,
+    adRunsSinceLast: parsed.adRunsSinceLast,
+    adRunTarget:     parsed.adRunTarget,
+    movementRefundApplied: parsed.movementRefundApplied,
+    movementRefundAmount:  parsed.movementRefundAmount,
+    seenAnnouncements:     parsed.seenAnnouncements,
   };
 }
 
@@ -497,6 +547,13 @@ function mergeGame(local: RawSave, cloud: RawSave): GameSave {
   ])] as string[];
 
   return {
+    // Spread both inputs first so any game field this build does not know
+    // about survives the merge. Without this, a field written only by a NEWER
+    // client is dropped by the hand-built literal below — the same way the
+    // schema stamp is — and one-time flags like movementRefundApplied become
+    // as fragile as the version they replaced. Explicit rules below still win.
+    ...(secondary as object),
+    ...(primary as object),
     balance:        Math.max(local.balance, cloud.balance),
     upgrades,
     inventory,
@@ -514,6 +571,16 @@ function mergeGame(local: RawSave, cloud: RawSave): GameSave {
     // never re-nags. (Previously dropped here → hint/tutorial reappeared each launch.)
     menuTutorialSeen: local.menuTutorialSeen || cloud.menuTutorialSeen,
     tutorialDone:      local.tutorialDone      || cloud.tutorialDone,
+    // Explicit `||` merge key, not left to the spreads above: the refund
+    // reconciliation DELETES the wall_jump/dash/dive upgrade keys, and a stale
+    // side of the merge that still carries them will resurrect them via the
+    // upgrades union above. Only this flag — never key-absence — prevents a
+    // resurrected key from paying the refund a second time.
+    movementRefundApplied: local.movementRefundApplied || cloud.movementRefundApplied,
+    movementRefundAmount:  Math.max(local.movementRefundAmount ?? 0, cloud.movementRefundAmount ?? 0),
+    seenAnnouncements: [...new Set([
+      ...(local.seenAnnouncements ?? []), ...(cloud.seenAnnouncements ?? []),
+    ])],
   };
 }
 
@@ -521,6 +588,98 @@ function mergeGame(local: RawSave, cloud: RawSave): GameSave {
 // extension is always installed before anything can call load().
 setSaveExtension({ fresh: freshGame, migrate: migrateGame, merge: mergeGame });
 setPrimaryPicker(primaryOf);
+
+// ── Movement rework: one-time Scrap refund + announcement ─────────────────────
+
+/** Purchase prices of the upgrades removed by the movement rework, frozen as
+ *  historical constants. Deliberately NOT read from UPGRADE_DEFS: those entries
+ *  are deleted, so a lookup would return 0 and silently refund nothing. */
+const MOVEMENT_REFUND_PRICES: Record<string, number> = {
+  wall_jump: 450, dash: 600, dive: 500,
+};
+
+export const MOVEMENT_ANNOUNCEMENT_ID = 'movement-v0.4';
+
+/**
+ * Pay back Scrap spent on upgrades the movement rework made default-unlocked.
+ *
+ * MUST run after any cloud merge has either landed or been ruled out, never
+ * inside migrateGame. Migration happens at load(), the GPGS merge happens
+ * later, and mergeGame resolves balance with Math.max — so a refund applied
+ * while a merge is still pending is double-credited the moment one device has
+ * already spent it. Running post-merge against the reconciled upgrade map
+ * pays exactly once. This module does not know whether a merge is pending or
+ * has already been ruled out — that is a boot-sequencing fact only the caller
+ * has — so it deliberately does not call `syncSaveToCloud()` itself; the
+ * caller does that (and only that) when this returns a positive amount. See
+ * `bootSequence.ts`'s `startIdentitySession` for the one call site and why it
+ * is safe there.
+ *
+ * Safe to call repeatedly: after a payout the flag short-circuits it, and
+ * before one the scan simply finds nothing to refund and changes nothing.
+ *
+ * @returns the amount refunded on THIS call — 0 if already applied, or if the
+ *  player owned none of the removed upgrades. Use `getMovementRefundAmount()`
+ *  to read the (persisted) amount from a past call.
+ */
+export function reconcileMovementRefund(): number {
+  const data = load();
+  if (data.movementRefundApplied) return 0;
+
+  let amount = 0;
+  for (const [id, price] of Object.entries(MOVEMENT_REFUND_PRICES)) {
+    if ((data.upgrades[id] ?? 0) > 0) {
+      amount += price;
+      delete data.upgrades[id];
+    }
+  }
+
+  // Latch ONLY on an actual payout. A zero-amount reconcile means this save
+  // owned none of the removed upgrades *as far as we can currently see* — and
+  // on a reinstall whose GPGS sign-in declined or timed out, that view is
+  // incomplete: the pre-update cloud save holding wall_jump/dash/dive has not
+  // merged yet. Latching there would stamp movementRefundApplied on a bare
+  // freshGame(), and mergeGame's `local || cloud` OR would carry that true
+  // into the merged save, so the refund could never be paid. Leaving the flag
+  // false costs one no-op scan per boot and keeps the payout reachable on the
+  // boot where the merge finally lands.
+  if (amount === 0) return 0;
+
+  data.balance              += amount;
+  data.movementRefundAmount  = amount;
+  data.movementRefundApplied = true;
+  // Reaching here means this save actually owned one of the removed upgrades —
+  // the reinstall path (fresh save → GPGS merge pulls a pre-update cloud save
+  // with the upgrades already bought) is exactly this case, and freshGame() had
+  // pre-seeded seenAnnouncements with MOVEMENT_ANNOUNCEMENT_ID since it had no
+  // way to know a merge would later reveal spend history. Clear it here so the
+  // modal still renders and explains the balance jump. The zero-amount return
+  // above is what lets a genuinely fresh save (or one that never owned any of
+  // the three) stay silently suppressed.
+  data.seenAnnouncements = (data.seenAnnouncements ?? [])
+    .filter(id => id !== MOVEMENT_ANNOUNCEMENT_ID);
+  // Persist unconditionally: load() only writes when the stored version differs
+  // from CURRENT_SCHEMA, so relying on that side effect would recompute the
+  // refund every launch and never save it.
+  persist(data);
+  return amount;
+}
+
+export function getMovementRefundAmount(): number {
+  return load().movementRefundAmount ?? 0;
+}
+
+export function hasSeenAnnouncement(id: string): boolean {
+  return (load().seenAnnouncements ?? []).includes(id);
+}
+
+export function markAnnouncementSeen(id: string): void {
+  const data = load();
+  const seen = new Set(data.seenAnnouncements ?? []);
+  seen.add(id);
+  data.seenAnnouncements = [...seen];
+  persist(data);
+}
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 

@@ -40,6 +40,8 @@ import {
   getPlayerSecret,
   getBeatenHeapIds,
   markHeapBeaten,
+  load,
+  SAVE_KEY,
 } from '../SaveData';
 
 // Stub localStorage — vitest runs in node environment
@@ -73,6 +75,41 @@ describe('getPlayerConfig – maxWalkableSlopeDeg', () => {
     store['heap_save'] = JSON.stringify({ balance: 0, upgrades: { mountain_climber: 2 } });
     const config = getPlayerConfig();
     expect(config.maxWalkableSlopeDeg).toBe(MAX_WALKABLE_SLOPE_DEG + 2 * MOUNTAIN_CLIMBER_INCREMENT);
+  });
+});
+
+describe('getPlayerConfig – stamina fields', () => {
+  it('getPlayerConfig derives stamina fields from upgrades', () => {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      schemaVersion: 5, balance: 0,
+      upgrades: { air_jump: 1, max_stamina: 2, stamina_regen: 0, wall_jump_cd: 4 },
+      inventory: {}, placed: {}, highScores: {}, beatenHeapIds: [],
+      cosmeticsOwned: [], cosmeticsEquipped: {},
+    }));
+
+    const cfg = getPlayerConfig();
+
+    expect(cfg.maxAirJumps).toBe(2);            // 1 + air_jump level
+    expect(cfg.baseStamina).toBe(5);            // BASE_STAMINA 3 + max_stamina 2
+    expect(cfg.staminaRegenAirMs).toBe(3000);   // level 0 = base rate
+    expect(cfg.wallJumpCooldownMs).toBe(2400);  // 3000 - 4 * 150
+  });
+
+  // Regression (PR #186 review): the stamina_regen clamp floored at
+  // STAMINA_REGEN_PER_LEVEL (300ms) instead of its own floor, so any level
+  // past the designed max collapsed air regen 6x faster than intended.
+  it('floors air regen at the designed minimum, not the per-level step', () => {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      ...baseSave(), schemaVersion: 6, upgrades: { stamina_regen: 4 },
+    }));
+    resetCacheForTests();
+    expect(getPlayerConfig().staminaRegenAirMs).toBe(1800);  // 3000 - 4 * 300
+
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      ...baseSave(), schemaVersion: 6, upgrades: { stamina_regen: 99 },
+    }));
+    resetCacheForTests();
+    expect(getPlayerConfig().staminaRegenAirMs).toBe(1800);  // clamped, not 300
   });
 });
 
@@ -453,7 +490,7 @@ describe('SaveData v1→v2 migration', () => {
 
     expect(getPlaced('any-heap')).toEqual([]);                 // fresh key is empty
     expect(getLegacyPlacedForTests()).toEqual([{ id: 'ibeam', x: 10, y: 20 }]);
-    expect(getSchemaVersionForTests()).toBe(5);
+    expect(getSchemaVersionForTests()).toBe(6);
   });
 
   it('finalizeLegacyPlaced moves items onto a heap id', () => {
@@ -690,6 +727,18 @@ describe('mergeCloudSave', () => {
     const cloud = { ...base(), playerSecret: 'cloud-secret' };
     expect(mergeCloudSave(local, cloud).playerSecret).toBe('cloud-secret');
   });
+
+  it('mergeGame preserves game fields it does not explicitly merge', () => {
+    // A field written by a NEWER client exists only in the cloud save. The
+    // running build knows nothing about it and must not silently drop it.
+    const local = { ...base(), balance: 100 };
+    const cloud = { ...base(), balance: 50, someFutureField: 'keep-me' } as any;
+
+    const merged = mergeCloudSave(local, cloud) as any;
+
+    expect(merged.someFutureField).toBe('keep-me');
+    expect(merged.balance).toBe(100); // explicit merge rules still win
+  });
 });
 
 // Regression: mergeCloudSave built a hand-listed literal that silently dropped
@@ -792,7 +841,7 @@ describe('soundSettings – schema v4 migration', () => {
     expect(settings.playerSfx).toBe(1.0);
     expect(settings.enemySfx).toBe(0.8);
     expect(settings.envSfx).toBe(0.9);
-    expect(getSchemaVersionForTests()).toBe(5);
+    expect(getSchemaVersionForTests()).toBe(6);
   });
 
   it('preserves existing soundSettings when loading a v4 save', () => {
@@ -818,6 +867,244 @@ describe('soundSettings – schema v4 migration', () => {
     setSoundVolume('music', 0.2);
     resetCacheForTests();
     expect(getSoundSettings().music).toBe(0.2);
+  });
+});
+
+// ── Schema v5 migration ───────────────────────────────────────────────────────
+
+describe('v5 save migration — tripwire for next CURRENT_SCHEMA bump', () => {
+  it('preserves a v5 save intact when CURRENT_SCHEMA moves past 5', () => {
+    // Simulates the next schema bump: a v5 blob must not fall into the
+    // v2->v3 remap branch, which wipes cosmetics and offsets placed items.
+    const v5 = {
+      schemaVersion: 5,
+      balance: 4200,
+      upgrades: { air_jump: 2, dash: 1 },
+      inventory: { medkit: 3 },
+      placed: { heapA: [{ id: 'i1', x: 10, y: 40_000 }] },
+      selectedHeapId: 'heapA',
+      highScores: { heapA: 900 },
+      beatenHeapIds: ['heapA'],
+      cosmeticsOwned: ['hat_cone'],
+      cosmeticsEquipped: { hat: 'hat_cone' },
+      hatAdjustments: { hat_cone: { dAngle: 5, dScale: 1.1 } },
+      menuTutorialSeen: true,
+      tutorialDone: true,
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(v5));
+
+    const loaded = load();
+
+    expect(loaded.cosmeticsOwned).toEqual(['hat_cone']);
+    expect(loaded.cosmeticsEquipped).toEqual({ hat: 'hat_cone' });
+    expect(loaded.beatenHeapIds).toEqual(['heapA']);
+    expect(loaded.hatAdjustments).toEqual({ hat_cone: { dAngle: 5, dScale: 1.1 } });
+    expect(loaded.menuTutorialSeen).toBe(true);
+    // The remap branch would push this to 4_990_000.
+    expect(loaded.placed.heapA[0].y).toBe(40_000);
+  });
+});
+
+// ── Movement rework refund reconciliation ───────────────────────────────────
+
+import {
+  reconcileMovementRefund,
+  getMovementRefundAmount,
+  hasSeenAnnouncement,
+  markAnnouncementSeen,
+  MOVEMENT_ANNOUNCEMENT_ID,
+  getUpgrades,
+  applyMergedSave,
+} from '../SaveData';
+
+const LEGACY_MOVEMENT_UPGRADES = { wall_jump: 1, dash: 1, dive: 1 };
+
+/** Seed a schema-6 save directly (bypassing migrate) with the given balance
+ *  and upgrades — matches this suite's `baseSave` fixture style. */
+function seedSave(overrides: { balance: number; upgrades: Record<string, number> }): void {
+  store[SAVE_KEY] = JSON.stringify({
+    ...baseSave(),
+    schemaVersion: 6,
+    ...overrides,
+  });
+  resetCacheForTests();
+}
+
+/** A genuinely new save — no prior device, no prior cloud data. */
+function seedFreshSave(): void {
+  localStorage.clear();
+  resetCacheForTests();
+  getBalance(); // materialize the fresh save into the cache/store
+}
+
+describe('reconcileMovementRefund', () => {
+  beforeEach(() => { localStorage.clear(); resetCacheForTests(); });
+
+  it('refunds 1550 for all three removed upgrades and deletes the keys', () => {
+    seedSave({ balance: 100, upgrades: { ...LEGACY_MOVEMENT_UPGRADES, air_jump: 2 } });
+    reconcileMovementRefund();
+    expect(getBalance()).toBe(1650);
+    expect(getUpgrades()).toEqual({ air_jump: 2 });
+    expect(getMovementRefundAmount()).toBe(1550);
+  });
+
+  it('refunds only what the player actually owned', () => {
+    seedSave({ balance: 0, upgrades: { dash: 1 } });
+    reconcileMovementRefund();
+    expect(getBalance()).toBe(600);
+  });
+
+  it('is idempotent across repeated launches', () => {
+    seedSave({ balance: 0, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } });
+    reconcileMovementRefund();
+    reconcileMovementRefund();
+    reconcileMovementRefund();
+    expect(getBalance()).toBe(1550);
+  });
+
+  it('pays a returning player whose cloud save restores the old upgrades', () => {
+    // The Android reinstall path: fresh local save, then a pre-update cloud save
+    // merges in. freshGame() must NOT pre-set the flag or this player is robbed.
+    seedFreshSave();
+    const cloud = { ...baseSave(), balance: 900, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } };
+    applyMergedSave(mergeCloudSave(getRawSaveForCloudSync(), cloud as any));
+    reconcileMovementRefund();
+    expect(getBalance()).toBe(900 + 1550);
+  });
+
+  it('pays a genuinely new player nothing', () => {
+    seedFreshSave();
+    reconcileMovementRefund();
+    expect(getBalance()).toBe(0);
+    expect(getMovementRefundAmount()).toBe(0);
+  });
+
+  // Regression (PR #186 review): a zero-amount reconcile must NOT latch the
+  // flag. The boot sequence reconciles in a .finally() that also fires on the
+  // "sign-in declined / timed out" early returns, so on a reinstall the first
+  // post-update boot can run against a bare freshGame() with the pre-update
+  // cloud save still unmerged. Latching there, then OR-ing that true through
+  // mergeGame, made the refund permanently unreachable.
+  it('still pays after a boot that reconciled before the cloud merge landed', () => {
+    seedFreshSave();
+    reconcileMovementRefund();            // boot 1: sign-in failed, nothing to refund
+    expect(getBalance()).toBe(0);
+
+    const cloud = { ...baseSave(), balance: 900, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } };
+    applyMergedSave(mergeCloudSave(getRawSaveForCloudSync(), cloud as any));
+    reconcileMovementRefund();            // boot 2: sign-in worked, merge landed
+    expect(getBalance()).toBe(900 + 1550);
+    expect(getMovementRefundAmount()).toBe(1550);
+  });
+
+  it('leaves the flag unset when there is nothing to refund', () => {
+    seedFreshSave();
+    reconcileMovementRefund();
+    // Asserted on the cloud-sync view rather than localStorage: a zero-amount
+    // reconcile writes nothing at all, and it is this value that a later
+    // mergeCloudSave() OR-s against the incoming snapshot.
+    expect(getRawSaveForCloudSync().movementRefundApplied).toBeFalsy();
+  });
+
+  it('persists the refund on the launch it fires', () => {
+    seedSave({ balance: 0, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } });
+    reconcileMovementRefund();
+    const stored = JSON.parse(localStorage.getItem(SAVE_KEY)!);
+    expect(stored.balance).toBe(1550);
+    expect(stored.movementRefundApplied).toBe(true);
+  });
+
+  // Not in the brief, added per Task 2's review note: mergeGame spreads both
+  // saves before its explicit literal, so unknown/deleted-by-absence keys can
+  // be resurrected by a stale side that still carries them (see the upgrades
+  // union rule below). movementRefundApplied MUST be an explicit `||` merge
+  // key so a resurrected wall_jump/dash/dive key cannot trigger a second
+  // payout — without this, a stale pre-update cloud snapshot merging in after
+  // the refund already ran would re-grant the refunded upgrades for free.
+  it('does not pay twice when a cloud merge resurrects a refunded upgrade key', () => {
+    seedSave({ balance: 0, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } });
+    reconcileMovementRefund();
+    expect(getBalance()).toBe(1550);
+
+    // A stale cloud snapshot captured before the refund still carries the keys
+    // and has not been stamped movementRefundApplied.
+    const staleCloud = {
+      ...baseSave(), balance: 0,
+      upgrades: { ...LEGACY_MOVEMENT_UPGRADES },
+      movementRefundApplied: false,
+    };
+    const merged = mergeCloudSave(getRawSaveForCloudSync(), staleCloud as any);
+    applyMergedSave(merged);
+
+    // The upgrades union resurrects the deleted keys...
+    expect(getUpgrades()).toEqual(expect.objectContaining({ ...LEGACY_MOVEMENT_UPGRADES }));
+    // ...but the || flag must have survived the merge and block a second payout.
+    reconcileMovementRefund();
+    expect(getBalance()).toBe(1550);
+  });
+
+  it('returns the refunded amount (1550) on the call that pays', () => {
+    seedSave({ balance: 0, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } });
+    const refunded = reconcileMovementRefund();
+    expect(refunded).toBe(1550);
+  });
+
+  it('returns 0 on every subsequent call after the refund has been applied', () => {
+    seedSave({ balance: 0, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } });
+    const firstCall = reconcileMovementRefund();
+    expect(firstCall).toBe(1550);
+    const secondCall = reconcileMovementRefund();
+    expect(secondCall).toBe(0);
+    const thirdCall = reconcileMovementRefund();
+    expect(thirdCall).toBe(0);
+  });
+
+  it('returns 0 for a genuinely fresh save that owns none of the three upgrades', () => {
+    seedFreshSave();
+    const refunded = reconcileMovementRefund();
+    expect(refunded).toBe(0);
+  });
+});
+
+describe('movement announcement flag', () => {
+  beforeEach(() => { localStorage.clear(); resetCacheForTests(); });
+
+  it('a genuinely new save is pre-seeded as having seen the movement announcement', () => {
+    // A player who never touched the removed upgrades should not be told
+    // what changed about a system they never used.
+    expect(hasSeenAnnouncement(MOVEMENT_ANNOUNCEMENT_ID)).toBe(true);
+  });
+
+  it('a genuinely fresh save with a zero payout stays silently suppressed', () => {
+    seedFreshSave();
+    const refunded = reconcileMovementRefund();
+    expect(refunded).toBe(0);
+    expect(hasSeenAnnouncement(MOVEMENT_ANNOUNCEMENT_ID)).toBe(true);
+  });
+
+  it('the Android reinstall path (fresh save + cloud merge pays out) is NOT suppressed', () => {
+    // Fresh local save pre-seeds the flag (nothing to explain yet) — then a
+    // GPGS merge pulls in a pre-update cloud save that owned the removed
+    // upgrades, and reconcile pays out. That payout is exactly the case the
+    // pre-seed can't foresee, so it must clear the flag and let the modal
+    // explain the balance jump.
+    seedFreshSave();
+    expect(hasSeenAnnouncement(MOVEMENT_ANNOUNCEMENT_ID)).toBe(true);
+
+    const cloud = { ...baseSave(), balance: 900, upgrades: { ...LEGACY_MOVEMENT_UPGRADES } };
+    applyMergedSave(mergeCloudSave(getRawSaveForCloudSync(), cloud as any));
+
+    const refunded = reconcileMovementRefund();
+    expect(refunded).toBe(1550);
+    expect(hasSeenAnnouncement(MOVEMENT_ANNOUNCEMENT_ID)).toBe(false);
+  });
+
+  it('marks and persists an arbitrary announcement as seen', () => {
+    expect(hasSeenAnnouncement('some-other-announcement')).toBe(false);
+    markAnnouncementSeen('some-other-announcement');
+    expect(hasSeenAnnouncement('some-other-announcement')).toBe(true);
+    resetCacheForTests();
+    expect(hasSeenAnnouncement('some-other-announcement')).toBe(true);
   });
 });
 

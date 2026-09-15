@@ -5,7 +5,7 @@ import {
   getEquippedCosmetics, equipCosmetic,
   getLoadoutSyncPending, setLoadoutSyncPending,
   getHatAdjustment, getHatAdjustments, setHatAdjustment,
-  mergeCloudSave, getRawSaveForCloudSync, getSchemaVersionForTests,
+  mergeCloudSave, getRawSaveForCloudSync, getSchemaVersionForTests, CURRENT_SCHEMA,
 } from '../SaveData';
 
 // Stub localStorage — vitest runs in node environment
@@ -94,7 +94,7 @@ describe('v4 → v5 migration', () => {
       selectedHeapId: 'h1', playerGuid: 'g', playerName: 'N', highScores: {},
     }));
     resetCacheForTests();
-    expect(getSchemaVersionForTests()).toBe(5);
+    expect(getSchemaVersionForTests()).toBe(CURRENT_SCHEMA);
     const raw = getRawSaveForCloudSync();
     expect(raw.placed['h1'][0].y).toBe(999);        // NOT remapped
     expect(raw.cosmeticsOwned).toEqual([]);

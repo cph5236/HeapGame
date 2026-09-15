@@ -54,6 +54,14 @@ export const CONFIG_FETCH_TIMEOUT_MS   = 10_000;
  *  first launch. Timing out costs that session's records; see gpgsSession.ts. */
 export const GPGS_SIGNIN_TIMEOUT_MS    = 6_000;
 
+/** Ceiling (ms) startIdentitySession will wait on PlayGamesClient.loadSnapshot()
+ *  before treating this boot as having no cloud save to merge. Unlike the
+ *  sign-in gate, nothing blocks on this — the menu is already open — but the
+ *  movement-refund reconciliation (and the first-run tour/announcement it
+ *  unblocks) waits on the whole identity chain settling, so an unbounded
+ *  native call here could withhold both indefinitely. See bootSequence.ts. */
+export const GPGS_SNAPSHOT_TIMEOUT_MS  = 10_000;
+
 /** Ceiling (ms) the loading screen will wait on the AdMob consent flow before
  *  opening the menu anyway. Unlike the GPGS gate, timing out here is cheap:
  *  the consent form is a native overlay, so the menu simply appears behind it
@@ -87,9 +95,31 @@ export const WALL_LEAVE_NUDGE     = 80;   // px/s
 // bury the body in sloped slabs for depenetratePlayerFromWall to shove back out.
 export const WALL_SLIDE_PRESS_SPEED = 60; // px/s
 export const WALL_JUMP_PUSH       = 375;  // px/s outward velocity applied on wall jump (was PLAYER_SPEED * 1.5)
-export const WALL_JUMP_COOLDOWN_MS = 2000; // ms cooldown after wall-jump fires (same-wall cooldown: different wall bypass)
+export const WALL_JUMP_COOLDOWN_MS = 3000; // ms same-wall cooldown (was 2000; wall jump now also costs stamina)
+// wall_jump_cd upgrade: 10 levels x 150ms takes 3000 -> 1500.
+export const WALL_JUMP_CD_PER_LEVEL   = 150;
+export const WALL_JUMP_CD_MIN_MS      = 1500;
+// stamina_regen upgrade: 4 levels x 300ms takes airborne 3000 -> 1800.
+export const STAMINA_REGEN_PER_LEVEL  = 300;
+// dash_power upgrade: each level adds this to PLAYER_DASH_VELOCITY.
+export const DASH_POWER_PER_LEVEL     = 60;
 export const PLAYER_INVINCIBLE_MS = 400;  // post-stomp / post-spawn invincibility
-export const MAX_AIR_JUMPS        = 1;    // base value — actual value comes from SaveData/upgrades
+// ── Stamina ────────────────────────────────────────────────────────────────────
+// One shared pool funds air jump, dash and wall jump (1 each). Jump, dive and
+// wall slide are free. Each ability keeps its own limiter on top of the cost —
+// see Player.ts and docs/superpowers/specs/2026-09-11-stamina-movement-design.md
+export const BASE_STAMINA    = 3;   // base pool; upgrades and pickups add to it
+export const MAX_STAMINA_CAP = 8;   // hard ceiling; the HUD builds this many segments
+// Grounded regen is fast but NOT instant: a 2-frame bunny-hop banks ~0.15 bars
+// while a half-second pause on a ledge tops the pool up. That gradient is the
+// point — an instant refill would make stamina a rename of the old counter.
+export const STAMINA_REGEN_GROUND_MS = 200;
+export const STAMINA_REGEN_AIR_MS    = 3000; // tune in playtest; upgrade lowers it
+// Floor for the stamina_regen upgrade, matching the designed max level (4 x 300ms
+// off 3000ms). Must be its own constant rather than reusing PER_LEVEL as the
+// clamp: that floored air regen at 300ms, six times faster than designed, the
+// moment a maxLevel bump or a corrupt save pushed the level past 4.
+export const STAMINA_REGEN_AIR_MIN_MS = 1800;
 export const DASH_COOLDOWN_MS     = 800;  // ms between dashes
 export const DASH_DURATION_MS     = 200;  // ms the dash velocity is protected from movement override
 
@@ -214,8 +244,6 @@ export const RECYCLE_ITEM_COUNT = 16;
 // ── In-game UI redesign (Clean Arcade) ──────────────────────────────────────
 export const HUD_INSET        = 12;   // px padding from top/side screen edges
 export const HUD_TRAY_PAD      = 10;  // inner padding of the ability tray panel
-export const HUD_DASH_BAR_W    = 46;  // slim dash cooldown bar width
-export const HUD_DASH_BAR_H    = 8;   // slim dash cooldown bar height
 export const HUD_PLACE_W       = 80;  // PLACE button width
 export const HUD_PLACE_H       = 60;  // PLACE button height
 export const HUD_PLACE_GAP     = 14;  // gap between dash button and PLACE
