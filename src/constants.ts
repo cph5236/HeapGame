@@ -54,6 +54,14 @@ export const CONFIG_FETCH_TIMEOUT_MS   = 10_000;
  *  first launch. Timing out costs that session's records; see gpgsSession.ts. */
 export const GPGS_SIGNIN_TIMEOUT_MS    = 6_000;
 
+/** Ceiling (ms) startIdentitySession will wait on PlayGamesClient.loadSnapshot()
+ *  before treating this boot as having no cloud save to merge. Unlike the
+ *  sign-in gate, nothing blocks on this — the menu is already open — but the
+ *  movement-refund reconciliation (and the first-run tour/announcement it
+ *  unblocks) waits on the whole identity chain settling, so an unbounded
+ *  native call here could withhold both indefinitely. See bootSequence.ts. */
+export const GPGS_SNAPSHOT_TIMEOUT_MS  = 10_000;
+
 /** Ceiling (ms) the loading screen will wait on the AdMob consent flow before
  *  opening the menu anyway. Unlike the GPGS gate, timing out here is cheap:
  *  the consent form is a native overlay, so the menu simply appears behind it

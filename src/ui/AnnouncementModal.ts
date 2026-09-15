@@ -82,7 +82,14 @@ export class AnnouncementModal {
 
     titleText.setPosition(cx, panelTop + PAD_TOP);
     bodyText.setPosition(cx, titleText.y + titleText.height + GAP);
-    dismissBtn.setPosition(cx, bodyText.y + bodyText.height + GAP + dismissBtn.height / 2);
+    // The shrink loop above can still bottom out at MIN_BODY_FONT_PX with body
+    // copy taller than the space left for it (a very short/narrow viewport with
+    // the longest beats this modal shows) — without this clamp the button would
+    // stack past the panel's bottom edge, or off the viewport entirely. The
+    // backdrop tap still dismisses either way, but this keeps GOT IT reachable.
+    const dismissY = bodyText.y + bodyText.height + GAP + dismissBtn.height / 2;
+    const maxDismissY = Math.min(panelTop + panelH, h - 24) - PAD_BOTTOM - dismissBtn.height / 2;
+    dismissBtn.setPosition(cx, Math.min(dismissY, maxDismissY));
 
     const panel = scene.add.graphics();
     panel.fillStyle(HUD_THEME.panelFill, 0.97);

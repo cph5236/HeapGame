@@ -23,7 +23,7 @@ import { getPlayerConfig, setTutorialDone, getJoystickSide, getEffectiveControlM
 import { resolveCosmetics } from '../systems/cosmeticsLogic';
 import { resolveTutorialExit, type TutorialExitState } from './tutorialExit';
 import type { HeapParams } from '../../shared/heapTypes';
-import { TutorialDirector, type TutorialStep } from '../systems/TutorialDirector';
+import { TutorialDirector, type TutorialStep, type PlayerAction } from '../systems/TutorialDirector';
 import { TutorialOverlay } from '../ui/TutorialOverlay';
 import { AbilityTray } from '../ui/AbilityTray';
 import { showDashIndicator } from '../ui/hudLogic';
@@ -280,7 +280,7 @@ export class TutorialScene extends Phaser.Scene {
     }
 
     // Director + overlay
-    this.events.on('player-action', (kind: string) => this.director.notify(kind as any));
+    this.events.on('player-action', (kind: PlayerAction) => this.director.notify(kind));
 
     this.overlay = new TutorialOverlay(this, {
       onNext: () => {

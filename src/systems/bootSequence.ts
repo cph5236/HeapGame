@@ -13,6 +13,7 @@ import {
   getRawSaveForCloudSync, applyMergedSave, mergeCloudSave, type RawSave,
   reconcileMovementRefund,
 } from './SaveData';
+import { GPGS_SNAPSHOT_TIMEOUT_MS } from '../constants';
 
 /**
  * The platform half of startup, in the order it has to happen. A game's boot
@@ -118,8 +119,20 @@ export function startIdentitySession(game: Phaser.Game): void {
       void PlayerNameClient.updateName(getEffectivePlayerId(), validated.name);
     }
 
-    const cloudJson = await PlayGamesClient.loadSnapshot();
-    if (!cloudJson) return; // signed in, but no cloud snapshot yet — no merge coming
+    // Unlike signInSettled(), loadSnapshot() has no built-in ceiling — race it
+    // against one so a stalled native call can't withhold refundSettled (and
+    // the tour/announcement it unblocks) for the whole session. A snapshot
+    // that resolves after losing the race is simply dropped, same as a late
+    // sign-in above; the .catch keeps that drop from surfacing as an
+    // unhandled rejection.
+    const snapshotPromise = PlayGamesClient.loadSnapshot().catch(() => null);
+    let snapshotTimer: ReturnType<typeof setTimeout> | undefined;
+    const snapshotDeadline = new Promise<null>((resolve) => {
+      snapshotTimer = setTimeout(() => resolve(null), GPGS_SNAPSHOT_TIMEOUT_MS);
+    });
+    const cloudJson = await Promise.race([snapshotPromise, snapshotDeadline]);
+    clearTimeout(snapshotTimer);
+    if (!cloudJson) return; // signed in, but no cloud snapshot yet (or timed out) — no merge coming
 
     let cloudSave: RawSave;
     try {
