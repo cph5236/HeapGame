@@ -1,11 +1,11 @@
 // server/src/routes/codes.ts
 
 import { Hono } from 'hono';
-import type { RewardCodeDB } from '../codeDb';
+import type { RewardCodeDB, NormalizedUpdateCode } from '../codeDb';
 import type { Sink } from '../../platform/logging/Sink';
 import { captureServer } from '../../platform/logging/captureServerEvent';
 import { isItemId } from '../../../../shared/itemIds';
-import type { CreateCodeRequest, RedeemCodeRequest } from '../../../../shared/codeTypes';
+import type { CreateCodeRequest, RedeemCodeRequest, UpdateCodeRequest } from '../../../../shared/codeTypes';
 import type { PlayerAuthDB } from '../../platform/playerAuthDb';
 import { enforcePlayerAuth } from '../../platform/playerAuth';
 
@@ -98,6 +98,49 @@ export function codeRoutes(
   app.get('/', async (c) => {
     const rows = await codeDb.listCodes();
     return c.json({ codes: rows });
+  });
+
+  // ── Admin: update a code's amount/cap/expiry (adminGate applied in app.ts) ─
+  app.patch('/:code', async (c) => {
+    const code = normalizeCode(c.req.param('code'));
+    let body: UpdateCodeRequest;
+    try {
+      body = await c.req.json<UpdateCodeRequest>();
+    } catch {
+      return c.json({ error: 'invalid request' }, 400);
+    }
+
+    const patch: NormalizedUpdateCode = {};
+    if (body.rewardAmount !== undefined) {
+      if (!Number.isInteger(body.rewardAmount) || body.rewardAmount <= 0) {
+        return c.json({ error: 'invalid rewardAmount' }, 400);
+      }
+      patch.rewardAmount = body.rewardAmount;
+    }
+    if (body.maxRedemptions !== undefined) {
+      if (!Number.isInteger(body.maxRedemptions) || body.maxRedemptions < 0) {
+        return c.json({ error: 'invalid maxRedemptions' }, 400);
+      }
+      patch.maxRedemptions = body.maxRedemptions;
+    }
+    if (body.expiresAt !== undefined) {
+      if (body.expiresAt !== null && (typeof body.expiresAt !== 'string' || Number.isNaN(Date.parse(body.expiresAt)))) {
+        return c.json({ error: 'invalid expiresAt' }, 400);
+      }
+      patch.expiresAt = body.expiresAt;
+    }
+
+    const ok = await codeDb.updateCode(code, patch);
+    if (!ok) return c.json({ error: 'code not found' }, 404);
+    return c.json({ ok: true, code });
+  });
+
+  // ── Admin: delete a code (adminGate applied in app.ts) ────────────────────
+  app.delete('/:code', async (c) => {
+    const code = normalizeCode(c.req.param('code'));
+    const ok = await codeDb.deleteCode(code);
+    if (!ok) return c.json({ error: 'code not found' }, 404);
+    return c.json({ ok: true });
   });
 
   return app;

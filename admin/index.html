@@ -259,10 +259,25 @@
       <div><label class="lbl">Expires At <span class="muted">(blank = never)</span></label><input type="datetime-local" id="rc-expires" class="field" /></div>
     </div>
     <button id="rc-create" class="btn">Mint Code</button>
+
+    <div id="rc-edit-panel" style="display:none" class="mt-4">
+      <h3 class="card-head">Edit <span id="rc-edit-code"></span></h3>
+      <div class="grid2">
+        <div><label class="lbl">Amount</label><input type="number" step="1" min="1" id="rce-amount" class="field" /></div>
+        <div><label class="lbl">Max Redemptions <span class="muted">(0 = unlimited)</span></label><input type="number" step="1" min="0" id="rce-max" class="field" /></div>
+        <div><label class="lbl">Expires At <span class="muted">(blank = never)</span></label><input type="datetime-local" id="rce-expires" class="field" /></div>
+      </div>
+      <button id="rc-edit-save" class="btn">Save</button>
+      <button id="rc-edit-cancel" class="btn btn-sm">Cancel</button>
+    </div>
+
+    <label class="lbl mt-4" style="display:flex; align-items:center; gap:6px;">
+      <input type="checkbox" id="rc-show-expired" /> Show expired codes
+    </label>
     <div class="overflow-x-auto">
       <table class="tbl mt-4">
-        <thead><tr><th>Code</th><th>Reward</th><th>Redeemed</th><th>Expires</th><th>Created</th></tr></thead>
-        <tbody id="rc-tbody"><tr><td colspan="5" class="muted">not loaded</td></tr></tbody>
+        <thead><tr><th>Code</th><th>Reward</th><th>Redeemed</th><th>Expires</th><th>Created</th><th></th></tr></thead>
+        <tbody id="rc-tbody"><tr><td colspan="6" class="muted">not loaded</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -1294,6 +1309,8 @@
 
     // ────── Reward Codes ─────────────────────────────────────────────────────
 
+    let cachedCodes = [];
+
     async function loadCodes() {
       const gen = envGeneration;
       try {
@@ -1301,17 +1318,23 @@
         if (!res.ok) throw new Error('list failed: ' + res.status);
         const data = await res.json();
         if (gen !== envGeneration) return; // operator switched environments mid-flight
-        renderCodesTable(data.codes || []);
+        cachedCodes = data.codes || [];
+        renderCodesTable();
       } catch (e) {
         if (gen !== envGeneration) return;
         setStatus(String(e), 'err');
       }
     }
 
-    function renderCodesTable(codes) {
+    function renderCodesTable() {
       const tbody = $('rc-tbody');
+      const now = new Date().toISOString();
+      const showExpired = $('rc-show-expired').checked;
+      const codes = showExpired
+        ? cachedCodes
+        : cachedCodes.filter(c => !(c.expires_at && c.expires_at <= now));
       if (!codes.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="muted">no codes</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="muted">no codes</td></tr>';
         return;
       }
       tbody.innerHTML = codes.map(c => {
@@ -1325,8 +1348,34 @@
           + '<td>' + c.redeemed_count + ' / ' + cap + '</td>'
           + '<td>' + escapeHtml(c.expires_at || '—') + '</td>'
           + '<td>' + escapeHtml(c.created_at) + '</td>'
+          + '<td>'
+          +   '<button class="btn btn-sm" onclick="onEditCode(\'' + escapeHtml(c.code) + '\')">Edit</button> '
+          +   '<button class="btn btn-sm btn-danger" onclick="onDeleteCode(\'' + escapeHtml(c.code) + '\')">×</button>'
+          + '</td>'
           + '</tr>';
       }).join('');
+    }
+
+    // Converts a stored UTC ISO timestamp to the "YYYY-MM-DDTHH:mm" a
+    // datetime-local input expects, in the browser's local time — a plain
+    // slice(0,16) would treat the UTC clock reading as local and drift the
+    // displayed time by the zone offset.
+    function toLocalDatetimeValue(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      const pad = n => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+        + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+
+    // Returns null (valid) or an error string when a datetime-local control is
+    // partially filled (e.g. date picked, time left blank) — see Bugs.md: a
+    // partial control silently reports value === "", which used to be read as
+    // "leave blank" and dropped expiresAt on the floor.
+    function readExpiresField(id) {
+      const el = $(id);
+      if (el.validity.badInput) return 'Expires At: pick both date and time, or leave both blank';
+      return el.value ? new Date(el.value).toISOString() : null;
     }
 
     async function onCreateCode() {
@@ -1334,10 +1383,10 @@
       const rewardType = $('rc-type').value;
       const rewardAmount = parseInt($('rc-amount').value, 10);
       const maxRedemptions = parseInt($('rc-max').value, 10) || 0;
-      const expiresRaw = $('rc-expires').value;
-      const expiresAt = expiresRaw ? new Date(expiresRaw).toISOString() : null;
+      const expires = readExpiresField('rc-expires');
+      if (typeof expires === 'string' && expires.startsWith('Expires At:')) { setStatus(expires, 'err'); return; }
       if (!code) { setStatus('code required', 'err'); return; }
-      const body = { code, rewardType, rewardAmount, maxRedemptions, expiresAt };
+      const body = { code, rewardType, rewardAmount, maxRedemptions, expiresAt: expires };
       if (rewardType === 'item') body.rewardId = $('rc-item').value;
       try {
         const res = await adminFetch('/codes', { method: 'POST', body: JSON.stringify(body) });
@@ -1352,12 +1401,62 @@
       }
     }
 
+    function onEditCode(code) {
+      const c = cachedCodes.find(x => x.code === code);
+      if (!c) return;
+      $('rc-edit-panel').style.display = '';
+      $('rc-edit-code').textContent = code;
+      $('rce-amount').value = c.reward_amount;
+      $('rce-max').value = c.max_redemptions;
+      $('rce-expires').value = toLocalDatetimeValue(c.expires_at);
+      $('rc-edit-save').onclick = () => onSaveCodeEdit(code);
+    }
+
+    function hideCodeEditPanel() {
+      $('rc-edit-panel').style.display = 'none';
+    }
+
+    async function onSaveCodeEdit(code) {
+      const rewardAmount = parseInt($('rce-amount').value, 10);
+      const maxRedemptions = parseInt($('rce-max').value, 10) || 0;
+      const expires = readExpiresField('rce-expires');
+      if (typeof expires === 'string' && expires.startsWith('Expires At:')) { setStatus(expires, 'err'); return; }
+      const body = { rewardAmount, maxRedemptions, expiresAt: expires };
+      try {
+        const res = await adminFetch('/codes/' + encodeURIComponent(code), { method: 'PATCH', body: JSON.stringify(body) });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error('update failed: ' + res.status + ' ' + (err.error || ''));
+        }
+        setStatus('updated ' + code, 'ok');
+        hideCodeEditPanel();
+        loadCodes();
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
+    async function onDeleteCode(code) {
+      if (!confirm(`Delete code "${code}" on ${envLabel()}? This cannot be undone.`)) return;
+      try {
+        const res = await adminFetch('/codes/' + encodeURIComponent(code), { method: 'DELETE' });
+        if (!res.ok) throw new Error('delete failed: ' + res.status);
+        setStatus('deleted ' + code, 'ok');
+        hideCodeEditPanel();
+        loadCodes();
+      } catch (e) {
+        setStatus(String(e), 'err');
+      }
+    }
+
     function bootRewardCodes() {
       $('rc-item').innerHTML = ITEM_IDS.map(id => '<option value="' + id + '">' + id + '</option>').join('');
       $('rc-type').onchange = () => {
         $('rc-item-wrap').style.display = $('rc-type').value === 'item' ? '' : 'none';
       };
       $('rc-create').onclick = onCreateCode;
+      $('rc-edit-cancel').onclick = hideCodeEditPanel;
+      $('rc-show-expired').onchange = renderCodesTable;
     }
 
     // ────── Remote Config ────────────────────────────────────────────────────

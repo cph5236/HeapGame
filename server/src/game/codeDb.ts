@@ -17,6 +17,15 @@ export interface NormalizedCreateCode {
   expiresAt:       string | null;
 }
 
+/** Normalized, validated update input (route does the validation). Only the
+ *  fields present are changed — identity fields (code/rewardType/rewardId)
+ *  are immutable once minted. */
+export interface NormalizedUpdateCode {
+  rewardAmount?:   number;
+  maxRedemptions?: number;
+  expiresAt?:      string | null;
+}
+
 /**
  * Abstraction over D1 for reward-code operations. Allows MockCodeDB in tests.
  */
@@ -29,6 +38,12 @@ export interface RewardCodeDB {
 
   /** All code rows (admin listing), newest first. */
   listCodes(): Promise<RewardCodeRow[]>;
+
+  /** Patch reward amount / cap / expiry on an existing code. Returns false if not found. */
+  updateCode(code: string, patch: NormalizedUpdateCode): Promise<boolean>;
+
+  /** Delete a code outright. Returns false if not found. */
+  deleteCode(code: string): Promise<boolean>;
 
   /**
    * Atomically redeem `code` for `playerGuid`. Returns a discriminated outcome.
@@ -73,6 +88,31 @@ export class D1RewardCodeDB implements RewardCodeDB {
       .prepare('SELECT * FROM reward_codes ORDER BY created_at DESC')
       .all<RewardCodeRow>();
     return res.results;
+  }
+
+  async updateCode(code: string, patch: NormalizedUpdateCode): Promise<boolean> {
+    const sets: string[] = [];
+    const binds: unknown[] = [];
+    let i = 1;
+    if (patch.rewardAmount !== undefined)   { sets.push(`reward_amount = ?${i++}`);   binds.push(patch.rewardAmount); }
+    if (patch.maxRedemptions !== undefined) { sets.push(`max_redemptions = ?${i++}`); binds.push(patch.maxRedemptions); }
+    if (patch.expiresAt !== undefined)      { sets.push(`expires_at = ?${i++}`);      binds.push(patch.expiresAt); }
+    if (!sets.length) return (await this.getCode(code)) !== null;
+
+    binds.push(code);
+    const res = await this.d1
+      .prepare(`UPDATE reward_codes SET ${sets.join(', ')} WHERE code = ?${i}`)
+      .bind(...binds)
+      .run();
+    return res.meta.changes > 0;
+  }
+
+  async deleteCode(code: string): Promise<boolean> {
+    const res = await this.d1
+      .prepare('DELETE FROM reward_codes WHERE code = ?1')
+      .bind(code)
+      .run();
+    return res.meta.changes > 0;
   }
 
   async redeem(code: string, playerGuid: string, now: string): Promise<RedeemOutcome> {

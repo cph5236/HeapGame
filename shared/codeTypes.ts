@@ -31,6 +31,14 @@ export interface CreateCodeRequest {
   expiresAt?:      string | null; // ISO8601 or null = never
 }
 
+/** PATCH /codes/:code (admin) request body. Identity fields (code/rewardType/rewardId)
+ *  are immutable once minted — only the reward's size, cap and expiry can change. */
+export interface UpdateCodeRequest {
+  rewardAmount?:   number;
+  maxRedemptions?: number;
+  expiresAt?:      string | null;
+}
+
 /** Persisted row shape (also the GET /codes listing entry). */
 export interface RewardCodeRow {
   code:            string;

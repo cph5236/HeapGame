@@ -107,6 +107,95 @@ describe('POST /codes (admin mint)', () => {
   });
 });
 
+describe('PATCH /codes/:code (admin update)', () => {
+  async function seed(app: ReturnType<typeof makeApp>, body: object) {
+    await app.request('/codes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+  }
+
+  it('updates rewardAmount, maxRedemptions and expiresAt', async () => {
+    const codeDb = new MockCodeDB();
+    const app = makeApp(codeDb);
+    await seed(app, { code: 'EDITME', rewardType: 'coins', rewardAmount: 100 });
+    const res = await app.request('/codes/EDITME', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rewardAmount: 250, maxRedemptions: 5, expiresAt: '2027-01-01T00:00:00.000Z' }),
+    });
+    expect(res.status).toBe(200);
+    const row = await codeDb.getCode('EDITME');
+    expect(row).toMatchObject({ reward_amount: 250, max_redemptions: 5, expires_at: '2027-01-01T00:00:00.000Z' });
+  });
+
+  it('leaves fields not in the patch untouched', async () => {
+    const codeDb = new MockCodeDB();
+    const app = makeApp(codeDb);
+    await seed(app, { code: 'PARTIAL', rewardType: 'coins', rewardAmount: 100, maxRedemptions: 3 });
+    const res = await app.request('/codes/PARTIAL', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rewardAmount: 999 }),
+    });
+    expect(res.status).toBe(200);
+    const row = await codeDb.getCode('PARTIAL');
+    expect(row).toMatchObject({ reward_amount: 999, max_redemptions: 3 });
+  });
+
+  it('rejects an invalid rewardAmount (400)', async () => {
+    const codeDb = new MockCodeDB();
+    const app = makeApp(codeDb);
+    await seed(app, { code: 'BADPATCH', rewardType: 'coins', rewardAmount: 100 });
+    const res = await app.request('/codes/BADPATCH', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rewardAmount: -1 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 for an unknown code', async () => {
+    const app = makeApp();
+    const res = await app.request('/codes/NOPE', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rewardAmount: 10 }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('requires the admin secret when one is configured (401)', async () => {
+    const app = makeApp(new MockCodeDB(), 's3cret');
+    const res = await app.request('/codes/WHATEVER', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rewardAmount: 10 }),
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('DELETE /codes/:code (admin delete)', () => {
+  it('deletes an existing code', async () => {
+    const codeDb = new MockCodeDB();
+    const app = makeApp(codeDb);
+    await app.request('/codes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'GONE', rewardType: 'coins', rewardAmount: 50 }),
+    });
+    const res = await app.request('/codes/GONE', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    expect(await codeDb.getCode('GONE')).toBeNull();
+  });
+
+  it('returns 404 for an unknown code', async () => {
+    const app = makeApp();
+    const res = await app.request('/codes/NOPE', { method: 'DELETE' });
+    expect(res.status).toBe(404);
+  });
+
+  it('requires the admin secret when one is configured (401)', async () => {
+    const app = makeApp(new MockCodeDB(), 's3cret');
+    const res = await app.request('/codes/WHATEVER', { method: 'DELETE' });
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('POST /codes/redeem', () => {
   async function seed(app: ReturnType<typeof makeApp>, body: object) {
     await app.request('/codes', {
