@@ -16,6 +16,18 @@ function normalizeCode(s: string): string {
   return s.trim().toUpperCase();
 }
 
+// Shared between mint (POST /) and update (PATCH /:code) so a future rule
+// change can't apply to one and silently drift from the other.
+function isValidRewardAmount(v: unknown): v is number {
+  return Number.isInteger(v) && (v as number) > 0;
+}
+function isValidMaxRedemptions(v: unknown): v is number {
+  return Number.isInteger(v) && (v as number) >= 0;
+}
+function isValidExpiresAt(v: unknown): v is string | null {
+  return v === null || (typeof v === 'string' && !Number.isNaN(Date.parse(v)));
+}
+
 export function codeRoutes(
   codeDb: RewardCodeDB,
   getSink: () => Sink | undefined,
@@ -73,17 +85,15 @@ export function codeRoutes(
 
     if (!code || code.length > MAX_CODE_LEN) return c.json({ error: 'invalid code' }, 400);
     if (rewardType !== 'coins' && rewardType !== 'item') return c.json({ error: 'invalid rewardType' }, 400);
-    if (!Number.isInteger(rewardAmount) || rewardAmount <= 0) return c.json({ error: 'invalid rewardAmount' }, 400);
-    if (!Number.isInteger(maxRedemptions) || maxRedemptions < 0) return c.json({ error: 'invalid maxRedemptions' }, 400);
+    if (!isValidRewardAmount(rewardAmount)) return c.json({ error: 'invalid rewardAmount' }, 400);
+    if (!isValidMaxRedemptions(maxRedemptions)) return c.json({ error: 'invalid maxRedemptions' }, 400);
 
     let rewardId: string | null = null;
     if (rewardType === 'item') {
       rewardId = typeof body.rewardId === 'string' ? body.rewardId : '';
       if (!isItemId(rewardId)) return c.json({ error: 'invalid rewardId' }, 400);
     }
-    if (expiresAt !== null && (typeof expiresAt !== 'string' || Number.isNaN(Date.parse(expiresAt)))) {
-      return c.json({ error: 'invalid expiresAt' }, 400);
-    }
+    if (!isValidExpiresAt(expiresAt)) return c.json({ error: 'invalid expiresAt' }, 400);
 
     const now = new Date().toISOString();
     const created = await codeDb.createCode(
@@ -113,35 +123,31 @@ export function codeRoutes(
 
     const patch: NormalizedUpdateCode = {};
     if (body.rewardAmount !== undefined) {
-      if (!Number.isInteger(body.rewardAmount) || body.rewardAmount <= 0) {
-        return c.json({ error: 'invalid rewardAmount' }, 400);
-      }
+      if (!isValidRewardAmount(body.rewardAmount)) return c.json({ error: 'invalid rewardAmount' }, 400);
       patch.rewardAmount = body.rewardAmount;
     }
     if (body.maxRedemptions !== undefined) {
-      if (!Number.isInteger(body.maxRedemptions) || body.maxRedemptions < 0) {
-        return c.json({ error: 'invalid maxRedemptions' }, 400);
-      }
-      // The table has CHECK(max_redemptions = 0 OR redeemed_count <= max_redemptions);
-      // catch that here as a clean 400 rather than letting the UPDATE throw.
-      if (body.maxRedemptions !== 0) {
-        const existing = await codeDb.getCode(code);
-        if (existing && body.maxRedemptions < existing.redeemed_count) {
-          return c.json({ error: `maxRedemptions cannot be less than redeemed_count (${existing.redeemed_count})` }, 400);
-        }
-      }
+      if (!isValidMaxRedemptions(body.maxRedemptions)) return c.json({ error: 'invalid maxRedemptions' }, 400);
       patch.maxRedemptions = body.maxRedemptions;
     }
     if (body.expiresAt !== undefined) {
-      if (body.expiresAt !== null && (typeof body.expiresAt !== 'string' || Number.isNaN(Date.parse(body.expiresAt)))) {
-        return c.json({ error: 'invalid expiresAt' }, 400);
-      }
+      if (!isValidExpiresAt(body.expiresAt)) return c.json({ error: 'invalid expiresAt' }, 400);
       patch.expiresAt = body.expiresAt;
     }
 
-    const ok = await codeDb.updateCode(code, patch);
-    if (!ok) return c.json({ error: 'code not found' }, 404);
-    return c.json({ ok: true, code });
+    // The table has CHECK(max_redemptions = 0 OR redeemed_count <= max_redemptions);
+    // updateCode maps a violation to 'maxRedemptionsBelowRedeemed' at write time
+    // rather than this route pre-checking it — a pre-check read is racy against
+    // a redemption landing in between, and the write's own catch isn't.
+    const outcome = await codeDb.updateCode(code, patch);
+    switch (outcome) {
+      case 'notFound':
+        return c.json({ error: 'code not found' }, 404);
+      case 'maxRedemptionsBelowRedeemed':
+        return c.json({ error: 'maxRedemptions cannot be less than the already-redeemed count' }, 400);
+      case 'ok':
+        return c.json({ ok: true, code });
+    }
   });
 
   // ── Admin: delete a code (adminGate applied in app.ts) ────────────────────

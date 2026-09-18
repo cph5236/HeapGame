@@ -1,6 +1,6 @@
 // server/tests/helpers/mockCodeDb.ts
 
-import type { RewardCodeDB, NormalizedCreateCode, NormalizedUpdateCode } from '../../src/game/codeDb';
+import type { RewardCodeDB, NormalizedCreateCode, NormalizedUpdateCode, UpdateCodeOutcome } from '../../src/game/codeDb';
 import type { RewardCodeRow, RedeemOutcome } from '../../../shared/codeTypes';
 
 /** In-memory RewardCodeDB for tests. Same outcome semantics as D1RewardCodeDB. */
@@ -31,16 +31,23 @@ export class MockCodeDB implements RewardCodeDB {
     return [...this.codes.values()].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
   }
 
-  async updateCode(code: string, patch: NormalizedUpdateCode): Promise<boolean> {
+  async updateCode(code: string, patch: NormalizedUpdateCode): Promise<UpdateCodeOutcome> {
     const row = this.codes.get(code);
-    if (!row) return false;
+    if (!row) return 'notFound';
+    if (patch.maxRedemptions !== undefined && patch.maxRedemptions !== 0
+        && patch.maxRedemptions < row.redeemed_count) {
+      return 'maxRedemptionsBelowRedeemed';
+    }
     if (patch.rewardAmount !== undefined)   row.reward_amount = patch.rewardAmount;
     if (patch.maxRedemptions !== undefined) row.max_redemptions = patch.maxRedemptions;
     if (patch.expiresAt !== undefined)      row.expires_at = patch.expiresAt;
-    return true;
+    return 'ok';
   }
 
   async deleteCode(code: string): Promise<boolean> {
+    for (const key of this.redemptions) {
+      if (key.startsWith(code + '::')) this.redemptions.delete(key);
+    }
     return this.codes.delete(code);
   }
 

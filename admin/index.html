@@ -1379,16 +1379,34 @@
       return el.value ? new Date(el.value).toISOString() : null;
     }
 
-    // A blank Max Redemptions field means 0 (unlimited), per the field's own
-    // "(0 = unlimited)" label — that's intentional, not the silently-dropped-
-    // value bug this file otherwise guards against. But a non-blank value that
-    // isn't a valid non-negative integer (a typo) must not fall through to that
-    // same 0/unlimited default silently, so it's rejected explicitly here.
-    function readMaxRedemptions(id) {
-      const raw = $(id).value.trim();
-      if (raw === '') return 0;
+    // Rejects a typo'd numeric field (e.g. "100O", letter O for zero) that
+    // parseInt would otherwise silently truncate-parse into a plausible-
+    // looking integer.
+    function parseStrictInt(raw) {
       const n = parseInt(raw, 10);
-      if (!Number.isInteger(n) || n < 0 || String(n) !== raw) {
+      return (Number.isInteger(n) && String(n) === raw) ? n : NaN;
+    }
+
+    function readRewardAmount(id) {
+      const n = parseStrictInt($(id).value.trim());
+      if (!Number.isInteger(n) || n <= 0) return 'Amount: must be a positive integer';
+      return n;
+    }
+
+    // A blank Max Redemptions field means 0 (unlimited) on the create form,
+    // per the field's own "(0 = unlimited)" label — that's intentional, not
+    // the silently-dropped-value bug this file otherwise guards against. On
+    // the edit form the field is pre-filled with the current cap, so a blank
+    // value there can only mean "operator cleared it by accident" — pass
+    // `blankMeansNoChange: true` there to have blank return `undefined`
+    // (omit from the patch) instead of coercing to unlimited. Either way, a
+    // non-blank value that isn't a valid non-negative integer (a typo) is
+    // rejected explicitly rather than falling through to a default.
+    function readMaxRedemptions(id, blankMeansNoChange) {
+      const raw = $(id).value.trim();
+      if (raw === '') return blankMeansNoChange ? undefined : 0;
+      const n = parseStrictInt(raw);
+      if (!Number.isInteger(n) || n < 0) {
         return 'Max Redemptions: must be a non-negative integer';
       }
       return n;
@@ -1397,8 +1415,9 @@
     async function onCreateCode() {
       const code = $('rc-code').value.trim().toUpperCase();
       const rewardType = $('rc-type').value;
-      const rewardAmount = parseInt($('rc-amount').value, 10);
       if (!code) { setStatus('code required', 'err'); return; }
+      const rewardAmount = readRewardAmount('rc-amount');
+      if (typeof rewardAmount === 'string') { setStatus(rewardAmount, 'err'); return; }
       const maxRedemptions = readMaxRedemptions('rc-max');
       if (typeof maxRedemptions === 'string') { setStatus(maxRedemptions, 'err'); return; }
       const expires = readExpiresField('rc-expires');
@@ -1418,6 +1437,7 @@
       }
     }
 
+    let editingCode = null;
     let editingOriginalExpiresAt = null;
 
     function onEditCode(code) {
@@ -1428,21 +1448,25 @@
       $('rce-amount').value = c.reward_amount;
       $('rce-max').value = c.max_redemptions;
       $('rce-expires').value = toLocalDatetimeValue(c.expires_at);
+      editingCode = code;
       editingOriginalExpiresAt = c.expires_at ?? null;
       $('rc-edit-save').onclick = () => onSaveCodeEdit(code);
     }
 
     function hideCodeEditPanel() {
       $('rc-edit-panel').style.display = 'none';
+      editingCode = null;
     }
 
     async function onSaveCodeEdit(code) {
-      const rewardAmount = parseInt($('rce-amount').value, 10);
-      const maxRedemptions = readMaxRedemptions('rce-max');
+      const rewardAmount = readRewardAmount('rce-amount');
+      if (typeof rewardAmount === 'string') { setStatus(rewardAmount, 'err'); return; }
+      const maxRedemptions = readMaxRedemptions('rce-max', /* blankMeansNoChange */ true);
       if (typeof maxRedemptions === 'string') { setStatus(maxRedemptions, 'err'); return; }
       const expires = readExpiresField('rce-expires');
       if (typeof expires === 'string' && expires.startsWith('Expires At:')) { setStatus(expires, 'err'); return; }
-      const body = { rewardAmount, maxRedemptions };
+      const body = { rewardAmount };
+      if (maxRedemptions !== undefined) body.maxRedemptions = maxRedemptions;
       // datetime-local has no seconds granularity — only resend expiresAt when the
       // field was actually touched, so editing amount/cap alone can't silently
       // truncate a sub-minute expiresAt set via direct API access.
@@ -1469,7 +1493,7 @@
         const res = await adminFetch('/codes/' + encodeURIComponent(code), { method: 'DELETE' });
         if (!res.ok) throw new Error('delete failed: ' + res.status);
         setStatus('deleted ' + code, 'ok');
-        hideCodeEditPanel();
+        if (editingCode === code) hideCodeEditPanel(); // don't discard an unrelated in-progress edit
         loadCodes();
       } catch (e) {
         setStatus(String(e), 'err');

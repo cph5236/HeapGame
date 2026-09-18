@@ -208,6 +208,26 @@ describe('DELETE /codes/:code (admin delete)', () => {
     expect(res.status).toBe(404);
   });
 
+  it('purges redemption history so a re-minted same-name code starts clean', async () => {
+    const codeDb = new MockCodeDB();
+    const app = makeApp(codeDb);
+    await app.request('/codes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'REUSED', rewardType: 'coins', rewardAmount: 50 }),
+    });
+    await codeDb.redeem('REUSED', 'guid-a', 'now');
+    await app.request('/codes/REUSED', { method: 'DELETE' });
+    await app.request('/codes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'REUSED', rewardType: 'coins', rewardAmount: 75 }),
+    });
+    // Same player, same code text, but a different code row — must not be
+    // treated as already-redeemed against the deleted code's history.
+    expect(await codeDb.redeem('REUSED', 'guid-a', 'now')).toEqual({
+      kind: 'ok', reward: { rewardType: 'coins', rewardId: undefined, rewardAmount: 75 },
+    });
+  });
+
   it('requires the admin secret when one is configured (401)', async () => {
     const app = makeApp(new MockCodeDB(), 's3cret');
     const res = await app.request('/codes/WHATEVER', { method: 'DELETE' });
