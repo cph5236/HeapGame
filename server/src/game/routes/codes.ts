@@ -103,6 +103,7 @@ export function codeRoutes(
   // ── Admin: update a code's amount/cap/expiry (adminGate applied in app.ts) ─
   app.patch('/:code', async (c) => {
     const code = normalizeCode(c.req.param('code'));
+    if (!code || code.length > MAX_CODE_LEN) return c.json({ error: 'invalid code' }, 400);
     let body: UpdateCodeRequest;
     try {
       body = await c.req.json<UpdateCodeRequest>();
@@ -121,6 +122,14 @@ export function codeRoutes(
       if (!Number.isInteger(body.maxRedemptions) || body.maxRedemptions < 0) {
         return c.json({ error: 'invalid maxRedemptions' }, 400);
       }
+      // The table has CHECK(max_redemptions = 0 OR redeemed_count <= max_redemptions);
+      // catch that here as a clean 400 rather than letting the UPDATE throw.
+      if (body.maxRedemptions !== 0) {
+        const existing = await codeDb.getCode(code);
+        if (existing && body.maxRedemptions < existing.redeemed_count) {
+          return c.json({ error: `maxRedemptions cannot be less than redeemed_count (${existing.redeemed_count})` }, 400);
+        }
+      }
       patch.maxRedemptions = body.maxRedemptions;
     }
     if (body.expiresAt !== undefined) {
@@ -138,6 +147,7 @@ export function codeRoutes(
   // ── Admin: delete a code (adminGate applied in app.ts) ────────────────────
   app.delete('/:code', async (c) => {
     const code = normalizeCode(c.req.param('code'));
+    if (!code || code.length > MAX_CODE_LEN) return c.json({ error: 'invalid code' }, 400);
     const ok = await codeDb.deleteCode(code);
     if (!ok) return c.json({ error: 'code not found' }, 404);
     return c.json({ ok: true });

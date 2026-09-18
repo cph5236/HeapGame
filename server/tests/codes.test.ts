@@ -151,6 +151,25 @@ describe('PATCH /codes/:code (admin update)', () => {
     expect(res.status).toBe(400);
   });
 
+  it('rejects maxRedemptions below the already-redeemed count (400)', async () => {
+    const codeDb = new MockCodeDB();
+    const app = makeApp(codeDb);
+    await seed(app, { code: 'CAP3', rewardType: 'coins', rewardAmount: 100, maxRedemptions: 3 });
+    for (const g of ['g1', 'g2']) {
+      await app.request('/codes/redeem', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: 'CAP3', playerGuid: g }),
+      });
+    }
+    const res = await app.request('/codes/CAP3', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ maxRedemptions: 1 }),
+    });
+    expect(res.status).toBe(400);
+    const row = await codeDb.getCode('CAP3');
+    expect(row?.max_redemptions).toBe(3); // unchanged
+  });
+
   it('returns 404 for an unknown code', async () => {
     const app = makeApp();
     const res = await app.request('/codes/NOPE', {
