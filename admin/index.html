@@ -1393,23 +1393,35 @@
       return n;
     }
 
-    // A blank Max Redemptions field means 0 (unlimited) on the create form,
-    // per the field's own "(0 = unlimited)" label — that's intentional, not
-    // the silently-dropped-value bug this file otherwise guards against. On
-    // the edit form the field is pre-filled with the current cap, so a blank
-    // value there can only mean "operator cleared it by accident" — pass
-    // `blankMeansNoChange: true` there to have blank return `undefined`
-    // (omit from the patch) instead of coercing to unlimited. Either way, a
-    // non-blank value that isn't a valid non-negative integer (a typo) is
-    // rejected explicitly rather than falling through to a default.
-    function readMaxRedemptions(id, blankMeansNoChange) {
+    // Shared core: a non-blank value that isn't a valid non-negative integer
+    // (a typo) is always rejected explicitly rather than falling through to
+    // a default. What blank itself means differs by form — see the two
+    // named wrappers below, which exist so a misused call site is a
+    // wrong-function-name error rather than a silently-flipped boolean.
+    function readMaxRedemptionsRaw(id) {
       const raw = $(id).value.trim();
-      if (raw === '') return blankMeansNoChange ? undefined : 0;
+      if (raw === '') return { blank: true };
       const n = parseStrictInt(raw);
-      if (!Number.isInteger(n) || n < 0) {
-        return 'Max Redemptions: must be a non-negative integer';
-      }
-      return n;
+      if (!Number.isInteger(n) || n < 0) return 'Max Redemptions: must be a non-negative integer';
+      return { blank: false, value: n };
+    }
+
+    // Create form: blank means 0 (unlimited), per the field's own
+    // "(0 = unlimited)" label — that's an intentional default, not the
+    // silently-dropped-value bug this file otherwise guards against.
+    function readMaxRedemptionsOrUnlimited(id) {
+      const r = readMaxRedemptionsRaw(id);
+      if (typeof r === 'string') return r;
+      return r.blank ? 0 : r.value;
+    }
+
+    // Edit form: the field is pre-filled with the current cap, so a blank
+    // value there can only mean "operator cleared it by accident" — return
+    // undefined (omit from the patch) instead of coercing to unlimited.
+    function readMaxRedemptionsOrNoChange(id) {
+      const r = readMaxRedemptionsRaw(id);
+      if (typeof r === 'string') return r;
+      return r.blank ? undefined : r.value;
     }
 
     async function onCreateCode() {
@@ -1418,7 +1430,7 @@
       if (!code) { setStatus('code required', 'err'); return; }
       const rewardAmount = readRewardAmount('rc-amount');
       if (typeof rewardAmount === 'string') { setStatus(rewardAmount, 'err'); return; }
-      const maxRedemptions = readMaxRedemptions('rc-max');
+      const maxRedemptions = readMaxRedemptionsOrUnlimited('rc-max');
       if (typeof maxRedemptions === 'string') { setStatus(maxRedemptions, 'err'); return; }
       const expires = readExpiresField('rc-expires');
       if (typeof expires === 'string' && expires.startsWith('Expires At:')) { setStatus(expires, 'err'); return; }
@@ -1461,7 +1473,7 @@
     async function onSaveCodeEdit(code) {
       const rewardAmount = readRewardAmount('rce-amount');
       if (typeof rewardAmount === 'string') { setStatus(rewardAmount, 'err'); return; }
-      const maxRedemptions = readMaxRedemptions('rce-max', /* blankMeansNoChange */ true);
+      const maxRedemptions = readMaxRedemptionsOrNoChange('rce-max');
       if (typeof maxRedemptions === 'string') { setStatus(maxRedemptions, 'err'); return; }
       const expires = readExpiresField('rce-expires');
       if (typeof expires === 'string' && expires.startsWith('Expires At:')) { setStatus(expires, 'err'); return; }
