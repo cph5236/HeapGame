@@ -72,9 +72,11 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   if (opts.codeDb) {
     // Player redeem endpoint — rate-limited, no admin gate.
     app.post('/codes/redeem', limit('codes', 'codes-redeem'));
-    // Admin mint + list — behind the admin gate.
-    app.post('/codes', adminGate);
-    app.get ('/codes', adminGate);
+    // Admin mint + list + edit + delete — behind the admin gate.
+    app.post  ('/codes',       adminGate);
+    app.get   ('/codes',       adminGate);
+    app.patch ('/codes/:code', adminGate);
+    app.delete('/codes/:code', adminGate);
     app.route('/codes', codeRoutes(opts.codeDb, () => opts.logSink, opts.playerAuthDb));
   }
 
