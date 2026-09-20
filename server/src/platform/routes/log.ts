@@ -14,6 +14,23 @@ function coerceStr(v: unknown, max = 1024): string {
   return v.length > max ? v.slice(0, max) : v;
 }
 
+// Attacker-controlled and feeds AE double/blob columns directly, so it must be
+// validated rather than passed through. Caps sit well under AE's limits (20
+// each) while comfortably exceeding what the projection actually sends (5
+// doubles, 1 blob) — see shared/logging/aeProjection.ts.
+function coerceMetrics(v: unknown): LogEntry['metrics'] {
+  if (!v || typeof v !== 'object') return undefined;
+  const m = v as Record<string, unknown>;
+  const doubles = Array.isArray(m.doubles)
+    ? m.doubles.filter((n): n is number => typeof n === 'number' && Number.isFinite(n)).slice(0, 8)
+    : undefined;
+  const blobs = Array.isArray(m.blobs)
+    ? m.blobs.filter((s): s is string => typeof s === 'string').map((s) => coerceStr(s, 64)).slice(0, 4)
+    : undefined;
+  if (!doubles?.length && !blobs?.length) return undefined;
+  return { doubles, blobs };
+}
+
 function normalize(raw: unknown): LogEntry | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -34,6 +51,7 @@ function normalize(raw: unknown): LogEntry | null {
     eventType:  typeof r.eventType === 'string' ? coerceStr(r.eventType, 64) : undefined,
     message:    typeof r.message   === 'string' ? coerceStr(r.message, 1024) : undefined,
     payload,
+    metrics:    coerceMetrics(r.metrics),
   };
 }
 
