@@ -148,6 +148,33 @@ date in the runbook, and the admin UI shows it as the earliest selectable date.
 The `'pre-init'` fallback stays — `getEffectivePlayerId()` can throw before
 SaveData hydrates, and the existing try/catch already handles it.
 
+### 2d. Metric projection — promote run facts into AE columns
+
+AE SQL cannot read inside the payload JSON (see Phase 5's constraints), so the
+numbers the cross-tab splits on have to be real columns. AE allows 20 blobs and
+20 doubles; the sink currently uses 7 and 1, so this is pure headroom.
+
+**Respect the platform/game seam.** `server/src/platform/logging/` must not learn
+what a `run:end` is. Instead, `LogEntry` gains an optional, game-agnostic
+
+```ts
+metrics?: { doubles?: number[]; blobs?: string[] };
+```
+
+which the AE sink appends positionally after its own fixed columns — `doubles`
+after `double1`, `blobs` after `blob7` — without knowing or caring what they
+mean. A pure mapper in `shared/logging/` fills it in per event type, and
+`RemoteLogger.event()` calls that mapper. `D1Sink` ignores the field (it is the
+local-dev fallback and is never queried this way).
+
+For `run:end` the projection is `doubles: [score, height, kills, durationMs,
+pickupBonus]` → `double2..double6`, and `blobs: [cause]` → `blob8`. Every other
+event projects nothing and is unaffected.
+
+This is **additive**: existing rows keep their meaning, and the new columns are
+simply absent on anything logged before the deploy. Combined with 2b's key
+change, history splits exactly once, at one deploy, rather than twice.
+
 ### 2c. Privacy surfaces
 
 Ship **with** the change, not after:
@@ -276,6 +303,21 @@ Verified against Cloudflare's SQL reference and against this repo's own
   way; the proxy's queries must not relearn it.
 - Available aggregates include `argMin`/`argMax`, `count(DISTINCT …)`,
   `countIf`/`sumIf`/`avgIf`, and `quantileExactWeighted`.
+- **There are NO JSON functions.** The documented function categories are
+  statements, operators, aggregates, conditionals, date/time, mathematical,
+  string and type conversion — no `JSONExtract*`, no `visitParamExtract`. The
+  string functions are only `length`/`empty`/`lower`/`upper`/`startsWith`/
+  `endsWith`/`position`/`substring`/`format`/`extract`.
+
+  This is load-bearing: `run:end`'s `durationMs`, `score`, `height`, `kills`,
+  `cause` and `pickupBonus` all live inside the payload JSON in `blob6`, so
+  **View C's cross-tab cannot split on any of them** as things stand. Parsing
+  JSON with `position`/`substring` would be unmaintainable.
+
+  The fix is to promote those fields into dedicated AE columns (see "Metric
+  projection" below). It belongs in Phase 2, not Phase 5, because it changes
+  what is *written* — rows logged before it simply do not have the columns.
+
 - **Blob layout is positional and already fixed** by `AnalyticsEngineSink.ts`:
   `blob1`=level, `blob2`=eventType, `blob3`=platform, `blob4`=appVersion,
   `blob5`=sessionId, `blob6`=payload JSON, `blob7`=userAgent; `double1`=client

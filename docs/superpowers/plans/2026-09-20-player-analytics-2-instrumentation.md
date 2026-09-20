@@ -17,7 +17,7 @@
 - New save fields go in `save/game.ts`, never `save/core.ts` — but this plan adds **no new save field**; `verboseLogging` already exists in `save/core.ts` and only its *default* changes.
 - Do not reorder the spreads in `migrate()` or `mergeCloudSave()`. That ordering is what makes the `playerSecret` invariant structural.
 - Import from the `SaveData` barrel, never `save/core` or `save/game` directly.
-- The AE blob layout is **frozen**: `blob1`=level, `blob2`=eventType, `blob3`=platform, `blob4`=appVersion, `blob5`=sessionId, `blob6`=payload JSON, `blob7`=userAgent, `double1`=client timestamp, `index1`=player id. Changing positions invalidates all stored history. This plan changes only what goes *into* `index1`, never the layout.
+- The AE column layout is **append-only**: `blob1`=level, `blob2`=eventType, `blob3`=platform, `blob4`=appVersion, `blob5`=sessionId, `blob6`=payload JSON, `blob7`=userAgent, `double1`=client timestamp, `index1`=player id. Changing an existing position silently reinterprets every row already stored. Task 1 changes only what goes *into* `index1`; Task 6 **appends** `double2..double6` and `blob8` without touching anything above. Never reuse or reorder an existing position.
 - `MAX_ID_LEN` is 64 (`server/src/constants.ts`). Cloudflare's documented AE index limit is 96 bytes.
 - `npm test` and `npm run build` must both pass before any task is considered done.
 - A pre-existing, unrelated `tsc` error in `shared/__tests__/pickupScores.test.ts` predates this work. Ignore it; do not fix it.
@@ -766,7 +766,219 @@ git commit -m "feat(analytics): roll per-grab pickup events into the run:end pay
 
 ---
 
-### Task 6: Privacy surfaces
+### Task 6: Project run facts into dedicated AE columns
+
+Analytics Engine SQL has **no JSON functions** — its string functions are only
+`length`/`empty`/`lower`/`upper`/`startsWith`/`endsWith`/`position`/`substring`/
+`format`/`extract`. So every number inside the payload JSON in `blob6` is
+invisible to a query. That makes `run:end`'s `durationMs`, `score`, `height`,
+`kills`, `cause` and `pickupBonus` unqueryable — and those are exactly the
+dimensions Plan 3's churn cross-tab splits on.
+
+Promote them into real AE columns. AE allows 20 blobs and 20 doubles; the sink
+uses 7 and 1, so this is spare capacity. It must ship here, not in Plan 3,
+because it changes what is *written*: rows logged before it have no such columns.
+
+**Files:**
+- Create: `shared/logging/aeProjection.ts`, `shared/__tests__/aeProjection.test.ts`
+- Modify: `shared/logging/Logger.ts` (add `metrics` to `LogEntry`), `src/logging/RemoteLogger.ts` (populate it), `server/src/platform/logging/AnalyticsEngineSink.ts` (append it)
+- Test: `server/tests/logSinks.test.ts` (extend)
+
+**Interfaces:**
+- Consumes: the `run:end` shape from Task 5 (with `pickups`/`pickupBonus`).
+- Produces:
+  - `LogEntry.metrics?: { doubles?: number[]; blobs?: string[] }` — game-agnostic.
+  - `projectEventMetrics(e: GameEvent): { doubles?: number[]; blobs?: string[] } | undefined`
+  - AE column meanings, appended after the frozen layout: `double2`=score, `double3`=height, `double4`=kills, `double5`=durationMs, `double6`=pickupBonus, `blob8`=cause.
+
+**The platform/game seam matters here.** `server/src/platform/logging/` must not learn what a `run:end` is — it appends whatever numbers it is handed, positionally, without interpreting them. All game knowledge lives in the `shared/logging/aeProjection.ts` mapper.
+
+- [ ] **Step 1: Write the failing projection test**
+
+Create `shared/__tests__/aeProjection.test.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { projectEventMetrics } from '../logging/aeProjection';
+
+describe('projectEventMetrics', () => {
+  it('projects run:end facts in the documented column order', () => {
+    const out = projectEventMetrics({
+      type: 'run:end', heapId: 'h1', mode: 'normal',
+      score: 1200, height: 340, kills: 5, durationMs: 61000,
+      cause: 'death', upgrades: {}, pickups: { rust_bolt: 2 }, pickupBonus: 40,
+    });
+    // double2..double6
+    expect(out?.doubles).toEqual([1200, 340, 5, 61000, 40]);
+    // blob8
+    expect(out?.blobs).toEqual(['death']);
+  });
+
+  it('distinguishes quit from death in the cause column', () => {
+    const out = projectEventMetrics({
+      type: 'run:end', heapId: 'h1', mode: 'infinite',
+      score: 0, height: 0, kills: 0, durationMs: 1,
+      cause: 'quit', upgrades: {}, pickups: {}, pickupBonus: 0,
+    });
+    expect(out?.blobs).toEqual(['quit']);
+  });
+
+  it('projects nothing for events with no numeric facts', () => {
+    expect(projectEventMetrics({ type: 'user:created' })).toBeUndefined();
+    expect(projectEventMetrics({ type: 'run:start', heapId: 'h1', mode: 'normal' })).toBeUndefined();
+  });
+});
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `npx vitest run shared/__tests__/aeProjection.test.ts`
+Expected: FAIL — cannot resolve `../logging/aeProjection`.
+
+- [ ] **Step 3: Write the mapper**
+
+Create `shared/logging/aeProjection.ts`:
+
+```ts
+// shared/logging/aeProjection.ts
+//
+// Promotes a few run facts out of the payload JSON and into dedicated Analytics
+// Engine columns.
+//
+// Why this exists: AE SQL has NO JSON functions (its string functions are only
+// length/empty/lower/upper/startsWith/endsWith/position/substring/format/
+// extract), so anything inside the payload blob is invisible to a query. The
+// churn cross-tab splits on exactly these numbers, so they have to be columns.
+//
+// This file is the ONLY place that knows which game fields map to which column.
+// The AE sink appends whatever it is handed, positionally, and stays free of
+// game concepts.
+
+import type { GameEvent } from './events';
+
+export interface EventMetrics {
+  /** Appended after double1 — so index 0 here is `double2`. */
+  doubles?: number[];
+  /** Appended after blob7 — so index 0 here is `blob8`. */
+  blobs?: string[];
+}
+
+/**
+ * Column assignments. Documented here because a query cannot see them and a
+ * reader of the SQL has nothing else to go on:
+ *
+ *   double2 = score        double5 = durationMs
+ *   double3 = height       double6 = pickupBonus
+ *   double4 = kills        blob8   = cause ('death' | 'quit')
+ *
+ * These positions are APPEND-ONLY. Reusing one for a different field would
+ * silently reinterpret every row already stored.
+ */
+export function projectEventMetrics(e: GameEvent): EventMetrics | undefined {
+  if (e.type !== 'run:end') return undefined;
+  return {
+    doubles: [e.score, e.height, e.kills, e.durationMs, e.pickupBonus],
+    blobs: [e.cause],
+  };
+}
+```
+
+- [ ] **Step 4: Run the projection test**
+
+Run: `npx vitest run shared/__tests__/aeProjection.test.ts`
+Expected: PASS — 3 tests.
+
+- [ ] **Step 5: Carry `metrics` through the log entry**
+
+In `shared/logging/Logger.ts`, add to `LogEntry`:
+
+```ts
+  /** Optional extra AE columns, appended positionally by the sink. The sink
+   *  never interprets these — see shared/logging/aeProjection.ts. */
+  metrics?: { doubles?: number[]; blobs?: string[] };
+```
+
+In `src/logging/RemoteLogger.ts`, in `event()`, attach the projection:
+
+```ts
+  event<E extends GameEvent>(e: E): void {
+    if (!this.verbose) return;
+    try {
+      const { type, ...payload } = e as any;
+      this.enqueue('event', { eventType: type, payload, metrics: projectEventMetrics(e) });
+    } catch { /* swallow */ }
+  }
+```
+
+Widen `enqueue`'s `parts` parameter to accept the optional `metrics` and copy it onto the raw entry alongside `eventType` and `payload`. Import `projectEventMetrics` from `../../shared/logging/aeProjection`.
+
+- [ ] **Step 6: Append the columns in the AE sink**
+
+In `server/src/platform/logging/AnalyticsEngineSink.ts`, extend `writeDataPoint`:
+
+```ts
+      this.ae.writeDataPoint({
+        indexes: [userGuidIndex(e.userGuid)],
+        blobs: [
+          e.level,
+          e.eventType ?? e.message ?? '',
+          e.platform,
+          e.appVersion,
+          e.sessionId,
+          payloadJson(e.payload),
+          e.userAgent.slice(0, 200),
+          // blob8+ — caller-supplied, never interpreted here. Keeping this
+          // sink free of game concepts is why the mapping lives in
+          // shared/logging/aeProjection.ts instead.
+          ...(e.metrics?.blobs ?? []),
+        ],
+        doubles: [e.timestamp, ...(e.metrics?.doubles ?? [])],
+      });
+```
+
+- [ ] **Step 7: Test the sink's appending**
+
+Add to `server/tests/logSinks.test.ts`:
+
+```ts
+it('appends caller-supplied metric columns after the fixed layout', async () => {
+  const { ae, points } = fakeAE();
+  await new AnalyticsEngineSink(ae).write([entry({
+    level: 'event', eventType: 'run:end',
+    metrics: { doubles: [1200, 340, 5, 61000, 40], blobs: ['death'] },
+  })]);
+  // double1 stays the client timestamp; the projection follows it
+  expect(points[0].doubles).toEqual([100, 1200, 340, 5, 61000, 40]);
+  // blob8 follows the seven fixed blobs
+  expect(points[0].blobs).toHaveLength(8);
+  expect(points[0].blobs[7]).toBe('death');
+});
+
+it('writes the fixed layout unchanged when no metrics are supplied', async () => {
+  const { ae, points } = fakeAE();
+  await new AnalyticsEngineSink(ae).write([entry()]);
+  expect(points[0].doubles).toEqual([100]);
+  expect(points[0].blobs).toHaveLength(7);
+});
+```
+
+- [ ] **Step 8: Verify**
+
+Run: `npm test && npm run build`
+Expected: both PASS.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add shared/logging/aeProjection.ts shared/__tests__/aeProjection.test.ts \
+        shared/logging/Logger.ts src/logging/RemoteLogger.ts \
+        server/src/platform/logging/AnalyticsEngineSink.ts server/tests/logSinks.test.ts
+git commit -m "feat(analytics): promote run:end facts into queryable AE columns"
+```
+
+---
+
+### Task 7: Privacy surfaces
 
 Default-on analytics changes what Heap collects without the player doing anything. The policy and the Play Console declaration must say so in the same release, not after it.
 
@@ -799,7 +1011,7 @@ git commit -m "docs: record default-on analytics in the privacy policy and Data 
 
 ---
 
-### Task 7: Full verification
+### Task 8: Full verification
 
 **Files:** none modified — checks only.
 
@@ -844,4 +1056,5 @@ In the body, state explicitly that this changes data collection defaults, that `
 - **Do not touch the tutorial.** Spec Phase 3 is deferred; `TutorialScene.ts`, `TutorialDirector.ts` and `tutorialFixture.ts` are out of scope.
 - `user:created` in `MenuScene.ts:126` is **correct as-is — do not "fix" it.** Its localStorage flag is set whether or not the event actually sends, so existing players (who all have the flag set from before analytics defaulted on) will never emit it, and only genuinely-new installs will. That is the desired behavior for a new-user signal.
 - Task 1 must land before Task 2. The index widening is what stops Task 2 from silently truncating signed-in players' ids.
+- Task 6 must land in this plan, not Plan 3. It changes what is *written*, so any run logged before it is missing the columns Plan 3's cross-tab needs. Landing it here means history splits exactly once, at the same deploy as Task 2's key change.
 - Task 4 must land before Task 5, as its own commit, with tests green. That ordering is the whole point: it turns "add a field to four copy-pasted blocks" into "add it once."
