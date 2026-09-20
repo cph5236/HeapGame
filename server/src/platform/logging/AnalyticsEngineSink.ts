@@ -1,9 +1,23 @@
 import type { Sink, StampedLogEntry } from './Sink';
 
-/** Cloudflare AE indexes are capped at 32 bytes. A UUID has 32 hex chars
- *  once hyphens are stripped — a 1:1 reversible mapping that fits exactly. */
-function userGuidIndex(uuid: string): string {
-  return uuid.replace(/-/g, '').slice(0, 32);
+/**
+ * The AE index for a player. Cloudflare caps an index at 96 bytes.
+ *
+ * A raw player GUID is a UUID, and stripping its hyphens yields exactly 32 hex
+ * chars — a 1:1 reversible mapping, which is why that shape is preserved here.
+ * But the envelope stamps `getEffectivePlayerId()`, which for a signed-in
+ * player is a Google Play Games id: opaque, NOT a UUID, and up to MAX_ID_LEN
+ * (64) characters. Hyphen-stripping is a no-op on it.
+ *
+ * Slicing to 32 would silently truncate such an id, irreversibly — two ids
+ * sharing a 32-char prefix would collide into one player, and neither could be
+ * mapped back to `player_auth.player_id` for a cohort join. So the cap is the
+ * real AE limit, not 32.
+ */
+const MAX_INDEX_BYTES = 96;
+
+function userGuidIndex(playerId: string): string {
+  return playerId.replace(/-/g, '').slice(0, MAX_INDEX_BYTES);
 }
 
 const MAX_PAYLOAD_BYTES = 4096;

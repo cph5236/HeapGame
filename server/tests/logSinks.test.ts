@@ -21,6 +21,12 @@ function fakeD1() {
   return { d1, inserts };
 }
 
+function fakeAE() {
+  const points: { indexes: string[]; blobs: string[]; doubles: number[] }[] = [];
+  const ae = { writeDataPoint: (p: any) => { points.push(p); } } as any;
+  return { ae, points };
+}
+
 const entry = (over: Partial<StampedLogEntry> = {}): StampedLogEntry => ({
   userGuid: 'u', sessionId: 's', appVersion: '1.0.0',
   platform: 'web', userAgent: 'ua', level: 'error',
@@ -109,5 +115,34 @@ describe('AnalyticsEngineSink', () => {
     const parsed = JSON.parse(blob6);
     expect(parsed.truncated).toBe(true);
     expect(typeof parsed.originalSize).toBe('number');
+  });
+
+  it('preserves a 64-char non-UUID player id in the index', async () => {
+    const { ae, points } = fakeAE();
+    const gpgsId = 'g'.repeat(64); // GPGS ids are opaque and not UUIDs
+    await new AnalyticsEngineSink(ae).write([entry({ userGuid: gpgsId })]);
+    expect(points[0].indexes[0]).toBe(gpgsId);
+  });
+
+  it('does not collide two ids that share a 32-char prefix', async () => {
+    const { ae, points } = fakeAE();
+    const a = 'x'.repeat(32) + 'aaaa';
+    const b = 'x'.repeat(32) + 'bbbb';
+    await new AnalyticsEngineSink(ae).write([entry({ userGuid: a }), entry({ userGuid: b })]);
+    expect(points[0].indexes[0]).not.toBe(points[1].indexes[0]);
+  });
+
+  it('still maps a hyphenated UUID to its 32-char hex form', async () => {
+    const { ae, points } = fakeAE();
+    await new AnalyticsEngineSink(ae).write([
+      entry({ userGuid: '3f2504e0-4f89-11d3-9a0c-0305e82c3301' }),
+    ]);
+    expect(points[0].indexes[0]).toBe('3f2504e04f8911d39a0c0305e82c3301');
+  });
+
+  it('truncates an over-long id at the AE byte limit rather than silently exceeding it', async () => {
+    const { ae, points } = fakeAE();
+    await new AnalyticsEngineSink(ae).write([entry({ userGuid: 'z'.repeat(200) })]);
+    expect(points[0].indexes[0].length).toBeLessThanOrEqual(96);
   });
 });
