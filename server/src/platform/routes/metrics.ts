@@ -18,6 +18,26 @@ function parseIso(v: string | undefined): string | null {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
+/**
+ * Validates a cohort `cursor` shape without parsing it as a date. It is
+ * `${created_at}|${player_id}` (see D1MetricsDB.cohortMembers) — NOT a plain
+ * ISO timestamp, so it must never be run through `parseIso`: an earlier
+ * version of this route did exactly that, which silently discarded every
+ * real cursor the endpoint itself returns (a composite string always fails
+ * `Date.parse`), permanently resetting any caller that followed `nextCursor`
+ * back to page 1.
+ *
+ * `created_at` is a fixed-format ISO timestamp and can never contain `|`, so
+ * requiring exactly one `|` with non-empty parts on both sides is enough to
+ * catch a malformed or hand-typed cursor without needing to validate either
+ * half's contents — cohortMembers's own WHERE clause does that by producing
+ * an empty result for a value it can't match.
+ */
+function isValidCursorShape(v: string): boolean {
+  const sep = v.indexOf('|');
+  return sep > 0 && sep < v.length - 1 && v.indexOf('|', sep + 1) === -1;
+}
+
 export function metricsRoutes(metricsDb: MetricsDB): Hono {
   const app = new Hono();
 
@@ -75,7 +95,14 @@ export function metricsRoutes(metricsDb: MetricsDB): Hono {
       ? Math.max(1, Math.min(MAX_COHORT_LIMIT, Math.floor(rawLimit)))
       : DEFAULT_COHORT_LIMIT;
 
-    const cursor = parseIso(c.req.query('cursor'));
+    const rawCursor = c.req.query('cursor');
+    let cursor: string | null = null;
+    if (rawCursor !== undefined) {
+      if (!isValidCursorShape(rawCursor)) {
+        return c.json({ error: 'cursor is not a valid cohort cursor' }, 400);
+      }
+      cursor = rawCursor;
+    }
 
     const page = await metricsDb.cohortMembers(since, until, limit, cursor);
     return c.json({ since, until, playerIds: page.playerIds, nextCursor: page.nextCursor });

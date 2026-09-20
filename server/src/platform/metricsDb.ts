@@ -38,7 +38,12 @@ export interface NewPlayerBucket {
 
 export interface CohortPage {
   playerIds: string[];
-  /** `created_at` of the last row returned; pass back as `cursor`. Null at the end. */
+  /**
+   * `${created_at}|${player_id}` of the last row returned — NOT a plain
+   * timestamp — pass back verbatim as `cursor`. Null at the end. The route
+   * layer must treat this as an opaque string; see
+   * `routes/metrics.ts`'s `isValidCursorShape`.
+   */
   nextCursor: string | null;
 }
 
