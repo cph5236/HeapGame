@@ -49,4 +49,13 @@ describe('emitRunEnd', () => {
     });
     expect(event.mock.calls[0][0]).toMatchObject({ pickups: { rust_bolt: 3 }, pickupBonus: 60 });
   });
+
+  it('accepts cause "success" for a completed summit', () => {
+    emitRunEnd({
+      heapId: 'h1', mode: 'normal', cause: 'success',
+      score: 1, height: 1, durationMs: 1, kills: {},
+      pickups: {}, pickupBonus: 0,
+    });
+    expect(event.mock.calls[0][0]).toMatchObject({ cause: 'success' });
+  });
 });

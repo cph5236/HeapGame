@@ -753,7 +753,7 @@ export class GameScene extends Phaser.Scene {
           emitRunEnd({
             heapId: this._heapId,
             mode: 'normal',
-            cause: 'quit',
+            cause: 'success',
             score: runResult.finalScore,
             height: baseHeightPx,
             durationMs: elapsedMs,

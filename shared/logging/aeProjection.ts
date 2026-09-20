@@ -27,7 +27,7 @@ export interface EventMetrics {
  *
  *   double2 = score        double5 = durationMs
  *   double3 = height       double6 = pickupBonus
- *   double4 = kills        blob8   = cause ('death' | 'quit')
+ *   double4 = kills        blob8   = cause ('death' | 'quit' | 'success')
  *
  * These positions are APPEND-ONLY. Reusing one for a different field would
  * silently reinterpret every row already stored.

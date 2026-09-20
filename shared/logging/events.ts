@@ -2,7 +2,7 @@
 // checked at call sites via the `type` discriminator.
 
 export type GameMode = 'normal' | 'infinite';
-export type RunEndCause = 'death' | 'quit';
+export type RunEndCause = 'death' | 'quit' | 'success';
 export type Platform = 'web' | 'android' | 'ios';
 
 export type UpgradesSnapshot = Record<string, number>;
