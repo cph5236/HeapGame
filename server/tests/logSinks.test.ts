@@ -145,4 +145,24 @@ describe('AnalyticsEngineSink', () => {
     await new AnalyticsEngineSink(ae).write([entry({ userGuid: 'z'.repeat(200) })]);
     expect(points[0].indexes[0].length).toBeLessThanOrEqual(96);
   });
+
+  it('appends caller-supplied metric columns after the fixed layout', async () => {
+    const { ae, points } = fakeAE();
+    await new AnalyticsEngineSink(ae).write([entry({
+      level: 'event', eventType: 'run:end',
+      metrics: { doubles: [1200, 340, 5, 61000, 40], blobs: ['death'] },
+    })]);
+    // double1 stays the client timestamp; the projection follows it
+    expect(points[0].doubles).toEqual([100, 1200, 340, 5, 61000, 40]);
+    // blob8 follows the seven fixed blobs
+    expect(points[0].blobs).toHaveLength(8);
+    expect(points[0].blobs[7]).toBe('death');
+  });
+
+  it('writes the fixed layout unchanged when no metrics are supplied', async () => {
+    const { ae, points } = fakeAE();
+    await new AnalyticsEngineSink(ae).write([entry()]);
+    expect(points[0].doubles).toEqual([100]);
+    expect(points[0].blobs).toHaveLength(7);
+  });
 });

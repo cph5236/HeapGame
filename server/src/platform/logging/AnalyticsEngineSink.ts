@@ -50,8 +50,12 @@ export class AnalyticsEngineSink implements Sink {
           e.sessionId,
           payloadJson(e.payload),
           e.userAgent.slice(0, 200),
+          // blob8+ — caller-supplied, never interpreted here. Keeping this
+          // sink free of game concepts is why the mapping lives in
+          // shared/logging/aeProjection.ts instead.
+          ...(e.metrics?.blobs ?? []),
         ],
-        doubles: [e.timestamp],
+        doubles: [e.timestamp, ...(e.metrics?.doubles ?? [])],
       });
     }
   }

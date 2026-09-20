@@ -2,6 +2,7 @@ import type {
   Logger, ErrorContext, WarnContext, LogEntry, LogEnvelope,
 } from '../../shared/logging/Logger';
 import type { GameEvent } from '../../shared/logging/events';
+import { projectEventMetrics } from '../../shared/logging/aeProjection';
 
 export interface RemoteLoggerOptions {
   /** Read at flush time so userGuid can hydrate late. */
@@ -59,7 +60,7 @@ export class RemoteLogger implements Logger {
     if (!this.verbose) return;
     try {
       const { type, ...payload } = e as any;
-      this.enqueue('event', { eventType: type, payload });
+      this.enqueue('event', { eventType: type, payload, metrics: projectEventMetrics(e) });
     } catch { /* swallow */ }
   }
 
@@ -68,7 +69,12 @@ export class RemoteLogger implements Logger {
 
   private enqueue(
     level: 'error' | 'warn' | 'event',
-    parts: { message?: string; eventType?: string; payload: Record<string, unknown> },
+    parts: {
+      message?: string;
+      eventType?: string;
+      payload: Record<string, unknown>;
+      metrics?: { doubles?: number[]; blobs?: string[] };
+    },
   ): void {
     const raw = {
       level,
@@ -76,6 +82,7 @@ export class RemoteLogger implements Logger {
       message: parts.message,
       eventType: parts.eventType,
       payload: parts.payload,
+      metrics: parts.metrics,
     };
     let json = JSON.stringify(raw);
     if (json.length > this.opts.maxEntryBytes) {
@@ -118,6 +125,7 @@ export class RemoteLogger implements Logger {
       message:   (p.entry as any).message,
       eventType: (p.entry as any).eventType,
       payload:   (p.entry as any).payload,
+      metrics:   (p.entry as any).metrics,
     }));
     this.buffer = [];
     this.bufferedBytes = 0;
