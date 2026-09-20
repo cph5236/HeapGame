@@ -3,7 +3,7 @@ import type { Platform } from '../../shared/logging/events';
 import { NullLogger } from './NullLogger';
 import { RemoteLogger } from './RemoteLogger';
 import { defaultTransport } from './transport';
-import { getPlayerGuid, getVerboseLogging } from '../systems/SaveData';
+import { getEffectivePlayerId, getVerboseLogging } from '../systems/SaveData';
 import { installGlobalErrorHandlers } from './capture';
 import { Capacitor } from '@capacitor/core';
 import { version as APP_VERSION } from '../../package.json';
@@ -30,8 +30,12 @@ function detectPlatform(): Platform {
 }
 
 function getEnvelope(): LogEnvelope {
+  // The effective player id (GPGS id when signed in, else the GUID) — the same
+  // key player_auth uses, so events can be joined to a new-player cohort. A
+  // bare getPlayerGuid() here would silently orphan every signed-in player's
+  // events; see PR #93 for the same mistake in the cosmetics path.
   let userGuid = 'pre-init';
-  try { userGuid = getPlayerGuid() || 'pre-init'; } catch { /* SaveData not ready */ }
+  try { userGuid = getEffectivePlayerId() || 'pre-init'; } catch { /* SaveData not ready */ }
   return {
     userGuid,
     sessionId: SESSION_ID,
