@@ -20,7 +20,7 @@ function tableOf() {
     adminSecret: 'x',
     codeDb: stub, dailyDb: stub, feedbackDb: stub, configDb: stub,
     customizationDb: stub, playerAuthDb: stub, contributionDb: stub,
-    playerNameDb: stub, banDb: stub, logSink: stub, sessionSecret: 's',
+    playerNameDb: stub, banDb: stub, metricsDb: stub, logSink: stub, sessionSecret: 's',
     limiters: { global: stub },
   });
   return (app as any).routes.map((r: any) => `${r.method} ${r.path}`) as string[];

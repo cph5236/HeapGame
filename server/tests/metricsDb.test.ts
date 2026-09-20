@@ -96,7 +96,7 @@ describe('D1MetricsDB.cohortMembers', () => {
       '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z', 2, null,
     );
     expect(first.playerIds).toEqual(['p0', 'p1']);
-    expect(first.nextCursor).toBe('2026-09-19T02:00:00.000Z');
+    expect(first.nextCursor).toBe('2026-09-19T02:00:00.000Z|p1');
 
     const second = await db.cohortMembers(
       '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z', 2, first.nextCursor,
@@ -111,5 +111,56 @@ describe('D1MetricsDB.cohortMembers', () => {
       '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z', 10, null,
     );
     expect(page).toEqual({ playerIds: [], nextCursor: null });
+  });
+
+  it('does not skip or duplicate a player when two rows share created_at', async () => {
+    // p0@T1, p1@T2, p2@T2 — a page boundary between p1 and p2 with a plain
+    // created_at cursor would resume at `created_at > T2`, skipping p2.
+    const d1 = createTestD1('heap_scores');
+    await seed(d1, [
+      '2026-09-19T01:00:00.000Z',
+      '2026-09-19T02:00:00.000Z',
+      '2026-09-19T02:00:00.000Z',
+    ]);
+    const db = new D1MetricsDB(d1);
+
+    const first = await db.cohortMembers(
+      '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z', 1, null,
+    );
+    expect(first.playerIds).toEqual(['p0']);
+    expect(first.nextCursor).not.toBeNull();
+
+    const second = await db.cohortMembers(
+      '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z', 1, first.nextCursor,
+    );
+    expect(second.playerIds).toEqual(['p1']);
+    expect(second.nextCursor).not.toBeNull();
+
+    const third = await db.cohortMembers(
+      '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z', 1, second.nextCursor,
+    );
+    expect(third.playerIds).toEqual(['p2']);
+
+    // Neither skipped nor duplicated across the three pages.
+    const all = [...first.playerIds, ...second.playerIds, ...third.playerIds];
+    expect(all).toEqual(['p0', 'p1', 'p2']);
+  });
+
+  it('does not return rows before since even with a stale cursor that predates it', async () => {
+    const d1 = createTestD1('heap_scores');
+    await seed(d1, [
+      '2026-09-10T00:00:00.000Z', // before since — must never come back
+      '2026-09-19T01:00:00.000Z',
+      '2026-09-19T02:00:00.000Z',
+    ]);
+    const db = new D1MetricsDB(d1);
+
+    // A cursor pointing at a row (or timestamp) before `since` — e.g. stale,
+    // malformed, or hand-crafted — must not resurrect rows below the floor.
+    const page = await db.cohortMembers(
+      '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z', 10,
+      '2026-09-01T00:00:00.000Z|zzz',
+    );
+    expect(page.playerIds).toEqual(['p1', 'p2']);
   });
 });

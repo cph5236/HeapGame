@@ -82,6 +82,11 @@ exports[`route inventory > keeps middleware ahead of its handler within every pa
     "POST /log",
     "POST /log",
   ],
+  "/metrics": [
+    "ALL /metrics/*",
+    "GET /metrics/new-players",
+    "GET /metrics/cohort",
+  ],
   "/players": [
     "PUT /players/:playerId/name",
     "PUT /players/:playerId/name",
@@ -106,6 +111,7 @@ exports[`route inventory > mounts exactly the expected set of routes 1`] = `
 "ALL /*
 ALL /heaps
 ALL /heaps/*
+ALL /metrics/*
 ALL /scores
 ALL /scores/*
 DELETE /auth/:playerId
@@ -135,6 +141,8 @@ GET /heaps/:id/bands
 GET /heaps/:id/bands
 GET /heaps/:id/base
 GET /heaps/:id/enemy-params
+GET /metrics/cohort
+GET /metrics/new-players
 GET /scores/:heapId
 GET /scores/:heapId/context
 GET /scores/admin/:heapId

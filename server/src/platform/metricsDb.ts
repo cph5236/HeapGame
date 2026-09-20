@@ -50,6 +50,10 @@ export interface MetricsDB {
    * "New player" is the first row in player_auth, which is written once per
    * player on their first AUTHENTICATED WRITE — not on first launch. A player
    * who installs and never submits a score never appears here.
+   *
+   * A player who later signs into GPGS mints a different effective id (see
+   * getEffectivePlayerId) and gets a second player_auth row — one human, two
+   * new-player events.
    */
   newPlayersByBucket(
     bucket: MetricsBucket, since: string, until: string,
@@ -58,9 +62,10 @@ export interface MetricsDB {
   /**
    * The player ids first seen in `[since, until)`, oldest first, paged.
    *
-   * Keyset paging on `created_at` rather than OFFSET: OFFSET silently skips
-   * rows when a concurrent insert lands between pages, which would drop
-   * players out of a cohort at random.
+   * Keyset paging on `(created_at, player_id)` rather than OFFSET: OFFSET
+   * silently skips rows when a concurrent insert lands between pages, which
+   * would drop players out of a cohort at random. `player_id` breaks ties
+   * when two rows share a millisecond `created_at`.
    */
   cohortMembers(
     since: string, until: string, limit: number, cursor: string | null,
@@ -89,25 +94,44 @@ export class D1MetricsDB implements MetricsDB {
   async cohortMembers(
     since: string, until: string, limit: number, cursor: string | null,
   ): Promise<CohortPage> {
-    const lo = cursor === null ? since : cursor;
-    // `>` on a resumed page, `>=` on the first, so the cursor row is not
-    // returned twice and the first row is not skipped.
-    const cmp = cursor === null ? '>=' : '>';
-    const res = await this.d1
-      .prepare(
-        `SELECT player_id, created_at
-           FROM player_auth
-          WHERE created_at ${cmp} ?1 AND created_at < ?2
-          ORDER BY created_at
-          LIMIT ?3`,
-      )
-      .bind(lo, until, limit)
-      .all<{ player_id: string; created_at: string }>();
+    // Cursor is a composite of (created_at, player_id) — `created_at` alone
+    // is not unique (millisecond ISO timestamps can tie), so a plain
+    // `created_at` cursor can skip a row tied with the last row of the
+    // previous page. `|` cannot appear in either field, so it's a safe
+    // separator.
+    let cursorCreatedAt: string | null = null;
+    let cursorPlayerId: string | null = null;
+    if (cursor !== null) {
+      const sep = cursor.indexOf('|');
+      cursorCreatedAt = cursor.slice(0, sep);
+      cursorPlayerId = cursor.slice(sep + 1);
+    }
+
+    // `since` stays a floor on every page — first or resumed — so a stale or
+    // hand-crafted cursor that predates `since` can never leak rows outside
+    // the requested window. The cursor comparison is ANDed on top of it, not
+    // a replacement for it.
+    const where = cursor === null
+      ? 'created_at >= ?1 AND created_at < ?2'
+      : 'created_at >= ?1 AND created_at < ?2 AND (created_at > ?4 OR (created_at = ?4 AND player_id > ?5))';
+
+    const stmt = this.d1.prepare(
+      `SELECT player_id, created_at
+         FROM player_auth
+        WHERE ${where}
+        ORDER BY created_at, player_id
+        LIMIT ?3`,
+    );
+    const bound = cursor === null
+      ? stmt.bind(since, until, limit)
+      : stmt.bind(since, until, limit, cursorCreatedAt, cursorPlayerId);
+    const res = await bound.all<{ player_id: string; created_at: string }>();
 
     const rows = res.results;
+    const last = rows[rows.length - 1];
     return {
       playerIds: rows.map((r) => r.player_id),
-      nextCursor: rows.length === limit ? rows[rows.length - 1].created_at : null,
+      nextCursor: rows.length === limit ? `${last.created_at}|${last.player_id}` : null,
     };
   }
 }
