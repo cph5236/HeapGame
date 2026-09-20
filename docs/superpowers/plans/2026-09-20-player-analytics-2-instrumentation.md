@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Branch off `main`: `feature/analytics-instrumentation`. Never push direct to `main`.
+- Branch is `feature/analytics-instrumentation`, **stacked on `feature/player-analytics`** (Plan 1, open as PR #188 and not yet merged). Its PR targets `feature/player-analytics`, not `main`, so the diff shows only this plan's work. Never push direct to `main`. Do not rebase onto `main` while PR #188 is open.
 - **Tutorial instrumentation (spec Phase 3) is OUT OF SCOPE.** It is deferred until the tutorial entry flow is restructured. Do not add `tutorial:*` events, do not touch `TutorialScene.ts`, `TutorialDirector.ts`, or `src/data/tutorialFixture.ts`.
 - New save fields go in `save/game.ts`, never `save/core.ts` — but this plan adds **no new save field**; `verboseLogging` already exists in `save/core.ts` and only its *default* changes.
 - Do not reorder the spreads in `migrate()` or `mergeCloudSave()`. That ordering is what makes the `playerSecret` invariant structural.
@@ -1035,16 +1035,52 @@ Expected: `getEffectivePlayerId` present; `getPlayerGuid` absent (or clearly use
 Run: `npm test && npm run build`
 Expected: both PASS.
 
-- [ ] **Step 5: Smoke test**
+- [ ] **Step 5: Deploy to staging and verify the pipeline end to end**
+
+This plan's whole point is data actually arriving, correctly keyed, in columns a
+query can read. Unit tests cannot prove that — only a real round trip can.
+
+```bash
+cd server && npx wrangler deploy --env staging
+```
+
+Then run the client against staging:
+
+```bash
+VITE_HEAP_SERVER_URL=https://heap-server-staging.hanlinsoftwaresws.workers.dev npm run dev
+```
+
+Play a run to completion (grab at least one salvage item, and ideally one shield
+item, so the tally has something in it). Wait ~1 minute for AE ingestion, then
+query `heap_logs_staging` via the SQL API and confirm, in order:
+
+1. A `run:end` row exists (`blob2 = 'run:end'`).
+2. Its `index1` is the **effective player id** — equal to your GPGS id when
+   signed in, not the raw GUID.
+3. `double2..double6` carry score / height / kills / durationMs / pickupBonus,
+   and `blob8` carries `'death'` or `'quit'`. These being non-zero is the whole
+   proof that Task 6 works — if they are all 0, the projection is not wired.
+4. **No** `pickup:grab` rows exist in the window (Task 5 removed them).
+5. The payload blob still parses as JSON.
+
+`.github/workflows/fetch-logs.yml` hardcodes `FROM heap_logs` and cannot read the
+staging dataset — query the SQL API directly rather than reaching for it, or add
+a `dataset` input to that workflow first.
+
+- [ ] **Step 6: Smoke test**
 
 This changes what the running game sends. Use the `smoke-testing-heap` skill to verify in a browser that a run start → run end round trip produces exactly one `run:end` request carrying `pickups`/`pickupBonus`, and **no** `pickup:grab` requests, with analytics left at its new default. Confirm the Settings toggle still turns event sending off.
 
-- [ ] **Step 6: Open the PR**
+- [ ] **Step 7: Open the PR**
 
 ```bash
 git push -u origin feature/analytics-instrumentation
-gh pr create --base main --title "Player analytics 2/3: instrumentation" --body "..."
+gh pr create --base feature/player-analytics \
+  --title "Player analytics 2/3: instrumentation" --body "..."
 ```
+
+The base is Plan 1's branch, not `main` — this is a stacked PR. Retarget it to
+`main` once PR #188 merges.
 
 In the body, state explicitly that this changes data collection defaults, that `PRIVACY_POLICY.md` and the Data Safety runbook ship with it, and that the Play Console form must be resubmitted at release.
 
