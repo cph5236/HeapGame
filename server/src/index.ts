@@ -9,6 +9,7 @@ import { D1CustomizationDB } from './game/customizationDb';
 import { D1PlayerAuthDB } from './platform/playerAuthDb';
 import { D1ContributionDB } from './game/contributionDb';
 import { D1PlayerNameDB } from './platform/playerNameDb';
+import { D1MetricsDB } from './platform/metricsDb';
 import { D1BanDB } from './platform/banDb';
 import { CachedHeapDB } from './game/cache/CachedHeapDB';
 import { CachedScoreDB } from './game/cache/CachedScoreDB';
@@ -73,6 +74,7 @@ export default {
       playerAuthDb:    new D1PlayerAuthDB(env.DB_SCORES),
       contributionDb:  new D1ContributionDB(env.DB_SCORES),
       playerNameDb:    new D1PlayerNameDB(env.DB_SCORES),
+      metricsDb:       new D1MetricsDB(env.DB_SCORES),
       banDb,
       sessionSecret:  env.SESSION_SECRET,
       limiters: {
