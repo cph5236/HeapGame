@@ -15,7 +15,7 @@ import {
   applyPolygonToGenerator,
   polygonTopY,
 } from '../systems/HeapPolygonLoader';
-import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getUpgrades, getEffectiveControlMode, getJoystickSide, getUpgradeLevel, getEquippedCosmetics, getHatAdjustments, getEffectivePlayerId } from '../systems/SaveData';
+import { getPlayerConfig, PlayerConfig, getPlaced, updatePlacedMeta, removeExpiredPlaced, getEffectiveControlMode, getJoystickSide, getUpgradeLevel, getEquippedCosmetics, getHatAdjustments, getEffectivePlayerId } from '../systems/SaveData';
 import { HUD } from '../ui/HUD';
 import { EnemyRadar } from '../ui/EnemyRadar';
 import { showDashIndicator, controlClusterLayout } from '../ui/hudLogic';
@@ -25,6 +25,7 @@ import type { JoystickHandle } from '../systems/mountJoystick';
 import { logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { setupGameplayUiCamera, addToGameplayUi } from '../systems/GameplayUiCamera';
 import { getLogger } from '../logging';
+import { emitRunEnd } from '../systems/runEndEvent';
 import {
   WORLD_WIDTH,
   SKY_PAD,
@@ -274,17 +275,14 @@ export class GameScene extends Phaser.Scene {
           true,
           this._heapParams.scoreMult,
         );
-        const killCount = Object.values(this._runKills).reduce((sum, val) => sum + val, 0);
-        getLogger().event({
-          type: 'run:end',
+        emitRunEnd({
           heapId: this._heapId,
           mode: 'normal',
+          cause: 'death',
           score: runResult.finalScore,
           height: baseHeightPx,
-          kills: killCount,
           durationMs: elapsedMs,
-          cause: 'death',
-          upgrades: getUpgrades(),
+          kills: this._runKills,
         });
         this.scene.launch('ScoreScene', {
           score:        runResult.finalScore,
@@ -751,17 +749,14 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(500, () => {
       this.playerOutro.play('success', () => {
         void appendDone.then(() => {
-          const killCount = Object.values(this._runKills).reduce((sum, val) => sum + val, 0);
-          getLogger().event({
-            type: 'run:end',
+          emitRunEnd({
             heapId: this._heapId,
             mode: 'normal',
+            cause: 'quit',
             score: runResult.finalScore,
             height: baseHeightPx,
-            kills: killCount,
             durationMs: elapsedMs,
-            cause: 'quit',
-            upgrades: getUpgrades(),
+            kills: this._runKills,
           });
           this.scene.launch('ScoreScene', {
             score:        runResult.finalScore,
@@ -937,17 +932,14 @@ export class GameScene extends Phaser.Scene {
           true,
           this._heapParams.scoreMult,
         );
-        const killCount = Object.values(this._runKills).reduce((sum, val) => sum + val, 0);
-        getLogger().event({
-          type: 'run:end',
+        emitRunEnd({
           heapId: this._heapId,
           mode: 'normal',
+          cause: 'death',
           score: runResult.finalScore,
           height: baseHeightPx,
-          kills: killCount,
           durationMs: elapsedMs,
-          cause: 'death',
-          upgrades: getUpgrades(),
+          kills: this._runKills,
         });
         this.scene.launch('ScoreScene', {
           score:        runResult.finalScore,
