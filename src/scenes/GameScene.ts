@@ -283,6 +283,7 @@ export class GameScene extends Phaser.Scene {
           height: baseHeightPx,
           durationMs: elapsedMs,
           kills: this._runKills,
+          ...this.pickupManager.getRunPickups(),
         });
         this.scene.launch('ScoreScene', {
           score:        runResult.finalScore,
@@ -757,6 +758,7 @@ export class GameScene extends Phaser.Scene {
             height: baseHeightPx,
             durationMs: elapsedMs,
             kills: this._runKills,
+            ...this.pickupManager.getRunPickups(),
           });
           this.scene.launch('ScoreScene', {
             score:        runResult.finalScore,
@@ -940,6 +942,7 @@ export class GameScene extends Phaser.Scene {
           height: baseHeightPx,
           durationMs: elapsedMs,
           kills: this._runKills,
+          ...this.pickupManager.getRunPickups(),
         });
         this.scene.launch('ScoreScene', {
           score:        runResult.finalScore,

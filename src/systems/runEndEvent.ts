@@ -18,6 +18,8 @@ export interface RunEndFacts {
   durationMs: number;
   /** Per-enemy-type kill counts; summed here so callers never do it themselves. */
   kills: Record<string, number>;
+  pickups: Record<string, number>;
+  pickupBonus: number;
 }
 
 export function emitRunEnd(facts: RunEndFacts): void {
@@ -32,5 +34,7 @@ export function emitRunEnd(facts: RunEndFacts): void {
     durationMs: facts.durationMs,
     cause: facts.cause,
     upgrades: getUpgrades(),
+    pickups: facts.pickups,
+    pickupBonus: facts.pickupBonus,
   });
 }

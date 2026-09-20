@@ -669,6 +669,7 @@ export class InfiniteGameScene extends Phaser.Scene {
         height: score,
         durationMs: elapsedMs,
         kills: this._runKills,
+        ...this.pickupManager.getRunPickups(),
       });
       this.scene.launch('ScoreScene', {
         score:               runResult.finalScore,

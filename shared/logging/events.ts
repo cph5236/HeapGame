@@ -26,6 +26,11 @@ export type GameEvent =
       durationMs: number;
       cause: RunEndCause;
       upgrades: UpgradesSnapshot;
+      /** Per-item grab counts for the run — replaces the old per-grab
+       *  `pickup:grab` event, which cost one AE data point per pickup. */
+      pickups: Record<string, number>;
+      /** Sum of the AWARDED (rarity-scaled) bonuses for those grabs. */
+      pickupBonus: number;
     }
   | {
       type: 'score:submitted';
@@ -35,7 +40,6 @@ export type GameEvent =
       rejectionReason?: string;
     }
   | { type: 'placement:made'; heapId: string; itemType: string }
-  | { type: 'pickup:grab'; itemId: string; bonus: number }
   | {
       /** A player used the score screen's SHARE button. `outcome` separates a
        *  real hand-off from a share sheet they backed out of, so the share loop
