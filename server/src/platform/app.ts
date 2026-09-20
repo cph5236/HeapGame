@@ -13,6 +13,7 @@ import type { FeedbackDB } from './feedbackDb';
 import type { ConfigDB } from './configDb';
 import type { PlayerAuthDB } from './playerAuthDb';
 import type { PlayerNameDB } from './playerNameDb';
+import type { MetricsDB } from './metricsDb';
 
 /** Rate-limit buckets. Any unset binding means no limit on that bucket. */
 export interface Limiters {
@@ -51,6 +52,8 @@ export interface PlatformOptions {
   playerNameDb?: PlayerNameDB;
   /** Sink for incoming /log entries. If unset, /log is not mounted. */
   logSink?: Sink;
+  /** Admin metrics reads (player_auth in heap_scores). If unset, /metrics is not mounted. */
+  metricsDb?: MetricsDB;
 }
 
 /** What createPlatformApp hands back so a game can mount its own routes with the

@@ -8,6 +8,7 @@ import { codeRoutes } from './game/routes/codes';
 import { dailyRoutes } from './game/routes/daily';
 import { customizationRoutes } from './game/routes/customization';
 import { banRoutes } from './platform/routes/bans';
+import { metricsRoutes } from './platform/routes/metrics';
 import { createPlatformApp, type PlatformOptions } from './platform/app';
 import type { RewardCodeDB } from './game/codeDb';
 import type { DailyClaimDB } from './game/dailyDb';
@@ -102,6 +103,12 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
     app.put   ('/bans/:playerId', adminGate);
     app.delete('/bans/:playerId', adminGate);
     app.route('/bans', banRoutes(opts.banDb, scoreDb, opts.playerNameDb));
+  }
+
+  // Admin metrics surface — entirely behind the admin gate.
+  if (opts.metricsDb) {
+    app.get('/metrics/new-players', adminGate);
+    app.route('/metrics', metricsRoutes(opts.metricsDb));
   }
 
   return app;
