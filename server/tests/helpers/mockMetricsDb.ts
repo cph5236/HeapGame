@@ -4,7 +4,7 @@
 // metricsDb.test.ts; this only needs to record what it was asked for.
 
 import type {
-  MetricsDB, MetricsBucket, NewPlayerBucket,
+  MetricsDB, MetricsBucket, NewPlayerBucket, CohortPage,
 } from '../../src/platform/metricsDb';
 
 export class MockMetricsDB implements MetricsDB {
@@ -18,5 +18,16 @@ export class MockMetricsDB implements MetricsDB {
   ): Promise<NewPlayerBucket[]> {
     this.lastCall = { bucket, since, until };
     return this.rows;
+  }
+
+  /** Page the next cohortMembers call returns. */
+  cohortPage: CohortPage = { playerIds: [], nextCursor: null };
+  lastCohortCall: { since: string; until: string; limit: number; cursor: string | null } | null = null;
+
+  async cohortMembers(
+    since: string, until: string, limit: number, cursor: string | null,
+  ): Promise<CohortPage> {
+    this.lastCohortCall = { since, until, limit, cursor };
+    return this.cohortPage;
   }
 }

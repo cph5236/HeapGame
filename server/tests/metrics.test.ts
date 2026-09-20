@@ -86,3 +86,52 @@ describe('GET /metrics/new-players', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('GET /metrics/cohort', () => {
+  it('requires the admin secret (401)', async () => {
+    const app = makeApp(new MockMetricsDB(), 's3cret');
+    const res = await app.request('/metrics/cohort');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns a page of player ids and the next cursor', async () => {
+    const db = new MockMetricsDB();
+    db.cohortPage = { playerIds: ['a', 'b'], nextCursor: '2026-09-19T02:00:00.000Z' };
+    const app = makeApp(db, 's3cret');
+
+    const res = await app.request(
+      '/metrics/cohort?since=2026-09-19T00:00:00.000Z&until=2026-09-20T00:00:00.000Z&limit=2',
+      { headers: ADMIN },
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      since: '2026-09-19T00:00:00.000Z',
+      until: '2026-09-20T00:00:00.000Z',
+      playerIds: ['a', 'b'],
+      nextCursor: '2026-09-19T02:00:00.000Z',
+    });
+    expect(db.lastCohortCall?.limit).toBe(2);
+    expect(db.lastCohortCall?.cursor).toBeNull();
+  });
+
+  it('passes the cursor through', async () => {
+    const db = new MockMetricsDB();
+    const app = makeApp(db, 's3cret');
+    await app.request('/metrics/cohort?cursor=2026-09-19T02:00:00.000Z', { headers: ADMIN });
+    expect(db.lastCohortCall?.cursor).toBe('2026-09-19T02:00:00.000Z');
+  });
+
+  it('clamps limit to 1000 and defaults to 500', async () => {
+    const db = new MockMetricsDB();
+    const app = makeApp(db, 's3cret');
+
+    await app.request('/metrics/cohort', { headers: ADMIN });
+    expect(db.lastCohortCall?.limit).toBe(500);
+
+    await app.request('/metrics/cohort?limit=99999', { headers: ADMIN });
+    expect(db.lastCohortCall?.limit).toBe(1000);
+
+    await app.request('/metrics/cohort?limit=0', { headers: ADMIN });
+    expect(db.lastCohortCall?.limit).toBe(1);
+  });
+});

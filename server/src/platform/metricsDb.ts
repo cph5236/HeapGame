@@ -36,6 +36,12 @@ export interface NewPlayerBucket {
   count: number;
 }
 
+export interface CohortPage {
+  playerIds: string[];
+  /** `created_at` of the last row returned; pass back as `cursor`. Null at the end. */
+  nextCursor: string | null;
+}
+
 export interface MetricsDB {
   /**
    * New players per bucket over `[since, until)` — half-open, so adjacent
@@ -48,6 +54,17 @@ export interface MetricsDB {
   newPlayersByBucket(
     bucket: MetricsBucket, since: string, until: string,
   ): Promise<NewPlayerBucket[]>;
+
+  /**
+   * The player ids first seen in `[since, until)`, oldest first, paged.
+   *
+   * Keyset paging on `created_at` rather than OFFSET: OFFSET silently skips
+   * rows when a concurrent insert lands between pages, which would drop
+   * players out of a cohort at random.
+   */
+  cohortMembers(
+    since: string, until: string, limit: number, cursor: string | null,
+  ): Promise<CohortPage>;
 }
 
 export class D1MetricsDB implements MetricsDB {
@@ -67,5 +84,30 @@ export class D1MetricsDB implements MetricsDB {
       .bind(BUCKET_FORMATS[bucket], since, until)
       .all<{ bucket: string; count: number }>();
     return res.results.map((r) => ({ bucket: r.bucket, count: r.count }));
+  }
+
+  async cohortMembers(
+    since: string, until: string, limit: number, cursor: string | null,
+  ): Promise<CohortPage> {
+    const lo = cursor === null ? since : cursor;
+    // `>` on a resumed page, `>=` on the first, so the cursor row is not
+    // returned twice and the first row is not skipped.
+    const cmp = cursor === null ? '>=' : '>';
+    const res = await this.d1
+      .prepare(
+        `SELECT player_id, created_at
+           FROM player_auth
+          WHERE created_at ${cmp} ?1 AND created_at < ?2
+          ORDER BY created_at
+          LIMIT ?3`,
+      )
+      .bind(lo, until, limit)
+      .all<{ player_id: string; created_at: string }>();
+
+    const rows = res.results;
+    return {
+      playerIds: rows.map((r) => r.player_id),
+      nextCursor: rows.length === limit ? rows[rows.length - 1].created_at : null,
+    };
   }
 }

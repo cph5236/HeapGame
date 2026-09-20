@@ -108,6 +108,7 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   // Admin metrics surface — entirely behind the admin gate.
   if (opts.metricsDb) {
     app.get('/metrics/new-players', adminGate);
+    app.get('/metrics/cohort', adminGate);
     app.route('/metrics', metricsRoutes(opts.metricsDb));
   }
 

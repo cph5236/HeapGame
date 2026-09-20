@@ -81,3 +81,35 @@ describe('D1MetricsDB.newPlayersByBucket', () => {
     expect(rows).toEqual([]);
   });
 });
+
+describe('D1MetricsDB.cohortMembers', () => {
+  it('pages through members in created_at order', async () => {
+    const d1 = createTestD1('heap_scores');
+    await seed(d1, [
+      '2026-09-19T01:00:00.000Z',
+      '2026-09-19T02:00:00.000Z',
+      '2026-09-19T03:00:00.000Z',
+    ]);
+    const db = new D1MetricsDB(d1);
+
+    const first = await db.cohortMembers(
+      '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z', 2, null,
+    );
+    expect(first.playerIds).toEqual(['p0', 'p1']);
+    expect(first.nextCursor).toBe('2026-09-19T02:00:00.000Z');
+
+    const second = await db.cohortMembers(
+      '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z', 2, first.nextCursor,
+    );
+    expect(second.playerIds).toEqual(['p2']);
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it('returns a null cursor when the window is empty', async () => {
+    const d1 = createTestD1('heap_scores');
+    const page = await new D1MetricsDB(d1).cohortMembers(
+      '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z', 10, null,
+    );
+    expect(page).toEqual({ playerIds: [], nextCursor: null });
+  });
+});
