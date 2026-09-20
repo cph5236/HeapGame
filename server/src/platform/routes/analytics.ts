@@ -36,6 +36,11 @@ async function loadCohort(
   while (ids.length < MAX_COHORT_PLAYERS) {
     const page = await metricsDb.cohortMembers(since, until, COHORT_PAGE, cursor);
     ids.push(...page.playerIds);
+    // A page with no ids can never make progress no matter how many more
+    // cursors follow — stop rather than spin. (MetricsDB's contract only sets
+    // nextCursor when a page is full, so this shouldn't happen today, but the
+    // loop must not trust that structurally.)
+    if (page.playerIds.length === 0) break;
     if (page.nextCursor === null) break;
     cursor = page.nextCursor;
   }
@@ -71,7 +76,10 @@ export function analyticsRoutes(ae: AeClient, metricsDb: MetricsDB): Hono {
     };
     // An empty IN () is a syntax error — and there is nothing to ask anyway.
     if (ids.length === 0) {
-      return c.json({ stages: empty, sampled: false, sampleIntervalMax: 1, truncated: false });
+      return c.json({
+        stages: empty, since: w.since, until: w.until,
+        sampled: false, sampleIntervalMax: 1, truncated: false,
+      });
     }
 
     const totals = { ...empty };
@@ -105,7 +113,10 @@ export function analyticsRoutes(ae: AeClient, metricsDb: MetricsDB): Hono {
 
     const ids = await loadCohort(metricsDb, w.since, w.until);
     if (ids.length === 0) {
-      return c.json({ dimension, rows: [], sampled: false, sampleIntervalMax: 1, truncated: false });
+      return c.json({
+        dimension, rows: [], since: w.since, until: w.until,
+        sampled: false, sampleIntervalMax: 1, truncated: false,
+      });
     }
 
     // Buckets are summed across batches by label.
