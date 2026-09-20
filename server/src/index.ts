@@ -11,6 +11,7 @@ import { D1ContributionDB } from './game/contributionDb';
 import { D1PlayerNameDB } from './platform/playerNameDb';
 import { D1MetricsDB } from './platform/metricsDb';
 import { D1BanDB } from './platform/banDb';
+import { HttpAeClient } from './platform/analytics/aeClient';
 import { CachedHeapDB } from './game/cache/CachedHeapDB';
 import { CachedScoreDB } from './game/cache/CachedScoreDB';
 import { CachedConfigDB } from './platform/cache/CachedConfigDB';
@@ -42,6 +43,11 @@ export interface Env {
   /** HMAC key for run-session tokens. Set via `wrangler secret put SESSION_SECRET`. */
   SESSION_SECRET?: string;
   RL_SESSION?: RateLimiter;
+  /** Analytics Engine SQL API credentials for the admin funnel/crosstab/trace
+   *  routes. Set via `wrangler secret put CF_ACCOUNT_ID` /
+   *  `CF_ANALYTICS_TOKEN`. When either is absent, /analytics is not mounted. */
+  CF_ACCOUNT_ID?: string;
+  CF_ANALYTICS_TOKEN?: string;
 }
 
 export default {
@@ -75,6 +81,9 @@ export default {
       contributionDb:  new D1ContributionDB(env.DB_SCORES),
       playerNameDb:    new D1PlayerNameDB(env.DB_SCORES),
       metricsDb:       new D1MetricsDB(env.DB_SCORES),
+      aeClient:        env.CF_ACCOUNT_ID && env.CF_ANALYTICS_TOKEN
+        ? new HttpAeClient(env.CF_ACCOUNT_ID, env.CF_ANALYTICS_TOKEN)
+        : undefined,
       banDb,
       sessionSecret:  env.SESSION_SECRET,
       limiters: {

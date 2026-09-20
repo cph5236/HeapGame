@@ -9,6 +9,7 @@ import { dailyRoutes } from './game/routes/daily';
 import { customizationRoutes } from './game/routes/customization';
 import { banRoutes } from './platform/routes/bans';
 import { metricsRoutes } from './platform/routes/metrics';
+import { analyticsRoutes } from './platform/routes/analytics';
 import { createPlatformApp, type PlatformOptions } from './platform/app';
 import type { RewardCodeDB } from './game/codeDb';
 import type { DailyClaimDB } from './game/dailyDb';
@@ -111,6 +112,14 @@ export function createApp(heapDb: HeapDB, scoreDb: ScoreDB, opts: AppOptions = {
   if (opts.metricsDb) {
     app.use('/metrics/*', adminGate);
     app.route('/metrics', metricsRoutes(opts.metricsDb));
+  }
+
+  // Admin analytics surface — entirely behind the admin gate. Both aeClient
+  // and metricsDb are required: the funnel is meaningless without a cohort
+  // source pulled from D1.
+  if (opts.aeClient && opts.metricsDb) {
+    app.use('/analytics/*', adminGate);
+    app.route('/analytics', analyticsRoutes(opts.aeClient, opts.metricsDb));
   }
 
   return app;
