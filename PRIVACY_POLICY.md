@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **App:** Heap
-**Last updated:** August 20, 2026
+**Last updated:** September 20, 2026
 
 ---
 
@@ -19,8 +19,9 @@ Heap is a mobile 2D platformer where players climb a community-built trash heap.
 
 ### Data collected automatically
 - **Score and gameplay data** — your high score, height reached, and related in-game statistics, used to populate the leaderboard.
-- **Device-generated identifier** — a random GUID generated on your device the first time you play. This is not tied to your identity and is used to associate your scores with your name across sessions.
-- **Diagnostic data** — when the game hits an error, we record the error message and stack trace along with your random GUID, a per-session ID, the app version, the platform (Android or web), and your browser/device user agent string. This is used to find and fix crashes.
+- **Device-generated identifier** — a random GUID generated on your device the first time you play. This is not tied to your real-world identity, but it is a stable, pseudonymous identifier: it is exactly what lets us associate your scores, and the gameplay analytics below, with the same player across sessions.
+- **Gameplay analytics (on by default)** — the game sends events describing how you play: run starts and ends (score, height reached, kills, run duration, how the run ended — death or quit — your upgrade levels, and the items you picked up during the run), which heap you selected, item placements you made, score submissions, shares, and purchases. Each event carries the device-generated identifier described above, a per-session ID, the app version, the platform (Android or web), and your browser/device user agent string. This is used to understand how the game is played and to improve it. Gameplay analytics is **on by default** and can be turned off at any time in **Settings → "Send anonymous gameplay analytics"**. Turning it off does not affect diagnostic data below.
+- **Diagnostic data** — when the game hits an error, we record the error message and stack trace along with your device-generated identifier, a per-session ID, the app version, the platform (Android or web), and your browser/device user agent string. This is used to find and fix crashes. Diagnostic data is sent regardless of the gameplay analytics setting above — it cannot be turned off in-game.
 
 ### Google Play Games Services (if signed in)
 If you choose to sign in with Google Play Games, we receive your Google Play Games player ID and display name from Google. This is subject to [Google's Privacy Policy](https://policies.google.com/privacy). Signing in is optional — the game is fully playable without it.
@@ -49,9 +50,10 @@ The web versions of Heap (heapgame.com and itch.io) contain no ad code and colle
 |---|---|
 | Display name | Show on the in-game leaderboard |
 | Score / gameplay stats | Populate the leaderboard; track your personal best |
-| Random GUID | Link your scores to your display name across sessions |
+| Random GUID | Link your scores, and gameplay analytics, to the same player across sessions |
+| Gameplay analytics | Understand how the game is played, to improve it (on by default; opt out in Settings) |
 | Google Play Games ID | Authenticate your session (if you sign in) |
-| Diagnostic data | Diagnose crashes and errors |
+| Diagnostic data | Diagnose crashes and errors (always sent) |
 | Feedback message | Read and act on your bug reports and suggestions |
 | Advertising ID | Serve and measure ads (Google Play version only, handled by Google) |
 
@@ -84,6 +86,12 @@ If you were shown the consent dialog, you can change your choice at any time, an
 Selecting it reopens the consent dialog with your current choices, and any change takes effect immediately. The entry appears only where consent applies — if you were never asked for consent, there is nothing for it to change, and it is not shown. Withdrawing consent does not remove ads — it stops them being personalized.
 
 You can also reset or delete your advertising ID at any point in your device's Android settings, independently of this game.
+
+Gameplay analytics (described in [Data collected automatically](#what-we-collect) above) is separate from ad consent and is controlled independently:
+
+> **Settings → "Send anonymous gameplay analytics"**
+
+This is on by default; unchecking it stops future gameplay analytics events from being sent. Error and crash reports are sent regardless of this setting.
 
 ---
 
