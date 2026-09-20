@@ -546,8 +546,8 @@ describe('SaveData per-heap placeables', () => {
 describe('verboseLogging', () => {
   beforeEach(() => { localStorage.clear(); resetCacheForTests(); });
 
-  it('defaults to false on fresh saves', () => {
-    expect(getVerboseLogging()).toBe(false);
+  it('defaults to true on fresh saves', () => {
+    expect(getVerboseLogging()).toBe(true);
   });
 
   it('persists when set', () => {
@@ -556,10 +556,10 @@ describe('verboseLogging', () => {
     expect(getVerboseLogging()).toBe(true);
   });
 
-  it('returns false when field missing on legacy saves', () => {
+  it('returns true when field missing on legacy saves', () => {
     localStorage.setItem('heap_save', JSON.stringify({ schemaVersion: 3, balance: 0, upgrades: {}, inventory: {}, placed: {}, selectedHeapId: '', playerGuid: 'g', playerName: 'n', highScores: {} }));
     resetCacheForTests();
-    expect(getVerboseLogging()).toBe(false);
+    expect(getVerboseLogging()).toBe(true);
   });
 });
 

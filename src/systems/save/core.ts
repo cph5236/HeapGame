@@ -232,7 +232,11 @@ export function getPlayerSecret(): string {
 
 // ── Verbose logging ───────────────────────────────────────────────────────────
 
-export function getVerboseLogging(): boolean { return load().verboseLogging ?? false; }
+/** Analytics is opt-OUT: on unless the player turned it off in Settings. A
+ *  STORED value always wins, so a player who opted out before this default
+ *  flipped stays opted out. Errors and warnings are sent regardless of this
+ *  flag and always have been — only `event`-level logging is gated here. */
+export function getVerboseLogging(): boolean { return load().verboseLogging ?? true; }
 export function setVerboseLogging(enabled: boolean): void {
   const data = load();
   data.verboseLogging = enabled;
