@@ -4,7 +4,7 @@
 
 **Goal:** Make gameplay events actually reach Analytics Engine, keyed so they can be joined to the new-player cohorts Plan 1 already exposes — without blowing the free-tier quota.
 
-**Architecture:** Four independent changes that must ship together: widen the Analytics Engine index so a non-UUID player id survives it, stamp the effective player id into the log envelope so events and `player_auth` share a key, flip gameplay analytics from opt-in to opt-out, and roll per-grab pickup events into the existing `run:end` payload so the volume increase is paid for before it lands. Plus the privacy surfaces that must move in the same release.
+**Architecture:** Four independent changes that must ship together: widen the Analytics Engine index so a non-UUID player id survives it, stamp the effective player id into the log envelope so events and `player_auth` share a key, flip gameplay analytics from opt-in to opt-out, and roll per-grab pickup events into the existing `run:end` payload to cut per-run data-point cost before the opt-out default multiplies the participating player count. The two effects are multiplicative, not offsetting — the roll-up trims per-run cost roughly 60%, while default-on can multiply participating players by one to two orders of magnitude, so it does not "pay for" the increase. Watch actual data points for a week post-release before considering the $5 paid tier (see the spec's risk table). Plus the privacy surfaces that must move in the same release.
 
 **Tech Stack:** TypeScript 5.9, Phaser 3.90, Cloudflare Workers Analytics Engine, Vitest.
 
@@ -510,6 +510,12 @@ git commit -m "refactor(logging): extract the four run:end emit sites into one h
 ### Task 5: Roll pickups into the `run:end` payload
 
 Every log entry is one `writeDataPoint`. `pickup:grab` fires once per grab, many times per run — with analytics default-on it becomes the single largest consumer of the AE quota. Folding a per-run tally into the `run:end` event that already fires costs **zero additional data points**.
+
+This cuts per-run cost, but it does not offset default-on: default-on multiplies
+the participating player count by one to two orders of magnitude, which
+dominates the ~60% per-run reduction this task buys. This task reduces the
+size of the increase; it does not pay for it. Watch actual AE data points for a
+week after release before deciding whether the $5 paid tier is needed.
 
 **Files:**
 - Create: `src/systems/pickupTally.ts`
