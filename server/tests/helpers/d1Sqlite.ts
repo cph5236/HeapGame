@@ -30,7 +30,9 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof
 // annotation below.
 type DatabaseSync = InstanceType<typeof DatabaseSync>;
 
-const SCHEMA_PATH = join(__dirname, '../../schema/heap_core.sql');
+const SCHEMA_DIR = join(__dirname, '../../schema');
+
+export type TestSchema = 'heap_core' | 'heap_scores' | 'heap_rewards' | 'heap_telemetry';
 
 interface PreparedLike {
   sql: string;
@@ -96,13 +98,13 @@ class TestStatement {
 }
 
 /**
- * A fresh in-memory database with the production heap_core schema applied.
+ * A fresh in-memory database with a production schema applied.
  * Reading the real .sql file (rather than restating the DDL here) is what keeps
  * these tests from drifting away from production when a column is added.
  */
-export function createTestD1(): D1Database {
+export function createTestD1(schema: TestSchema = 'heap_core'): D1Database {
   const db = new DatabaseSync(':memory:');
-  db.exec(readFileSync(SCHEMA_PATH, 'utf8'));
+  db.exec(readFileSync(join(SCHEMA_DIR, `${schema}.sql`), 'utf8'));
 
   const api = {
     prepare(sql: string) {
