@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { HttpAeClient } from '../src/platform/analytics/aeClient';
+import { HttpAeClient, bindParams } from '../src/platform/analytics/aeClient';
 
 function fakeFetch(body: unknown, status = 200) {
   return vi.fn(async () => new Response(JSON.stringify(body), {
@@ -39,5 +39,49 @@ describe('HttpAeClient', () => {
       .rejects.toThrow(/bad sql/);
     await expect(new HttpAeClient('a', 'sekrit', f).query('SELECT bogus', []))
       .rejects.not.toThrow(/sekrit/);
+  });
+
+  it('posts raw SQL text, not a JSON {query, parameters} envelope', async () => {
+    // The SQL API has NO parameter-binding form: POSTing {query, parameters}
+    // is rejected with "Expected an SQL statement, found: {" (verified against
+    // the live API). If this ever regresses to a JSON body, every query 422s.
+    const f = fakeFetch({ data: [] });
+    await new HttpAeClient('a', 't', f).query('SELECT ? AS x', ['hi']);
+    const [, init] = (f as any).mock.calls[0];
+    expect(init.headers['Content-Type']).toBe('text/plain');
+    expect(init.body).toBe("SELECT 'hi' AS x");
+    expect(() => JSON.parse(init.body)).toThrow();
+  });
+});
+
+describe('bindParams', () => {
+  it('substitutes positionally, quoting strings and emitting bare numbers', () => {
+    expect(bindParams('SELECT ? , ? , ?', ['a', 2, 'c'])).toBe("SELECT 'a' , 2 , 'c'");
+  });
+
+  it('rejects a placeholder/param count mismatch rather than mis-binding', () => {
+    expect(() => bindParams('SELECT ?, ?', ['only-one'])).toThrow(/placeholders/);
+    expect(() => bindParams('SELECT ?', ['a', 'b'])).toThrow(/placeholders/);
+  });
+
+  it('rejects quotes and backslashes instead of trying to escape them', () => {
+    // The dialect refuses to parse ANY string literal containing these, so
+    // there is no escape sequence to get right. Rejecting is the whole of the
+    // injection defence: a value that cannot contain a quote cannot terminate
+    // a literal.
+    expect(() => bindParams('WHERE index1 = ?', ["a' OR '1'='1"])).toThrow(/quote or backslash/);
+    expect(() => bindParams('WHERE index1 = ?', ['a\\b'])).toThrow(/quote or backslash/);
+  });
+
+  it('rejects control characters', () => {
+    expect(() => bindParams('WHERE index1 = ?', ['a\nb'])).toThrow(/control character/);
+    expect(() => bindParams('WHERE index1 = ?', ['a\u0000b'])).toThrow(/control character/);
+  });
+
+  it('rejects non-finite numbers and non-scalar params', () => {
+    expect(() => bindParams('LIMIT ?', [NaN])).toThrow(/non-finite/);
+    expect(() => bindParams('LIMIT ?', [Infinity])).toThrow(/non-finite/);
+    expect(() => bindParams('LIMIT ?', [{} as never])).toThrow(/string or number/);
+    expect(() => bindParams('LIMIT ?', [null as never])).toThrow(/string or number/);
   });
 });

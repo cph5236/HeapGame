@@ -5,16 +5,42 @@
 // and the only thing standing between a caller and arbitrary use of it is that
 // every query is built here from allowlisted inputs.
 //
-// AE SQL constraints these queries are written around (see the plan's Global
-// Constraints, and .github/workflows/fetch-logs.yml which learned two of them
-// the hard way):
-//   * No JOIN, no UNION. Single table. Subqueries in FROM are supported, which
-//     is how the per-player aggregations below work.
-//   * `double1` is SELECTable but cannot appear in WHERE or ORDER BY. The auto
-//     `timestamp` column is the reverse. So: filter on timestamp, output/order
-//     on double1.
-//   * No JSON functions — which is why Plan 2 promoted the run facts into
-//     double2..double6 and blob8 instead of leaving them in the payload blob.
+// ─── AE SQL dialect: what is actually true ───────────────────────────────────
+// Every line below was verified empirically against the real SQL API on
+// 2026-09-21 (staging dataset). Several beliefs this file was originally
+// written around turned out to be WRONG; they are called out so nobody
+// reinstates them from the old comments or from fetch-logs.yml.
+//
+// Verified SUPPORTED:
+//   * Subqueries in FROM, nested arbitrarily. This is the only composition
+//     tool — there is still no JOIN and no UNION.
+//   * `if(cond, a, b)`, including nesting. Both branches must have the SAME
+//     type: `if(c, blob8, NULL)` is rejected, `if(c, blob8, '')` is fine.
+//   * `countIf`, `sumIf`, `avgIf`, `argMin`, `argMax`, `count(DISTINCT x)`,
+//     `quantileExactWeighted(q)(x, w)`.
+//   * `toDateTime('YYYY-MM-DD HH:MM:SS')` — also accepts a `T` separator, but
+//     NOT fractional seconds and NOT a trailing `Z`. It also accepts a numeric
+//     epoch-seconds argument, including a DOUBLE.
+//   * `formatDateTime(toDateTime(<double>), '%Y-%m-%d')`.
+//   * `double1` in WHERE, and the auto `timestamp` column in SELECT.
+//
+// Verified NOT supported — do not reach for these:
+//   * `multiIf`, `argMinIf`, `minIf`, `maxIf`, `uniq`, `toUInt64`.
+//   * `CASE WHEN … THEN … END` (use nested `if`).
+//   * `toDate()` on a DOUBLE — it rejects the type outright.
+//   * JSON functions of any kind. This is why Plan 2 promoted the run facts
+//     into double2..double6 and blob8 rather than leaving them in the payload.
+//   * **Bound parameters.** POSTing `{query, parameters}` is rejected with
+//     "Expected an SQL statement". The API takes raw SQL text only, so values
+//     are substituted locally — see `bindParams` in aeClient.ts, which is the
+//     single audited place that happens.
+//
+// CORRECTED, previously believed and wrong: `double1` was documented here as
+// unusable in WHERE/ORDER BY, and the auto `timestamp` column as unusable in
+// SELECT. Both are false — each was probed directly and works. The queries
+// below still filter on `timestamp` and order on a SELECT alias, because that
+// is genuinely better (timestamp is the indexed column, and ordering by alias
+// reads more clearly), but NOT because the alternative is forbidden.
 //
 // Column map (fixed by AnalyticsEngineSink.ts):
 //   index1  = player id            blob5 = sessionId
@@ -45,9 +71,61 @@ export interface TraceRow {
   platform: string; appVersion: string; sessionId: string; payload: string;
 }
 
+/**
+ * ISO-8601 (`2026-09-21T00:00:00.000Z`) to the only shape `toDateTime()`
+ * accepts (`2026-09-21 00:00:00`). Fractional seconds and the trailing `Z`
+ * are both rejected by the dialect, so they are dropped here rather than at
+ * the call sites.
+ *
+ * The window is always UTC — `toISOString()` is UTC and AE stores UTC — so
+ * this is a pure reformat, not a timezone conversion.
+ */
+export function aeDateTime(iso: string): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) throw new Error(`aeDateTime: unparseable timestamp: ${iso}`);
+  return new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
+}
+
 /** `?` placeholders for a list of ids, as positional params. */
 function idPlaceholders(n: number): string {
   return Array.from({ length: n }, () => '?').join(', ');
+}
+
+/**
+ * `argMinIf(value, orderBy, cond)` does not exist in this dialect. This builds
+ * the equivalent from two `if`s: rows failing `cond` are pushed to an
+ * unreachable sort position, so `argMin` can never select one.
+ *
+ * `SENTINEL` is larger than any plausible millisecond client timestamp
+ * (~year 33658), so a matching row always sorts first. It is written as a
+ * DECIMAL literal, not scientific notation and not a bare integer: the parser
+ * rejects `1e18`, and `if()` rejects branches of differing type, so an integer
+ * literal beside the DOUBLE `double1` is refused too.
+ *
+ * `fallback` must have the SAME TYPE as `value` — the dialect rejects an
+ * `if` whose branches disagree, which is why `NULL` cannot be used here.
+ * When a player has no matching row at all, every candidate ties at the
+ * sentinel and the expression yields `fallback`. Callers must therefore treat
+ * `fallback` as "no such row" rather than as a real measurement — the crosstab
+ * does this with an explicit `ends = 0` guard.
+ */
+function argMinWhere(value: string, orderBy: string, cond: string, fallback: string): string {
+  // The `.5` is load-bearing, not a typo. A numeric literal whose fractional
+  // part is zero is parsed as UInt64 REGARDLESS of how it is written —
+  // `999999999999999.0` comes back typed UInt64 — and `if()` then rejects it
+  // beside the DOUBLE `double1` with an opaque "type error". A literal with a
+  // non-zero fraction stays Float64 at any magnitude. Verified against the live
+  // API; no unit test against a stub client can catch a regression here.
+  //
+  // 99999999999999.5 ms is ~year 5138, comfortably past any real timestamp.
+  const SENTINEL = '99999999999999.5';
+  return `argMin(if(${cond}, ${value}, ${fallback}), if(${cond}, ${orderBy}, ${SENTINEL}))`;
+}
+
+/** A day label (`YYYY-MM-DD`) from a millisecond client timestamp. */
+function dayOf(expr: string): string {
+  // `toDate()` rejects a DOUBLE outright, so go via toDateTime + formatDateTime.
+  return `formatDateTime(toDateTime(${expr} / 1000), '%Y-%m-%d')`;
 }
 
 /**
@@ -75,47 +153,76 @@ export function funnelQuery(
     FROM (
       SELECT
         index1 AS player,
-        SUM(_sample_interval * (blob2 = 'run:start')) AS starts,
-        SUM(_sample_interval * (blob2 = 'run:end'))   AS ends,
-        toDate(min(double1) / 1000) AS firstDay,
-        toDate(max(double1) / 1000) AS lastDay,
+        sumIf(_sample_interval, blob2 = 'run:start') AS starts,
+        sumIf(_sample_interval, blob2 = 'run:end')   AS ends,
+        ${dayOf('min(double1)')} AS firstDay,
+        ${dayOf('max(double1)')} AS lastDay,
         max(_sample_interval) AS si
       FROM ${dataset}
       WHERE timestamp >= toDateTime(?) AND timestamp < toDateTime(?)
         AND index1 IN (${idPlaceholders(playerIds.length)})
       GROUP BY player
     )`;
-  return { sql, params: [since, until, ...playerIds] };
+  return { sql, params: [aeDateTime(since), aeDateTime(until), ...playerIds] };
 }
 
-/** The per-dimension bucket expression, evaluated on each player's FIRST run. */
+/** Per-player aggregate expressions, inlined rather than aliased — see below. */
+const EVENTS = (type: string) => `sumIf(_sample_interval, blob2 = '${type}')`;
+const ENDS = EVENTS('run:end');
+/** The value of `col` on the player's FIRST `run:end`, or `fallback` if none. */
+const FIRST_OF_RUN = (col: string, fallback: string) =>
+  argMinWhere(col, 'double1', `blob2 = 'run:end'`, fallback);
+
+/**
+ * The per-dimension bucket expression, evaluated on each player's FIRST run.
+ *
+ * **Everything here is inlined rather than referencing a SELECT alias.** The
+ * dialect rejects a subquery nested inside a subquery ("cannot nest subqueries
+ * inside subqueries"), so the natural three-level shape — derive per-player
+ * facts, label them, aggregate the labels — is not available. Collapsing to two
+ * levels means the bucket expression cannot refer to aliases defined beside it,
+ * so it repeats the aggregate expressions in full. That is why this reads
+ * verbosely; it is a dialect limit, not a style choice.
+ *
+ * The four first-run dimensions are guarded by `<ends> = 0`: a player who never
+ * finished a run has no first run to describe, and `argMinWhere`'s fallback
+ * would otherwise land them in the lowest bucket ('0-15s', score '0-100') as
+ * though they had finished a very bad run. That would inflate exactly the
+ * bucket the churn analysis cares most about.
+ */
 function bucketExpr(dimension: CrosstabDimension): string {
+  const noRun = (inner: string) => `if(${ENDS} = 0, 'no finished run', ${inner})`;
+  const dur = FIRST_OF_RUN('double5', '0.0');
+  const hgt = FIRST_OF_RUN('double3', '0.0');
+  const scr = FIRST_OF_RUN('double2', '0.0');
   switch (dimension) {
-    case 'duration':
-      // double5 = durationMs on the first run:end
-      return `multiIf(firstDuration < 15000, '0-15s',
-                      firstDuration < 45000, '15-45s',
-                      firstDuration < 120000, '45-120s', '120s+')`;
+    case 'duration':  // double5 = durationMs on the first run:end
+      return noRun(`if(${dur} < 15000, '0-15s',
+                    if(${dur} < 45000, '15-45s',
+                    if(${dur} < 120000, '45-120s', '120s+')))`);
     case 'height':
-      return `multiIf(firstHeight < 100, '0-100', firstHeight < 500, '100-500',
-                      firstHeight < 2000, '500-2000', '2000+')`;
+      return noRun(`if(${hgt} < 100, '0-100',
+                    if(${hgt} < 500, '100-500',
+                    if(${hgt} < 2000, '500-2000', '2000+')))`);
     case 'score':
-      return `multiIf(firstScore < 100, '0-100', firstScore < 1000, '100-1000',
-                      firstScore < 5000, '1000-5000', '5000+')`;
-    case 'cause':       return 'firstCause';
-    case 'platform':    return 'platform';
-    case 'appVersion':  return 'appVersion';
-    case 'placed':      return `if(placements > 0, 'placed', 'never placed')`;
-    case 'submitted':   return `if(submissions > 0, 'submitted', 'never submitted')`;
+      return noRun(`if(${scr} < 100, '0-100',
+                    if(${scr} < 1000, '100-1000',
+                    if(${scr} < 5000, '1000-5000', '5000+')))`);
+    case 'cause':       return noRun(FIRST_OF_RUN('blob8', `''`));
+    case 'platform':    return 'argMin(blob3, double1)';
+    case 'appVersion':  return 'argMin(blob4, double1)';
+    case 'placed':      return `if(${EVENTS('placement:made')} > 0, 'placed', 'never placed')`;
+    case 'submitted':   return `if(${EVENTS('score:submitted')} > 0, 'submitted', 'never submitted')`;
   }
 }
 
 /**
  * Run-2 rate split by a characteristic of the player's FIRST run.
  *
- * Three levels, because AE has no JOIN and an alias cannot be referenced in the
- * SELECT that defines it: innermost derives each player's facts, the middle
- * layer turns those into a bucket label, the outer layer aggregates by bucket.
+ * Two levels only: the inner query produces one row per player carrying their
+ * bucket label and run count, the outer aggregates those rows by bucket. A
+ * third level would be more readable but the dialect forbids it (see
+ * `bucketExpr`).
  */
 export function crosstabQuery(
   dataset: string, dimension: CrosstabDimension,
@@ -124,39 +231,27 @@ export function crosstabQuery(
   const sql = `
     SELECT bucket, count() AS cohort, countIf(starts >= 2) AS returned, max(si) AS _sample_interval
     FROM (
-      SELECT ${bucketExpr(dimension)} AS bucket, starts, si
-      FROM (
-        SELECT
-          index1 AS player,
-          SUM(_sample_interval * (blob2 = 'run:start')) AS starts,
-          SUM(_sample_interval * (blob2 = 'placement:made')) AS placements,
-          SUM(_sample_interval * (blob2 = 'score:submitted')) AS submissions,
-          argMinIf(double5, double1, blob2 = 'run:end') AS firstDuration,
-          argMinIf(double3, double1, blob2 = 'run:end') AS firstHeight,
-          argMinIf(double2, double1, blob2 = 'run:end') AS firstScore,
-          argMinIf(blob8,  double1, blob2 = 'run:end') AS firstCause,
-          argMin(blob3, double1) AS platform,
-          argMin(blob4, double1) AS appVersion,
-          max(_sample_interval) AS si
-        FROM ${dataset}
-        WHERE timestamp >= toDateTime(?) AND timestamp < toDateTime(?)
-          AND index1 IN (${idPlaceholders(playerIds.length)})
-        GROUP BY player
-      )
+      SELECT
+        ${bucketExpr(dimension)} AS bucket,
+        ${EVENTS('run:start')} AS starts,
+        max(_sample_interval) AS si
+      FROM ${dataset}
+      WHERE timestamp >= toDateTime(?) AND timestamp < toDateTime(?)
+        AND index1 IN (${idPlaceholders(playerIds.length)})
+      GROUP BY index1
     )
     GROUP BY bucket
     ORDER BY bucket`;
-  return { sql, params: [since, until, ...playerIds] };
+  return { sql, params: [aeDateTime(since), aeDateTime(until), ...playerIds] };
 }
 
 /** Every event for one player, newest first. */
 export function traceQuery(
   dataset: string, playerId: string, since: string, until: string, limit: number,
 ): { sql: string; params: (string | number)[] } {
-  // Ordering is on double1 (the client timestamp) because the auto `timestamp`
-  // column cannot be SELECTed and double1 cannot be used in ORDER BY... so the
-  // SELECT aliases it first and orders by the alias. fetch-logs.yml does the
-  // same thing for the same reason.
+  // Ordering goes through the `ts` SELECT alias rather than repeating the
+  // expression. (`double1` in ORDER BY would also work — see the header note
+  // correcting the original claim that it would not.)
   const sql = `
     SELECT
       double1 AS ts,
@@ -168,5 +263,5 @@ export function traceQuery(
       AND index1 = ?
     ORDER BY ts DESC
     LIMIT ?`;
-  return { sql, params: [since, until, playerId, limit] };
+  return { sql, params: [aeDateTime(since), aeDateTime(until), playerId, limit] };
 }
