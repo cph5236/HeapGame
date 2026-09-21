@@ -21,12 +21,23 @@ function coerceStr(v: unknown, max = 1024): string {
 function coerceMetrics(v: unknown): LogEntry['metrics'] {
   if (!v || typeof v !== 'object') return undefined;
   const m = v as Record<string, unknown>;
-  const doubles = Array.isArray(m.doubles)
-    ? m.doubles.filter((n): n is number => typeof n === 'number' && Number.isFinite(n)).slice(0, 8)
-    : undefined;
-  const blobs = Array.isArray(m.blobs)
-    ? m.blobs.filter((s): s is string => typeof s === 'string').map((s) => coerceStr(s, 64)).slice(0, 4)
-    : undefined;
+
+  // REJECT the whole object on a bad element — never filter it out. These
+  // arrays are POSITIONAL: the sink appends them after the fixed columns, so
+  // doubles[0] is double2, doubles[1] is double3, and so on (see
+  // shared/logging/aeProjection.ts). Dropping one bad element shifts every
+  // later value one column left, which writes silently and cannot be undone
+  // afterwards — a non-finite durationMs would leave pickupBonus sitting in
+  // double5, which is exactly the column the crosstab's `duration` dimension
+  // reads. Discarding one entry's promoted columns is cheap; corrupting the
+  // dataset is not. Same posture as `bindParams` in aeClient.ts.
+  const rawDoubles = Array.isArray(m.doubles) ? m.doubles.slice(0, 8) : undefined;
+  if (rawDoubles?.some((n) => typeof n !== 'number' || !Number.isFinite(n))) return undefined;
+  const rawBlobs = Array.isArray(m.blobs) ? m.blobs.slice(0, 4) : undefined;
+  if (rawBlobs?.some((s) => typeof s !== 'string')) return undefined;
+
+  const doubles = rawDoubles as number[] | undefined;
+  const blobs = (rawBlobs as string[] | undefined)?.map((s) => coerceStr(s, 64));
   if (!doubles?.length && !blobs?.length) return undefined;
   return { doubles, blobs };
 }
