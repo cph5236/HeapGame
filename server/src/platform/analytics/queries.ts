@@ -92,15 +92,33 @@ function idPlaceholders(n: number): string {
 }
 
 /**
+ * A sort position no real row can occupy, used to make `argMin` ignore rows
+ * that fail a condition.
+ *
+ * The `.5` is load-bearing, not a typo. A numeric literal whose fractional
+ * part is zero is parsed as UInt64 REGARDLESS of how it is written —
+ * `999999999999999.0` comes back typed UInt64 — and `if()` then rejects it
+ * beside the DOUBLE `double1` with an opaque "type error". A literal with a
+ * non-zero fraction stays Float64 at any magnitude. Verified against the live
+ * API; no unit test against a stub client can catch a regression here.
+ *
+ * 99999999999999.5 ms is ~year 5138, comfortably past any real timestamp.
+ */
+const SENTINEL = '99999999999999.5';
+
+/**
+ * The `argMaxWhere` counterpart to SENTINEL: non-matching rows must sort BELOW
+ * every real row, and a millisecond client timestamp is always positive, so
+ * zero is already an unreachable floor. Deliberately NOT `-${SENTINEL}`: a
+ * unary minus on a literal is a parser shape this dialect has never been probed
+ * for, and there is nothing to gain by being the one to find out.
+ */
+const ORDER_FLOOR = '0.0';
+
+/**
  * `argMinIf(value, orderBy, cond)` does not exist in this dialect. This builds
  * the equivalent from two `if`s: rows failing `cond` are pushed to an
  * unreachable sort position, so `argMin` can never select one.
- *
- * `SENTINEL` is larger than any plausible millisecond client timestamp
- * (~year 33658), so a matching row always sorts first. It is written as a
- * DECIMAL literal, not scientific notation and not a bare integer: the parser
- * rejects `1e18`, and `if()` rejects branches of differing type, so an integer
- * literal beside the DOUBLE `double1` is refused too.
  *
  * `fallback` must have the SAME TYPE as `value` — the dialect rejects an
  * `if` whose branches disagree, which is why `NULL` cannot be used here.
@@ -110,16 +128,15 @@ function idPlaceholders(n: number): string {
  * does this with an explicit `ends = 0` guard.
  */
 function argMinWhere(value: string, orderBy: string, cond: string, fallback: string): string {
-  // The `.5` is load-bearing, not a typo. A numeric literal whose fractional
-  // part is zero is parsed as UInt64 REGARDLESS of how it is written —
-  // `999999999999999.0` comes back typed UInt64 — and `if()` then rejects it
-  // beside the DOUBLE `double1` with an opaque "type error". A literal with a
-  // non-zero fraction stays Float64 at any magnitude. Verified against the live
-  // API; no unit test against a stub client can catch a regression here.
-  //
-  // 99999999999999.5 ms is ~year 5138, comfortably past any real timestamp.
-  const SENTINEL = '99999999999999.5';
   return `argMin(if(${cond}, ${value}, ${fallback}), if(${cond}, ${orderBy}, ${SENTINEL}))`;
+}
+
+/**
+ * The `argMax` mirror of `argMinWhere` — same construction, same caveats, with
+ * non-matching rows pushed to the BOTTOM of the ordering instead of the top.
+ */
+function argMaxWhere(value: string, orderBy: string, cond: string, fallback: string): string {
+  return `argMax(if(${cond}, ${value}, ${fallback}), if(${cond}, ${orderBy}, ${ORDER_FLOOR}))`;
 }
 
 /** A day label (`YYYY-MM-DD`) from a millisecond client timestamp. */
@@ -129,10 +146,31 @@ function dayOf(expr: string): string {
 }
 
 /**
+ * Rows that represent the player DOING something, as opposed to something going
+ * wrong around them.
+ *
+ * `RemoteLogger.event()` is gated on the analytics opt-out, but `error()` and
+ * `warn()` are NOT — diagnostics are sent regardless, and they land in this
+ * same dataset carrying the same `double1` client timestamp. So any activity
+ * measure built from unfiltered `double1` silently counts crash reports as
+ * engagement. See `src/logging/RemoteLogger.ts`.
+ */
+const GAMEPLAY = `blob1 = 'event'`;
+
+/**
  * Per-player stage counts for a cohort.
  *
  * Inner query: one row per player, with their run counts and first/last activity.
  * Outer query: how many players cleared each stage.
+ *
+ * `firstDay`/`lastDay` — and therefore `returnedLater` — are computed over
+ * GAMEPLAY rows only. With a bare `min(double1)`/`max(double1)` a player who
+ * never started a run but whose client threw errors on two different days
+ * counted as having returned, inflating exactly the stage a churn analysis
+ * leans on hardest. There is no `minIf`/`maxIf` in this dialect, which is why
+ * the conditional extremes go through argMin/argMaxWhere. A player with no
+ * gameplay rows at all lands on the shared `0.0` fallback for both, so
+ * `lastDay > firstDay` is correctly false rather than accidentally true.
  *
  * Event counts use SUM(_sample_interval) so they stay correct under sampling.
  * The outer counts are counts of OBSERVED players — exact while
@@ -155,8 +193,8 @@ export function funnelQuery(
         index1 AS player,
         sumIf(_sample_interval, blob2 = 'run:start') AS starts,
         sumIf(_sample_interval, blob2 = 'run:end')   AS ends,
-        ${dayOf('min(double1)')} AS firstDay,
-        ${dayOf('max(double1)')} AS lastDay,
+        ${dayOf(argMinWhere('double1', 'double1', GAMEPLAY, '0.0'))} AS firstDay,
+        ${dayOf(argMaxWhere('double1', 'double1', GAMEPLAY, '0.0'))} AS lastDay,
         max(_sample_interval) AS si
       FROM ${dataset}
       WHERE timestamp >= toDateTime(?) AND timestamp < toDateTime(?)

@@ -157,6 +157,23 @@ describe('AE dialect invariants', () => {
     }
   });
 
+  it('measures the funnel day-span over gameplay rows only', () => {
+    // `error`/`warn` bypass the analytics opt-out and land in this dataset with
+    // the same double1 timestamp as events, so a bare min/max(double1) counted
+    // a player whose client merely crashed on two days as having "returned".
+    // Both extremes must therefore be conditional — and there is no minIf/maxIf
+    // in this dialect, hence argMin/argMax with an unreachable sort position.
+    const { sql } = funnelQuery('heap_logs', IDS, SINCE, UNTIL);
+    expect(sql).not.toMatch(/\bmin\(double1\)/);
+    expect(sql).not.toMatch(/\bmax\(double1\)/);
+    for (const day of ['firstDay', 'lastDay']) {
+      const expr = sql.slice(0, sql.indexOf(`AS ${day}`));
+      expect(expr.slice(expr.lastIndexOf('formatDateTime'))).toContain(`blob1 = 'event'`);
+    }
+    // The argMax ordering floor must stay positive-side; see ORDER_FLOOR.
+    expect(sql).not.toContain('-99999999999999');
+  });
+
   it('gives players with no finished run their own bucket', () => {
     // argMinWhere's fallback is 0 / '' for a player with no run:end. Without
     // the guard they would land in the lowest bucket ('0-15s', '0-100') and
