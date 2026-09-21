@@ -13,6 +13,7 @@ import type { AeClient } from '../analytics/aeClient';
 import type { MetricsDB } from '../metricsDb';
 import { AE_DATASET, MAX_ID_LEN } from '../../constants';
 import { parseWindow } from './timeWindow';
+import { userGuidIndex } from '../logging/AnalyticsEngineSink';
 import {
   funnelQuery, crosstabQuery, traceQuery, isCrosstabDimension,
   type FunnelStages, type CrosstabRow, type TraceRow, CROSSTAB_DIMENSIONS,
@@ -44,7 +45,11 @@ async function loadCohort(
     if (page.nextCursor === null) break;
     cursor = page.nextCursor;
   }
-  return ids.slice(0, MAX_COHORT_PLAYERS);
+  // D1's player_auth.player_id keeps its hyphens; AE's index1 does not (the
+  // sink strips them). Map here, at the one boundary where D1 ids become AE
+  // query inputs, or `index1 IN (...)` silently matches nothing for every
+  // GUID player and both cohort views read as "no data" forever.
+  return ids.slice(0, MAX_COHORT_PLAYERS).map(userGuidIndex);
 }
 
 function chunk<T>(xs: T[], size: number): T[][] {
@@ -159,7 +164,11 @@ export function analyticsRoutes(ae: AeClient, metricsDb: MetricsDB): Hono {
       ? Math.max(1, Math.min(MAX_TRACE_LIMIT, Math.floor(raw)))
       : DEFAULT_TRACE_LIMIT;
 
-    const { sql, params } = traceQuery(AE_DATASET, playerId, w.since, w.until, limit);
+    // Accept the hyphenated id an operator copies out of D1 or the admin
+    // players table, and map it to the AE index form the events carry.
+    const { sql, params } = traceQuery(
+      AE_DATASET, userGuidIndex(playerId), w.since, w.until, limit,
+    );
     const res = await ae.query<TraceRow>(sql, params);
 
     return c.json({

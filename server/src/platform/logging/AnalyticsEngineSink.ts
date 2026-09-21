@@ -16,7 +16,15 @@ import type { Sink, StampedLogEntry } from './Sink';
  */
 const MAX_INDEX_BYTES = 96;
 
-function userGuidIndex(playerId: string): string {
+/**
+ * The AE `index1` form of a player id.
+ *
+ * EXPORTED because it is a join key, not a private detail. `player_auth.player_id`
+ * in D1 keeps its hyphens; `index1` does not. Any query that filters AE by ids
+ * taken from D1 must map them through this first, or it matches nothing at all
+ * for every GUID player — see `server/src/platform/routes/analytics.ts`.
+ */
+export function userGuidIndex(playerId: string): string {
   return playerId.replace(/-/g, '').slice(0, MAX_INDEX_BYTES);
 }
 

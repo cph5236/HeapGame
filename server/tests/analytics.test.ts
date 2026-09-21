@@ -176,3 +176,39 @@ describe('GET /analytics/trace', () => {
     expect(ae.calls[0].params).toContain('p1');
   });
 });
+
+describe('D1 -> AE join key', () => {
+  // player_auth.player_id keeps its hyphens; AE's index1 has them stripped by
+  // AnalyticsEngineSink. If the two are not reconciled, `index1 IN (...)`
+  // matches nothing for every GUID player and the funnel/crosstab read as
+  // "no data" forever — a silent wrong answer, never an error. Found in real
+  // staging use, where the trace returned 0 events for a player who had just
+  // played several runs.
+  const GUID = '354691f8-2493-4e97-96df-a3233e4865ba';
+  const INDEXED = '354691f824934e9796dfa3233e4865ba';
+
+  it('strips hyphens from cohort ids before they reach the AE query', async () => {
+    const { app, ae, metricsDb } = makeApp();
+    metricsDb.cohortPage = { playerIds: [GUID], nextCursor: null };
+    ae.rows = [{ cohort: 1 }];
+
+    await app.request('/analytics/funnel', { headers: ADMIN });
+    expect(ae.calls[0].params).toContain(INDEXED);
+    expect(ae.calls[0].params).not.toContain(GUID);
+  });
+
+  it('strips hyphens from a trace playerId too', async () => {
+    const { app, ae } = makeApp();
+    await app.request('/analytics/trace?playerId=' + encodeURIComponent(GUID), { headers: ADMIN });
+    expect(ae.calls[0].params).toContain(INDEXED);
+    expect(ae.calls[0].params).not.toContain(GUID);
+  });
+
+  it('leaves a non-UUID (GPGS) id untouched', async () => {
+    // A Google Play Games id is opaque and contains no hyphens, so the mapping
+    // must be a no-op rather than mangling it.
+    const { app, ae } = makeApp();
+    await app.request('/analytics/trace?playerId=g1234567890', { headers: ADMIN });
+    expect(ae.calls[0].params).toContain('g1234567890');
+  });
+});
