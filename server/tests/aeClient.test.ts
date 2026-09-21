@@ -41,6 +41,26 @@ describe('HttpAeClient', () => {
       .rejects.not.toThrow(/sekrit/);
   });
 
+  it('invokes fetch with globalThis as its receiver, not the client instance', async () => {
+    // Regression: `fetch` stored as a property and called as `this.fetchImpl(...)`
+    // receives the HttpAeClient as `this`, and the Workers runtime rejects that
+    // with "Illegal invocation: function called with incorrect `this` reference".
+    // It surfaces ONLY in the real runtime — a vi.fn() mock ignores its receiver
+    // and Node's fetch is lenient — so this asserts the receiver directly.
+    let receiver: unknown = 'never called';
+    // A non-arrow function, so it observes its own `this`.
+    const picky = function (this: unknown) {
+      receiver = this;
+      return Promise.resolve(new Response(JSON.stringify({ data: [] }), { status: 200 }));
+    } as unknown as typeof fetch;
+
+    const client = new HttpAeClient('a', 't', picky);
+    await client.query('SELECT 1', []);
+
+    expect(receiver).not.toBe(client);
+    expect(receiver).toBe(globalThis);
+  });
+
   it('posts raw SQL text, not a JSON {query, parameters} envelope', async () => {
     // The SQL API has NO parameter-binding form: POSTing {query, parameters}
     // is rejected with "Expected an SQL statement, found: {" (verified against

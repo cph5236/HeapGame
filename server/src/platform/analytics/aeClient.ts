@@ -75,11 +75,23 @@ export interface AeClient {
 }
 
 export class HttpAeClient implements AeClient {
+  private readonly fetchImpl: typeof fetch;
+
   constructor(
     private accountId: string,
     private token: string,
-    private fetchImpl: typeof fetch = fetch,
-  ) {}
+    fetchImpl: typeof fetch = fetch,
+  ) {
+    // `.bind(globalThis)` is load-bearing. `fetch` must be invoked with
+    // globalThis as its receiver; storing it as a property and calling
+    // `this.fetchImpl(...)` sets `this` to this instance instead, and the
+    // Workers runtime rejects that at request time with:
+    //   "Illegal invocation: function called with incorrect `this` reference"
+    // Neither unit tests nor local Node catch this — a vi.fn() mock does not
+    // care about its receiver, and Node's fetch is lenient. It only fails in
+    // the real Workers runtime, which is where it was found.
+    this.fetchImpl = fetchImpl.bind(globalThis);
+  }
 
   async query<R>(sql: string, params: (string | number)[]): Promise<AeQueryResult<R>> {
     const url = `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/analytics_engine/sql`;
