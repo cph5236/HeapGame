@@ -175,6 +175,17 @@ const GAMEPLAY = `blob1 = 'event'`;
  * Event counts use SUM(_sample_interval) so they stay correct under sampling.
  * The outer counts are counts of OBSERVED players — exact while
  * _sample_interval is 1, which is why the result carries it.
+ *
+ * **Per-player stage classification is unreliable once AE samples, and this is
+ * not fixable here.** `starts`/`ends` are weighted sums, so a single stored row
+ * carrying a weight of 3 can push a player who started one run into the
+ * `starts >= 3` stage. Counting rows instead does not fix it — it trades that
+ * false positive for a false negative, because the player's other rows were
+ * dropped before the query ever ran. Sampling loses the per-player detail these
+ * thresholds need, whichever way the sum is spelled. The weighted form is kept
+ * because it is at least unbiased in aggregate, and the result carries
+ * `_sample_interval` so the admin UI can warn when it exceeds 1. Both spellings
+ * are identical while it equals 1, which is the regime this dataset is in today.
  */
 export function funnelQuery(
   dataset: string, playerIds: string[], since: string, until: string,
