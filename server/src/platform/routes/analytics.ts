@@ -15,7 +15,7 @@ import { AE_DATASET, MAX_ID_LEN } from '../../constants';
 import { parseWindow } from './timeWindow';
 import { userGuidIndex } from '../logging/AnalyticsEngineSink';
 import {
-  funnelQuery, crosstabQuery, traceQuery, isCrosstabDimension,
+  funnelQuery, crosstabQuery, traceQuery, isCrosstabDimension, compareBuckets,
   type FunnelStages, type CrosstabRow, type TraceRow, CROSSTAB_DIMENSIONS,
 } from '../analytics/queries';
 
@@ -141,7 +141,7 @@ export function analyticsRoutes(ae: AeClient, metricsDb: MetricsDB): Hono {
 
     const rows = [...byBucket.entries()]
       .map(([bucket, v]) => ({ bucket, ...v }))
-      .sort((a, b) => a.bucket.localeCompare(b.bucket));
+      .sort((a, b) => compareBuckets(dimension, a.bucket, b.bucket));
 
     return c.json({
       dimension, rows, since: w.since, until: w.until,

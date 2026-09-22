@@ -117,6 +117,23 @@ describe('save/core — mergeCloudSave keeps the write-auth secret', () => {
     expect(mergeCloudSave(base({ balance: 1, playerName: 'Local' }), base({ balance: 9, playerName: 'Cloud' })).playerName).toBe('Cloud');
     expect(mergeCloudSave(base({ balance: 9, playerName: 'Local' }), base({ balance: 1, playerName: 'Cloud' })).playerName).toBe('Local');
   });
+
+  // Analytics is opt-OUT, so `undefined` reads as "on" downstream
+  // (getVerboseLogging's `?? true`). A fresh install has no local value, which
+  // makes the cloud fallback the only thing standing between a reinstall and
+  // silently re-enabling analytics for someone who turned them off.
+  it('recovers an analytics opt-out from the cloud on a fresh install', () => {
+    expect(mergeCloudSave(base(), base({ verboseLogging: false })).verboseLogging).toBe(false);
+  });
+
+  it('lets a local analytics choice win over the cloud', () => {
+    expect(mergeCloudSave(base({ verboseLogging: true }), base({ verboseLogging: false })).verboseLogging).toBe(true);
+    expect(mergeCloudSave(base({ verboseLogging: false }), base({ verboseLogging: true })).verboseLogging).toBe(false);
+  });
+
+  it('leaves it unset when neither side has one', () => {
+    expect(mergeCloudSave(base(), base()).verboseLogging).toBeUndefined();
+  });
 });
 
 describe('save/core — reaching past the barrel cannot silently truncate a save', () => {

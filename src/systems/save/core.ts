@@ -258,7 +258,13 @@ function mergeCore(local: RawSave, cloud: RawSave): CoreSave {
     playerSecret:  local.playerSecret ?? cloud.playerSecret,
     playerName:    pickPrimary(local, cloud).playerName,
     gpgsPlayerId:  local.gpgsPlayerId ?? cloud.gpgsPlayerId,
-    verboseLogging: local.verboseLogging,
+    // Opt-out must survive a reinstall. `freshCore()` never sets this, so on a
+    // new device `local.verboseLogging` is undefined — without the cloud
+    // fallback the merge picks undefined over a stored `false`, and
+    // `getVerboseLogging()`'s `?? true` then silently turns analytics back on
+    // for a player who turned them off. That is the opposite of the promise
+    // three lines up, and the player would never see it happen.
+    verboseLogging: local.verboseLogging ?? cloud.verboseLogging,
     // Sound prefs are per-device; keep local, fall back to cloud on fresh install.
     soundSettings: local.soundSettings ?? cloud.soundSettings,
     controlMode:   local.controlMode,   // device-local — local always wins

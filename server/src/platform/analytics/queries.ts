@@ -255,6 +255,48 @@ function bucketExpr(dimension: CrosstabDimension): string {
 }
 
 /**
+ * The order buckets should be DISPLAYED in, per dimension.
+ *
+ * Bucket labels are strings, so sorting them as strings puts '120s+' second and
+ * '2000+' third — the progression the whole crosstab exists to show, scrambled.
+ * (`score` sorts correctly as a string purely by accident of digit count, which
+ * is exactly the kind of coincidence that hides a bug like this.) These lists
+ * are the authority; they must stay in step with `bucketExpr`.
+ *
+ * Dimensions whose buckets are open-ended — cause, platform, appVersion — have
+ * no natural order and are absent here; those fall back to alphabetical.
+ * 'no finished run' is appended by the sorter rather than listed, since every
+ * ranged dimension ends with it.
+ */
+export const BUCKET_ORDER: Partial<Record<CrosstabDimension, readonly string[]>> = {
+  duration: ['0-15s', '15-45s', '45-120s', '120s+'],
+  height:   ['0-100', '100-500', '500-2000', '2000+'],
+  score:    ['0-100', '100-1000', '1000-5000', '5000+'],
+  placed:   ['placed', 'never placed'],
+  submitted: ['submitted', 'never submitted'],
+};
+
+export const NO_RUN_BUCKET = 'no finished run';
+
+/**
+ * Compares two bucket labels for display. Known buckets sort by their position
+ * in BUCKET_ORDER, `no finished run` sorts last, and anything unrecognised
+ * (a new label, a cause string) sorts alphabetically after the known ones — so
+ * an unexpected value is visible at the end rather than silently reordering the
+ * scale.
+ */
+export function compareBuckets(dimension: CrosstabDimension, a: string, b: string): number {
+  const order = BUCKET_ORDER[dimension];
+  const rank = (x: string): number => {
+    if (x === NO_RUN_BUCKET) return Number.MAX_SAFE_INTEGER;
+    const i = order?.indexOf(x) ?? -1;
+    return i === -1 ? Number.MAX_SAFE_INTEGER - 1 : i;
+  };
+  const ra = rank(a), rb = rank(b);
+  return ra === rb ? a.localeCompare(b) : ra - rb;
+}
+
+/**
  * Run-2 rate split by a characteristic of the player's FIRST run.
  *
  * Two levels only: the inner query produces one row per player carrying their

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   funnelQuery, crosstabQuery, traceQuery, isCrosstabDimension,
-  aeDateTime, CROSSTAB_DIMENSIONS,
+  aeDateTime, CROSSTAB_DIMENSIONS, compareBuckets, BUCKET_ORDER, NO_RUN_BUCKET,
 } from '../src/platform/analytics/queries';
 
 const IDS = ['p1', 'p2'];
@@ -180,6 +180,64 @@ describe('AE dialect invariants', () => {
     // inflate exactly the bucket the churn analysis cares most about.
     for (const d of ['duration', 'height', 'score', 'cause'] as const) {
       expect(crosstabQuery('heap_logs', d, IDS, SINCE, UNTIL).sql).toContain('no finished run');
+    }
+  });
+});
+
+// ── Bucket display order ────────────────────────────────────────────────────
+// Bucket labels are strings, and sorting them as strings scrambles every scale
+// with a mixed-width number in it. The crosstab card exists to show a
+// progression, so the order is part of its correctness, not a cosmetic detail.
+
+describe('bucket ordering', () => {
+  const RANGED = ['duration', 'height', 'score'] as const;
+
+  it('orders ranged buckets by magnitude, not alphabetically', () => {
+    for (const d of RANGED) {
+      const order = BUCKET_ORDER[d]!;
+      const shuffled = [...order].reverse();
+      expect(shuffled.sort((a, b) => compareBuckets(d, a, b))).toEqual([...order]);
+    }
+  });
+
+  it('fixes the specific inversions plain string sort produces', () => {
+    // These are the two scales that actually broke: '120s+' sorted second and
+    // '2000+' sorted third.
+    expect([...BUCKET_ORDER.duration!].sort((a, b) => a.localeCompare(b))[1]).toBe('120s+');
+    expect([...BUCKET_ORDER.duration!].sort((a, b) => compareBuckets('duration', a, b)).at(-1))
+      .toBe('120s+');
+    expect([...BUCKET_ORDER.height!].sort((a, b) => compareBuckets('height', a, b)).at(-1))
+      .toBe('2000+');
+  });
+
+  it('sorts "no finished run" last and unknown labels after the scale', () => {
+    const sorted = ['120s+', NO_RUN_BUCKET, '0-15s', 'mystery']
+      .sort((a, b) => compareBuckets('duration', a, b));
+    expect(sorted).toEqual(['0-15s', '120s+', 'mystery', NO_RUN_BUCKET]);
+  });
+
+  it('falls back to alphabetical for open-ended dimensions', () => {
+    // cause/platform/appVersion have no natural scale, so they are absent from
+    // BUCKET_ORDER by design.
+    for (const d of ['cause', 'platform', 'appVersion'] as const) {
+      expect(BUCKET_ORDER[d]).toBeUndefined();
+      expect(['b', 'a'].sort((x, y) => compareBuckets(d, x, y))).toEqual(['a', 'b']);
+    }
+  });
+
+  it('lists every label the SQL can actually emit', () => {
+    // BUCKET_ORDER lives apart from bucketExpr, so it can drift. Any ranged
+    // label present in the generated SQL but missing here would silently sort
+    // to the end of the chart instead of its place on the scale.
+    for (const d of [...RANGED, 'placed', 'submitted'] as const) {
+      const sql = crosstabQuery('heap_logs', d, IDS, SINCE, UNTIL).sql;
+      const emitted = (sql.match(/'[^']*'/g) ?? [])
+        .map((s) => s.slice(1, -1))
+        .filter((s) => s && s !== NO_RUN_BUCKET && !s.startsWith('run:')
+                       && !s.startsWith('placement:') && !s.startsWith('score:'));
+      for (const label of emitted) {
+        expect(BUCKET_ORDER[d], `dimension ${d} emits '${label}'`).toContain(label);
+      }
     }
   });
 });

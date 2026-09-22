@@ -31,6 +31,11 @@ function coerceMetrics(v: unknown): LogEntry['metrics'] {
   // double5, which is exactly the column the crosstab's `duration` dimension
   // reads. Discarding one entry's promoted columns is cheap; corrupting the
   // dataset is not. Same posture as `bindParams` in aeClient.ts.
+  //
+  // The length caps apply FIRST and truncate rather than reject: dropping a
+  // tail past the cap leaves every surviving element on its own column, so it
+  // costs data but never misfiles it. Only an invalid element inside the kept
+  // range can shift positions, and that is what rejects.
   const rawDoubles = Array.isArray(m.doubles) ? m.doubles.slice(0, 8) : undefined;
   if (rawDoubles?.some((n) => typeof n !== 'number' || !Number.isFinite(n))) return undefined;
   const rawBlobs = Array.isArray(m.blobs) ? m.blobs.slice(0, 4) : undefined;

@@ -154,6 +154,37 @@ describe('GET /analytics/crosstab', () => {
     expect(body.since).toBe('2026-09-01T00:00:00.000Z');
     expect(body.until).toBe('2026-10-01T00:00:00.000Z');
   });
+
+  // The rows reach the admin chart in the order this endpoint emits them, so a
+  // string sort here puts '120s+' second on a scale that is supposed to climb.
+  it('returns ranged buckets in scale order, not alphabetical', async () => {
+    const { app, ae, metricsDb } = makeApp();
+    metricsDb.cohortPage = { playerIds: ['p1'], nextCursor: null };
+    ae.rows = [
+      { bucket: '120s+', cohort: 1, returned: 1 },
+      { bucket: 'no finished run', cohort: 4, returned: 0 },
+      { bucket: '15-45s', cohort: 2, returned: 1 },
+      { bucket: '0-15s', cohort: 3, returned: 0 },
+      { bucket: '45-120s', cohort: 5, returned: 2 },
+    ];
+    const res = await app.request('/analytics/crosstab?dimension=duration', { headers: ADMIN });
+    expect((await res.json()).rows.map((r: { bucket: string }) => r.bucket))
+      .toEqual(['0-15s', '15-45s', '45-120s', '120s+', 'no finished run']);
+  });
+
+  it('orders the height scale by magnitude too', async () => {
+    const { app, ae, metricsDb } = makeApp();
+    metricsDb.cohortPage = { playerIds: ['p1'], nextCursor: null };
+    ae.rows = [
+      { bucket: '2000+', cohort: 1, returned: 0 },
+      { bucket: '500-2000', cohort: 1, returned: 0 },
+      { bucket: '0-100', cohort: 1, returned: 0 },
+      { bucket: '100-500', cohort: 1, returned: 0 },
+    ];
+    const res = await app.request('/analytics/crosstab?dimension=height', { headers: ADMIN });
+    expect((await res.json()).rows.map((r: { bucket: string }) => r.bucket))
+      .toEqual(['0-100', '100-500', '500-2000', '2000+']);
+  });
 });
 
 describe('GET /analytics/trace', () => {
