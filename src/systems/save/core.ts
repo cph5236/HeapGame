@@ -72,8 +72,11 @@ const extFresh   = (): object => _ext?.fresh() ?? {};
 const extMigrate = (parsed: any, v: number): object => _ext?.migrate(parsed, v) ?? {};
 const extMerge   = (l: any, c: any): object => _ext?.merge(l, c) ?? {};
 
-/** The fields core owns. Anything else in a stored blob came from a game half. */
-const CORE_KEYS: ReadonlySet<string> = new Set([
+/** The fields core owns. Anything else in a stored blob came from a game half.
+ *  Exported so a test can assert `mergeCore` still handles every one of them —
+ *  a field it forgets falls through to "local always wins, cloud never
+ *  contributes", which is silent data loss on reinstall rather than an error. */
+export const CORE_KEYS: ReadonlySet<string> = new Set([
   'schemaVersion', 'playerGuid', 'playerSecret', 'playerName', 'gpgsPlayerId',
   'verboseLogging', 'soundSettings', 'controlMode', 'joystickSide', 'remoteConfig',
 ]);

@@ -3,6 +3,7 @@ import {
   funnelQuery, crosstabQuery, traceQuery, isCrosstabDimension,
   aeDateTime, CROSSTAB_DIMENSIONS, compareBuckets, BUCKET_ORDER, NO_RUN_BUCKET,
 } from '../src/platform/analytics/queries';
+import { projectEventMetrics } from '../../shared/logging/aeProjection';
 
 const IDS = ['p1', 'p2'];
 const SINCE = '2026-09-01T00:00:00.000Z';
@@ -238,6 +239,66 @@ describe('bucket ordering', () => {
       for (const label of emitted) {
         expect(BUCKET_ORDER[d], `dimension ${d} emits '${label}'`).toContain(label);
       }
+    }
+  });
+});
+
+// ── Column contract ─────────────────────────────────────────────────────────
+// aeProjection.ts decides which run fact goes in which AE slot, positionally;
+// queries.ts hardcodes the resulting column names into SQL text. Nothing ties
+// them together — AE columns are untyped strings interpolated into a query, so
+// reordering the projection array compiles fine and silently makes every
+// crosstab read the wrong number. AE data is append-only, so it cannot be
+// renumbered after the fact either.
+
+describe('AE column contract', () => {
+  // Distinct values so each field's slot is identifiable by value.
+  const RUN_END = {
+    type: 'run:end', heapId: 'h', mode: 'classic', cause: 'death',
+    score: 1001, height: 1002, kills: 1003, durationMs: 1004, pickupBonus: 1005,
+    upgrades: {}, pickups: {},
+  } as unknown as Parameters<typeof projectEventMetrics>[0];
+
+  /** The AE column a projected double lands in: doubles[0] is double2, because
+   *  the sink writes the envelope timestamp into double1 first. */
+  const columnOf = (value: number): string => {
+    const doubles = projectEventMetrics(RUN_END)?.doubles ?? [];
+    const i = doubles.indexOf(value);
+    expect(i, `projection no longer emits ${value}`).toBeGreaterThanOrEqual(0);
+    return `double${i + 2}`;
+  };
+
+  it('reads each dimension from the column the projection actually writes', () => {
+    const sqlFor = (d: 'duration' | 'height' | 'score') =>
+      crosstabQuery('heap_logs', d, IDS, SINCE, UNTIL).sql;
+    expect(sqlFor('duration')).toContain(columnOf(1004));  // durationMs
+    expect(sqlFor('height')).toContain(columnOf(1002));    // height
+    expect(sqlFor('score')).toContain(columnOf(1001));     // score
+  });
+
+  it('reads cause from the column the projection writes it to', () => {
+    const blobs = projectEventMetrics(RUN_END)?.blobs ?? [];
+    // blobs[0] is blob8 — the sink fills blob1..blob7 with envelope fields.
+    expect(blobs.indexOf('death')).toBe(0);
+    expect(crosstabQuery('heap_logs', 'cause', IDS, SINCE, UNTIL).sql).toContain('blob8');
+  });
+});
+
+// ── First-run guard ─────────────────────────────────────────────────────────
+
+describe('first-run dimensions', () => {
+  it('wraps every FIRST_OF_RUN dimension in the no-finished-run guard', () => {
+    // A dimension built from the player's first run:end must handle a player
+    // who has none — argMinWhere's fallback would otherwise put them in the
+    // lowest bucket, as though they had finished a very bad run. The current
+    // four all do; this makes it structural for the next one added rather than
+    // a convention someone has to remember.
+    for (const d of CROSSTAB_DIMENSIONS) {
+      const sql = crosstabQuery('heap_logs', d, IDS, SINCE, UNTIL).sql;
+      const usesFirstRun = sql.includes("argMin(if(blob2 = 'run:end'");
+      if (!usesFirstRun) continue;
+      expect(sql, `dimension '${d}' reads the first run without a no-run guard`)
+        .toContain(NO_RUN_BUCKET);
     }
   });
 });
