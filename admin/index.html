@@ -326,6 +326,28 @@
     <button id="cfg-create" class="btn">Create</button>
   </div>
 
+  <div class="card border-l-term-cyan">
+    <h2 class="card-head">Analytics — Acquisition</h2>
+    <div class="grid2">
+      <div>
+        <label class="lbl">Bucket</label>
+        <select id="an-bucket" class="field">
+          <option value="day" selected>Day</option>
+          <option value="week">Week</option>
+          <option value="hour">Hour</option>
+        </select>
+      </div>
+      <div>
+        <label class="lbl">Days back</label>
+        <input type="number" id="an-days" class="field" value="30" min="1" max="365" />
+      </div>
+    </div>
+    <button id="an-refresh" class="btn mt-3">Load</button>
+    <div id="an-summary" class="muted mt-3">Not loaded.</div>
+    <div class="muted text-xs mt-1">Counts first authenticated write, not install — see MetricsDB for caveats.</div>
+    <div id="an-chart" class="mt-3 overflow-x-auto"></div>
+  </div>
+
   <div id="status" class="fixed inset-x-0 bottom-0 z-30 border-t border-term-line bg-term-panel px-4 py-2 text-sm text-term-dim"></div>
 
   <script>
@@ -500,6 +522,8 @@
       loadHeaps();
       loadCodes();
       loadConfig();
+      $('an-summary').textContent = 'Not loaded.';
+      $('an-chart').innerHTML = '';
       plPage = 0;
       plTotal = 0;
       plLookupShowing = null;
@@ -1827,6 +1851,77 @@
       });
     }
 
+    // ────── Analytics ──────────────────────────────────────────────────────
+
+    // Hand-rolled inline SVG. This file has no build step and no charting
+    // library; a line chart is ~40 lines and not worth a CDN dependency.
+    function renderNewPlayersChart(rows) {
+      const host = $('an-chart');
+      if (!rows.length) { host.innerHTML = '<div class="muted">No players in this window.</div>'; return; }
+
+      const W = 720, H = 220, PAD_L = 40, PAD_B = 28, PAD_T = 12, PAD_R = 12;
+      const max = Math.max(...rows.map((r) => r.count), 1);
+      const plotW = W - PAD_L - PAD_R;
+      const plotH = H - PAD_T - PAD_B;
+      // A single point has no span to divide by; pin it to the left edge.
+      const dx = rows.length > 1 ? plotW / (rows.length - 1) : 0;
+      const x = (i) => PAD_L + i * dx;
+      const y = (v) => PAD_T + plotH - (v / max) * plotH;
+
+      // Bucket labels are server-generated strftime output, but this file
+      // builds SVG via innerHTML and has had an XSS finding before — every
+      // interpolated string goes through escapeHtml, no exceptions.
+      const line = rows.map((r, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(r.count).toFixed(1)}`).join(' ');
+      const dots = rows.map((r, i) =>
+        `<circle cx="${x(i).toFixed(1)}" cy="${y(r.count).toFixed(1)}" r="3" fill="currentColor">`
+        + `<title>${escapeHtml(r.bucket)}: ${escapeHtml(String(r.count))}</title></circle>`).join('');
+
+      // At most ~8 labels, so a long window stays readable.
+      const every = Math.ceil(rows.length / 8);
+      const labels = rows.map((r, i) => i % every === 0
+        ? `<text x="${x(i).toFixed(1)}" y="${H - 8}" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.6">${escapeHtml(r.bucket)}</text>`
+        : '').join('');
+
+      host.innerHTML = `
+        <svg viewBox="0 0 ${W} ${H}" width="100%" class="text-term-cyan" role="img" aria-label="New players per bucket">
+          <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${PAD_T + plotH}" stroke="currentColor" opacity="0.3" />
+          <line x1="${PAD_L}" y1="${PAD_T + plotH}" x2="${W - PAD_R}" y2="${PAD_T + plotH}" stroke="currentColor" opacity="0.3" />
+          <text x="4" y="${PAD_T + 8}" font-size="10" fill="currentColor" opacity="0.6">${max}</text>
+          <text x="4" y="${PAD_T + plotH}" font-size="10" fill="currentColor" opacity="0.6">0</text>
+          <path d="${line}" fill="none" stroke="currentColor" stroke-width="2" />
+          ${dots}${labels}
+        </svg>`;
+    }
+
+    async function loadNewPlayers() {
+      const gen = envGeneration;
+      const bucket = $('an-bucket').value;
+      const days = Math.max(1, Math.min(365, Number($('an-days').value) || 30));
+      const until = new Date();
+      const since = new Date(until.getTime() - days * 86400000);
+      const qs = `?bucket=${encodeURIComponent(bucket)}`
+        + `&since=${encodeURIComponent(since.toISOString())}`
+        + `&until=${encodeURIComponent(until.toISOString())}`;
+      try {
+        const res = await adminFetch('/metrics/new-players' + qs);
+        if (!res.ok) { throw new Error('metrics failed: ' + res.status); }
+        const data = await res.json();
+        if (gen !== envGeneration) return; // operator switched environments mid-flight
+        const total = data.rows.reduce((s, r) => s + r.count, 0);
+        $('an-summary').textContent =
+          `${total} new players across ${data.rows.length} ${bucket} buckets.`;
+        renderNewPlayersChart(data.rows);
+        setStatus('metrics loaded', 'ok');
+      } catch (err) {
+        if (gen !== envGeneration) return;
+        setStatus(String(err && err.message ? err.message : err), 'err');
+      }
+    }
+
+    function bootAnalytics() {
+      $('an-refresh').addEventListener('click', loadNewPlayers);
+    }
+
     // ────── Boot ───────────────────────────────────────────────────────────
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -1840,6 +1935,7 @@
       bootRewardCodes();
       bootConfig();
       bootPlayers();
+      bootAnalytics();
       applyEnv(currentEnv());
     });
   </script>

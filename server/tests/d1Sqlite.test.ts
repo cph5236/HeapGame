@@ -124,4 +124,23 @@ describe('d1Sqlite harness', () => {
     const rows = await b.prepare('SELECT id FROM heap_base').all<{ id: string }>();
     expect(rows.results).toHaveLength(0);
   });
+
+  it('applies the heap_scores schema on request', async () => {
+    const d1 = createTestD1('heap_scores');
+    await d1.prepare(
+      "INSERT INTO player_auth (player_id, secret_hash, created_at) VALUES ('p1','h','2026-09-19T12:00:00.000Z')",
+    ).run();
+    const row = await d1.prepare('SELECT player_id FROM player_auth WHERE player_id = ?1')
+      .bind('p1').first<{ player_id: string }>();
+    expect(row?.player_id).toBe('p1');
+  });
+
+  it('still defaults to heap_core when no schema is named', async () => {
+    const d1 = createTestD1();
+    await d1.prepare(
+      "INSERT INTO heap_base (id, heap_id, vertices, vertex_hash, created_at) VALUES ('b1','h1','[]','hash','now')",
+    ).run();
+    const row = await d1.prepare('SELECT id FROM heap_base WHERE id = ?1').bind('b1').first<{ id: string }>();
+    expect(row?.id).toBe('b1');
+  });
 });
