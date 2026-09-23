@@ -6,33 +6,16 @@
 // There is deliberately no cache decorator here. These are low-frequency admin
 // reads where a stale number is worse than a slow one.
 
-/** Bucket granularities the metrics endpoints accept. */
-export type MetricsBucket = 'hour' | 'day' | 'week';
+import {
+  type MetricsBucket, bucketSeconds, WEEK_OFFSET_S,
+} from '../../../shared/metricsBuckets';
 
-/**
- * strftime format per bucket. `created_at` is written as
- * `new Date().toISOString()` (see platform/playerAuth.ts), and SQLite's date
- * functions accept both the `T` separator and the trailing `Z`.
- *
- * These strings are passed to SQLite as BIND PARAMETERS, never interpolated
- * into the SQL text — strftime accepts a bound format argument, so the
- * allowlist below is a validation aid rather than the only thing standing
- * between user input and the query.
- */
-export const BUCKET_FORMATS: Record<MetricsBucket, string> = {
-  hour: '%Y-%m-%dT%H:00:00Z',
-  day:  '%Y-%m-%d',
-  week: '%Y-W%W',
-};
+export type { MetricsBucket };
 
-/** True when `v` is one of the three accepted bucket names. */
-export function isMetricsBucket(v: unknown): v is MetricsBucket {
-  return v === 'hour' || v === 'day' || v === 'week';
-}
-
+/** One non-empty bucket. Empty buckets are absent — the route zero-fills. */
 export interface NewPlayerBucket {
-  /** The bucket label, already formatted (e.g. '2026-09-19'). */
-  bucket: string;
+  /** Bucket start, epoch milliseconds (see shared/metricsBuckets.ts). */
+  startMs: number;
   count: number;
 }
 
@@ -64,6 +47,10 @@ export interface MetricsDB {
     bucket: MetricsBucket, since: string, until: string,
   ): Promise<NewPlayerBucket[]>;
 
+  /** Every player_auth row ever written — same "first authenticated write"
+   *  caveats as newPlayersByBucket. */
+  totalPlayers(): Promise<number>;
+
   /**
    * The player ids first seen in `[since, until)`, oldest first, paged.
    *
@@ -83,17 +70,35 @@ export class D1MetricsDB implements MetricsDB {
   async newPlayersByBucket(
     bucket: MetricsBucket, since: string, until: string,
   ): Promise<NewPlayerBucket[]> {
+    // Epoch-second arithmetic rather than a strftime label: it handles any
+    // bucket size (5m, 6h, …) with one expression, and yields the same bucket
+    // starts as shared/metricsBuckets.ts's bucketStartMs, so the route can
+    // zero-fill by key. `created_at` is always after 1970-01-05, so the
+    // integer division never sees a negative and truncation == floor.
+    //
+    // Size and offset are BIND PARAMETERS, never interpolated. They are CAST
+    // because a JS number binds as REAL, which silently turns `/` into float
+    // division and every row into its own bucket.
     const res = await this.d1
       .prepare(
-        `SELECT strftime(?1, created_at) AS bucket, COUNT(*) AS count
+        `SELECT ((CAST(strftime('%s', created_at) AS INTEGER) - CAST(?4 AS INTEGER))
+                  / CAST(?1 AS INTEGER)) * CAST(?1 AS INTEGER) + CAST(?4 AS INTEGER) AS start_s,
+                COUNT(*) AS count
            FROM player_auth
           WHERE created_at >= ?2 AND created_at < ?3
-          GROUP BY bucket
-          ORDER BY bucket`,
+          GROUP BY start_s
+          ORDER BY start_s`,
       )
-      .bind(BUCKET_FORMATS[bucket], since, until)
-      .all<{ bucket: string; count: number }>();
-    return res.results.map((r) => ({ bucket: r.bucket, count: r.count }));
+      .bind(bucketSeconds(bucket), since, until, bucket === '1w' ? WEEK_OFFSET_S : 0)
+      .all<{ start_s: number; count: number }>();
+    return res.results.map((r) => ({ startMs: Number(r.start_s) * 1000, count: r.count }));
+  }
+
+  async totalPlayers(): Promise<number> {
+    const row = await this.d1
+      .prepare('SELECT COUNT(*) AS n FROM player_auth')
+      .first<{ n: number }>();
+    return row?.n ?? 0;
   }
 
   async cohortMembers(

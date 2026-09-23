@@ -91,7 +91,7 @@ export function createPlatformApp(opts: PlatformOptions = {}): PlatformApp {
       if (!origin) return null;
       return allowlist.allows(origin) ? origin : null;
     },
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'X-Admin-Secret', 'X-Player-Token', 'X-LoadTest-Secret', 'X-LoadTest-Key'],
   }));
 

@@ -91,6 +91,7 @@ exports[`route inventory > keeps middleware ahead of its handler within every pa
   "/metrics": [
     "ALL /metrics/*",
     "GET /metrics/new-players",
+    "GET /metrics/totals",
     "GET /metrics/cohort",
   ],
   "/players": [
@@ -153,6 +154,7 @@ GET /heaps/:id/base
 GET /heaps/:id/enemy-params
 GET /metrics/cohort
 GET /metrics/new-players
+GET /metrics/totals
 GET /scores/:heapId
 GET /scores/:heapId/context
 GET /scores/admin/:heapId

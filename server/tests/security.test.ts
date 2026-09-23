@@ -54,6 +54,20 @@ describe('CORS allowlist', () => {
   });
 });
 
+describe('CORS preflight allows every method the API routes on', () => {
+  // PATCH /codes/:code (admin code edit) shipped without PATCH in
+  // allowMethods, so the browser refused the preflight and the admin page's
+  // edit button failed with a bare network error. Tests call app.request
+  // directly and never preflight, which is how it got through.
+  it('lists PATCH', async () => {
+    const res = await makeApp('http://localhost:3001').request('/codes/X', {
+      method: 'OPTIONS',
+      headers: { 'Origin': 'http://localhost:3001', 'Access-Control-Request-Method': 'PATCH' },
+    });
+    expect(res.headers.get('access-control-allow-methods')).toContain('PATCH');
+  });
+});
+
 describe('CORS allowlist includes Capacitor WebView origins', () => {
   it('accepts capacitor://localhost preflight', async () => {
     const app = createApp(new MockHeapDB(), new MockScoreDB(), {

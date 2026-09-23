@@ -21,36 +21,55 @@ describe('GET /metrics/new-players', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns bucketed rows', async () => {
+  it('returns a dense, zero-filled series with the resolved bucket', async () => {
     const db = new MockMetricsDB();
-    db.rows = [{ bucket: '2026-09-19', count: 7 }];
+    db.rows = [{ startMs: Date.parse('2026-09-19T00:00:00.000Z'), count: 7 }];
     const app = makeApp(db, 's3cret');
 
     const res = await app.request(
-      '/metrics/new-players?bucket=day&since=2026-09-01T00:00:00.000Z&until=2026-09-20T00:00:00.000Z',
+      '/metrics/new-players?bucket=1d&since=2026-09-18T00:00:00.000Z&until=2026-09-21T00:00:00.000Z',
       { headers: ADMIN },
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
-      bucket: 'day',
-      since: '2026-09-01T00:00:00.000Z',
-      until: '2026-09-20T00:00:00.000Z',
-      rows: [{ bucket: '2026-09-19', count: 7 }],
+      bucket: '1d',
+      bucketSeconds: 86_400,
+      since: '2026-09-18T00:00:00.000Z',
+      until: '2026-09-21T00:00:00.000Z',
+      total: 7,
+      rows: [
+        { t: '2026-09-18T00:00:00.000Z', count: 0 },
+        { t: '2026-09-19T00:00:00.000Z', count: 7 },
+        { t: '2026-09-20T00:00:00.000Z', count: 0 },
+      ],
     });
     expect(db.lastCall).toEqual({
-      bucket: 'day',
-      since: '2026-09-01T00:00:00.000Z',
-      until: '2026-09-20T00:00:00.000Z',
+      bucket: '1d',
+      since: '2026-09-18T00:00:00.000Z',
+      until: '2026-09-21T00:00:00.000Z',
     });
   });
 
-  it('defaults to day bucket over the last 30 days', async () => {
+  it('defaults to auto: a 24h window resolves to 15m buckets', async () => {
+    const db = new MockMetricsDB();
+    const app = makeApp(db, 's3cret');
+    const res = await app.request(
+      '/metrics/new-players?since=2026-09-22T00:00:00.000Z&until=2026-09-23T00:00:00.000Z',
+      { headers: ADMIN },
+    );
+    const body = await res.json();
+    expect(body.bucket).toBe('15m');
+    expect(body.rows).toHaveLength(96);
+    expect(db.lastCall?.bucket).toBe('15m');
+  });
+
+  it('defaults to the last 30 days, resolved to 6h buckets', async () => {
     const db = new MockMetricsDB();
     const app = makeApp(db, 's3cret');
 
     const res = await app.request('/metrics/new-players', { headers: ADMIN });
     expect(res.status).toBe(200);
-    expect(db.lastCall?.bucket).toBe('day');
+    expect(db.lastCall?.bucket).toBe('6h');
 
     const since = Date.parse(db.lastCall!.since);
     const until = Date.parse(db.lastCall!.until);
@@ -62,7 +81,20 @@ describe('GET /metrics/new-players', () => {
   it('rejects an unknown bucket (400) without touching the db', async () => {
     const db = new MockMetricsDB();
     const app = makeApp(db, 's3cret');
-    const res = await app.request('/metrics/new-players?bucket=month', { headers: ADMIN });
+    for (const bad of ['month', 'day', 'toString']) {
+      const res = await app.request(`/metrics/new-players?bucket=${bad}`, { headers: ADMIN });
+      expect(res.status, bad).toBe(400);
+    }
+    expect(db.lastCall).toBeNull();
+  });
+
+  it('rejects a bucket too fine for the window (400) instead of truncating', async () => {
+    const db = new MockMetricsDB();
+    const app = makeApp(db, 's3cret');
+    const res = await app.request(
+      '/metrics/new-players?bucket=1m&since=2026-01-01T00:00:00.000Z&until=2026-09-01T00:00:00.000Z',
+      { headers: ADMIN },
+    );
     expect(res.status).toBe(400);
     expect(db.lastCall).toBeNull();
   });
@@ -86,6 +118,20 @@ describe('GET /metrics/new-players', () => {
     const app = createApp(new MockHeapDB(), new MockScoreDB(), { adminSecret: 's3cret' });
     const res = await app.request('/metrics/new-players', { headers: ADMIN });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /metrics/totals', () => {
+  it('requires the admin secret (401)', async () => {
+    const res = await makeApp(new MockMetricsDB(), 's3cret').request('/metrics/totals');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns the all-time player count', async () => {
+    const db = new MockMetricsDB();
+    db.total = 42;
+    const res = await makeApp(db, 's3cret').request('/metrics/totals', { headers: ADMIN });
+    expect(await res.json()).toEqual({ players: 42 });
   });
 });
 

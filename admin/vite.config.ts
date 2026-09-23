@@ -1,12 +1,13 @@
 import { defineConfig } from 'vite';
 
-// Serves admin/index.html over http so its API calls carry a real Origin.
+// Serves the admin app (admin/index.html + admin/src) over http.
 //
-// The page has no build step — it is one standalone file with an inline script
-// and Tailwind from a CDN — so this config exists purely to give it an origin
-// the Worker's CORS allowlist can name. Opened straight off disk the page sends
-// `Origin: null`, which stopped being accepted when ALLOWED_ORIGINS came off
-// `*` (see server/wrangler.toml).
+// Two jobs: give the page a real Origin the Worker's CORS allowlist can name
+// (opened straight off disk it would send `Origin: null`, which stopped being
+// accepted when ALLOWED_ORIGINS came off `*` — see server/wrangler.toml), and
+// compile admin/src's TypeScript, which imports constants from ../shared so
+// the admin can never drift from what the game and server actually use.
+// Vite's default fs allow-list is the repo root, so ../shared is servable.
 //
 // Deliberately separate from the root vite.config.ts rather than reusing it:
 // that config carries the game's plugins and, more importantly, shares a

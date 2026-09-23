@@ -4,7 +4,11 @@
 // reachable by a game client.
 
 import { Hono } from 'hono';
-import { type MetricsDB, isMetricsBucket } from '../metricsDb';
+import type { MetricsDB } from '../metricsDb';
+import {
+  isMetricsBucket, autoBucket, bucketCount, bucketSeconds, denseSeries,
+  MAX_SERIES_BUCKETS, BUCKET_ORDER,
+} from '../../../../shared/metricsBuckets';
 import { parseWindow } from './timeWindow';
 
 const DEFAULT_COHORT_LIMIT = 500;
@@ -33,19 +37,39 @@ function isValidCursorShape(v: string): boolean {
 export function metricsRoutes(metricsDb: MetricsDB): Hono {
   const app = new Hono();
 
-  // GET /metrics/new-players?bucket=hour|day|week&since=&until=
+  // GET /metrics/new-players?bucket=auto|1m|5m|15m|1h|3h|6h|1d|1w&since=&until=
+  //
+  // `auto` (the default) picks the finest bucket that keeps the series near
+  // ~100 points, so a 1h window comes back per minute and a year per week.
+  // The response is DENSE: every bucket in the window is present, zero-filled.
   app.get('/new-players', async (c) => {
-    const rawBucket = c.req.query('bucket') ?? 'day';
-    if (!isMetricsBucket(rawBucket)) {
-      return c.json({ error: 'bucket must be one of: hour, day, week' }, 400);
+    const rawBucket = c.req.query('bucket') ?? 'auto';
+    if (rawBucket !== 'auto' && !isMetricsBucket(rawBucket)) {
+      return c.json({ error: `bucket must be one of: auto, ${BUCKET_ORDER.join(', ')}` }, 400);
     }
 
     const w = parseWindow(c);
     if ('error' in w) return c.json({ error: w.error }, 400);
     const { since, until } = w;
+    const sinceMs = Date.parse(since);
+    const untilMs = Date.parse(until);
 
-    const rows = await metricsDb.newPlayersByBucket(rawBucket, since, until);
-    return c.json({ bucket: rawBucket, since, until, rows });
+    const bucket = rawBucket === 'auto' ? autoBucket(sinceMs, untilMs) : rawBucket;
+    if (bucketCount(sinceMs, untilMs, bucket) > MAX_SERIES_BUCKETS) {
+      return c.json({
+        error: `${bucket} buckets over this window exceed ${MAX_SERIES_BUCKETS} points — use a coarser bucket or 'auto'`,
+      }, 400);
+    }
+
+    const sparse = await metricsDb.newPlayersByBucket(bucket, since, until);
+    const rows = denseSeries(sparse, bucket, sinceMs, untilMs);
+    const total = rows.reduce((n, r) => n + r.count, 0);
+    return c.json({ bucket, bucketSeconds: bucketSeconds(bucket), since, until, total, rows });
+  });
+
+  // GET /metrics/totals — all-time headline counts for the admin overview.
+  app.get('/totals', async (c) => {
+    return c.json({ players: await metricsDb.totalPlayers() });
   });
 
   // GET /metrics/cohort?since=&until=&limit=&cursor=
