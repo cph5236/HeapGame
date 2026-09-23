@@ -38,7 +38,8 @@ export type GameEvent =
       /** Per-item grab counts for the run — replaces the old per-grab
        *  `pickup:grab` event, which cost one AE data point per pickup. */
       pickups: Record<string, number>;
-      /** Sum of the AWARDED (rarity-scaled) bonuses for those grabs. */
+      /** Sum of the rarity-scaled bonus of every item grabbed — grab value,
+       *  NOT the amount banked into `score`. See `src/systems/pickupTally.ts`. */
       pickupBonus: number;
     }
   | {

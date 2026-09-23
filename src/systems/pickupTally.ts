@@ -13,7 +13,19 @@ import { RARITY_SCORE_MULT, type Rarity } from '../../shared/pickupScores';
 export interface PickupTally {
   /** Grab count per item id. */
   pickups: Record<string, number>;
-  /** Sum of the AWARDED (rarity-scaled) bonuses. */
+  /**
+   * Sum of the rarity-scaled bonus of every item GRABBED during the run.
+   *
+   * This is grab value, not banked value, and the two diverge: `GameScene`
+   * omits `salvageBonus` from `buildRunScore` on death, so on a death run
+   * none of this reached `score` (`InfiniteGameScene` keeps it even on death
+   * — a pre-existing game-rule asymmetry, not an analytics one). It is also
+   * tallied for shield items that never enter `carried` at all.
+   *
+   * So do NOT read this as the score contribution; correlating it against
+   * `score` will be wrong for most runs. It measures grabbing behaviour,
+   * which is what the tally exists to capture.
+   */
   pickupBonus: number;
 }
 

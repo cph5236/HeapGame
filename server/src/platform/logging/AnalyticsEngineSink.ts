@@ -30,7 +30,18 @@ export const MAX_INDEX_BYTES = 96;
  * for every GUID player — see `server/src/platform/routes/analytics.ts`.
  */
 export function userGuidIndex(playerId: string): string {
-  return playerId.replace(/-/g, '').slice(0, MAX_INDEX_BYTES);
+  const flat = playerId.replace(/-/g, '');
+  // The AE cap is BYTES, and `.slice()` counts UTF-16 code units — equal only
+  // while ids stay ASCII, which is true of both shapes today (hex GUID, GPGS
+  // id) but is not something this function can assume about an id it is
+  // handed. Measure the encoded length and trim to it.
+  const bytes = new TextEncoder().encode(flat);
+  if (bytes.length <= MAX_INDEX_BYTES) return flat;
+  // `fatal: false` is the point: a cut landing mid-sequence yields U+FFFD
+  // rather than throwing, so an over-long id is still written, just lossily.
+  return new TextDecoder('utf-8', { fatal: false })
+    .decode(bytes.slice(0, MAX_INDEX_BYTES))
+    .replace(/\uFFFD+$/, '');
 }
 
 const MAX_PAYLOAD_BYTES = 4096;

@@ -12,8 +12,11 @@
 // reinstates them from the old comments or from fetch-logs.yml.
 //
 // Verified SUPPORTED:
-//   * Subqueries in FROM, nested arbitrarily. This is the only composition
-//     tool — there is still no JOIN and no UNION.
+//   * Subqueries in FROM — ONE level. This is the only composition tool;
+//     there is still no JOIN and no UNION. A subquery inside a subquery is
+//     rejected ("cannot nest subqueries inside subqueries"), which is why
+//     `bucketExpr` inlines its aggregates instead of aliasing them in a
+//     middle layer — see its comment, and the test that pins the depth.
 //   * `if(cond, a, b)`, including nesting. Both branches must have the SAME
 //     type: `if(c, blob8, NULL)` is rejected, `if(c, blob8, '')` is fine.
 //   * `countIf`, `sumIf`, `avgIf`, `argMin`, `argMax`, `count(DISTINCT x)`,

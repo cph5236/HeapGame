@@ -148,6 +148,15 @@ describe('AnalyticsEngineSink', () => {
     expect(points[0].indexes[0]).toBe('3f2504e04f8911d39a0c0305e82c3301');
   });
 
+  it('measures the index cap in bytes, not UTF-16 code units', async () => {
+    const { ae, points } = fakeAE();
+    // Each of these is 2 bytes in UTF-8 but 1 code unit, so a length-based
+    // slice would emit an index of 192 bytes and blow the AE cap.
+    await new AnalyticsEngineSink(ae).write([entry({ userGuid: '\u00e9'.repeat(96) })]);
+    const bytes = new TextEncoder().encode(points[0].indexes[0]).length;
+    expect(bytes).toBeLessThanOrEqual(MAX_INDEX_BYTES);
+  });
+
   it('truncates an over-long id at the AE byte limit rather than silently exceeding it', async () => {
     const { ae, points } = fakeAE();
     await new AnalyticsEngineSink(ae).write([entry({ userGuid: 'z'.repeat(200) })]);
