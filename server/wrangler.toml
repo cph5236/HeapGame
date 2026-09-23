@@ -3,6 +3,11 @@ main = "src/index.ts"
 compatibility_date = "2024-03-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Workers Logs (dashboard). Inheritable, so [env.staging] gets it too.
+[observability.logs]
+enabled = true
+invocation_logs = true
+
 # Domain-sharded D1 databases. See docs/superpowers/runbooks/d1-sharding-kv-cache.md
 # for provisioning + the one-time data move. Apply migrations via migrate-d1.yml.
 [[d1_databases]]
