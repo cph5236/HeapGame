@@ -5,7 +5,18 @@ import type { GameEvent } from '../../shared/logging/events';
 import { projectEventMetrics } from '../../shared/logging/aeProjection';
 
 export interface RemoteLoggerOptions {
-  /** Read at flush time so userGuid can hydrate late. */
+  /**
+   * Read at FLUSH time, not at enqueue time, so `userGuid` can hydrate late.
+   *
+   * This is deliberate and is not a mislabelling bug. `error()`/`warn()` fire
+   * during boot, before SaveData is readable, when `getEffectivePlayerId()`
+   * still yields `'pre-init'`; and the GPGS gate can settle the effective id
+   * up to GPGS_SIGNIN_TIMEOUT_MS later. Stamping per entry would split one
+   * physical player's boot across two ids (or orphan it under `'pre-init'`),
+   * which is strictly worse for the per-player trace than stamping the whole
+   * batch with the id that settled. The id identifies the player, not the
+   * instant.
+   */
   getEnvelope: () => LogEnvelope;
   /** Returns false to indicate "send queue full" / unsent (currently unused). */
   transport: (entries: LogEntry[]) => boolean;

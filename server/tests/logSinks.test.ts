@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { D1Sink } from '../src/platform/logging/D1Sink';
-import { AnalyticsEngineSink } from '../src/platform/logging/AnalyticsEngineSink';
+import { AnalyticsEngineSink, MAX_INDEX_BYTES } from '../src/platform/logging/AnalyticsEngineSink';
+import { MAX_ID_LEN } from '../src/constants';
 import type { StampedLogEntry } from '../src/platform/logging/Sink';
 
 function fakeD1() {
@@ -117,9 +118,16 @@ describe('AnalyticsEngineSink', () => {
     expect(typeof parsed.originalSize).toBe('number');
   });
 
-  it('preserves a 64-char non-UUID player id in the index', async () => {
+  // The drift trap for the truncation bug this file exists to prevent: the
+  // index cap must sit above the longest id the API will accept, or a
+  // signed-in player's GPGS id gets sliced and two players merge into one.
+  it('caps the index above the longest id the API accepts', () => {
+    expect(MAX_INDEX_BYTES).toBeGreaterThanOrEqual(MAX_ID_LEN);
+  });
+
+  it('preserves a max-length non-UUID player id in the index', async () => {
     const { ae, points } = fakeAE();
-    const gpgsId = 'g'.repeat(64); // GPGS ids are opaque and not UUIDs
+    const gpgsId = 'g'.repeat(MAX_ID_LEN); // GPGS ids are opaque and not UUIDs
     await new AnalyticsEngineSink(ae).write([entry({ userGuid: gpgsId })]);
     expect(points[0].indexes[0]).toBe(gpgsId);
   });
@@ -143,7 +151,7 @@ describe('AnalyticsEngineSink', () => {
   it('truncates an over-long id at the AE byte limit rather than silently exceeding it', async () => {
     const { ae, points } = fakeAE();
     await new AnalyticsEngineSink(ae).write([entry({ userGuid: 'z'.repeat(200) })]);
-    expect(points[0].indexes[0].length).toBeLessThanOrEqual(96);
+    expect(points[0].indexes[0].length).toBeLessThanOrEqual(MAX_INDEX_BYTES);
   });
 
   it('appends caller-supplied metric columns after the fixed layout', async () => {

@@ -231,11 +231,13 @@ describe('bucket ordering', () => {
     // label present in the generated SQL but missing here would silently sort
     // to the end of the chart instead of its place on the scale.
     for (const d of [...RANGED, 'placed', 'submitted'] as const) {
-      const sql = crosstabQuery('heap_logs', d, IDS, SINCE, UNTIL).sql;
+      // Strip the literals that are MATCHED rather than emitted — the level
+      // and event-name comparisons — so what remains is the label set.
+      const sql = crosstabQuery('heap_logs', d, IDS, SINCE, UNTIL).sql
+        .replace(/blob\d+ = '[^']*'/g, '');
       const emitted = (sql.match(/'[^']*'/g) ?? [])
         .map((s) => s.slice(1, -1))
-        .filter((s) => s && s !== NO_RUN_BUCKET && !s.startsWith('run:')
-                       && !s.startsWith('placement:') && !s.startsWith('score:'));
+        .filter((s) => s && s !== NO_RUN_BUCKET);
       for (const label of emitted) {
         expect(BUCKET_ORDER[d], `dimension ${d} emits '${label}'`).toContain(label);
       }
@@ -295,10 +297,31 @@ describe('first-run dimensions', () => {
     // a convention someone has to remember.
     for (const d of CROSSTAB_DIMENSIONS) {
       const sql = crosstabQuery('heap_logs', d, IDS, SINCE, UNTIL).sql;
-      const usesFirstRun = sql.includes("argMin(if(blob2 = 'run:end'");
+      const usesFirstRun = sql.includes("argMin(if(blob1 = 'event' AND blob2 = 'run:end'");
       if (!usesFirstRun) continue;
       expect(sql, `dimension '${d}' reads the first run without a no-run guard`)
         .toContain(NO_RUN_BUCKET);
+    }
+  });
+});
+
+describe('event matching is discriminated by level', () => {
+  // The sink writes `blob2 = eventType ?? message ?? ''` for EVERY row, so an
+  // error/warn row's free-text message lands in the same column these queries
+  // match event names against. /log is unauthenticated, so a posted
+  // {level:'error', message:'run:start'} is a reachable way to inflate a
+  // funnel stage. Every blob2 comparison must be paired with blob1 = 'event'.
+  const bareBlob2 = /(?<!blob1 = 'event' AND )blob2 = '/g;
+
+  it('funnel never matches blob2 without the event level', () => {
+    const sql = funnelQuery('heap_logs', IDS, SINCE, UNTIL).sql;
+    expect(sql.match(bareBlob2)).toBeNull();
+  });
+
+  it('every crosstab dimension never matches blob2 without the event level', () => {
+    for (const d of CROSSTAB_DIMENSIONS) {
+      const sql = crosstabQuery('heap_logs', d, IDS, SINCE, UNTIL).sql;
+      expect(sql.match(bareBlob2), `dimension '${d}' matches blob2 unguarded`).toBeNull();
     }
   });
 });

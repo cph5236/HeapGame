@@ -13,8 +13,13 @@ import type { Sink, StampedLogEntry } from './Sink';
  * sharing a 32-char prefix would collide into one player, and neither could be
  * mapped back to `player_auth.player_id` for a cohort join. So the cap is the
  * real AE limit, not 32.
+ *
+ * EXPORTED only so a test can assert `MAX_INDEX_BYTES >= MAX_ID_LEN`: that
+ * inequality is the whole reason the truncation above is unreachable for a
+ * real id, and raising `MAX_ID_LEN` past 96 without revisiting this would
+ * silently reintroduce the collision this constant exists to prevent.
  */
-const MAX_INDEX_BYTES = 96;
+export const MAX_INDEX_BYTES = 96;
 
 /**
  * The AE `index1` form of a player id.

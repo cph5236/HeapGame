@@ -158,6 +158,19 @@ function dayOf(expr: string): string {
 const GAMEPLAY = `blob1 = 'event'`;
 
 /**
+ * The discriminator every `blob2` match must carry.
+ *
+ * The sink writes `blob2 = eventType ?? message ?? ''` for EVERY row, so an
+ * error/warn row — which never sets `eventType` — puts its free-text message
+ * into the same column these queries match event names against. `/log` is
+ * unauthenticated, so a posted `{level:'error', message:'run:start'}` is a
+ * deliberately reachable way to inflate a funnel stage, and an innocent
+ * colon-namespaced warn message would do it by accident. Pairing the event
+ * name with the level makes the match unambiguous.
+ */
+const IS_EVENT = (type: string) => `${GAMEPLAY} AND blob2 = '${type}'`;
+
+/**
  * Per-player stage counts for a cohort.
  *
  * Inner query: one row per player, with their run counts and first/last activity.
@@ -202,8 +215,8 @@ export function funnelQuery(
     FROM (
       SELECT
         index1 AS player,
-        sumIf(_sample_interval, blob2 = 'run:start') AS starts,
-        sumIf(_sample_interval, blob2 = 'run:end')   AS ends,
+        sumIf(_sample_interval, ${IS_EVENT('run:start')}) AS starts,
+        sumIf(_sample_interval, ${IS_EVENT('run:end')})   AS ends,
         ${dayOf(argMinWhere('double1', 'double1', GAMEPLAY, '0.0'))} AS firstDay,
         ${dayOf(argMaxWhere('double1', 'double1', GAMEPLAY, '0.0'))} AS lastDay,
         max(_sample_interval) AS si
@@ -216,11 +229,11 @@ export function funnelQuery(
 }
 
 /** Per-player aggregate expressions, inlined rather than aliased — see below. */
-const EVENTS = (type: string) => `sumIf(_sample_interval, blob2 = '${type}')`;
+const EVENTS = (type: string) => `sumIf(_sample_interval, ${IS_EVENT(type)})`;
 const ENDS = EVENTS('run:end');
 /** The value of `col` on the player's FIRST `run:end`, or `fallback` if none. */
 const FIRST_OF_RUN = (col: string, fallback: string) =>
-  argMinWhere(col, 'double1', `blob2 = 'run:end'`, fallback);
+  argMinWhere(col, 'double1', IS_EVENT('run:end'), fallback);
 
 /**
  * The per-dimension bucket expression, evaluated on each player's FIRST run.

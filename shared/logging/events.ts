@@ -2,6 +2,15 @@
 // checked at call sites via the `type` discriminator.
 
 export type GameMode = 'normal' | 'infinite';
+/**
+ * How a run ended. NOTE: `'quit'` currently has no emitter — every
+ * `emitRunEnd` call site reports `'death'` or `'success'`, because abandoning
+ * a run mid-climb (backing out to the menu, or the app being killed) does not
+ * produce a run:end event at all. The member is kept because that abandon path
+ * is the one a churn analysis most wants, and wiring it is tracked separately;
+ * the crosstab's `cause` buckets come from the data, so an unemitted value
+ * costs nothing but this note.
+ */
 export type RunEndCause = 'death' | 'quit' | 'success';
 export type Platform = 'web' | 'android' | 'ios';
 
