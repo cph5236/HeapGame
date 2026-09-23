@@ -5,7 +5,7 @@
 // (no secret yet, AE not configured) never blanks the rest.
 
 import type { Ctx } from '../ctx';
-import { envLabel, secretFor, currentEnv } from '../api';
+import { envLabel, secretFor, currentEnv, ApiError } from '../api';
 import {
   getTotals, getNewPlayers, getHeaps, listBans, listFeedback, listCodes, worldYToFt, heapName,
 } from '../data';
@@ -23,7 +23,10 @@ function tile(label: string, value: Raw | string, foot: Raw | string = '', href?
 }
 
 const pending = (label: string) => tile(label, html`<span class="muted">…</span>`);
-const failed = (label: string, e: unknown) => tile(label, html`<span class="muted">—</span>`, html`<span title="${errMessage(e)}">Couldn't load</span>`);
+const failed = (label: string, e: unknown) => tile(label, html`<span class="muted">—</span>`,
+  e instanceof ApiError && e.status === 404
+    ? html`<span title="${errMessage(e)}">Needs the newer worker</span>`
+    : html`<span title="${errMessage(e)}">Couldn't load</span>`);
 
 export async function overviewView(ctx: Ctx): Promise<void> {
   const env = currentEnv();

@@ -3,10 +3,11 @@
 // Typed wrappers over the worker's admin and public routes. Response shapes
 // come from shared/ wherever the server already publishes one.
 
-import { api, publicApi, qs, currentEnv, type EnvId } from './api';
+import { api, publicApi, qs, currentEnv, serverUrl, ApiError, type EnvId } from './api';
+import { legacyPlan, legacyToSeries, isLegacyBucketError, type LegacyRow } from './legacyMetrics';
 import type { HeapSummary, ListHeapsResponse, HeapEnemyParams, AdminBandsResponse, AdminBandRow } from '../../shared/heapTypes';
 import type { FeedbackRow } from '../../shared/feedbackTypes';
-import type { MetricsBucket, SeriesPoint } from '../../shared/metricsBuckets';
+import { bucketSeconds, type MetricsBucket, type SeriesPoint } from '../../shared/metricsBuckets';
 import { SCORE_DISPLAY_DIVISOR } from '../../shared/scoreConstants';
 
 export type { HeapSummary, FeedbackRow };
@@ -94,10 +95,43 @@ export const deleteConfig = (key: string) => api(`/config/${encodeURIComponent(k
 
 export interface NewPlayersSeries {
   bucket: MetricsBucket; bucketSeconds: number; since: string; until: string; total: number; rows: SeriesPoint[];
+  /** Served by a pre-adaptive worker and re-bucketed here; sub-hour sizes unavailable. */
+  legacy?: boolean;
 }
-export const getNewPlayers = (since: string, until: string, bucket: MetricsBucket | 'auto') =>
-  api<NewPlayersSeries>(`/metrics/new-players${qs({ since, until, bucket })}`);
-export const getTotals = () => api<{ players: number }>('/metrics/totals');
+
+/** Server URLs known to run a pre-adaptive worker, so each load asks once, not twice. */
+const legacyServers = new Set<string>();
+
+export async function getNewPlayers(since: string, until: string, bucket: MetricsBucket): Promise<NewPlayersSeries> {
+  const server = serverUrl();
+  if (!legacyServers.has(server)) {
+    try {
+      return await api<NewPlayersSeries>(`/metrics/new-players${qs({ since, until, bucket })}`);
+    } catch (e) {
+      if (!(e instanceof ApiError && isLegacyBucketError(e.status, e.message))) throw e;
+      legacyServers.add(server);
+    }
+  }
+  const plan = legacyPlan(bucket);
+  const res = await api<{ rows: LegacyRow[] }>(`/metrics/new-players${qs({ since, until, bucket: plan.source })}`);
+  const rows = legacyToSeries(res.rows ?? [], plan.effective, Date.parse(since), Date.parse(until));
+  return {
+    bucket: plan.effective, bucketSeconds: bucketSeconds(plan.effective), since, until,
+    total: rows.reduce((n, r) => n + r.count, 0), rows, legacy: true,
+  };
+}
+
+export async function getTotals(): Promise<{ players: number }> {
+  try {
+    return await api<{ players: number }>('/metrics/totals');
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) throw new ApiError(OLD_WORKER, 404);
+    throw e;
+  }
+}
+
+/** Shown where a view needs a route this environment's worker doesn't have yet. */
+export const OLD_WORKER = 'Needs the newer worker — this environment updates when the branch merges to main';
 
 interface AeMeta { sampled: boolean; sampleIntervalMax: number; truncated?: boolean }
 export interface FunnelStages {

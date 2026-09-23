@@ -106,8 +106,12 @@ export async function analyticsView(ctx: Ctx): Promise<void> {
         ${stat('New players', fmtNum(cur.total), html`${deltaText(cur.total, before.total)} vs previous period (${fmtNum(before.total)})`)}
         ${stat('Per day', perDay >= 10 ? fmtNum(Math.round(perDay)) : perDay.toFixed(1), days < 1 ? 'extrapolated from this range' : `average over ${Math.round(days)} days`)}
         ${stat('Busiest bucket', peak.count ? fmtNum(peak.count) : '—', peak.count ? bucketLabel(peak.t, cur.bucket, true) : 'nobody new yet')}`);
+      // A pre-adaptive worker may have served a coarser bucket than asked for.
+      mount($('#acqSub', ctx.root), html`${w.label}, per ${BUCKET_NAMES[cur.bucket]}`);
       seriesChart(chartHost, cur.rows, { bucket: cur.bucket, unit: 'new players', height: 240 });
-      mount($('#acqTable', ctx.root), seriesTable(cur.rows, cur.bucket, 'New players'));
+      mount($('#acqTable', ctx.root), html`${cur.legacy ? html`<div class="note warn" style="margin-top:12px"><div>
+        <b>This environment runs an older worker.</b> Counts are exact, but buckets finer than 1 hour aren't available
+        until it's redeployed from main.</div></div>` : ''}${seriesTable(cur.rows, cur.bucket, 'New players')}`);
     } catch (e) {
       if (!ctx.alive() || t !== token) return;
       chartHost.classList.remove('loading');
