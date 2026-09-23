@@ -41,6 +41,11 @@ id = "a507cae477684d78991295b61a54dcc6"
   binding = "LOGS"
   dataset = "heap_logs"
 
+# Analytics Engine SQL API, for the admin funnel/crosstab/trace routes.
+#   npx wrangler secret put CF_ACCOUNT_ID
+#   npx wrangler secret put CF_ANALYTICS_TOKEN   # Account Analytics Read
+# When either is absent the /analytics routes are simply not mounted.
+
 [vars]
 # Comma-separated list of origins allowed to call the API from a browser.
 # `*` allows all; a `https://*.host.tld` entry matches subdomains (see

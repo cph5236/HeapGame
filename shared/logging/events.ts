@@ -2,7 +2,16 @@
 // checked at call sites via the `type` discriminator.
 
 export type GameMode = 'normal' | 'infinite';
-export type RunEndCause = 'death' | 'quit';
+/**
+ * How a run ended. NOTE: `'quit'` currently has no emitter — every
+ * `emitRunEnd` call site reports `'death'` or `'success'`, because abandoning
+ * a run mid-climb (backing out to the menu, or the app being killed) does not
+ * produce a run:end event at all. The member is kept because that abandon path
+ * is the one a churn analysis most wants, and wiring it is tracked separately;
+ * the crosstab's `cause` buckets come from the data, so an unemitted value
+ * costs nothing but this note.
+ */
+export type RunEndCause = 'death' | 'quit' | 'success';
 export type Platform = 'web' | 'android' | 'ios';
 
 export type UpgradesSnapshot = Record<string, number>;
@@ -26,6 +35,12 @@ export type GameEvent =
       durationMs: number;
       cause: RunEndCause;
       upgrades: UpgradesSnapshot;
+      /** Per-item grab counts for the run — replaces the old per-grab
+       *  `pickup:grab` event, which cost one AE data point per pickup. */
+      pickups: Record<string, number>;
+      /** Sum of the rarity-scaled bonus of every item grabbed — grab value,
+       *  NOT the amount banked into `score`. See `src/systems/pickupTally.ts`. */
+      pickupBonus: number;
     }
   | {
       type: 'score:submitted';
@@ -35,7 +50,6 @@ export type GameEvent =
       rejectionReason?: string;
     }
   | { type: 'placement:made'; heapId: string; itemType: string }
-  | { type: 'pickup:grab'; itemId: string; bonus: number }
   | {
       /** A player used the score screen's SHARE button. `outcome` separates a
        *  real hand-off from a share sheet they backed out of, so the share loop

@@ -41,7 +41,8 @@ the prime suspect for early churn — emits nothing at all.
 | New-user definition | `COUNT(*)` over `player_auth.created_at`, bucketed | Zero new writes, works over existing history from day one |
 | Analytics consent | Flip to **default-on**, keep the opt-out toggle | The toggle is buried in Settings; almost nobody finds it, so today's denominator is a self-selected near-zero sample |
 | Log envelope id | Stamp `getEffectivePlayerId()`, not `getPlayerGuid()` | Cohorts key on the effective id; without this the join silently drops every GPGS-signed-in player |
-| Tutorial | Instrument per-step | Highest-value signal for "why they stop", currently invisible |
+| Tutorial | **Deferred to a later plan** | Still the highest-value signal for "why they stop", but the tutorial *entry* flow is being restructured (menu tour first, tutorial as a skippable selected heap). Instrumenting twice costs more than waiting once. |
+| AE index derivation | Widen `userGuidIndex` before the envelope change | It slices to 32 chars assuming a UUID; a GPGS id is not one, and `MAX_ID_LEN` is 64 — truncation would silently break the join for signed-in players |
 | Pickup volume | Roll `pickup:grab` into the `run:end` payload | Turns N data points per run into zero additional ones |
 | `placement:made` | Leave as-is | ~1 per run, costs nothing, and staying separate preserves *when* in the run it happened |
 | Per-player traces | **In scope** | AE only downsamples at high volume; at Heap's scale traces are complete, and player id is the AE index — the cheapest query shape available |
@@ -124,6 +125,20 @@ this flag, and the settings copy ("Errors are always reported.") already says so
 is the same bare-`getPlayerGuid()` trap that broke leaderboard cosmetics in
 PR #93 and that CLAUDE.md calls out by name.
 
+**The AE index must be widened in the same change.** `AnalyticsEngineSink.ts`
+derives its index as `uuid.replace(/-/g, '').slice(0, 32)`, with a comment
+asserting that AE indexes cap at 32 bytes and that the input is always a UUID.
+Both premises fail here: Cloudflare's documented index limit is **96 bytes**, and
+a GPGS player id is not a UUID — hyphen-stripping is a no-op on it, and
+`MAX_ID_LEN` (server/src/constants.ts) allows 64 characters. Slicing to 32 would
+silently truncate a signed-in player's id, irreversibly, so the cohort→events
+join would fail for exactly the Play Store audience Phase 5 exists to measure —
+and two ids sharing a 32-character prefix would collide into one "player".
+
+This is not a live bug today, because the envelope still stamps a raw GUID. It
+becomes one the moment the envelope changes, so the widening ships in the same
+commit, not as a follow-up.
+
 **History splits at the deploy.** Rows written before it carry the raw GUID;
 rows after carry the effective id. For a signed-in player these are different
 strings, so any query spanning the boundary sees one player as two. Funnel
@@ -132,6 +147,33 @@ date in the runbook, and the admin UI shows it as the earliest selectable date.
 
 The `'pre-init'` fallback stays — `getEffectivePlayerId()` can throw before
 SaveData hydrates, and the existing try/catch already handles it.
+
+### 2d. Metric projection — promote run facts into AE columns
+
+AE SQL cannot read inside the payload JSON (see Phase 5's constraints), so the
+numbers the cross-tab splits on have to be real columns. AE allows 20 blobs and
+20 doubles; the sink currently uses 7 and 1, so this is pure headroom.
+
+**Respect the platform/game seam.** `server/src/platform/logging/` must not learn
+what a `run:end` is. Instead, `LogEntry` gains an optional, game-agnostic
+
+```ts
+metrics?: { doubles?: number[]; blobs?: string[] };
+```
+
+which the AE sink appends positionally after its own fixed columns — `doubles`
+after `double1`, `blobs` after `blob7` — without knowing or caring what they
+mean. A pure mapper in `shared/logging/` fills it in per event type, and
+`RemoteLogger.event()` calls that mapper. `D1Sink` ignores the field (it is the
+local-dev fallback and is never queried this way).
+
+For `run:end` the projection is `doubles: [score, height, kills, durationMs,
+pickupBonus]` → `double2..double6`, and `blobs: [cause]` → `blob8`. Every other
+event projects nothing and is unaffected.
+
+This is **additive**: existing rows keep their meaning, and the new columns are
+simply absent on anything logged before the deploy. Combined with 2b's key
+change, history splits exactly once, at one deploy, rather than twice.
 
 ### 2c. Privacy surfaces
 
@@ -142,38 +184,30 @@ Ship **with** the change, not after:
 - Google Play Console **Data Safety** form — collected-by-default data types
   must match what we now actually collect.
 
-## Phase 3 — Tutorial instrumentation
+## Phase 3 — Tutorial instrumentation — DEFERRED
 
 The tutorial is uninstrumented: none of the 13 `getLogger().event` call sites is
 in `TutorialScene`. A churned player's tutorial outcome — finished, skipped, or
-abandoned mid-step — is currently invisible, and it is the most likely
-explanation for first-session churn.
+abandoned mid-step — is invisible, and it remains the most likely explanation
+for first-session churn.
 
-Three new events in `shared/logging/events.ts`:
+**Deferred deliberately, not dropped.** The tutorial's *entry* flow is being
+reworked (new players routed through the menu coach-mark tour first, with the
+tutorial becoming a selectable heap they can decline). Step-level instrumentation
+inside `TutorialScene` would probably survive that intact, but the funnel's
+denominator would change meaning and the rework introduces a new, arguably more
+interesting drop-off point (tour → tutorial choice). Building it once against the
+final flow beats building it twice.
 
-```ts
-| { type: 'tutorial:step';     stepId: string; index: number }
-| { type: 'tutorial:complete'; steps: number; durationMs: number }
-| { type: 'tutorial:skip';     stepId: string; index: number; durationMs: number }
-```
+Pick this up after the entry restructure lands. The design stands as written: three
+events (`tutorial:step` with `stepId` + `index`, `tutorial:complete`, `tutorial:skip`
+carrying the step the player was on) hung off `TutorialDirector`'s existing
+`onStepEnter` / `onComplete` / `skip()` callbacks, using the stable step ids already
+in `src/data/tutorialFixture.ts`. At most ~15 data points per player, once ever.
 
-Emit points, all in `TutorialScene.ts` against the existing director callbacks:
-
-| Event | Where |
-|---|---|
-| `tutorial:step` | the existing `onStepEnter(step)` callback |
-| `tutorial:complete` | `finish()` |
-| `tutorial:skip` | the existing `onSkip` handler, capturing `director.currentStep` before `skip()` runs |
-
-Step ids are the stable strings already in `src/data/tutorialFixture.ts`
-(`welcome`, `move`, `jump`, `stamina`, `walljump`, `dash`, `dive`, `stomp`,
-`pickup`, `attop`, `placeBlock`, `complete`). `index` is carried alongside so
-the funnel orders correctly even if steps are reordered later.
-
-Volume: at most 15 data points per player, once ever. Negligible.
-
-This yields a **per-step tutorial funnel** — which step loses people. If 40% of
-skips happen on `walljump`, that step is broken, most likely on mobile.
+Consequences for the rest of this spec while it stays deferred:
+- **View E (tutorial funnel) is out of scope** for the analytics UI.
+- **"tutorial outcome" drops out** of View C's cross-tab dimensions.
 
 ## Phase 4 — Pickup roll-up
 
@@ -253,6 +287,43 @@ high volume, and at Heap's scale `_sample_interval` is 1 and traces are
 complete. It degrades silently as volume grows, so the trace view surfaces
 `_sample_interval` and warns when it is ever >1, meaning that trace has gaps.
 
+### AE SQL constraints the queries must respect
+
+Verified against Cloudflare's SQL reference and against this repo's own
+`.github/workflows/fetch-logs.yml`, which already documents two of them:
+
+- **No `JOIN`, no `UNION`.** Queries operate on a single table. Subqueries in
+  `FROM` *are* supported, which is what makes the per-player aggregations
+  possible: an inner query groups by `index1` to derive each player's facts
+  (first run via `argMin`, run count), and the outer query buckets those.
+- **`double1` is SELECTable but cannot appear in `WHERE` or `ORDER BY`; the
+  automatic `timestamp` column is the reverse — filterable but not
+  SELECTable.** So every query filters on `timestamp` and outputs/orders on
+  `double1` (the client event time). `fetch-logs.yml` learned this the hard
+  way; the proxy's queries must not relearn it.
+- Available aggregates include `argMin`/`argMax`, `count(DISTINCT …)`,
+  `countIf`/`sumIf`/`avgIf`, and `quantileExactWeighted`.
+- **There are NO JSON functions.** The documented function categories are
+  statements, operators, aggregates, conditionals, date/time, mathematical,
+  string and type conversion — no `JSONExtract*`, no `visitParamExtract`. The
+  string functions are only `length`/`empty`/`lower`/`upper`/`startsWith`/
+  `endsWith`/`position`/`substring`/`format`/`extract`.
+
+  This is load-bearing: `run:end`'s `durationMs`, `score`, `height`, `kills`,
+  `cause` and `pickupBonus` all live inside the payload JSON in `blob6`, so
+  **View C's cross-tab cannot split on any of them** as things stand. Parsing
+  JSON with `position`/`substring` would be unmaintainable.
+
+  The fix is to promote those fields into dedicated AE columns (see "Metric
+  projection" below). It belongs in Phase 2, not Phase 5, because it changes
+  what is *written* — rows logged before it simply do not have the columns.
+
+- **Blob layout is positional and already fixed** by `AnalyticsEngineSink.ts`:
+  `blob1`=level, `blob2`=eventType, `blob3`=platform, `blob4`=appVersion,
+  `blob5`=sessionId, `blob6`=payload JSON, `blob7`=userAgent; `double1`=client
+  timestamp; `index1`=player id. Changing that layout invalidates stored history,
+  so treat it as frozen.
+
 ### The proxy
 
 D1 cannot join across databases (`player_auth` is in `heap_scores`, logs live in
@@ -266,7 +337,6 @@ the caller:
 |---|---|
 | `funnel` | Stage counts for a cohort over a window |
 | `crosstab` | Run-2 rate split by a named dimension |
-| `tutorial-funnel` | Reached / completed / skipped per step id |
 | `player-trace` | All events for one player id, chronological |
 
 Each takes a date range plus a small allowlisted parameter set (`dimension` for
@@ -332,7 +402,8 @@ then show run-2 rate per bucket:
 `run:end` already carries `durationMs`, `cause`, `score`, `height`, `kills` and
 `upgrades`; the envelope adds `platform` and `app_version`. Allowlisted
 dimensions: run duration, `cause` (death vs quit), height reached, score,
-platform, app version, tutorial outcome, placed-an-item, submitted-a-score.
+platform, app version, placed-an-item, submitted-a-score. (Tutorial outcome
+joins this list once Phase 3 is picked up.)
 
 This is what produces actionable hypotheses rather than a shrug — *"players who
 never placed an item return at 11% vs 40%"* points at placement as the hook and
@@ -346,10 +417,11 @@ Paste a player id, get their events chronologically with timestamps and
 payloads. A banner warns when `_sample_interval` > 1 for any row, meaning the
 trace has gaps and should not be read as complete.
 
-### View E — Tutorial funnel
+### View E — Tutorial funnel — DEFERRED
 
-Per-step bars: reached / completed / skipped for each of the 13 step ids, in
-order. Directly answers which step loses people.
+Blocked on Phase 3. Per-step bars (reached / completed / skipped for each of the
+13 step ids, in order) directly answering which step loses people. Build it when
+the tutorial is instrumented against its final entry flow.
 
 ## Non-goals
 
@@ -372,8 +444,9 @@ order. Directly answers which step loses people.
   `false` still wins — the opt-out must survive the default flip.
 - Envelope test asserting `getEffectivePlayerId()` is stamped, including the
   GPGS-signed-in case where it differs from the raw GUID.
-- Tutorial: step events fire in order; skip carries the step the player was on;
-  complete fires once from `finish()`.
+- AE index test: a 64-character non-UUID id survives `userGuidIndex` intact
+  (no truncation, no collision with another id sharing its first 32 chars),
+  and a hyphenated UUID still maps to its 32-char hex form.
 - Run-end helper: extraction lands with existing tests green, then a test per
   emit site asserting all four carry `pickups`/`pickupBonus`.
 - `PickupManager` tally: reset between runs, shield items counted, awarded

@@ -107,6 +107,85 @@ describe('POST /log', () => {
     // 204 — we never want clients retrying. Server-side error is internal.
     expect(res.status).toBe(204);
   });
+
+  describe('metrics', () => {
+    it('carries metrics through to the sink', async () => {
+      const withMetrics = { ...validEntry, metrics: { doubles: [1, 2, 3], blobs: ['death'] } };
+      const app = makeApp(sink);
+      await app.request('/log', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries: [withMetrics] }),
+      });
+      expect(sink.written[0].metrics).toEqual({ doubles: [1, 2, 3], blobs: ['death'] });
+    });
+
+    it('truncates oversized doubles/blobs arrays to the caps (8/4)', async () => {
+      const withMetrics = {
+        ...validEntry,
+        metrics: {
+          doubles: Array.from({ length: 12 }, (_, i) => i),
+          blobs: Array.from({ length: 7 }, (_, i) => `b${i}`),
+        },
+      };
+      const app = makeApp(sink);
+      await app.request('/log', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries: [withMetrics] }),
+      });
+      expect(sink.written[0].metrics?.doubles).toHaveLength(8);
+      expect(sink.written[0].metrics?.blobs).toHaveLength(4);
+    });
+
+    it('rejects the whole metrics object on a non-finite double', async () => {
+      // JSON has no NaN/Infinity literals, but "1e400" is valid JSON number
+      // syntax that JS parses to Infinity — a real way this can arrive over
+      // the wire. Build the body by hand to smuggle it in unquoted.
+      //
+      // Filtering the bad element out would yield [1, 5], silently moving 5
+      // from double4 into double3. These positions are the column contract
+      // (shared/logging/aeProjection.ts), so a shift is unrecoverable data
+      // corruption. Dropping the metrics entirely is the safe failure.
+      const withMetrics = { ...validEntry, metrics: { doubles: [1, '__INF__', 5] } };
+      const rawBody = JSON.stringify({ entries: [withMetrics] }).replace('"__INF__"', '1e400');
+      const app = makeApp(sink);
+      await app.request('/log', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: rawBody,
+      });
+      expect(sink.written[0].metrics).toBeUndefined();
+    });
+
+    it('rejects the whole metrics object on a non-string blob', async () => {
+      // The same positional hazard, one column family over: blobs[0] is blob8.
+      const withMetrics = { ...validEntry, metrics: { doubles: [1], blobs: ['a', 7, 'c'] } };
+      const app = makeApp(sink);
+      await app.request('/log', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries: [withMetrics] }),
+      });
+      expect(sink.written[0].metrics).toBeUndefined();
+    });
+
+    it('keeps a valid metrics object intact', async () => {
+      const withMetrics = { ...validEntry, metrics: { doubles: [1, 2, 3], blobs: ['death'] } };
+      const app = makeApp(sink);
+      await app.request('/log', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries: [withMetrics] }),
+      });
+      expect(sink.written[0].metrics?.doubles).toEqual([1, 2, 3]);
+      expect(sink.written[0].metrics?.blobs).toEqual(['death']);
+    });
+
+    it('leaves metrics undefined when the field is missing', async () => {
+      const app = makeApp(sink);
+      await app.request('/log', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries: [validEntry] }),
+      });
+      expect(sink.written[0].metrics).toBeUndefined();
+    });
+  });
 });
 
 import { createApp } from '../src/app';

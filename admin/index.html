@@ -348,6 +348,72 @@
     <div id="an-chart" class="mt-3 overflow-x-auto"></div>
   </div>
 
+  <div class="card border-l-term-cyan">
+    <h2 class="card-head">Analytics — First-Session Funnel</h2>
+    <div class="grid2">
+      <div>
+        <label class="lbl">Days back</label>
+        <input type="number" id="fn-days" class="field" value="30" min="1" max="365" />
+      </div>
+    </div>
+    <button id="fn-refresh" class="btn mt-3">Load</button>
+    <div id="fn-summary" class="muted mt-3">Not loaded.</div>
+    <div id="fn-chart" class="mt-3 overflow-x-auto"></div>
+  </div>
+
+  <div class="card border-l-term-cyan">
+    <h2 class="card-head">Analytics — Churn Cross-tab</h2>
+    <div class="grid2">
+      <div>
+        <label class="lbl">Dimension</label>
+        <select id="ct-dimension" class="field">
+          <option value="duration" selected>duration</option>
+          <option value="cause">cause</option>
+          <option value="height">height</option>
+          <option value="score">score</option>
+          <option value="platform">platform</option>
+          <option value="appVersion">appVersion</option>
+          <option value="placed">placed</option>
+          <option value="submitted">submitted</option>
+        </select>
+      </div>
+      <div>
+        <label class="lbl">Days back</label>
+        <input type="number" id="ct-days" class="field" value="30" min="1" max="365" />
+      </div>
+    </div>
+    <button id="ct-refresh" class="btn mt-3">Load</button>
+    <div id="ct-summary" class="muted mt-3">Not loaded.</div>
+    <div class="overflow-x-auto">
+      <table class="tbl mt-3">
+        <thead><tr><th>Bucket</th><th>Cohort</th><th>Returned</th><th>Rate</th></tr></thead>
+        <tbody id="ct-tbody"><tr><td colspan="4" class="muted">not loaded</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card border-l-term-cyan">
+    <h2 class="card-head">Analytics — Player Trace</h2>
+    <div class="grid2">
+      <div>
+        <label class="lbl">Player ID</label>
+        <input type="text" id="tr-playerId" class="field" placeholder="guid or gpgs id" />
+      </div>
+      <div>
+        <label class="lbl">Days back</label>
+        <input type="number" id="tr-days" class="field" value="30" min="1" max="365" />
+      </div>
+    </div>
+    <button id="tr-refresh" class="btn mt-3">Load</button>
+    <div id="tr-summary" class="muted mt-3">Not loaded.</div>
+    <div class="overflow-x-auto">
+      <table class="tbl mt-3">
+        <thead><tr><th>Time (newest first)</th><th>Event</th><th>Payload</th></tr></thead>
+        <tbody id="tr-tbody"><tr><td colspan="3" class="muted">not loaded</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
   <div id="status" class="fixed inset-x-0 bottom-0 z-30 border-t border-term-line bg-term-panel px-4 py-2 text-sm text-term-dim"></div>
 
   <script>
@@ -524,6 +590,12 @@
       loadConfig();
       $('an-summary').textContent = 'Not loaded.';
       $('an-chart').innerHTML = '';
+      $('fn-summary').textContent = 'Not loaded.';
+      $('fn-chart').innerHTML = '';
+      $('ct-summary').textContent = 'Not loaded.';
+      $('ct-tbody').innerHTML = '<tr><td colspan="4" class="muted">not loaded</td></tr>';
+      $('tr-summary').textContent = 'Not loaded.';
+      $('tr-tbody').innerHTML = '<tr><td colspan="3" class="muted">not loaded</td></tr>';
       plPage = 0;
       plTotal = 0;
       plLookupShowing = null;
@@ -1922,6 +1994,222 @@
       $('an-refresh').addEventListener('click', loadNewPlayers);
     }
 
+    // ────── Analytics: funnel / cross-tab / trace ─────────────────────────
+    //
+    // The eight crosstab dimensions below must exactly match the server
+    // allowlist. Keep in sync with server/src/platform/analytics/queries.ts
+    // (CROSSTAB_DIMENSIONS) — anything else is rejected with 400.
+
+    /** since/until ISO pair for a "days back" number input, mirroring loadNewPlayers. */
+    function daysBackWindow(daysInputId) {
+      const days = Math.max(1, Math.min(365, Number($(daysInputId).value) || 30));
+      const until = new Date();
+      const since = new Date(until.getTime() - days * 86400000);
+      return { since: since.toISOString(), until: until.toISOString() };
+    }
+
+    // All three analytics routes 404 when the Worker has no Analytics Engine
+    // credentials configured — the normal state locally and in staging. That
+    // must read as a clean message, not an uncaught error.
+    async function analyticsUnavailableMessage(res) {
+      if (res.status === 404) return 'Analytics Engine is not configured for this environment.';
+      // The route's onError deliberately returns { error: <upstream AE message> }
+      // at 502 so an admin can troubleshoot a bad token or an over-quota
+      // account — flattening that to a bare status code throws it away.
+      const body = await res.json().catch(() => null);
+      return body && body.error ? `request failed (${res.status}): ${body.error}` : 'request failed: ' + res.status;
+    }
+
+    // Sampling/truncation caveats shared by all three cards. `strongSampled`
+    // is set on the trace card: a sampled trace has MISSING EVENTS, which is
+    // a stronger claim than "these counts are estimates".
+    function analyticsCaveats(data, strongSampled) {
+      const parts = [];
+      if (data.sampled) {
+        const interval = escapeHtml(String(data.sampleIntervalMax));
+        parts.push(strongSampled
+          ? `<div class="text-term-amber">⚠ SAMPLED (interval ${interval}) — Analytics Engine downsampled this `
+            + `data. This trace has MISSING EVENTS and must not be read as a complete history of this player.</div>`
+          : `<div class="text-term-amber">⚠ Sampled (interval ${interval}) — Analytics Engine downsampled this `
+            + `data; these numbers are estimates.</div>`);
+      }
+      if (data.truncated) {
+        parts.push('<div class="text-term-amber">⚠ Truncated — the cohort hit the 2000-player ceiling; '
+          + 'totals undercount the full window.</div>');
+      }
+      return parts.join('');
+    }
+
+    const FUNNEL_STAGES = [
+      ['cohort', 'Cohort'],
+      ['startedRun1', 'Started run 1'],
+      ['finishedRun1', 'Finished run 1'],
+      ['startedRun2', 'Started run 2'],
+      ['startedRun3', 'Started run 3'],
+      ['returnedLater', 'Returned later'],
+    ];
+
+    function renderFunnel(stages) {
+      const host = $('fn-chart');
+      const cohort = Number(stages.cohort) || 0;
+      if (!cohort) { host.innerHTML = '<div class="muted">No players in this window.</div>'; return; }
+      const W = 720, PAD_L = 140, PAD_R = 60, ROW_H = 34, PAD_T = 8;
+      const plotW = W - PAD_L - PAD_R;
+      const H = PAD_T * 2 + ROW_H * FUNNEL_STAGES.length;
+      const max = Math.max(cohort, 1);
+
+      const rows = FUNNEL_STAGES.map(([key, label], i) => {
+        const value = Number(stages[key]) || 0;
+        const pct = cohort > 0 ? (value / cohort) * 100 : 0;
+        const barW = Math.max(0, (value / max) * plotW);
+        const y = PAD_T + i * ROW_H;
+        const labelText = `${escapeHtml(String(value))} (${escapeHtml(pct.toFixed(1))}%)`;
+        // A near-full-width bar (the cohort row always is) pushes an
+        // after-the-bar label past the viewBox's right edge, where it gets
+        // clipped. Draw it right-aligned inside the bar instead once the bar
+        // is close to full width, rather than only widening PAD_R — that
+        // stays correct for long values too (e.g. "2000 (100.0%)").
+        const valueLabel = barW > plotW * 0.8
+          ? `<text x="${(PAD_L + barW - 6).toFixed(1)}" y="${y + ROW_H / 2 + 4}" font-size="11"
+                   text-anchor="end" fill="var(--color-term-bg, #000)">${labelText}</text>`
+          : `<text x="${(PAD_L + barW + 6).toFixed(1)}" y="${y + ROW_H / 2 + 4}" font-size="11"
+                   fill="currentColor">${labelText}</text>`;
+        return `
+          <text x="${PAD_L - 8}" y="${y + ROW_H / 2 + 4}" font-size="11" text-anchor="end"
+                fill="currentColor">${escapeHtml(label)}</text>
+          <rect x="${PAD_L}" y="${y + 5}" width="${barW.toFixed(1)}" height="${ROW_H - 12}"
+                fill="currentColor" opacity="0.7" />
+          ${valueLabel}`;
+      }).join('');
+
+      host.innerHTML = `
+        <svg viewBox="0 0 ${W} ${H}" width="100%" class="text-term-cyan" role="img" aria-label="First-session funnel">
+          ${rows}
+        </svg>`;
+    }
+
+    async function loadFunnel() {
+      const gen = envGeneration;
+      const { since, until } = daysBackWindow('fn-days');
+      const qs = `?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`;
+      try {
+        const res = await adminFetch('/analytics/funnel' + qs);
+        if (gen !== envGeneration) return;
+        if (!res.ok) {
+          const msg = await analyticsUnavailableMessage(res);
+          if (gen !== envGeneration) return; // operator switched environments mid-flight
+          $('fn-summary').innerHTML = escapeHtml(msg);
+          $('fn-chart').innerHTML = '';
+          return;
+        }
+        const data = await res.json();
+        if (gen !== envGeneration) return;
+        $('fn-summary').innerHTML = `Cohort of ${escapeHtml(String(data.stages.cohort))} players.`
+          + analyticsCaveats(data, false);
+        renderFunnel(data.stages);
+        setStatus('funnel loaded', 'ok');
+      } catch (err) {
+        if (gen !== envGeneration) return;
+        setStatus(String(err && err.message ? err.message : err), 'err');
+      }
+    }
+
+    function renderCrosstab(rows) {
+      const tbody = $('ct-tbody');
+      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="4" class="muted">no data in this window</td></tr>'; return; }
+      tbody.innerHTML = rows.map(r => {
+        const rate = r.cohort > 0 ? ((r.returned / r.cohort) * 100).toFixed(1) : '0.0';
+        return '<tr>'
+          + '<td>' + escapeHtml(String(r.bucket)) + '</td>'
+          + '<td>' + escapeHtml(String(r.cohort)) + '</td>'
+          + '<td>' + escapeHtml(String(r.returned)) + '</td>'
+          + '<td>' + escapeHtml(rate) + '%</td>'
+          + '</tr>';
+      }).join('');
+    }
+
+    async function loadCrosstab() {
+      const gen = envGeneration;
+      const dimension = $('ct-dimension').value;
+      const { since, until } = daysBackWindow('ct-days');
+      const qs = `?dimension=${encodeURIComponent(dimension)}`
+        + `&since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`;
+      try {
+        const res = await adminFetch('/analytics/crosstab' + qs);
+        if (gen !== envGeneration) return;
+        if (!res.ok) {
+          const msg = await analyticsUnavailableMessage(res);
+          if (gen !== envGeneration) return; // operator switched environments mid-flight
+          $('ct-summary').innerHTML = escapeHtml(msg);
+          $('ct-tbody').innerHTML = '<tr><td colspan="4" class="muted">not loaded</td></tr>';
+          return;
+        }
+        const data = await res.json();
+        if (gen !== envGeneration) return;
+        $('ct-summary').innerHTML = `${escapeHtml(String(data.rows.length))} buckets for `
+          + `${escapeHtml(data.dimension)}.` + analyticsCaveats(data, false);
+        renderCrosstab(data.rows);
+        setStatus('crosstab loaded', 'ok');
+      } catch (err) {
+        if (gen !== envGeneration) return;
+        setStatus(String(err && err.message ? err.message : err), 'err');
+      }
+    }
+
+    function renderTrace(rows) {
+      const tbody = $('tr-tbody');
+      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="3" class="muted">no events in this window</td></tr>'; return; }
+      tbody.innerHTML = rows.map(r => {
+        // Payload (blob6) is ALREADY a JSON string — re-stringifying it here
+        // would double-encode it (quotes and backslashes rendered literally).
+        // It's also player-supplied, the highest-risk string on this whole
+        // page: escape it, but never re-serialize or interpolate it raw.
+        const payload = escapeHtml(typeof r.payload === 'string' ? r.payload : JSON.stringify(r.payload));
+        const ts = Number(r.ts);
+        const time = Number.isFinite(ts) ? new Date(ts).toISOString().replace('T', ' ').slice(0, 19) : String(r.ts);
+        return '<tr>'
+          + '<td>' + escapeHtml(time) + '</td>'
+          + '<td>' + escapeHtml(String(r.eventType)) + '</td>'
+          + '<td class="text-xs">' + payload + '</td>'
+          + '</tr>';
+      }).join('');
+    }
+
+    async function loadTrace() {
+      const gen = envGeneration;
+      const playerId = $('tr-playerId').value.trim();
+      if (!playerId) { setStatus('player id required', 'err'); return; }
+      const { since, until } = daysBackWindow('tr-days');
+      const qs = `?playerId=${encodeURIComponent(playerId)}`
+        + `&since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`;
+      try {
+        const res = await adminFetch('/analytics/trace' + qs);
+        if (gen !== envGeneration) return;
+        if (!res.ok) {
+          const msg = await analyticsUnavailableMessage(res);
+          if (gen !== envGeneration) return; // operator switched environments mid-flight
+          $('tr-summary').innerHTML = escapeHtml(msg);
+          $('tr-tbody').innerHTML = '<tr><td colspan="3" class="muted">not loaded</td></tr>';
+          return;
+        }
+        const data = await res.json();
+        if (gen !== envGeneration) return;
+        $('tr-summary').innerHTML = `${escapeHtml(String(data.rows.length))} events for `
+          + `${escapeHtml(playerId)}.` + analyticsCaveats(data, true);
+        renderTrace(data.rows);
+        setStatus('trace loaded', 'ok');
+      } catch (err) {
+        if (gen !== envGeneration) return;
+        setStatus(String(err && err.message ? err.message : err), 'err');
+      }
+    }
+
+    function bootFunnel() {
+      $('fn-refresh').addEventListener('click', loadFunnel);
+      $('ct-refresh').addEventListener('click', loadCrosstab);
+      $('tr-refresh').addEventListener('click', loadTrace);
+    }
+
     // ────── Boot ───────────────────────────────────────────────────────────
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -1936,6 +2224,7 @@
       bootConfig();
       bootPlayers();
       bootAnalytics();
+      bootFunnel();
       applyEnv(currentEnv());
     });
   </script>

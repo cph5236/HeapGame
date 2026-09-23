@@ -31,11 +31,12 @@ import { ParallaxBackground } from '../systems/ParallaxBackground';
 import { LayerGenerator } from '../systems/LayerGenerator';
 import { computeBandPolygon, simplifyPolygon, type Vertex } from '../systems/HeapPolygon';
 import { buildRunScore } from '../systems/buildRunScore';
-import { getPlayerConfig, addBalance, getUpgrades, getEffectiveControlMode, getUpgradeLevel, getEquippedCosmetics, getHatAdjustments, getEffectivePlayerId } from '../systems/SaveData';
+import { getPlayerConfig, addBalance, getEffectiveControlMode, getUpgradeLevel, getEquippedCosmetics, getHatAdjustments, getEffectivePlayerId } from '../systems/SaveData';
 import { resolveCosmetics } from '../systems/cosmeticsLogic';
 import { showDashIndicator } from '../ui/hudLogic';
 import { ENEMY_DEFS, DEFAULT_ENEMY_PARAMS } from '../data/enemyDefs';
 import { getLogger } from '../logging';
+import { emitRunEnd } from '../systems/runEndEvent';
 import { BRIDGE_DEF } from '../data/bridgeDefs';
 import { PORTAL_DEF } from '../data/portalDefs';
 import { TRASH_WALL_DEF } from '../data/trashWallDef';
@@ -660,17 +661,15 @@ export class InfiniteGameScene extends Phaser.Scene {
     );
 
     this.playerOutro.play('death', () => {
-      const killCount = Object.values(this._runKills).reduce((sum, val) => sum + val, 0);
-      getLogger().event({
-        type: 'run:end',
+      emitRunEnd({
         heapId: INFINITE_HEAP_ID,
         mode: 'infinite',
+        cause: 'death',
         score: runResult.finalScore,
         height: score,
-        kills: killCount,
         durationMs: elapsedMs,
-        cause: 'death',
-        upgrades: getUpgrades(),
+        kills: this._runKills,
+        ...this.pickupManager.getRunPickups(),
       });
       this.scene.launch('ScoreScene', {
         score:               runResult.finalScore,

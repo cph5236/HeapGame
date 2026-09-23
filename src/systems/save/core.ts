@@ -72,8 +72,11 @@ const extFresh   = (): object => _ext?.fresh() ?? {};
 const extMigrate = (parsed: any, v: number): object => _ext?.migrate(parsed, v) ?? {};
 const extMerge   = (l: any, c: any): object => _ext?.merge(l, c) ?? {};
 
-/** The fields core owns. Anything else in a stored blob came from a game half. */
-const CORE_KEYS: ReadonlySet<string> = new Set([
+/** The fields core owns. Anything else in a stored blob came from a game half.
+ *  Exported so a test can assert `mergeCore` still handles every one of them —
+ *  a field it forgets falls through to "local always wins, cloud never
+ *  contributes", which is silent data loss on reinstall rather than an error. */
+export const CORE_KEYS: ReadonlySet<string> = new Set([
   'schemaVersion', 'playerGuid', 'playerSecret', 'playerName', 'gpgsPlayerId',
   'verboseLogging', 'soundSettings', 'controlMode', 'joystickSide', 'remoteConfig',
 ]);
@@ -232,7 +235,11 @@ export function getPlayerSecret(): string {
 
 // ── Verbose logging ───────────────────────────────────────────────────────────
 
-export function getVerboseLogging(): boolean { return load().verboseLogging ?? false; }
+/** Analytics is opt-OUT: on unless the player turned it off in Settings. A
+ *  STORED value always wins, so a player who opted out before this default
+ *  flipped stays opted out. Errors and warnings are sent regardless of this
+ *  flag and always have been — only `event`-level logging is gated here. */
+export function getVerboseLogging(): boolean { return load().verboseLogging ?? true; }
 export function setVerboseLogging(enabled: boolean): void {
   const data = load();
   data.verboseLogging = enabled;
@@ -254,7 +261,13 @@ function mergeCore(local: RawSave, cloud: RawSave): CoreSave {
     playerSecret:  local.playerSecret ?? cloud.playerSecret,
     playerName:    pickPrimary(local, cloud).playerName,
     gpgsPlayerId:  local.gpgsPlayerId ?? cloud.gpgsPlayerId,
-    verboseLogging: local.verboseLogging,
+    // Opt-out must survive a reinstall. `freshCore()` never sets this, so on a
+    // new device `local.verboseLogging` is undefined — without the cloud
+    // fallback the merge picks undefined over a stored `false`, and
+    // `getVerboseLogging()`'s `?? true` then silently turns analytics back on
+    // for a player who turned them off. That is the opposite of the promise
+    // three lines up, and the player would never see it happen.
+    verboseLogging: local.verboseLogging ?? cloud.verboseLogging,
     // Sound prefs are per-device; keep local, fall back to cloud on fresh install.
     soundSettings: local.soundSettings ?? cloud.soundSettings,
     controlMode:   local.controlMode,   // device-local — local always wins

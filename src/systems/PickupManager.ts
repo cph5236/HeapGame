@@ -21,7 +21,7 @@ import { InputManager } from './InputManager';
 import { AudioManager } from './AudioManager';
 import { logicalWidth, logicalHeight } from './displayMetrics';
 import { addToGameplayUi } from './GameplayUiCamera';
-import { getLogger } from '../logging';
+import { emptyTally, recordGrab, type PickupTally } from './pickupTally';
 
 const PICKUP_SIZE     = 28;                    // px visual footprint (overlay offset)
 const PICKUP_CORE_RADIUS = 7;                  // px radius of the solid item circle
@@ -96,6 +96,9 @@ export class PickupManager {
 
   private pickups:    SpawnedPickup[] = [];
   private carried:    CarriedPickup[] = [];
+  /** Per-run pickup tally, folded into run:end instead of one AE data point per
+   *  grab. A PickupManager is constructed per scene, so a new run starts clean. */
+  private tally: PickupTally = emptyTally();
   private aggregate:  CarryModifiers  = aggregateModifiers([]);
   private lastSpawnY: number | null   = null;
   private heapPolygon: Vertex[]       = [];  // full heap polygon for interior/underside rejection
@@ -201,6 +204,8 @@ export class PickupManager {
   getCarriedCount(): number { return this.carried.length; }
   /** Carried items + rarities — sent to the server for authoritative scoring. */
   getCarriedItems(): SalvageItem[] { return this.carried.map(c => ({ id: c.def.id, rarity: c.rarity })); }
+  /** This run's pickup tally, for the run:end payload. */
+  getRunPickups(): PickupTally { return this.tally; }
   /** Aggregate trash-wall speed multiplier from carried items (1 = unaffected). */
   getWallSpeedMult(): number { return this.aggregate.wallSpeedMult; }
 
@@ -262,7 +267,10 @@ export class PickupManager {
     }
 
     AudioManager.play('enemy-kill');
-    getLogger().event({ type: 'pickup:grab', itemId: pickup.def.id, bonus: pickup.def.scoreBonus });
+    // Tallied here rather than read off `carried`, because a shield item is granted
+    // without ever entering `carried` (see the grantsShield branch above) and would
+    // otherwise vanish from the data entirely.
+    this.tally = recordGrab(this.tally, pickup.def.id, pickup.def.scoreBonus, pickup.rarity);
 
     // Collect animation, then destroy.
     this.scene.tweens.killTweensOf(pickup.obj);

@@ -5,6 +5,12 @@ exports[`route inventory > keeps middleware ahead of its handler within every pa
   "/*": [
     "ALL /*",
   ],
+  "/analytics": [
+    "ALL /analytics/*",
+    "GET /analytics/funnel",
+    "GET /analytics/crosstab",
+    "GET /analytics/trace",
+  ],
   "/auth": [
     "DELETE /auth/:playerId",
     "DELETE /auth/:playerId",
@@ -109,6 +115,7 @@ exports[`route inventory > keeps middleware ahead of its handler within every pa
 
 exports[`route inventory > mounts exactly the expected set of routes 1`] = `
 "ALL /*
+ALL /analytics/*
 ALL /heaps
 ALL /heaps/*
 ALL /metrics/*
@@ -124,6 +131,9 @@ DELETE /config/:key
 DELETE /config/:key
 DELETE /heaps/:id
 DELETE /heaps/:id
+GET /analytics/crosstab
+GET /analytics/funnel
+GET /analytics/trace
 GET /bans
 GET /bans
 GET /bans/:playerId

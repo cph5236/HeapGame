@@ -23,6 +23,9 @@ export interface LogEntry {
   eventType?: string;
   message?: string;
   payload: Record<string, unknown>;
+  /** Optional extra AE columns, appended positionally by the sink. The sink
+   *  never interprets these — see shared/logging/aeProjection.ts. */
+  metrics?: { doubles?: number[]; blobs?: string[] };
 }
 
 export interface ErrorContext {

@@ -4,6 +4,7 @@ import {
   getPlayerSecret, getSoundSettings, getControlMode, getJoystickSide,
   getGpgsPlayerId, getStoredRemoteConfig, CURRENT_SCHEMA, type RawSave,
 } from '../SaveData';
+import { CORE_KEYS } from '../save/core';
 
 const store: Record<string, string> = {};
 beforeAll(() => {
@@ -117,6 +118,23 @@ describe('save/core — mergeCloudSave keeps the write-auth secret', () => {
     expect(mergeCloudSave(base({ balance: 1, playerName: 'Local' }), base({ balance: 9, playerName: 'Cloud' })).playerName).toBe('Cloud');
     expect(mergeCloudSave(base({ balance: 9, playerName: 'Local' }), base({ balance: 1, playerName: 'Cloud' })).playerName).toBe('Local');
   });
+
+  // Analytics is opt-OUT, so `undefined` reads as "on" downstream
+  // (getVerboseLogging's `?? true`). A fresh install has no local value, which
+  // makes the cloud fallback the only thing standing between a reinstall and
+  // silently re-enabling analytics for someone who turned them off.
+  it('recovers an analytics opt-out from the cloud on a fresh install', () => {
+    expect(mergeCloudSave(base(), base({ verboseLogging: false })).verboseLogging).toBe(false);
+  });
+
+  it('lets a local analytics choice win over the cloud', () => {
+    expect(mergeCloudSave(base({ verboseLogging: true }), base({ verboseLogging: false })).verboseLogging).toBe(true);
+    expect(mergeCloudSave(base({ verboseLogging: false }), base({ verboseLogging: true })).verboseLogging).toBe(false);
+  });
+
+  it('leaves it unset when neither side has one', () => {
+    expect(mergeCloudSave(base(), base()).verboseLogging).toBeUndefined();
+  });
 });
 
 describe('save/core — reaching past the barrel cannot silently truncate a save', () => {
@@ -153,5 +171,77 @@ describe('save/core — reaching past the barrel cannot silently truncate a save
     localStorage.setItem('heap_save', '{not json');
     const core = await coreAlone();
     expect(core.load().playerGuid).toBeTruthy();
+  });
+});
+
+// ── mergeCore completeness ──────────────────────────────────────────────────
+// These run core ALONE, with no SaveExtension registered, so `extMerge` returns
+// {} and the merged object is exactly `{...local, ...mergeCore(local, cloud)}`.
+//
+// That isolation is the whole point. Through the normal barrel, `mergeGame`
+// spreads both raw saves wholesale (`...secondary`, `...primary`), so a core
+// field mergeCore FORGETS is silently backfilled by the game half and no test
+// can see the omission. The real hazard is the inverse: a field mergeCore names
+// without a `?? cloud` fallback emits an explicit `undefined` that overwrites
+// that backfill. That is how the analytics opt-out was being lost, and it is
+// what these assertions pin.
+
+describe('save/core — mergeCore recovers account-level fields alone', () => {
+  const EMPTY = {
+    schemaVersion: 5, playerGuid: 'g', playerName: 'N',
+  } as unknown as RawSave;
+
+  const FULL = {
+    ...EMPTY,
+    playerSecret: 'cloud-secret', gpgsPlayerId: 'cloud-gpgs',
+    verboseLogging: false,
+    soundSettings: { master: 0.1, music: 0.1, playerSfx: 0.1, enemySfx: 0.1, envSfx: 0.1 },
+    controlMode: 'joystick', joystickSide: 'right',
+    remoteConfig: { minVersion: '1.2.3' },
+  } as unknown as RawSave;
+
+  async function coreOnly() {
+    vi.resetModules();
+    return await import('../save/core');
+  }
+
+  // Account-level: belongs to the player, so a fresh install must recover it.
+  // controlMode and joystickSide are deliberately excluded — those are
+  // per-device by design and must NOT be pulled from another device's save.
+  const ACCOUNT_LEVEL: Array<[string, unknown]> = [
+    ['playerSecret',  'cloud-secret'],
+    ['gpgsPlayerId',  'cloud-gpgs'],
+    ['verboseLogging', false],
+    ['remoteConfig',  { minVersion: '1.2.3' }],
+  ];
+
+  for (const [field, expected] of ACCOUNT_LEVEL) {
+    it(`recovers ${field} from the cloud when the local save has none`, async () => {
+      const core = await coreOnly();
+      const merged = core.mergeCloudSave(EMPTY, FULL) as Record<string, unknown>;
+      expect(merged[field]).toEqual(expected);
+    });
+  }
+
+  it('keeps device-local prefs local rather than importing another device\'s', async () => {
+    const core = await coreOnly();
+    const merged = core.mergeCloudSave(
+      { ...EMPTY, controlMode: 'tilt', joystickSide: 'left' } as unknown as RawSave,
+      FULL,
+    );
+    expect(merged.controlMode).toBe('tilt');
+    expect(merged.joystickSide).toBe('left');
+  });
+
+  it('names every field CORE_KEYS claims core owns', async () => {
+    // A weaker check than the ones above — the game half would mask an omission
+    // in production — but it still catches a field dropped from mergeCore while
+    // core stands alone.
+    const core = await coreOnly();
+    const merged = core.mergeCloudSave(EMPTY, FULL) as Record<string, unknown>;
+    for (const key of CORE_KEYS) {
+      expect(Object.prototype.hasOwnProperty.call(merged, key), `mergeCore dropped '${key}'`)
+        .toBe(true);
+    }
   });
 });

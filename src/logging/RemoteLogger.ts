@@ -2,9 +2,21 @@ import type {
   Logger, ErrorContext, WarnContext, LogEntry, LogEnvelope,
 } from '../../shared/logging/Logger';
 import type { GameEvent } from '../../shared/logging/events';
+import { projectEventMetrics } from '../../shared/logging/aeProjection';
 
 export interface RemoteLoggerOptions {
-  /** Read at flush time so userGuid can hydrate late. */
+  /**
+   * Read at FLUSH time, not at enqueue time, so `userGuid` can hydrate late.
+   *
+   * This is deliberate and is not a mislabelling bug. `error()`/`warn()` fire
+   * during boot, before SaveData is readable, when `getEffectivePlayerId()`
+   * still yields `'pre-init'`; and the GPGS gate can settle the effective id
+   * up to GPGS_SIGNIN_TIMEOUT_MS later. Stamping per entry would split one
+   * physical player's boot across two ids (or orphan it under `'pre-init'`),
+   * which is strictly worse for the per-player trace than stamping the whole
+   * batch with the id that settled. The id identifies the player, not the
+   * instant.
+   */
   getEnvelope: () => LogEnvelope;
   /** Returns false to indicate "send queue full" / unsent (currently unused). */
   transport: (entries: LogEntry[]) => boolean;
@@ -59,7 +71,7 @@ export class RemoteLogger implements Logger {
     if (!this.verbose) return;
     try {
       const { type, ...payload } = e as any;
-      this.enqueue('event', { eventType: type, payload });
+      this.enqueue('event', { eventType: type, payload, metrics: projectEventMetrics(e) });
     } catch { /* swallow */ }
   }
 
@@ -68,7 +80,12 @@ export class RemoteLogger implements Logger {
 
   private enqueue(
     level: 'error' | 'warn' | 'event',
-    parts: { message?: string; eventType?: string; payload: Record<string, unknown> },
+    parts: {
+      message?: string;
+      eventType?: string;
+      payload: Record<string, unknown>;
+      metrics?: { doubles?: number[]; blobs?: string[] };
+    },
   ): void {
     const raw = {
       level,
@@ -76,6 +93,7 @@ export class RemoteLogger implements Logger {
       message: parts.message,
       eventType: parts.eventType,
       payload: parts.payload,
+      metrics: parts.metrics,
     };
     let json = JSON.stringify(raw);
     if (json.length > this.opts.maxEntryBytes) {
@@ -118,6 +136,7 @@ export class RemoteLogger implements Logger {
       message:   (p.entry as any).message,
       eventType: (p.entry as any).eventType,
       payload:   (p.entry as any).payload,
+      metrics:   (p.entry as any).metrics,
     }));
     this.buffer = [];
     this.bufferedBytes = 0;

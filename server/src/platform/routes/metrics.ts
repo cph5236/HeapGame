@@ -5,18 +5,10 @@
 
 import { Hono } from 'hono';
 import { type MetricsDB, isMetricsBucket } from '../metricsDb';
+import { parseWindow } from './timeWindow';
 
-const DAY_MS = 86_400_000;
-const DEFAULT_WINDOW_DAYS = 30;
 const DEFAULT_COHORT_LIMIT = 500;
 const MAX_COHORT_LIMIT = 1000;
-
-/** Parses an ISO timestamp, returning null for anything unparseable. */
-function parseIso(v: string | undefined): string | null {
-  if (v === undefined) return null;
-  const ms = Date.parse(v);
-  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
-}
 
 /**
  * Validates a cohort `cursor` shape without parsing it as a date. It is
@@ -48,23 +40,9 @@ export function metricsRoutes(metricsDb: MetricsDB): Hono {
       return c.json({ error: 'bucket must be one of: hour, day, week' }, 400);
     }
 
-    const now = Date.now();
-    const rawUntil = c.req.query('until');
-    const rawSince = c.req.query('since');
-
-    const until = rawUntil === undefined
-      ? new Date(now).toISOString()
-      : parseIso(rawUntil);
-    if (until === null) return c.json({ error: 'until is not a valid ISO timestamp' }, 400);
-
-    const since = rawSince === undefined
-      ? new Date(Date.parse(until) - DEFAULT_WINDOW_DAYS * DAY_MS).toISOString()
-      : parseIso(rawSince);
-    if (since === null) return c.json({ error: 'since is not a valid ISO timestamp' }, 400);
-
-    if (Date.parse(since) >= Date.parse(until)) {
-      return c.json({ error: 'since must be before until' }, 400);
-    }
+    const w = parseWindow(c);
+    if ('error' in w) return c.json({ error: w.error }, 400);
+    const { since, until } = w;
 
     const rows = await metricsDb.newPlayersByBucket(rawBucket, since, until);
     return c.json({ bucket: rawBucket, since, until, rows });
@@ -75,20 +53,9 @@ export function metricsRoutes(metricsDb: MetricsDB): Hono {
   // happen in SQL: player_auth is in heap_scores and the events are in
   // Analytics Engine, and there is no join across those.
   app.get('/cohort', async (c) => {
-    const now = Date.now();
-    const until = c.req.query('until') === undefined
-      ? new Date(now).toISOString()
-      : parseIso(c.req.query('until'));
-    if (until === null) return c.json({ error: 'until is not a valid ISO timestamp' }, 400);
-
-    const since = c.req.query('since') === undefined
-      ? new Date(Date.parse(until) - DEFAULT_WINDOW_DAYS * DAY_MS).toISOString()
-      : parseIso(c.req.query('since'));
-    if (since === null) return c.json({ error: 'since is not a valid ISO timestamp' }, 400);
-
-    if (Date.parse(since) >= Date.parse(until)) {
-      return c.json({ error: 'since must be before until' }, 400);
-    }
+    const w = parseWindow(c);
+    if ('error' in w) return c.json({ error: w.error }, 400);
+    const { since, until } = w;
 
     const rawLimit = Number(c.req.query('limit') ?? DEFAULT_COHORT_LIMIT);
     const limit = Number.isFinite(rawLimit)

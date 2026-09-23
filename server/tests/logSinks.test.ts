@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { D1Sink } from '../src/platform/logging/D1Sink';
-import { AnalyticsEngineSink } from '../src/platform/logging/AnalyticsEngineSink';
+import { AnalyticsEngineSink, MAX_INDEX_BYTES } from '../src/platform/logging/AnalyticsEngineSink';
+import { MAX_ID_LEN } from '../src/constants';
 import type { StampedLogEntry } from '../src/platform/logging/Sink';
 
 function fakeD1() {
@@ -19,6 +20,12 @@ function fakeD1() {
     batch: async (_stmts: any[]) => { /* not used here */ },
   } as any;
   return { d1, inserts };
+}
+
+function fakeAE() {
+  const points: { indexes: string[]; blobs: string[]; doubles: number[] }[] = [];
+  const ae = { writeDataPoint: (p: any) => { points.push(p); } } as any;
+  return { ae, points };
 }
 
 const entry = (over: Partial<StampedLogEntry> = {}): StampedLogEntry => ({
@@ -109,5 +116,70 @@ describe('AnalyticsEngineSink', () => {
     const parsed = JSON.parse(blob6);
     expect(parsed.truncated).toBe(true);
     expect(typeof parsed.originalSize).toBe('number');
+  });
+
+  // The drift trap for the truncation bug this file exists to prevent: the
+  // index cap must sit above the longest id the API will accept, or a
+  // signed-in player's GPGS id gets sliced and two players merge into one.
+  it('caps the index above the longest id the API accepts', () => {
+    expect(MAX_INDEX_BYTES).toBeGreaterThanOrEqual(MAX_ID_LEN);
+  });
+
+  it('preserves a max-length non-UUID player id in the index', async () => {
+    const { ae, points } = fakeAE();
+    const gpgsId = 'g'.repeat(MAX_ID_LEN); // GPGS ids are opaque and not UUIDs
+    await new AnalyticsEngineSink(ae).write([entry({ userGuid: gpgsId })]);
+    expect(points[0].indexes[0]).toBe(gpgsId);
+  });
+
+  it('does not collide two ids that share a 32-char prefix', async () => {
+    const { ae, points } = fakeAE();
+    const a = 'x'.repeat(32) + 'aaaa';
+    const b = 'x'.repeat(32) + 'bbbb';
+    await new AnalyticsEngineSink(ae).write([entry({ userGuid: a }), entry({ userGuid: b })]);
+    expect(points[0].indexes[0]).not.toBe(points[1].indexes[0]);
+  });
+
+  it('still maps a hyphenated UUID to its 32-char hex form', async () => {
+    const { ae, points } = fakeAE();
+    await new AnalyticsEngineSink(ae).write([
+      entry({ userGuid: '3f2504e0-4f89-11d3-9a0c-0305e82c3301' }),
+    ]);
+    expect(points[0].indexes[0]).toBe('3f2504e04f8911d39a0c0305e82c3301');
+  });
+
+  it('measures the index cap in bytes, not UTF-16 code units', async () => {
+    const { ae, points } = fakeAE();
+    // Each of these is 2 bytes in UTF-8 but 1 code unit, so a length-based
+    // slice would emit an index of 192 bytes and blow the AE cap.
+    await new AnalyticsEngineSink(ae).write([entry({ userGuid: '\u00e9'.repeat(96) })]);
+    const bytes = new TextEncoder().encode(points[0].indexes[0]).length;
+    expect(bytes).toBeLessThanOrEqual(MAX_INDEX_BYTES);
+  });
+
+  it('truncates an over-long id at the AE byte limit rather than silently exceeding it', async () => {
+    const { ae, points } = fakeAE();
+    await new AnalyticsEngineSink(ae).write([entry({ userGuid: 'z'.repeat(200) })]);
+    expect(points[0].indexes[0].length).toBeLessThanOrEqual(MAX_INDEX_BYTES);
+  });
+
+  it('appends caller-supplied metric columns after the fixed layout', async () => {
+    const { ae, points } = fakeAE();
+    await new AnalyticsEngineSink(ae).write([entry({
+      level: 'event', eventType: 'run:end',
+      metrics: { doubles: [1200, 340, 5, 61000, 40], blobs: ['death'] },
+    })]);
+    // double1 stays the client timestamp; the projection follows it
+    expect(points[0].doubles).toEqual([100, 1200, 340, 5, 61000, 40]);
+    // blob8 follows the seven fixed blobs
+    expect(points[0].blobs).toHaveLength(8);
+    expect(points[0].blobs[7]).toBe('death');
+  });
+
+  it('writes the fixed layout unchanged when no metrics are supplied', async () => {
+    const { ae, points } = fakeAE();
+    await new AnalyticsEngineSink(ae).write([entry()]);
+    expect(points[0].doubles).toEqual([100]);
+    expect(points[0].blobs).toHaveLength(7);
   });
 });

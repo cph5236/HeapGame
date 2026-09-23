@@ -14,6 +14,7 @@ import type { ConfigDB } from './configDb';
 import type { PlayerAuthDB } from './playerAuthDb';
 import type { PlayerNameDB } from './playerNameDb';
 import type { MetricsDB } from './metricsDb';
+import type { AeClient } from './analytics/aeClient';
 
 /** Rate-limit buckets. Any unset binding means no limit on that bucket. */
 export interface Limiters {
@@ -54,6 +55,9 @@ export interface PlatformOptions {
   logSink?: Sink;
   /** Admin metrics reads (player_auth in heap_scores). If unset, /metrics is not mounted. */
   metricsDb?: MetricsDB;
+  /** Analytics Engine SQL transport for the admin funnel/crosstab/trace routes.
+   *  If unset (or metricsDb is unset), /analytics is not mounted. */
+  aeClient?: AeClient;
 }
 
 /** What createPlatformApp hands back so a game can mount its own routes with the

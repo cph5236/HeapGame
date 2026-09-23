@@ -14,6 +14,39 @@ function coerceStr(v: unknown, max = 1024): string {
   return v.length > max ? v.slice(0, max) : v;
 }
 
+// Attacker-controlled and feeds AE double/blob columns directly, so it must be
+// validated rather than passed through. Caps sit well under AE's limits (20
+// each) while comfortably exceeding what the projection actually sends (5
+// doubles, 1 blob) — see shared/logging/aeProjection.ts.
+function coerceMetrics(v: unknown): LogEntry['metrics'] {
+  if (!v || typeof v !== 'object') return undefined;
+  const m = v as Record<string, unknown>;
+
+  // REJECT the whole object on a bad element — never filter it out. These
+  // arrays are POSITIONAL: the sink appends them after the fixed columns, so
+  // doubles[0] is double2, doubles[1] is double3, and so on (see
+  // shared/logging/aeProjection.ts). Dropping one bad element shifts every
+  // later value one column left, which writes silently and cannot be undone
+  // afterwards — a non-finite durationMs would leave pickupBonus sitting in
+  // double5, which is exactly the column the crosstab's `duration` dimension
+  // reads. Discarding one entry's promoted columns is cheap; corrupting the
+  // dataset is not. Same posture as `bindParams` in aeClient.ts.
+  //
+  // The length caps apply FIRST and truncate rather than reject: dropping a
+  // tail past the cap leaves every surviving element on its own column, so it
+  // costs data but never misfiles it. Only an invalid element inside the kept
+  // range can shift positions, and that is what rejects.
+  const rawDoubles = Array.isArray(m.doubles) ? m.doubles.slice(0, 8) : undefined;
+  if (rawDoubles?.some((n) => typeof n !== 'number' || !Number.isFinite(n))) return undefined;
+  const rawBlobs = Array.isArray(m.blobs) ? m.blobs.slice(0, 4) : undefined;
+  if (rawBlobs?.some((s) => typeof s !== 'string')) return undefined;
+
+  const doubles = rawDoubles as number[] | undefined;
+  const blobs = (rawBlobs as string[] | undefined)?.map((s) => coerceStr(s, 64));
+  if (!doubles?.length && !blobs?.length) return undefined;
+  return { doubles, blobs };
+}
+
 function normalize(raw: unknown): LogEntry | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -34,6 +67,7 @@ function normalize(raw: unknown): LogEntry | null {
     eventType:  typeof r.eventType === 'string' ? coerceStr(r.eventType, 64) : undefined,
     message:    typeof r.message   === 'string' ? coerceStr(r.message, 1024) : undefined,
     payload,
+    metrics:    coerceMetrics(r.metrics),
   };
 }
 
