@@ -85,14 +85,16 @@ export function migrateLegacySettings(): void {
 // ── Health + auth events ─────────────────────────────────────────────────
 
 type Listener = () => void;
-const healthListeners: ((ok: boolean) => void)[] = [];
+const healthListeners: ((ok: boolean, env: EnvId) => void)[] = [];
 const authListeners: Listener[] = [];
 
-export function onHealth(fn: (ok: boolean) => void): void { healthListeners.push(fn); }
+/** `env` is the environment that issued the request — a late response from an
+ *  environment the operator has since left must not repaint the dot. */
+export function onHealth(fn: (ok: boolean, env: EnvId) => void): void { healthListeners.push(fn); }
 /** Fired when a secret is rejected and cleared — the shell reopens settings. */
 export function onAuthRejected(fn: Listener): void { authListeners.push(fn); }
 
-function reportHealth(ok: boolean): void { for (const fn of healthListeners) fn(ok); }
+function reportHealth(ok: boolean, env: EnvId): void { for (const fn of healthListeners) fn(ok, env); }
 
 // ── Fetch ────────────────────────────────────────────────────────────────
 
@@ -140,10 +142,13 @@ export async function api<T = unknown>(path: string, opts: FetchOpts = {}): Prom
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
     });
   } catch (e) {
-    reportHealth(false);
+    reportHealth(false, env);
     throw new ApiError(`Could not reach ${envLabel(env)} (${base}) — is it running, and is this origin in its CORS allowlist?`, 0);
   }
-  reportHealth(true);
+  // Reachable is not healthy: a worker that 500s on every route (bad binding,
+  // broken deploy) must turn the dot red. 4xx is the request's fault — a
+  // rejected secret or an unconfigured Analytics Engine — not the server's.
+  reportHealth(res.status < 500, env);
   if (res.status === 401 && opts.admin !== false) {
     writeSecret(env, '');
     for (const fn of authListeners) fn();

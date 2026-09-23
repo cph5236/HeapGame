@@ -69,7 +69,11 @@ let generation = 0;
 function route(): void {
   const gen = ++generation;
   const [path, search = ''] = location.hash.replace(/^#\/?/, '').split('?');
-  const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
+  // A hand-edited hash like `#/players/%E` would make decodeURIComponent
+  // throw out of the hashchange listener, leaving the old page up with no
+  // error. Keep the raw segment instead.
+  const safeDecode = (seg: string) => { try { return decodeURIComponent(seg); } catch { return seg; } };
+  const parts = path.split('/').filter(Boolean).map(safeDecode);
   const head = parts[0] ?? '';
   let view: View;
   const params = parts.slice(1);
@@ -131,6 +135,7 @@ function openSettings(reason?: string): void {
   $('#setEye', body).addEventListener('click', () => {
     const i = $input('#setSecret', body);
     i.type = i.type === 'password' ? 'text' : 'password';
+    mount($('#setEye', body), icon(i.type === 'password' ? 'eye' : 'eyeOff'));
   });
   $('#setSave', body).addEventListener('click', () => {
     const e = envSel.value as EnvId;
@@ -173,7 +178,7 @@ bootCopyButtons();
 refreshEnvChrome();
 $('#envChip').addEventListener('click', () => openSettings());
 $('#themeBtn').addEventListener('click', toggleTheme);
-onHealth((ok) => { $('#health').dataset.ok = String(ok); });
+onHealth((ok, env) => { if (env === currentEnv()) $('#health').dataset.ok = String(ok); });
 onAuthRejected(() => {
   refreshEnvChrome();
   openSettings(`${envLabel()} rejected the saved admin secret, so it has been cleared. Enter the correct one.`);

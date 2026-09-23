@@ -157,6 +157,9 @@ export function seriesChart(host: HTMLElement, points: SeriesPoint[], o: SeriesC
   const h = host as HTMLElement & { _ro?: ResizeObserver };
   h._ro?.disconnect();
   let lastW = host.clientWidth;
+  // No router teardown hook is needed: removing an observed element (or its
+  // ancestor — the router swaps the whole view root) changes its size to 0,
+  // which fires this one last time with isConnected false.
   const ro = new ResizeObserver(() => {
     if (!host.isConnected) { ro.disconnect(); return; }
     if (host.clientWidth !== lastW) { lastW = host.clientWidth; draw(); }

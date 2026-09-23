@@ -36,5 +36,5 @@ export function refreshFeedbackBadge(rows?: FeedbackRow[]): void {
   const env = currentEnv();
   (rows ? Promise.resolve(rows) : listFeedback())
     .then((r) => { if (env === currentEnv()) setBadge(unreadCount(r)); })
-    .catch(() => setBadge(0));
+    .catch(() => { if (env === currentEnv()) setBadge(0); });
 }

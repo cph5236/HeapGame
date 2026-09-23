@@ -7,7 +7,7 @@
 import type { Ctx } from '../ctx';
 import { envLabel, secretFor, currentEnv, ApiError } from '../api';
 import {
-  getTotals, getNewPlayers, getHeaps, listBans, listFeedback, listCodes, worldYToFt, heapName,
+  getTotals, getNewPlayers, getHeaps, listBans, listFeedback, listCodes, heapHeightLabel, heapName,
 } from '../data';
 import { html, mount, $, fmtNum, deltaText, relTime, errMessage, type Raw } from '../ui';
 import { seriesChart } from '../chart';
@@ -92,7 +92,11 @@ export async function overviewView(ctx: Ctx): Promise<void> {
     })
     .catch((e) => put('t-codes', failed('Live reward codes', e)));
 
-  Promise.all([listFeedback(), getHeaps()])
+  // One fresh GET /heaps, shared by the feedback panel (for heap names) and
+  // the heaps table.
+  const heapsP = getHeaps(true);
+
+  Promise.all([listFeedback(), heapsP])
     .then(([rows, heaps]) => {
       refreshFeedbackBadge(rows);
       const unread = unreadCount(rows);
@@ -107,14 +111,14 @@ export async function overviewView(ctx: Ctx): Promise<void> {
     })
     .catch((e) => { put('t-fb', failed('Unread feedback', e)); put('ovFb', html`<div class="muted">${errMessage(e)}</div>`); });
 
-  getHeaps(true)
+  heapsP
     .then((heaps) => {
       const rows = [...heaps].sort((a, b) => (a.id === INFINITE_HEAP_ID ? 1 : 0) - (b.id === INFINITE_HEAP_ID ? 1 : 0) || a.params.difficulty - b.params.difficulty);
       put('ovHeaps', rows.length ? html`<div class="table-wrap"><table class="t"><thead><tr><th>Heap</th><th class="num">Difficulty</th><th class="num">Height</th><th>Unlocked by</th><th class="num">Version</th></tr></thead><tbody>
         ${rows.map((h) => html`<tr class="clickable" data-href="#/heaps/${encodeURIComponent(h.id)}">
           <td><b>${h.params.name}</b>${h.id === INFINITE_HEAP_ID ? html` <span class="pill">Infinite</span>` : ''}</td>
           <td class="num">${h.params.difficulty.toFixed(1)}</td>
-          <td class="num">${Number.isFinite(h.topY) ? `${fmtNum(worldYToFt(h.topY, h.params.worldHeight))} ft` : '—'}</td>
+          <td class="num">${heapHeightLabel(h.params.worldHeight, h.topY, h.id === INFINITE_HEAP_ID)}</td>
           <td>${h.params.lockedByHeapId ? heapName(heaps, h.params.lockedByHeapId) : html`<span class="muted">always open</span>`}</td>
           <td class="num">${fmtNum(h.version)}</td></tr>`)}</tbody></table></div>`
         : html`<div class="empty">No heaps on this server. <a href="#/heaps">Create one</a>.</div>`);

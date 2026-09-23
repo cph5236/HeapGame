@@ -7,7 +7,7 @@
 // reads where a stale number is worse than a slow one.
 
 import {
-  type MetricsBucket, bucketSeconds, WEEK_OFFSET_S,
+  type MetricsBucket, bucketSeconds, bucketOffsetSeconds,
 } from '../../../shared/metricsBuckets';
 
 export type { MetricsBucket };
@@ -89,7 +89,7 @@ export class D1MetricsDB implements MetricsDB {
           GROUP BY start_s
           ORDER BY start_s`,
       )
-      .bind(bucketSeconds(bucket), since, until, bucket === '1w' ? WEEK_OFFSET_S : 0)
+      .bind(bucketSeconds(bucket), since, until, bucketOffsetSeconds(bucket))
       .all<{ start_s: number; count: number }>();
     return res.results.map((r) => ({ startMs: Number(r.start_s) * 1000, count: r.count }));
   }

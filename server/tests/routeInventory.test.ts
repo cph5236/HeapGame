@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createApp } from '../src/app';
 import { MockHeapDB } from './helpers/mockDb';
+import { CORS_METHODS } from '../src/platform/app';
 
 /**
  * The platform/game split moved every route file. This pins the mounted route
@@ -42,5 +43,10 @@ describe('route inventory', () => {
     // that carries meaning; if one of these changes, a gate may have moved
     // behind the route it guards.
     expect(byPrefix).toMatchSnapshot();
+  });
+
+  it('lets CORS preflight every method a route is registered on', () => {
+    const methods = new Set(tableOf().map((r) => r.split(' ', 1)[0]).filter((m) => m !== 'ALL'));
+    for (const m of methods) expect(CORS_METHODS, m).toContain(m);
   });
 });

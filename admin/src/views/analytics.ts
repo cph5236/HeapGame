@@ -9,7 +9,7 @@ import {
   getNewPlayers, getFunnel, getCrosstab, CROSSTAB_DIMENSIONS, type CrosstabDimension, type FunnelStages,
 } from '../data';
 import {
-  html, mount, $, fmtNum, fmtPct, deltaText, errMessage, lsGet, lsSet, type Raw,
+  html, mount, $, toast, fmtNum, fmtPct, deltaText, errMessage, lsGet, lsSet, type Raw,
 } from '../ui';
 import { seriesChart, seriesTable, bucketLabel, hbars } from '../chart';
 import {
@@ -81,7 +81,8 @@ export async function analyticsView(ctx: Ctx): Promise<void> {
   $('#trForm', ctx.root).addEventListener('submit', (ev) => {
     ev.preventDefault();
     const id = (ctx.root.querySelector('#trId') as HTMLInputElement).value.trim();
-    if (id) openPlayer(id);
+    if (!id) { toast('Paste a player id to open', 'err'); return; }
+    openPlayer(id);
   });
 
   // Each loader stamps a token; a response for a superseded range is dropped.

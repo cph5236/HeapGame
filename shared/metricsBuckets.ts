@@ -51,14 +51,16 @@ export function bucketSeconds(b: MetricsBucket): number {
   return METRICS_BUCKETS[b];
 }
 
-function offsetSeconds(b: MetricsBucket): number {
+/** Grid offset in seconds: 0 for everything except weeks (Monday start).
+ *  Exported so the SQL in metricsDb binds the same value. */
+export function bucketOffsetSeconds(b: MetricsBucket): number {
   return b === '1w' ? WEEK_OFFSET_S : 0;
 }
 
 /** Start of the bucket containing `ms`, in epoch milliseconds. */
 export function bucketStartMs(ms: number, b: MetricsBucket): number {
   const size = bucketSeconds(b);
-  const off = offsetSeconds(b);
+  const off = bucketOffsetSeconds(b);
   const s = Math.floor(ms / 1000);
   return (Math.floor((s - off) / size) * size + off) * 1000;
 }

@@ -7,7 +7,7 @@ import type { Ctx } from '../ctx';
 import { envLabel, currentEnv } from '../api';
 import {
   getHeaps, invalidateHeaps, heapName, createHeap, putHeapParams, deleteHeap, resetHeap,
-  getEnemyParams, putEnemyParams, worldYToFt, type HeapSummary,
+  getEnemyParams, putEnemyParams, heapHeightLabel, type HeapSummary,
 } from '../data';
 import {
   html, mount, $, $input, onAction, openDrawer, toast, errMessage, confirmDialog, fmtNum, fmtDate,
@@ -89,7 +89,7 @@ export async function heapsView(ctx: Ctx): Promise<void> {
     <tbody>${sorted.map((h) => html`<tr class="clickable" data-href="#/heaps/${encodeURIComponent(h.id)}">
       <td><b>${h.params.name}</b>${h.id === INFINITE_HEAP_ID ? html` <span class="pill">Infinite</span>` : ''}</td>
       <td class="num">${h.params.difficulty.toFixed(1)}</td>
-      <td class="num">${Number.isFinite(h.topY) ? `${fmtNum(worldYToFt(h.topY, h.params.worldHeight))} ft` : '—'}</td>
+      <td class="num">${heapHeightLabel(h.params.worldHeight, h.topY, h.id === INFINITE_HEAP_ID)}</td>
       <td class="num">${h.params.coinMult}</td><td class="num">${h.params.scoreMult}</td>
       <td>${h.params.lockedByHeapId ? heapName(heaps, h.params.lockedByHeapId) : html`<span class="muted">always open</span>`}</td>
       <td class="muted">${fmtDate(h.createdAt)}</td></tr>`)}</tbody></table></div>`
@@ -102,6 +102,9 @@ export async function heapsView(ctx: Ctx): Promise<void> {
 
 async function openCreate(ctx: Ctx): Promise<void> {
   const heaps = await getHeaps();
+  // The drawer mounts on <body>, outside ctx.root, so the router can't clean
+  // it up — don't open it over a page the operator has already moved to.
+  if (!ctx.alive()) return;
   const d = DEFAULT_HEAP_PARAMS as unknown as Record<string, unknown>;
   const { body, close } = openDrawer('New heap', html`
     <form id="cf">
@@ -131,7 +134,7 @@ async function openCreate(ctx: Ctx): Promise<void> {
       invalidateHeaps();
       close();
       toast('Heap created');
-      ctx.go(`heaps/${encodeURIComponent(res.id)}`);
+      if (ctx.alive()) ctx.go(`heaps/${encodeURIComponent(res.id)}`);
     } catch (e) { toast(errMessage(e), 'err'); }
   });
 }
@@ -155,7 +158,7 @@ export async function heapDetailView(ctx: Ctx): Promise<void> {
   mount(ctx.root, html`
     <a class="crumb" href="#/heaps">← Heaps</a>
     <div class="page-head" style="margin-top:6px"><div><h1>${p.name}</h1>
-      <p>${idCell(heap.id)} · v${fmtNum(heap.version)} · ${Number.isFinite(heap.topY) ? `${fmtNum(worldYToFt(heap.topY, p.worldHeight))} ft tall` : 'height unknown'} · created ${fmtDate(heap.createdAt)}</p></div></div>
+      <p>${idCell(heap.id)} · v${fmtNum(heap.version)} · ${heapHeightLabel(p.worldHeight, heap.topY, heap.id === INFINITE_HEAP_ID)} tall · created ${fmtDate(heap.createdAt)}</p></div></div>
     <div class="tabs" role="tablist">${TABS.map(([k, label]) => html`<button role="tab" aria-selected="${k === tab ? 'true' : 'false'}"
       data-tab="${k}">${label}</button>`)}</div>
     <div id="hdBody"></div>`);
@@ -251,7 +254,7 @@ function renderDanger(ctx: Ctx, host: HTMLElement, heap: HeapSummary): void {
     },
     delete: async () => {
       if (!await confirmDialog({ title: `Delete "${heap.params.name}" on ${envLabel(env)}?`, body: 'This can\'t be undone.', confirm: 'Delete heap', danger: true, typeToConfirm: typed })) return;
-      try { await deleteHeap(heap.id); invalidateHeaps(); toast('Heap deleted'); ctx.go('heaps'); }
+      try { await deleteHeap(heap.id); invalidateHeaps(); toast('Heap deleted'); if (ctx.alive()) ctx.go('heaps'); }
       catch (e) { toast(errMessage(e), 'err'); }
     },
   });

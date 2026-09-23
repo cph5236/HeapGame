@@ -60,6 +60,14 @@ export interface PlatformOptions {
   aeClient?: AeClient;
 }
 
+/**
+ * Methods a browser may preflight for. Must cover every verb any route is
+ * registered on — routeInventory.test.ts asserts it against the live route
+ * table, since PATCH was once missing here and the admin's code edit was
+ * refused at preflight while every direct-call test passed.
+ */
+export const CORS_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const;
+
 /** What createPlatformApp hands back so a game can mount its own routes with the
  *  same admin gate and rate-limit buckets. */
 export interface PlatformApp {
@@ -91,7 +99,7 @@ export function createPlatformApp(opts: PlatformOptions = {}): PlatformApp {
       if (!origin) return null;
       return allowlist.allows(origin) ? origin : null;
     },
-    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowMethods: [...CORS_METHODS],
     allowHeaders: ['Content-Type', 'X-Admin-Secret', 'X-Player-Token', 'X-LoadTest-Secret', 'X-LoadTest-Key'],
   }));
 

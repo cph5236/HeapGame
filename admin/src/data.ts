@@ -168,7 +168,11 @@ export const getTrace = (playerId: string, since: string, until: string, limit =
  *  Mirrored rather than imported: src/constants.ts belongs to the game build. */
 export const SPAWN_OFFSET_PX = 24;
 
-/** World y → the ft a player reads on the HUD standing there. */
+/** World y → the ft a player reads on the HUD standing there. Floors, like
+ *  GameScene's live readout, so the admin never shows a foot the HUD didn't. */
 export function worldYToFt(y: number, worldHeight: number): number {
-  return Math.max(0, Math.round((worldHeight - SPAWN_OFFSET_PX - y) / SCORE_DISPLAY_DIVISOR));
+  return Math.max(0, Math.floor((worldHeight - SPAWN_OFFSET_PX - y) / SCORE_DISPLAY_DIVISOR));
 }
+
+/** A heap's height exactly as the heap-select screen labels it. */
+export { heightFt as heapHeightLabel } from '../../src/util/format';

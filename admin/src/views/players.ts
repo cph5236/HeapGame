@@ -3,7 +3,7 @@
 import type { Ctx } from '../ctx';
 import { envLabel } from '../api';
 import { getHeaps, getAdminScores, listBans } from '../data';
-import { html, mount, $, idCell, fmtNum, fmtDateTime, relTime, errMessage, lsGet, lsSet } from '../ui';
+import { html, mount, $, toast, idCell, fmtNum, fmtDateTime, relTime, errMessage, lsGet, lsSet } from '../ui';
 import { openPlayer } from './playerDrawer';
 
 const PAGE = 25;
@@ -26,7 +26,8 @@ export async function playersView(ctx: Ctx): Promise<void> {
   $('#lkForm', ctx.root).addEventListener('submit', (ev) => {
     ev.preventDefault();
     const id = (ctx.root.querySelector('#lkId') as HTMLInputElement).value.trim();
-    if (id) openPlayer(id, () => ctx.reload());
+    if (!id) { toast('Paste a player id to look up', 'err'); return; }
+    openPlayer(id, () => ctx.reload());
   });
   $('.tabs', ctx.root).addEventListener('click', (ev) => {
     const b = (ev.target as HTMLElement).closest<HTMLElement>('[data-tab]');
