@@ -17,6 +17,10 @@ at `/heaps`. Tests run via Vitest.
   middleware) and `game/` (heaps, scores, codes, daily, customization); each half
   has `routes/` (Hono), `*Db.ts` repos (D1 + Mock + Cached variants) and `cache/`
   KV decorators
+- `admin/` operator console — a small Vite-served TS app (`npm run admin`, :3001)
+  that imports constants from `shared/` instead of mirroring them. Build markup
+  with its `html` tagged template (escapes by default); views check
+  `ctx.alive()` after every await so a stale env/route never paints
 - `shared/` types + pure logic used by both sides
 - Tests in `__tests__/` dirs across `src/` and `shared/`, and in `server/tests/`
 - Specs/plans/runbooks in `docs/superpowers/`

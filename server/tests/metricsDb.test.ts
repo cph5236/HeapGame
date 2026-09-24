@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { createTestD1 } from './helpers/d1Sqlite';
 import { D1MetricsDB } from '../src/platform/metricsDb';
+import { BUCKET_ORDER, bucketStartMs } from '../../shared/metricsBuckets';
 
 async function seed(d1: D1Database, timestamps: string[]): Promise<void> {
   let n = 0;
@@ -17,6 +18,8 @@ async function seed(d1: D1Database, timestamps: string[]): Promise<void> {
   }
 }
 
+const iso = (ms: number) => new Date(ms).toISOString();
+
 describe('D1MetricsDB.newPlayersByBucket', () => {
   it('groups by day across the ISO T separator and Z suffix', async () => {
     const d1 = createTestD1('heap_scores');
@@ -26,38 +29,53 @@ describe('D1MetricsDB.newPlayersByBucket', () => {
       '2026-09-20T00:00:00.000Z',
     ]);
     const rows = await new D1MetricsDB(d1).newPlayersByBucket(
-      'day', '2026-09-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z',
+      '1d', '2026-09-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z',
     );
-    expect(rows).toEqual([
-      { bucket: '2026-09-19', count: 2 },
-      { bucket: '2026-09-20', count: 1 },
+    expect(rows.map(r => ({ t: iso(r.startMs), count: r.count }))).toEqual([
+      { t: '2026-09-19T00:00:00.000Z', count: 2 },
+      { t: '2026-09-20T00:00:00.000Z', count: 1 },
     ]);
   });
 
-  it('groups by hour', async () => {
+  it('groups by sub-hour buckets', async () => {
     const d1 = createTestD1('heap_scores');
     await seed(d1, [
       '2026-09-19T12:00:01.000Z',
-      '2026-09-19T12:59:59.000Z',
-      '2026-09-19T13:00:00.000Z',
+      '2026-09-19T12:14:59.999Z',
+      '2026-09-19T12:15:00.000Z',
     ]);
     const rows = await new D1MetricsDB(d1).newPlayersByBucket(
-      'hour', '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z',
+      '15m', '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z',
     );
-    expect(rows).toEqual([
-      { bucket: '2026-09-19T12:00:00Z', count: 2 },
-      { bucket: '2026-09-19T13:00:00Z', count: 1 },
+    expect(rows.map(r => ({ t: iso(r.startMs), count: r.count }))).toEqual([
+      { t: '2026-09-19T12:00:00.000Z', count: 2 },
+      { t: '2026-09-19T12:15:00.000Z', count: 1 },
     ]);
   });
 
-  it('groups by week', async () => {
+  it('agrees with shared bucketStartMs for every bucket size', async () => {
+    // The route zero-fills by bucket-start key, so the SQL and the shared
+    // arithmetic must produce identical starts — a mismatch would render
+    // every real count as a zero beside a phantom point.
     const d1 = createTestD1('heap_scores');
-    await seed(d1, ['2026-09-19T12:00:00.000Z', '2026-09-23T12:00:00.000Z']);
+    const ts = '2026-09-23T17:43:12.345Z';
+    await seed(d1, [ts]);
+    const db = new D1MetricsDB(d1);
+    for (const b of BUCKET_ORDER) {
+      const rows = await db.newPlayersByBucket(b, '2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z');
+      expect(rows, b).toEqual([{ startMs: bucketStartMs(Date.parse(ts), b), count: 1 }]);
+    }
+  });
+
+  it('starts weeks on Monday', async () => {
+    const d1 = createTestD1('heap_scores');
+    await seed(d1, ['2026-09-20T23:00:00.000Z', '2026-09-21T01:00:00.000Z']); // Sun, Mon
     const rows = await new D1MetricsDB(d1).newPlayersByBucket(
-      'week', '2026-09-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z',
+      '1w', '2026-09-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z',
     );
-    expect(rows.map((r) => r.count)).toEqual([1, 1]);
-    expect(rows[0].bucket).not.toEqual(rows[1].bucket);
+    expect(rows.map(r => iso(r.startMs))).toEqual([
+      '2026-09-14T00:00:00.000Z', '2026-09-21T00:00:00.000Z',
+    ]);
   });
 
   it('excludes rows outside the window, half-open on until', async () => {
@@ -68,17 +86,27 @@ describe('D1MetricsDB.newPlayersByBucket', () => {
       '2026-09-20T00:00:00.000Z', // == until — excluded
     ]);
     const rows = await new D1MetricsDB(d1).newPlayersByBucket(
-      'day', '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z',
+      '1d', '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z',
     );
-    expect(rows).toEqual([{ bucket: '2026-09-19', count: 1 }]);
+    expect(rows).toEqual([{ startMs: Date.parse('2026-09-19T00:00:00.000Z'), count: 1 }]);
   });
 
   it('returns an empty array when nothing matches', async () => {
     const d1 = createTestD1('heap_scores');
     const rows = await new D1MetricsDB(d1).newPlayersByBucket(
-      'day', '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z',
+      '1d', '2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z',
     );
     expect(rows).toEqual([]);
+  });
+});
+
+describe('D1MetricsDB.totalPlayers', () => {
+  it('counts every player_auth row', async () => {
+    const d1 = createTestD1('heap_scores');
+    const db = new D1MetricsDB(d1);
+    expect(await db.totalPlayers()).toBe(0);
+    await seed(d1, ['2026-09-19T00:00:00.000Z', '2026-09-20T00:00:00.000Z']);
+    expect(await db.totalPlayers()).toBe(2);
   });
 });
 

@@ -13,6 +13,10 @@ export class MockMetricsDB implements MetricsDB {
   /** Arguments of the last newPlayersByBucket call, for assertions. */
   lastCall: { bucket: MetricsBucket; since: string; until: string } | null = null;
 
+  /** What the next totalPlayers call returns. */
+  total = 0;
+  async totalPlayers(): Promise<number> { return this.total; }
+
   async newPlayersByBucket(
     bucket: MetricsBucket, since: string, until: string,
   ): Promise<NewPlayerBucket[]> {
