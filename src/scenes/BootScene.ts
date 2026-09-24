@@ -5,7 +5,7 @@ import type { Vertex } from '../systems/HeapPolygon';
 import { generateAllTextures } from '../entities/TextureGenerators';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
-import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced, getTutorialDone } from '../systems/SaveData';
+import { getSelectedHeapId, setSelectedHeapId, finalizeLegacyPlaced } from '../systems/SaveData';
 import { INFINITE_HEAP_ID } from '../data/infiniteDefs';
 import { buildInfiniteEntry } from '../data/infiniteCatalog';
 import { initPlatform, startIdentitySession } from '../systems/bootSequence';
@@ -102,7 +102,10 @@ export class BootScene extends Phaser.Scene {
     // assets finish loading (so the menu paints fully-built, not mid-stream). The
     // network catalog fetch above keeps resolving in the background — MenuScene
     // already renders against defaults and refreshes on `heapCatalogReady`.
-    this.scene.start('LoadingScene', { next: getTutorialDone() ? 'MenuScene' : 'TutorialScene' });
+    // New players go to the menu too, not straight into the tutorial: the menu
+    // tour runs first, and the menu shows the Tutorial as the selected heap
+    // until they play it or pick another (see menuStartRoute.ts).
+    this.scene.start('LoadingScene', { next: 'MenuScene' });
   }
 
   /**

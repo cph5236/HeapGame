@@ -25,26 +25,45 @@ const STEP_START_RUN: MenuTourStep = {
   kind: 'startRun',
   caption: 'Tap START RUN to begin climbing!',
 };
+
+// First-launch variants: a new player's menu has the Tutorial selected in the
+// heap picker (see menuStartRoute.ts), so these two steps explain that instead.
+const STEP_HEAP_PICKER_TUTORIAL: MenuTourStep = {
+  kind: 'heapPicker',
+  caption: 'You\'re set to the Tutorial. Pick a different heap here to skip it and start climbing.',
+};
+const STEP_START_RUN_TUTORIAL: MenuTourStep = {
+  kind: 'startRun',
+  caption: 'Tap START RUN to play the Tutorial and learn the ropes!',
+};
 const STEP_UPGRADES_STORE: MenuTourStep = {
   kind: 'upgradesStore',
   caption: 'Spend your Scrap in UPGRADES to climb faster, or the STORE for placeables and consumables.',
 };
 const STEP_PLAYER_NAME: MenuTourStep = {
   kind: 'playerName',
-  caption: 'Tap your name to change it — pick something memorable for the leaderboards!',
+  caption: 'Tap your name anytime to change it. Let\'s pick one for the leaderboards now!',
 };
 const STEP_SETTINGS: MenuTourStep = {
   kind: 'settings',
-  caption: 'Open Settings anytime to adjust controls and audio — tap the ? beside it to replay this tour.',
+  caption: 'Settings has your controls and audio. The ? beside it replays this tour anytime.',
 };
 
 /** Ordered step list for the tour. The player-name step only makes sense for
  *  a locally-named player — a GPGS-signed-in player's name comes from Play
- *  Games and can't be edited here, so it's skipped for them. */
-export function buildMenuTourSteps(isGpgsSignedIn: boolean): MenuTourStep[] {
-  const steps = [STEP_AVATAR, STEP_HEAP_PICKER, STEP_START_RUN, STEP_UPGRADES_STORE];
+ *  Games and can't be edited here, so it's skipped for them. When present it
+ *  is LAST, because finishing the first-run tour opens the name editor.
+ *  `tutorialPending` swaps in the captions for a menu with the Tutorial
+ *  selected. */
+export function buildMenuTourSteps(isGpgsSignedIn: boolean, tutorialPending = false): MenuTourStep[] {
+  const steps = [
+    STEP_AVATAR,
+    tutorialPending ? STEP_HEAP_PICKER_TUTORIAL : STEP_HEAP_PICKER,
+    tutorialPending ? STEP_START_RUN_TUTORIAL : STEP_START_RUN,
+    STEP_UPGRADES_STORE,
+    STEP_SETTINGS,
+  ];
   if (!isGpgsSignedIn) steps.push(STEP_PLAYER_NAME);
-  steps.push(STEP_SETTINGS);
   return steps;
 }
 
