@@ -85,6 +85,8 @@ export class MenuScene extends Phaser.Scene {
   private heapPickerStars!: Phaser.GameObjects.Text;
   /** Set by createHeapPicker; redraws the picker from registry + tutorial state. */
   private refreshHeapPicker?: () => void;
+  /** Set by registerInput; redraws START RUN's LOADING/ready label. */
+  private refreshStartLabel?: () => void;
   private leaderboardBg!:   Phaser.GameObjects.Graphics;
   private leaderboardIcon!: Phaser.GameObjects.Text;
 
@@ -175,6 +177,7 @@ export class MenuScene extends Phaser.Scene {
       // player leaves the menu first. Drop it on SHUTDOWN.
       const onRefundSettled = (): void => {
         this.refundSettled = true;
+        this.refreshStartLabel?.(); // a new player's START RUN waits on this too
         this.maybeShowPostEntranceUi();
       };
       this.game.events.once(REFUND_SETTLED_EVENT, onRefundSettled, this);
@@ -1188,11 +1191,11 @@ export class MenuScene extends Phaser.Scene {
         // before the menu tour shipped and who also bought the removed
         // movement upgrades. Without this they lose the tour for the session,
         // since postEntranceUiHandled has already latched.
-        () => { if (!getMenuTutorialSeen()) this.startMenuTour(true); },
+        () => { if (!getMenuTutorialSeen()) this.startMenuTour(); },
       );
       return; // the tour, if owed, now runs from the dismiss callback above
     }
-    if (!getMenuTutorialSeen()) this.startMenuTour(true);
+    if (!getMenuTutorialSeen()) this.startMenuTour();
   }
 
   /** Runs the full-screen coach-mark tour over the menu's core elements —
@@ -1200,11 +1203,15 @@ export class MenuScene extends Phaser.Scene {
    *  demand from the "?" button beside Settings. Guarded against overlapping
    *  itself (tourActive) and against starting before the entrance cinematic's
    *  fade-ins have settled (entranceComplete) — see their field comments.
-   *  The automatic first-run pass ends on the player-name step, and finishing
-   *  it (not skipping) opens the name editor; a "?" replay doesn't. */
-  private startMenuTour(firstRun = false): void {
+   *  A player's first tour ends on the player-name step, and finishing it
+   *  (not skipping) opens the name editor; later "?" replays don't. "First"
+   *  is read from the save when the tour starts, not from who started it:
+   *  the "?" button is live before the auto-tour's refundSettled gate, so a
+   *  new player can reach their first tour that way. */
+  private startMenuTour(): void {
     if (this.tourActive || !this.entranceComplete) return;
     this.tourActive = true;
+    const firstRun = !getMenuTutorialSeen();
     const isGpgs = getGpgsPlayerId() !== null;
     const steps: CoachMarkStep[] = buildMenuTourSteps(isGpgs, !getTutorialDone()).map(s => ({
       caption: s.caption,
@@ -1328,11 +1335,13 @@ export class MenuScene extends Phaser.Scene {
         const activeParams  = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
         const route = resolveMenuStart({
           tutorialPending: !getTutorialDone(),
+          identitySettled: isRefundSettled(),
           isInfinite:      activeParams.isInfinite === true,
           hasCheckpoint:   getPlaced(activeHeapId).some(
             p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
           ),
         });
+        if (route.scene === null) return; // tutorial pending, cloud-save merge not in yet
         if (route.scene === 'GameScene') {
           this.scene.start('GameScene', route.useCheckpoint ? { useCheckpoint: true } : undefined);
         } else {
@@ -1341,10 +1350,15 @@ export class MenuScene extends Phaser.Scene {
       };
 
       const refreshStartLabel = (): void => {
-        const ready = this.game.registry.get('gameAssetsReady') === true;
+        if (!this.startText?.active) return;
+        // Mirrors startGame's early returns: assets, and for a player whose
+        // tutorial is pending, the identity session (see resolveMenuStart).
+        const ready = this.game.registry.get('gameAssetsReady') === true
+          && (getTutorialDone() || isRefundSettled());
         this.startText.setText(ready ? 'START RUN' : 'LOADING…');
         this.startText.setColor(ready ? '#ffffff' : '#778899');
       };
+      this.refreshStartLabel = refreshStartLabel;
 
       refreshStartLabel();
       this.game.events.once('gameAssetsReady', refreshStartLabel);

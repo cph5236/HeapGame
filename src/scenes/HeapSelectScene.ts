@@ -11,6 +11,7 @@ import type { PlayerScoreEntry } from '../../shared/scoreTypes';
 import { getLogger } from '../logging';
 import { applyYouStats } from './heapSelectStats';
 import { getLockState } from './heapLockLogic';
+import { heapAtRow, isActiveRow } from './heapSelectRows';
 
 const ROW_H = 102;
 /** The Tutorial row is a compact banner, not a full heap card — it has no
@@ -250,7 +251,10 @@ export class HeapSelectScene extends Phaser.Scene {
       const i = this.rowBgs.indexOf(rowBg);
       if (i >= 0) { this.selectedIndex = i; this.refreshHighlight(); }
     });
-    rowBg.on('pointerup', () => this.select(this.sorted[this.rowBgs.indexOf(rowBg) - this.rowOffset]));
+    rowBg.on('pointerup', () => {
+      const h = heapAtRow(this.sorted, this.rowBgs.indexOf(rowBg), this.rowOffset);
+      if (h) this.select(h);
+    });
 
     const lock = getLockState(heap, this.sorted, this.beatenIds);
     if (lock.locked) {
@@ -315,10 +319,7 @@ export class HeapSelectScene extends Phaser.Scene {
 
   private refreshHighlight(): void {
     this.rowBgs.forEach((rowBg, i) => {
-      // While the tutorial is pending it is the active row, not activeId's heap.
-      const isActive   = this.rowOffset > 0
-        ? i === 0
-        : this.sorted[i]?.id === this.activeId;
+      const isActive   = isActiveRow(this.sorted, i, this.rowOffset, this.activeId);
       const isCursor   = i === this.selectedIndex;
       const strokeW    = (isActive || isCursor) ? 2 : 1;
       const strokeColor = isCursor
@@ -329,9 +330,10 @@ export class HeapSelectScene extends Phaser.Scene {
   }
 
   private confirmSelection(): void {
-    if (this.selectedIndex < this.rowOffset) { this.selectTutorial(); return; }
-    const heap = this.sorted[this.selectedIndex - this.rowOffset];
+    if (this.rowBgs.length === 0) return;
+    const heap = heapAtRow(this.sorted, this.selectedIndex, this.rowOffset);
     if (heap) this.select(heap);
+    else if (this.selectedIndex < this.rowOffset) this.selectTutorial();
   }
 
   /** Keep the Tutorial selected — nothing to load, the real heap BootScene
@@ -396,7 +398,7 @@ export class HeapSelectScene extends Phaser.Scene {
   }
 
   private openHighlightedLeaderboard(): void {
-    const heap = this.sorted[this.selectedIndex - this.rowOffset];
+    const heap = heapAtRow(this.sorted, this.selectedIndex, this.rowOffset);
     if (heap) this.openLeaderboard(heap);
   }
 
