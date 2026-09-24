@@ -23,12 +23,13 @@ const DEPTH = 500; // above every MenuScene element (max existing depth is 20)
  * A spotlight-style coach-mark tour: dims the screen except a cutout around
  * the current step's target, explains it, and blocks the real menu behind it
  * until the player advances or skips. One instance runs one pass through
- * `steps`, then calls `onDone` and tears itself down.
+ * `steps`, then calls `onDone` and tears itself down. `onDone` gets `true`
+ * when the player advanced past the last step, `false` when they hit Skip.
  */
 export class CoachMarkTour {
   private readonly scene: Phaser.Scene;
   private readonly steps: CoachMarkStep[];
-  private readonly onDone: () => void;
+  private readonly onDone: (completed: boolean) => void;
   private index = 0;
 
   private dim!: Phaser.GameObjects.Graphics;
@@ -39,14 +40,14 @@ export class CoachMarkTour {
   private skipBtn!: Phaser.GameObjects.Text;
   private objects: Phaser.GameObjects.GameObject[] = [];
 
-  constructor(scene: Phaser.Scene, steps: CoachMarkStep[], opts: { onDone: () => void }) {
+  constructor(scene: Phaser.Scene, steps: CoachMarkStep[], opts: { onDone: (completed: boolean) => void }) {
     this.scene = scene;
     this.steps = steps;
     this.onDone = opts.onDone;
   }
 
   start(): void {
-    if (this.steps.length === 0) { this.onDone(); return; }
+    if (this.steps.length === 0) { this.onDone(true); return; }
 
     // Block the real menu's keyboard shortcuts (Space/U/S/H/L/W) for the
     // duration of the tour. Pointer input is blocked separately below by the
@@ -85,7 +86,7 @@ export class CoachMarkTour {
     this.skipBtn = this.scene.add.text(12, 12, 'Skip ✕', {
       fontSize: '13px', color: '#cccccc', backgroundColor: '#00000088', padding: { x: 8, y: 4 },
     }).setOrigin(0, 0).setDepth(DEPTH + 2).setInteractive({ useHandCursor: true });
-    this.skipBtn.on('pointerup', () => this.finish());
+    this.skipBtn.on('pointerup', () => this.finish(false));
 
     this.objects = [this.dim, this.panelBg, this.captionText, this.stepLabel, this.nextBtn, this.skipBtn];
 
@@ -137,13 +138,13 @@ export class CoachMarkTour {
 
   private advance(): void {
     this.index++;
-    if (this.index >= this.steps.length) { this.finish(); return; }
+    if (this.index >= this.steps.length) { this.finish(true); return; }
     this.render();
   }
 
-  private finish(): void {
+  private finish(completed: boolean): void {
     this.destroy();
-    this.onDone();
+    this.onDone(completed);
   }
 
   private restoreKeyboard(): void {
