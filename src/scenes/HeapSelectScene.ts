@@ -12,6 +12,7 @@ import { getLogger } from '../logging';
 import { applyYouStats } from './heapSelectStats';
 import { getLockState } from './heapLockLogic';
 import { heapAtRow, isActiveRow } from './heapSelectRows';
+import { SAVE_MERGED_EVENT } from '../systems/bootSequence';
 
 const ROW_H = 102;
 /** The Tutorial row is a compact banner, not a full heap card — it has no
@@ -97,6 +98,19 @@ export class HeapSelectScene extends Phaser.Scene {
     // or skipped by picking any real heap below it.
     const tutorialPending = !getTutorialDone();
     this.rowOffset = tutorialPending ? 1 : 0;
+
+    // A reinstalling GPGS player's cloud save (tutorialDone true) can merge
+    // after this list is up; rebuild so the stale Tutorial row goes away, as
+    // MenuScene's picker does. game.events outlives the scene — drop on SHUTDOWN.
+    if (tutorialPending) {
+      const onMerged = (): void => {
+        if (getTutorialDone() && !this.starting) this.scene.restart();
+      };
+      this.game.events.once(SAVE_MERGED_EVENT, onMerged, this);
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        this.game.events.off(SAVE_MERGED_EVENT, onMerged, this, true);
+      });
+    }
 
     // Start cursor on the currently active row
     const activeIdx = this.sorted.findIndex(h => h.id === this.activeId);

@@ -1392,7 +1392,11 @@ export class MenuScene extends Phaser.Scene {
 
       this.input.keyboard!.once('keydown-S', () => this.scene.start('StoreScene'));
       this.input.keyboard!.once('keydown-H', () => this.scene.start('HeapSelectScene'));
-      this.input.keyboard!.once('keydown-L', () => this.openLeaderboard());
+      // .on, not .once: openLeaderboard() no-ops while the catalog loads or the
+      // Tutorial is selected, and LeaderboardScene resumes this scene rather
+      // than restarting it — a .once would be spent by any of those presses.
+      // Safe from double-opening: this scene's keyboard is paused under it.
+      this.input.keyboard!.on('keydown-L', () => this.openLeaderboard());
     });
   }
 
