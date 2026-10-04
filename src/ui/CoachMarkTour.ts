@@ -13,7 +13,9 @@ export interface CoachMarkStep {
   /** Computed lazily at render time, not captured up front — the menu's
    *  layout can shift under the tour (e.g. layoutShift on short screens). */
   rect: () => CoachMarkTarget;
-  caption: string;
+  /** Also lazy: what the caption says can depend on state that changes
+   *  mid-tour (e.g. a cloud-save merge un-pending the Tutorial). */
+  caption: () => string;
 }
 
 const PAD = 10;
@@ -127,13 +129,19 @@ export class CoachMarkTour {
     this.panelBg.lineStyle(2, 0xff9012, 0.9);
     this.panelBg.strokeRoundedRect(panelX, panelY, panelW, panelH, 12);
 
-    this.captionText.setText(step.caption).setPosition(W / 2, panelY + 14);
+    this.captionText.setText(step.caption()).setPosition(W / 2, panelY + 14);
     const isLast = this.index === this.steps.length - 1;
     this.stepLabel.setText(`${this.index + 1} / ${this.steps.length}`).setPosition(W / 2, panelY + panelH - 30);
     this.nextBtn.setText(isLast ? 'GOT IT ▸' : 'NEXT ▸').setPosition(W / 2, panelY + panelH - 30);
     // Step counter sits opposite the button within the same row so neither overlaps.
     this.stepLabel.setX(panelX + 16).setOrigin(0, 0);
     this.nextBtn.setOrigin(1, 0).setX(panelX + panelW - 16);
+  }
+
+  /** Redraws the current step — for when the state its caption or target
+   *  reads has changed underneath the tour. No-op once torn down. */
+  refresh(): void {
+    if (this.objects.length > 0) this.render();
   }
 
   private advance(): void {

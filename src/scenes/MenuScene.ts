@@ -102,10 +102,11 @@ export class MenuScene extends Phaser.Scene {
    *  only after this, and its ordering vs. entranceComplete is not fixed —
    *  see maybeShowPostEntranceUi(). */
   private refundSettled = false;
-  /** Re-entrancy guard: the auto-trigger and the manual "?" replay button both
-   *  call startMenuTour(), and without this a fast double-tap (or a tap that
-   *  lands right as the auto-trigger fires) would stack two overlapping tours. */
-  private tourActive = false;
+  /** The running tour, if any. Doubles as a re-entrancy guard: the
+   *  auto-trigger and the manual "?" replay button both call startMenuTour(),
+   *  and without it a fast double-tap (or a tap that lands right as the
+   *  auto-trigger fires) would stack two overlapping tours. */
+  private activeTour?: CoachMarkTour;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -124,6 +125,7 @@ export class MenuScene extends Phaser.Scene {
     setupUiCamera(this);
     retryPendingLoadoutSync();
     this.twinkleStars = [];
+    this.activeTour = undefined; // scene instance outlives a tour cut off by shutdown
 
     const im = InputManager.getInstance();
 
@@ -155,6 +157,8 @@ export class MenuScene extends Phaser.Scene {
       // A reinstalling player boots with a fresh save (tutorialDone false) and
       // only gets their real one here — swap "Tutorial" for their heap.
       this.refreshHeapPicker?.();
+      // …and re-caption a tour already running over that picker.
+      this.activeTour?.refresh();
     }, this);
     // The refund reconciliation (Task 9) runs on every boot-chain completion
     // path and settles asynchronously — it can land before OR after the
@@ -1201,7 +1205,7 @@ export class MenuScene extends Phaser.Scene {
   /** Runs the full-screen coach-mark tour over the menu's core elements —
    *  automatically once per player (gated by getMenuTutorialSeen), or on
    *  demand from the "?" button beside Settings. Guarded against overlapping
-   *  itself (tourActive) and against starting before the entrance cinematic's
+   *  itself (activeTour) and against starting before the entrance cinematic's
    *  fade-ins have settled (entranceComplete) — see their field comments.
    *  A player's first tour ends on the player-name step, and finishing it
    *  (not skipping) opens the name editor; later "?" replays don't. "First"
@@ -1209,21 +1213,24 @@ export class MenuScene extends Phaser.Scene {
    *  the "?" button is live before the auto-tour's refundSettled gate, so a
    *  new player can reach their first tour that way. */
   private startMenuTour(): void {
-    if (this.tourActive || !this.entranceComplete) return;
-    this.tourActive = true;
+    if (this.activeTour || !this.entranceComplete) return;
     const firstRun = !getMenuTutorialSeen();
     const isGpgs = getGpgsPlayerId() !== null;
-    const steps: CoachMarkStep[] = buildMenuTourSteps(isGpgs, !getTutorialDone()).map(s => ({
-      caption: s.caption,
+    // Captions re-read tutorialPending on every render: a cloud-save merge
+    // can land mid-tour and swap the picker off "Tutorial". Step kinds and
+    // order don't depend on it, so indexing a fresh build by i is safe.
+    const steps: CoachMarkStep[] = buildMenuTourSteps(isGpgs).map((s, i) => ({
+      caption: () => buildMenuTourSteps(isGpgs, !getTutorialDone())[i].caption,
       rect: () => this.menuTourRect(s.kind),
     }));
-    new CoachMarkTour(this, steps, {
+    this.activeTour = new CoachMarkTour(this, steps, {
       onDone: (completed) => {
-        this.tourActive = false;
+        this.activeTour = undefined;
         setMenuTutorialSeen(true);
         if (firstRun && completed && !isGpgs) this.openNameDialog();
       },
-    }).start();
+    });
+    this.activeTour.start();
   }
 
   private createFeedbackButton(): void {
