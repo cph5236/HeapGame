@@ -15,6 +15,8 @@ Language detection?
 
 - Score/Seed integrety - Every run uses a seed to spawn the enemies the server could run that seed back and they should get the same amount of pickups and enemies. this would clamp the Score possible for that run to the maximum that could possibly be achieved. 
 
+Add hints to the users first real run, 1 will be to tell the user that they can go left to switch sides of the heap. 
+
 ## Marketing 
 
 
@@ -64,3 +66,25 @@ if the alternative — exempting the event from the gate — is ever chosen inst
 
 ### Stretch goals 
 -finish todo_inprogress
+
+### TOOLING
+
+- **Staging deploy workflow (migrate-then-deploy).** Add a `workflow_dispatch`
+  GitHub workflow taking a branch input that (a) applies migrations to the four
+  `_staging` D1 databases, then (b) runs `npx wrangler deploy --env staging`.
+  Order matters — deploying staging code against un-migrated `_staging` DBs
+  breaks staging in a way that looks like a code bug.
+
+  Why not blanket auto-deploy on push: `migrate-d1.yml` only migrates the four
+  PRODUCTION databases and only on `main`, so per-PR staging deploys would hit
+  exactly that gap. Also doubles build minutes for something deployed
+  deliberately (staging exists for load testing + data-isolated verification).
+
+  Context: `heap_scores_staging` was found one migration behind
+  (`0007_player_ban.sql`) on 2026-09-20 and applied manually; all four staging
+  DBs are current as of then. This workflow is what stops that recurring.
+
+  Note also: preview *versions* of the production Worker run against PRODUCTION
+  bindings (prod D1/KV and the `heap_logs` AE dataset). They give code
+  isolation, not data isolation — which is why staging still matters for
+  anything that writes analytics or player data.

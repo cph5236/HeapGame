@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { HeapSummary } from '../../shared/heapTypes';
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
-import { setSelectedHeapId, finalizeLegacyPlaced, getEffectivePlayerId, getBeatenHeapIds } from '../systems/SaveData';
+import { setSelectedHeapId, finalizeLegacyPlaced, getEffectivePlayerId, getBeatenHeapIds, getTutorialDone, setTutorialDone } from '../systems/SaveData';
 import { HeapClient } from '../systems/HeapClient';
 import { drawDifficulty } from '../ui/DifficultyStars';
 import { InputManager } from '../systems/InputManager';
@@ -11,8 +11,14 @@ import type { PlayerScoreEntry } from '../../shared/scoreTypes';
 import { getLogger } from '../logging';
 import { applyYouStats } from './heapSelectStats';
 import { getLockState } from './heapLockLogic';
+import { heapAtRow, isActiveRow } from './heapSelectRows';
+import { SAVE_MERGED_EVENT } from '../systems/bootSequence';
 
 const ROW_H = 102;
+/** The Tutorial row is a compact banner, not a full heap card — it has no
+ *  stats or leaderboard, and a full-height row would push the list's last
+ *  heap under the footer. */
+const TUTORIAL_ROW_H = 64;
 const ROW_PAD_X = 16;
 
 export class HeapSelectScene extends Phaser.Scene {
@@ -24,6 +30,9 @@ export class HeapSelectScene extends Phaser.Scene {
   private rankTextByRow: Map<number, Phaser.GameObjects.Text> = new Map();
   private beatenIds: string[] = [];
   private starting = false;
+  /** 1 while the tutorial is pending: row 0 of rowBgs is the Tutorial, and
+   *  heap `sorted[i]` sits at row `i + rowOffset`. 0 once it's done. */
+  private rowOffset = 0;
 
   constructor() { super({ key: 'HeapSelectScene' }); }
 
@@ -84,16 +93,40 @@ export class HeapSelectScene extends Phaser.Scene {
 
     this.activeId = this.game.registry.get('activeHeapId') as string;
 
-    // Start cursor on the currently active heap
-    const activeIdx = this.sorted.findIndex(h => h.id === this.activeId);
-    this.selectedIndex = activeIdx >= 0 ? activeIdx : 0;
+    // A new player's menu shows the Tutorial as the selected heap (see
+    // menuStartRoute.ts), so it heads the list, active, until it's played —
+    // or skipped by picking any real heap below it.
+    const tutorialPending = !getTutorialDone();
+    this.rowOffset = tutorialPending ? 1 : 0;
 
-    const listTop = 68;
+    // A reinstalling GPGS player's cloud save (tutorialDone true) can merge
+    // after this list is up; rebuild so the stale Tutorial row goes away, as
+    // MenuScene's picker does. game.events outlives the scene — drop on SHUTDOWN.
+    if (tutorialPending) {
+      const onMerged = (): void => {
+        if (getTutorialDone() && !this.starting) this.scene.restart();
+      };
+      this.game.events.once(SAVE_MERGED_EVENT, onMerged, this);
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        this.game.events.off(SAVE_MERGED_EVENT, onMerged, this, true);
+      });
+    }
+
+    // Start cursor on the currently active row
+    const activeIdx = this.sorted.findIndex(h => h.id === this.activeId);
+    this.selectedIndex = tutorialPending ? 0 : (activeIdx >= 0 ? activeIdx : 0);
+
+    let listTop = 68;
     this.rowBgs = [];
+
+    if (tutorialPending) {
+      this.rowBgs.push(this.drawTutorialRow(listTop));
+      listTop += TUTORIAL_ROW_H;
+    }
 
     this.sorted.forEach((heap, i) => {
       const y = listTop + i * ROW_H;
-      const rowBg = this.drawRow(heap, y, heap.id === this.activeId, i);
+      const rowBg = this.drawRow(heap, y, !tutorialPending && heap.id === this.activeId, i);
       this.rowBgs.push(rowBg);
     });
 
@@ -101,6 +134,29 @@ export class HeapSelectScene extends Phaser.Scene {
     this.registerInput();
     this.refreshHighlight();
     void this.fetchPlayerScores();
+  }
+
+  private drawTutorialRow(y: number): Phaser.GameObjects.Rectangle {
+    const rowBg = this.add.rectangle(
+      logicalWidth(this) / 2, y + TUTORIAL_ROW_H / 2,
+      logicalWidth(this) - 2 * ROW_PAD_X, TUTORIAL_ROW_H - 6,
+      0x1a2040,
+    ).setStrokeStyle(2, 0xff9922)
+     .setInteractive({ useHandCursor: true });
+
+    const lx = ROW_PAD_X + 14;
+    this.add.text(lx, y + 14, 'Tutorial', {
+      fontSize: '17px', fontStyle: 'bold', color: '#ffcc88',
+      stroke: '#000000', strokeThickness: 2,
+    });
+    this.add.text(lx, y + 38, 'Learn the ropes \u2014 or pick a heap below to skip it', {
+      fontSize: '12px', color: '#7799bb',
+      stroke: '#000000', strokeThickness: 2,
+    });
+
+    rowBg.on('pointerover', () => { this.selectedIndex = 0; this.refreshHighlight(); });
+    rowBg.on('pointerup', () => this.selectTutorial());
+    return rowBg;
   }
 
   private drawRow(heap: HeapSummary, y: number, active: boolean, rowIndex: number): Phaser.GameObjects.Rectangle {
@@ -209,7 +265,10 @@ export class HeapSelectScene extends Phaser.Scene {
       const i = this.rowBgs.indexOf(rowBg);
       if (i >= 0) { this.selectedIndex = i; this.refreshHighlight(); }
     });
-    rowBg.on('pointerup', () => this.select(this.sorted[this.rowBgs.indexOf(rowBg)]));
+    rowBg.on('pointerup', () => {
+      const h = heapAtRow(this.sorted, this.rowBgs.indexOf(rowBg), this.rowOffset);
+      if (h) this.select(h);
+    });
 
     const lock = getLockState(heap, this.sorted, this.beatenIds);
     if (lock.locked) {
@@ -266,14 +325,15 @@ export class HeapSelectScene extends Phaser.Scene {
   }
 
   private move(dir: number): void {
-    if (this.sorted.length === 0) return;
-    this.selectedIndex = (this.selectedIndex + dir + this.sorted.length) % this.sorted.length;
+    const n = this.rowBgs.length;
+    if (n === 0) return;
+    this.selectedIndex = (this.selectedIndex + dir + n) % n;
     this.refreshHighlight();
   }
 
   private refreshHighlight(): void {
     this.rowBgs.forEach((rowBg, i) => {
-      const isActive   = this.sorted[i]?.id === this.activeId;
+      const isActive   = isActiveRow(this.sorted, i, this.rowOffset, this.activeId);
       const isCursor   = i === this.selectedIndex;
       const strokeW    = (isActive || isCursor) ? 2 : 1;
       const strokeColor = isCursor
@@ -284,8 +344,18 @@ export class HeapSelectScene extends Phaser.Scene {
   }
 
   private confirmSelection(): void {
-    if (this.sorted.length === 0) return;
-    this.select(this.sorted[this.selectedIndex]);
+    if (this.rowBgs.length === 0) return;
+    const heap = heapAtRow(this.sorted, this.selectedIndex, this.rowOffset);
+    if (heap) this.select(heap);
+    else if (this.selectedIndex < this.rowOffset) this.selectTutorial();
+  }
+
+  /** Keep the Tutorial selected — nothing to load, the real heap BootScene
+   *  picked is already in the registry for the tutorial to hand off to. */
+  private selectTutorial(): void {
+    if (this.starting) return;
+    this.starting = true;
+    this.scene.start('MenuScene');
   }
 
   private select(heap: HeapSummary): void {
@@ -296,6 +366,9 @@ export class HeapSelectScene extends Phaser.Scene {
     }
     if (this.starting) return;  // double-start guard (replaces the old `once`)
     this.starting = true;
+
+    // Picking a real heap over the Tutorial is how a new player skips it.
+    if (this.rowOffset > 0) setTutorialDone(true);
 
     setSelectedHeapId(heap.id);
     getLogger().event({ type: 'heap:selected', heapId: heap.id });
@@ -339,8 +412,8 @@ export class HeapSelectScene extends Phaser.Scene {
   }
 
   private openHighlightedLeaderboard(): void {
-    if (this.sorted.length === 0) return;
-    this.openLeaderboard(this.sorted[this.selectedIndex]);
+    const heap = heapAtRow(this.sorted, this.selectedIndex, this.rowOffset);
+    if (heap) this.openLeaderboard(heap);
   }
 
   private openLeaderboard(heap: HeapSummary): void {

@@ -2,21 +2,29 @@ import { describe, it, expect } from 'vitest';
 import { buildMenuTourSteps, panelBand } from '../menuTourLogic';
 
 describe('buildMenuTourSteps', () => {
-  it('includes the player-name step for a locally-named player', () => {
+  it('ends on the player-name step for a locally-named player', () => {
     const kinds = buildMenuTourSteps(false).map(s => s.kind);
-    expect(kinds).toEqual(['avatar', 'heapPicker', 'startRun', 'upgradesStore', 'playerName', 'settings']);
+    expect(kinds).toEqual(['avatar', 'heapPicker', 'startRun', 'upgradesStore', 'settings', 'playerName']);
   });
 
-  it('skips the player-name step for a GPGS-signed-in player', () => {
+  it('skips the player-name step for a GPGS-signed-in player, ending on settings', () => {
     const kinds = buildMenuTourSteps(true).map(s => s.kind);
     expect(kinds).toEqual(['avatar', 'heapPicker', 'startRun', 'upgradesStore', 'settings']);
   });
 
-  it('always ends on settings', () => {
-    const withName = buildMenuTourSteps(false);
-    const withoutName = buildMenuTourSteps(true);
-    expect(withName[withName.length - 1].kind).toBe('settings');
-    expect(withoutName[withoutName.length - 1].kind).toBe('settings');
+  it('has the same steps whether or not the tutorial is pending', () => {
+    expect(buildMenuTourSteps(false, true).map(s => s.kind))
+      .toEqual(buildMenuTourSteps(false, false).map(s => s.kind));
+  });
+
+  it('explains the Tutorial heap on the picker and START RUN steps while the tutorial is pending', () => {
+    const caption = (pending: boolean, kind: string) =>
+      buildMenuTourSteps(false, pending).find(s => s.kind === kind)!.caption;
+    expect(caption(true, 'heapPicker')).toMatch(/Tutorial/);
+    expect(caption(true, 'heapPicker')).toMatch(/skip/i);
+    expect(caption(true, 'startRun')).toMatch(/Tutorial/);
+    expect(caption(false, 'heapPicker')).not.toMatch(/Tutorial/);
+    expect(caption(false, 'startRun')).not.toMatch(/Tutorial/);
   });
 });
 

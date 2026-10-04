@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 
 import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMetrics';
 import { AudioManager } from '../systems/AudioManager';
-import { getBalance, getPlaced, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getEffectivePlayerId, getControlMode, getEffectiveControlMode, setSessionControlMode, getEquippedCosmetics, getHatAdjustments, getMenuTutorialSeen, setMenuTutorialSeen, hasSeenAnnouncement, getMovementRefundAmount, MOVEMENT_ANNOUNCEMENT_ID } from '../systems/SaveData';
+import { getBalance, getPlaced, getPlayerName, setPlayerName, getPlayerGuid, getGpgsPlayerId, getEffectivePlayerId, getControlMode, getEffectiveControlMode, setSessionControlMode, getEquippedCosmetics, getHatAdjustments, getMenuTutorialSeen, setMenuTutorialSeen, getTutorialDone, hasSeenAnnouncement, getMovementRefundAmount, MOVEMENT_ANNOUNCEMENT_ID } from '../systems/SaveData';
 import { tiltPromptKind, isTiltPendingPermission } from '../systems/tiltAvailability';
 import { composeAvatar } from '../ui/avatar';
 import { redeemCode, type RedeemResult } from '../systems/CodeClient';
@@ -15,7 +15,7 @@ import { drawCloudShape } from '../systems/backgroundEntities';
 import { type HeapParams, DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import { validatePlayerName, MAX_PLAYER_NAME_LEN } from '../../shared/playerName';
 import { PlayerNameClient } from '../systems/PlayerNameClient';
-import { formatDifficulty } from '../ui/DifficultyStars';
+import { resolveMenuStart, heapPickerLabel } from './menuStartRoute';
 import { loadGameAssets } from './loadGameAssets';
 import { entranceScale, ENTRANCE_FULL_SPAN_MS } from './menuIntro';
 import { CoachMarkTour, type CoachMarkStep, type CoachMarkTarget } from '../ui/CoachMarkTour';
@@ -83,6 +83,10 @@ export class MenuScene extends Phaser.Scene {
   private heapPickerBg!:    Phaser.GameObjects.Graphics;
   private heapPickerText!:  Phaser.GameObjects.Text;
   private heapPickerStars!: Phaser.GameObjects.Text;
+  /** Set by createHeapPicker; redraws the picker from registry + tutorial state. */
+  private refreshHeapPicker?: () => void;
+  /** Set by registerInput; redraws START RUN's LOADING/ready label. */
+  private refreshStartLabel?: () => void;
   private leaderboardBg!:   Phaser.GameObjects.Graphics;
   private leaderboardIcon!: Phaser.GameObjects.Text;
 
@@ -98,10 +102,11 @@ export class MenuScene extends Phaser.Scene {
    *  only after this, and its ordering vs. entranceComplete is not fixed —
    *  see maybeShowPostEntranceUi(). */
   private refundSettled = false;
-  /** Re-entrancy guard: the auto-trigger and the manual "?" replay button both
-   *  call startMenuTour(), and without this a fast double-tap (or a tap that
-   *  lands right as the auto-trigger fires) would stack two overlapping tours. */
-  private tourActive = false;
+  /** The running tour, if any. Doubles as a re-entrancy guard: the
+   *  auto-trigger and the manual "?" replay button both call startMenuTour(),
+   *  and without it a fast double-tap (or a tap that lands right as the
+   *  auto-trigger fires) would stack two overlapping tours. */
+  private activeTour?: CoachMarkTour;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -120,6 +125,7 @@ export class MenuScene extends Phaser.Scene {
     setupUiCamera(this);
     retryPendingLoadoutSync();
     this.twinkleStars = [];
+    this.activeTour = undefined; // scene instance outlives a tour cut off by shutdown
 
     const im = InputManager.getInstance();
 
@@ -148,6 +154,11 @@ export class MenuScene extends Phaser.Scene {
     this.game.events.once(SAVE_MERGED_EVENT, () => {
       if (!this.balanceText?.active) return;
       this.balanceText.setText(`${getBalance()} Scrap`);
+      // A reinstalling player boots with a fresh save (tutorialDone false) and
+      // only gets their real one here — swap "Tutorial" for their heap.
+      this.refreshHeapPicker?.();
+      // …and re-caption a tour already running over that picker.
+      this.activeTour?.refresh();
     }, this);
     // The refund reconciliation (Task 9) runs on every boot-chain completion
     // path and settles asynchronously — it can land before OR after the
@@ -170,6 +181,7 @@ export class MenuScene extends Phaser.Scene {
       // player leaves the menu first. Drop it on SHUTDOWN.
       const onRefundSettled = (): void => {
         this.refundSettled = true;
+        this.refreshStartLabel?.(); // a new player's START RUN waits on this too
         this.maybeShowPostEntranceUi();
       };
       this.game.events.once(REFUND_SETTLED_EVENT, onRefundSettled, this);
@@ -956,18 +968,22 @@ export class MenuScene extends Phaser.Scene {
     // Centre of the picker bar (text centres within the 208px bar, not the row).
     const barCx = left + 132;            // = width/2 - 28
 
-    // Refresh from current registry \u2014 runs once now (placeholder if catalog is
-    // still loading) and again when `heapCatalogReady` fires from BootScene.
-    const refresh = (): void => {
-      const ready  = this.game.registry.get('heapCatalogReady') === true;
+    // Refresh from current registry + tutorial state — runs once now
+    // (placeholder if the catalog is still loading), again when
+    // `heapCatalogReady` fires from BootScene, and on a cloud-save merge.
+    this.refreshHeapPicker = (): void => {
+      if (!this.heapPickerText?.active) return;
       const params = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
+      const label = heapPickerLabel({
+        tutorialPending: !getTutorialDone(),
+        catalogReady:    this.game.registry.get('heapCatalogReady') === true,
+        name:            params.name,
+        difficulty:      params.difficulty,
+      });
 
-      const nameLabel  = ready ? `\u25BE ${params.name}  ` : 'Heaps loading\u2026';
-      const starsLabel = ready ? formatDifficulty(params.difficulty) : '';
-
-      this.heapPickerText.setText(nameLabel);
-      this.heapPickerStars.setText(starsLabel);
-      this.heapPickerText.setColor(ready ? '#ffffff' : '#778899');
+      this.heapPickerText.setText(label.name);
+      this.heapPickerStars.setText(label.stars);
+      this.heapPickerText.setColor(label.dim ? '#778899' : '#ffffff');
 
       // Re-center both texts together each refresh \u2014 widths change with text.
       const totalW = this.heapPickerText.width + this.heapPickerStars.width;
@@ -975,11 +991,11 @@ export class MenuScene extends Phaser.Scene {
       this.heapPickerText.setX(startX);
       this.heapPickerStars.setX(startX + this.heapPickerText.width);
 
-      drawTrophyBg(ready);
+      drawTrophyBg(label.leaderboardEnabled);
     };
 
-    refresh();
-    this.game.events.once('heapCatalogReady', refresh);
+    this.refreshHeapPicker();
+    this.game.events.once('heapCatalogReady', this.refreshHeapPicker);
 
     // Picker tap zone \u2014 left 208px of the row \u2192 heap selector.
     this.add.zone(barCx, rowY, 208, 48)
@@ -999,6 +1015,7 @@ export class MenuScene extends Phaser.Scene {
   /** Launch the leaderboard modal for the active heap, over a paused menu. */
   private openLeaderboard(): void {
     if (this.game.registry.get('heapCatalogReady') !== true) return;
+    if (!getTutorialDone()) return; // picker shows the Tutorial, which has no leaderboard
     const heapId = (this.game.registry.get('activeHeapId') as string) ?? '';
     const params = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
     this.scene.launch('LeaderboardScene', {
@@ -1188,22 +1205,32 @@ export class MenuScene extends Phaser.Scene {
   /** Runs the full-screen coach-mark tour over the menu's core elements —
    *  automatically once per player (gated by getMenuTutorialSeen), or on
    *  demand from the "?" button beside Settings. Guarded against overlapping
-   *  itself (tourActive) and against starting before the entrance cinematic's
-   *  fade-ins have settled (entranceComplete) — see their field comments. */
+   *  itself (activeTour) and against starting before the entrance cinematic's
+   *  fade-ins have settled (entranceComplete) — see their field comments.
+   *  A player's first tour ends on the player-name step, and finishing it
+   *  (not skipping) opens the name editor; later "?" replays don't. "First"
+   *  is read from the save when the tour starts, not from who started it:
+   *  the "?" button is live before the auto-tour's refundSettled gate, so a
+   *  new player can reach their first tour that way. */
   private startMenuTour(): void {
-    if (this.tourActive || !this.entranceComplete) return;
-    this.tourActive = true;
+    if (this.activeTour || !this.entranceComplete) return;
+    const firstRun = !getMenuTutorialSeen();
     const isGpgs = getGpgsPlayerId() !== null;
-    const steps: CoachMarkStep[] = buildMenuTourSteps(isGpgs).map(s => ({
-      caption: s.caption,
+    // Captions re-read tutorialPending on every render: a cloud-save merge
+    // can land mid-tour and swap the picker off "Tutorial". Step kinds and
+    // order don't depend on it, so indexing a fresh build by i is safe.
+    const steps: CoachMarkStep[] = buildMenuTourSteps(isGpgs).map((s, i) => ({
+      caption: () => buildMenuTourSteps(isGpgs, !getTutorialDone())[i].caption,
       rect: () => this.menuTourRect(s.kind),
     }));
-    new CoachMarkTour(this, steps, {
-      onDone: () => {
-        this.tourActive = false;
+    this.activeTour = new CoachMarkTour(this, steps, {
+      onDone: (completed) => {
+        this.activeTour = undefined;
         setMenuTutorialSeen(true);
+        if (firstRun && completed && !isGpgs) this.openNameDialog();
       },
-    }).start();
+    });
+    this.activeTour.start();
   }
 
   private createFeedbackButton(): void {
@@ -1313,21 +1340,32 @@ export class MenuScene extends Phaser.Scene {
         if (this.game.registry.get('gameAssetsReady') !== true) return;
         const activeHeapId  = (this.game.registry.get('activeHeapId') as string) ?? '';
         const activeParams  = (this.game.registry.get('heapParams') as HeapParams | undefined) ?? DEFAULT_HEAP_PARAMS;
-        if (activeParams.isInfinite) {
-          this.scene.start('InfiniteGameScene');
-          return;
+        const route = resolveMenuStart({
+          tutorialPending: !getTutorialDone(),
+          identitySettled: isRefundSettled(),
+          isInfinite:      activeParams.isInfinite === true,
+          hasCheckpoint:   getPlaced(activeHeapId).some(
+            p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
+          ),
+        });
+        if (route.scene === null) return; // tutorial pending, cloud-save merge not in yet
+        if (route.scene === 'GameScene') {
+          this.scene.start('GameScene', route.useCheckpoint ? { useCheckpoint: true } : undefined);
+        } else {
+          this.scene.start(route.scene);
         }
-        const hasCheckpoint = getPlaced(activeHeapId).some(
-          p => p.id === 'checkpoint' && (p.meta?.spawnsLeft ?? 0) > 0,
-        );
-        this.scene.start('GameScene', hasCheckpoint ? { useCheckpoint: true } : undefined);
       };
 
       const refreshStartLabel = (): void => {
-        const ready = this.game.registry.get('gameAssetsReady') === true;
+        if (!this.startText?.active) return;
+        // Mirrors startGame's early returns: assets, and for a player whose
+        // tutorial is pending, the identity session (see resolveMenuStart).
+        const ready = this.game.registry.get('gameAssetsReady') === true
+          && (getTutorialDone() || isRefundSettled());
         this.startText.setText(ready ? 'START RUN' : 'LOADING…');
         this.startText.setColor(ready ? '#ffffff' : '#778899');
       };
+      this.refreshStartLabel = refreshStartLabel;
 
       refreshStartLabel();
       this.game.events.once('gameAssetsReady', refreshStartLabel);
@@ -1361,7 +1399,11 @@ export class MenuScene extends Phaser.Scene {
 
       this.input.keyboard!.once('keydown-S', () => this.scene.start('StoreScene'));
       this.input.keyboard!.once('keydown-H', () => this.scene.start('HeapSelectScene'));
-      this.input.keyboard!.once('keydown-L', () => this.openLeaderboard());
+      // .on, not .once: openLeaderboard() no-ops while the catalog loads or the
+      // Tutorial is selected, and LeaderboardScene resumes this scene rather
+      // than restarting it — a .once would be spent by any of those presses.
+      // Safe from double-opening: this scene's keyboard is paused under it.
+      this.input.keyboard!.on('keydown-L', () => this.openLeaderboard());
     });
   }
 
