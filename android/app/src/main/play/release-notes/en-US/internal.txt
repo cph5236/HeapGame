@@ -1,3 +1,1 @@
-New players now start on the main menu with a quick guided tour, and the Tutorial is ready as their first heap instead of launching straight away.
-
-Anonymous gameplay analytics are now on by default to help us improve the game. You can turn them off anytime in Settings.
+Security update: patches a vulnerability in the app's underlying framework that could let outside web content load inside the app.
