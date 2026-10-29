@@ -6,7 +6,7 @@
  * Each test captures the tween/timer callbacks that PlayerOutro registers and
  * fires them manually to drive the state machine forward.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { PlayerOutro } from '../PlayerOutro';
 
 // ── Stub scene ────────────────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ describe('PlayerOutro — public API contract', () => {
   let stub: ReturnType<typeof makeStubScene>;
   let sprite: ReturnType<typeof makeStubSprite>;
   let outro: PlayerOutro;
-  let onComplete: ReturnType<typeof vi.fn>;
+  let onComplete: Mock<() => void>;
 
   beforeEach(() => {
     stub = makeStubScene();
