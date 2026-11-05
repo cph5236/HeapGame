@@ -1001,6 +1001,11 @@ export class GameScene extends Phaser.Scene {
   /** Public so the web shell can auto-pause the run (tab hidden, focus lost). */
   openPauseMenu(): void {
     if (this.scene.isActive('PauseScene')) return; // guard against double-open
+    // Once the run is ending (death or summit outro, or the success path still
+    // awaiting the server) ScoreScene is on its way. That last wait is a network
+    // promise the scene pause can't hold, so a pause menu opened now would end
+    // up stacked under the score screen with a Resume that revives a finished run.
+    if (this._playerDead || this.blockPlaced) return;
     this.scene.launch('PauseScene', {
       gameSceneKey: this.scene.key,
     });

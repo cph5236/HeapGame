@@ -379,6 +379,8 @@ function freshGame(): GameSave {
     // wall jump or dive, so there is nothing to explain to them — and this
     // must NOT set movementRefundApplied (see reconcileMovementRefund below).
     seenAnnouncements: [MOVEMENT_ANNOUNCEMENT_ID],
+    // Unset = follow the OS prefers-reduced-motion setting.
+    reduceMotion: undefined,
   };
 }
 
@@ -587,9 +589,11 @@ function mergeGame(local: RawSave, cloud: RawSave): GameSave {
     seenAnnouncements: [...new Set([
       ...(local.seenAnnouncements ?? []), ...(cloud.seenAnnouncements ?? []),
     ])],
-    // Accessibility pref is per-device (the OS setting it overrides is too):
-    // keep local, fall back to cloud only on a fresh install.
-    reduceMotion: local.reduceMotion ?? cloud.reduceMotion,
+    // Accessibility pref is per-device, like the OS setting it overrides: never
+    // take it from the cloud. Unset here means "follow THIS device's OS", and
+    // inheriting another device's explicit Off would silently override an OS
+    // that asks for reduced motion.
+    reduceMotion: local.reduceMotion,
   };
 }
 

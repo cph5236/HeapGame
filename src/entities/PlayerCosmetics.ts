@@ -63,9 +63,7 @@ export class PlayerCosmetics {
     if (resolved.hat)  this.hatRig  = createAttachmentRig(scene, resolved.hat);
     if (resolved.face) this.faceRig = createAttachmentRig(scene, resolved.face);
 
-    // Trails are a heavy, always-on particle stream: dropped under "Reduce
-    // flashing & motion". Everything below already tolerates a null emitter.
-    if (resolved.trail && !isReducedMotion()) {
+    if (resolved.trail) {
       this.emitter = scene.add.particles(0, 0, resolved.trail.textureKey, {
         ...trailEmitterConfig(resolved.trail, () => this.rainbowMs),
         emitting: false,
@@ -154,9 +152,12 @@ export class PlayerCosmetics {
       this.skinGlaze.setVisible(this.sprite.visible);
     }
     if (this.emitter) {
+      // Trails are a heavy particle stream: suppressed under "Reduce flashing &
+      // motion". Read per frame so toggling it from the pause menu applies at once.
       const speed = Math.hypot(body.velocity.x, body.velocity.y);
-      if (speed > TRAIL_MIN_SPEED && !this.emitter.emitting) this.emitter.start();
-      else if (speed <= TRAIL_MIN_SPEED && this.emitter.emitting) this.emitter.stop();
+      const wantTrail = speed > TRAIL_MIN_SPEED && !isReducedMotion();
+      if (wantTrail && !this.emitter.emitting) this.emitter.start();
+      else if (!wantTrail && this.emitter.emitting) this.emitter.stop();
     }
   }
 }

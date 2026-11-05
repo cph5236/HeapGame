@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
-import { resolveReducedMotion, isReducedMotion, setReducedMotion, MIN_FLICKER_INTERVAL_MS } from '../accessibility';
+import {
+  resolveReducedMotion, isReducedMotion, MIN_FLICKER_INTERVAL_MS,
+  getReducedMotionChoice, setReducedMotionChoice,
+} from '../accessibility';
 import {
   resetAllData, getReduceMotionPref, mergeCloudSave, load, SAVE_KEY, resetCacheForTests,
   type RawSave,
@@ -43,10 +46,20 @@ describe('reduce-motion preference', () => {
   });
 
   it('persists an explicit choice', () => {
-    setReducedMotion(true);
+    setReducedMotionChoice('on');
     resetCacheForTests();
     expect(getReduceMotionPref()).toBe(true);
+    expect(getReducedMotionChoice()).toBe('on');
     expect(isReducedMotion()).toBe(true);
+  });
+
+  it("'auto' clears the override so the OS decides again", () => {
+    setReducedMotionChoice('off');
+    expect(getReducedMotionChoice()).toBe('off');
+    setReducedMotionChoice('auto');
+    resetCacheForTests();
+    expect(getReduceMotionPref()).toBeUndefined();
+    expect(getReducedMotionChoice()).toBe('auto');
   });
 
   it('survives migration of a current-schema save', () => {
@@ -55,12 +68,14 @@ describe('reduce-motion preference', () => {
     expect(getReduceMotionPref()).toBe(true);
   });
 
-  it('is device-local on cloud merge: local wins, cloud fills a fresh install', () => {
+  it('is device-local on cloud merge: never taken from the cloud', () => {
     const base = load() as RawSave;
     expect(mergeCloudSave({ ...base, reduceMotion: false }, { ...base, reduceMotion: true }).reduceMotion)
       .toBe(false);
-    expect(mergeCloudSave({ ...base, reduceMotion: undefined }, { ...base, reduceMotion: true }).reduceMotion)
-      .toBe(true);
+    // Unset locally means "follow this device's OS" — another device's explicit
+    // Off must not override an OS that asks for reduced motion.
+    expect(mergeCloudSave({ ...base, reduceMotion: undefined }, { ...base, reduceMotion: false }).reduceMotion)
+      .toBeUndefined();
   });
 });
 

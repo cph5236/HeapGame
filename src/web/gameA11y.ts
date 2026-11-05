@@ -50,6 +50,13 @@ export function pauseActiveRun(game: Phaser.Game): void {
   }
 }
 
+/** Move keyboard focus back to the game canvas if it is somewhere else. */
+export function refocusGame(game: Phaser.Game): void {
+  const canvas = game.canvas;
+  if (!canvas || typeof document === 'undefined') return;
+  if (document.activeElement !== canvas) canvas.focus({ preventScroll: true });
+}
+
 export function installGameAccessibility(game: Phaser.Game): void {
   const setup = (): void => {
     const canvas = game.canvas;

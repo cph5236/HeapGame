@@ -14,16 +14,22 @@ import { getReduceMotionPref, setReduceMotionPref } from './SaveData';
 
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 
+let _mql: MediaQueryList | null | undefined;
+
 /** Whether the OS asks for reduced motion. False where matchMedia is absent
- *  (unit tests, very old WebViews). */
+ *  (unit tests, very old WebViews). The MediaQueryList is created once and its
+ *  live `.matches` read each call, so this is cheap enough to check per frame
+ *  and still tracks an OS setting changed mid-session. */
 export function osPrefersReducedMotion(): boolean {
-  try {
-    return typeof window !== 'undefined'
-      && typeof window.matchMedia === 'function'
-      && window.matchMedia(REDUCED_MOTION_QUERY).matches;
-  } catch {
-    return false;
+  if (_mql === undefined) {
+    try {
+      _mql = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? window.matchMedia(REDUCED_MOTION_QUERY) : null;
+    } catch {
+      _mql = null;
+    }
   }
+  return _mql?.matches ?? false;
 }
 
 /** Pure resolution rule, split out so it can be tested without a DOM. */
@@ -31,14 +37,24 @@ export function resolveReducedMotion(pref: boolean | undefined, osReduced: boole
   return pref ?? osReduced;
 }
 
-/** True when flashes, screen shake and heavy particle effects must be toned down. */
+/** True when flashes, screen shake and heavy particle effects must be toned down.
+ *  Cheap (cached save + cached media query), so per-frame callers may use it to
+ *  follow a setting changed mid-run. */
 export function isReducedMotion(): boolean {
   return resolveReducedMotion(getReduceMotionPref(), osPrefersReducedMotion());
 }
 
-/** Save the player's explicit choice (overrides the OS from now on). */
-export function setReducedMotion(on: boolean): void {
-  setReduceMotionPref(on);
+export type ReducedMotionChoice = 'auto' | 'on' | 'off';
+
+/** The player's stored choice: 'auto' follows the OS. */
+export function getReducedMotionChoice(): ReducedMotionChoice {
+  const pref = getReduceMotionPref();
+  return pref === undefined ? 'auto' : pref ? 'on' : 'off';
+}
+
+/** Save the player's choice. 'auto' clears the override so the OS decides. */
+export function setReducedMotionChoice(choice: ReducedMotionChoice): void {
+  setReduceMotionPref(choice === 'auto' ? undefined : choice === 'on');
 }
 
 /** Camera shake, skipped entirely under reduced motion. */

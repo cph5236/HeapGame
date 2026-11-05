@@ -3,18 +3,16 @@ import { isReducedMotion, MIN_FLICKER_INTERVAL_MS } from '../../systems/accessib
 
 const ARC_COLOR = 0xffe23a;
 const REDRAW_MS = 60; // how often to re-randomize the arcs
-/** Arc jitter under "Reduce flashing & motion": slow enough to read as a static
- *  crackle rather than a strobe. */
-const REDUCED_REDRAW_MS = 250;
 
 /**
  * Procedural electrocution overlay: a few randomized zap polylines around the
  * target plus a white/yellow tint flicker, for durationMs. Self-cleaning.
  *
- * Photosensitivity (WCAG 2.3.1): the thin arcs may re-randomize quickly, but the
- * whole-sprite tint swap is a brightness flash, so it never toggles faster than
- * MIN_FLICKER_INTERVAL_MS (≤ 2.5 flashes/s). With reduced motion on, the tint
- * holds steady and the arcs redraw slowly.
+ * Photosensitivity (WCAG 2.3.1): the arcs are thin lines over a sprite-sized
+ * area, so their jitter is motion rather than a large-area flash. The
+ * whole-sprite tint swap IS a brightness change, so it never toggles faster
+ * than MIN_FLICKER_INTERVAL_MS (≤ 2.5 flashes/s). With reduced motion on,
+ * nothing animates: the arcs are drawn once and held, and the tint is steady.
  */
 export function playElectrocutionEffect(
   scene: Phaser.Scene,
@@ -51,8 +49,8 @@ export function playElectrocutionEffect(
   draw();
   target.setTint(ARC_COLOR);
 
-  const redraw = scene.time.addEvent({
-    delay: reduced ? REDUCED_REDRAW_MS : REDRAW_MS,
+  const redraw = reduced ? null : scene.time.addEvent({
+    delay: REDRAW_MS,
     loop: true,
     callback: draw,
   });
@@ -68,7 +66,7 @@ export function playElectrocutionEffect(
   });
 
   scene.time.delayedCall(durationMs, () => {
-    redraw.remove();
+    redraw?.remove();
     flicker?.remove();
     g.destroy();
     target.clearTint();

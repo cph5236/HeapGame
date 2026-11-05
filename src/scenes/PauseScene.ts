@@ -4,6 +4,7 @@ import { InputManager } from '../systems/InputManager';
 import { pauseSettingsData, type ControlHost } from './pauseSettings';
 import { markRunEnded } from '../systems/dailyRunGate';
 import { announce } from '../systems/accessibility';
+import { refocusGame } from '../web/gameA11y';
 
 export interface PauseSceneData {
   /** Scene key of the paused game scene to resume/stop. */
@@ -133,6 +134,10 @@ export class PauseScene extends Phaser.Scene {
     im.clearBufferedActions(); // drop the dismiss tap so it can't fire a jump on resume
     this.scene.resume(this.gameSceneKey);
     this.scene.stop();
+    // An auto-pause usually means focus went to something outside the game
+    // (a page link, another window). Hand it back, or the keyboard gate in
+    // web/gameA11y.ts keeps the game's keys off until the canvas is clicked.
+    refocusGame(this.game);
     announce('Game resumed.');
   }
 

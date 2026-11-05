@@ -476,6 +476,9 @@ export class InfiniteGameScene extends Phaser.Scene {
   /** Public so the web shell can auto-pause the run (tab hidden, focus lost). */
   openPauseMenu(): void {
     if (this.scene.isActive('PauseScene')) return;
+    // Run over: ScoreScene is on its way (see GameScene.openPauseMenu). Pausing
+    // during the preload phase is deliberately still allowed.
+    if (this._playerDead) return;
     this.scene.launch('PauseScene', {
       gameSceneKey: this.scene.key,
     });
