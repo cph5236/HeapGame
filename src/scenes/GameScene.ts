@@ -106,6 +106,12 @@ export class GameScene extends Phaser.Scene {
   private trashWallManager!: TrashWallManager;
   private _lastScore = -1;
   private _playerDead = false;
+  /** Set when a pause has been requested and not yet resumed. ScenePlugin's
+   *  launch/pause are queued until the next game step, and the loop is
+   *  suspended while the tab is hidden, so a burst of auto-pause triggers
+   *  (visibilitychange + blur + focusin) would otherwise each see this scene
+   *  still running and open the pause menu once apiece. */
+  private _pauseRequested = false;
   private _heapId = '';
   private _holdElapsed = 0;
   private _liveZoneBottomY: number | null = null;
@@ -158,6 +164,7 @@ export class GameScene extends Phaser.Scene {
     this._runKills     = {};
     this._runStartTime = null;
     this._playerDead   = false;
+    this._pauseRequested = false;
     this._reached100m    = false;
     this._reached1000m   = false;
     this._reachedStomp10 = false;
@@ -1006,6 +1013,9 @@ export class GameScene extends Phaser.Scene {
     // promise the scene pause can't hold, so a pause menu opened now would end
     // up stacked under the score screen with a Resume that revives a finished run.
     if (this._playerDead || this.blockPlaced) return;
+    if (this._pauseRequested) return;
+    this._pauseRequested = true;
+    this.events.once(Phaser.Scenes.Events.RESUME, () => { this._pauseRequested = false; });
     this.scene.launch('PauseScene', {
       gameSceneKey: this.scene.key,
     });
