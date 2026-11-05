@@ -21,6 +21,7 @@ import { streakChips, activeStreakDay, isGoldenDay, dailyRewardPreview, burstCol
 import { ITEM_DEFS } from '../data/itemDefs';
 import type { DailyStatusResponse } from '../../shared/dailyTypes';
 import type { RewardPayload } from '../../shared/codeTypes';
+import { isReducedMotion } from '../systems/accessibility';
 
 const itemName = (id: string): string => ITEM_DEFS.find((d) => d.id === id)?.name ?? id;
 
@@ -170,7 +171,8 @@ export function openDailyDropOverlay(
   let wiggle: Phaser.Tweens.Tween | undefined;
   if (!locked) {
     scene.tweens.add({ targets: hint, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
-    wiggle = scene.tweens.add({
+    // The "!" badge and pulsing hint still say "ready"; the wiggle is extra.
+    if (!isReducedMotion()) wiggle = scene.tweens.add({
       targets: can, angle: { from: -2.5, to: 2.5 }, duration: 140,
       yoyo: true, repeat: -1, repeatDelay: 1400,
     });

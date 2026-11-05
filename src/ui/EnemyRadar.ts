@@ -8,7 +8,9 @@ import { ENEMY_RADAR_MARGIN_PX, ENEMY_RADAR_MAX_ARROWS, ENEMY_RADAR_ONSCREEN_PAD
 const ARROW_BOX   = 18; // logical px (square texture display size)
 const ARROW_DEPTH = 30; // above the HUD chips (score/pause/revive sit at depth 19–21)
 
-// One colour-coded channel per target kind. Red points at threats, blue at salvage.
+// One channel per target kind. Red points at threats, blue at salvage — and the
+// two also differ in SHAPE (notched dart vs. round-bodied pin), so the channels
+// stay distinguishable without colour vision (WCAG 1.4.1).
 const ENEMY_ARROW_KEY    = 'radar-arrow-enemy';
 const PICKUP_ARROW_KEY   = 'radar-arrow-pickup';
 const ENEMY_ARROW_COLOR  = 0xff3b30; // alert red
@@ -21,11 +23,13 @@ const NO_TARGETS: readonly { x: number; y: number }[] = [];
  * One colour-coded set of screen-edge arrows: a DPR-baked triangular texture plus
  * a fixed pool of Images. Reused every frame — render() never allocates.
  */
+type ArrowShape = 'dart' | 'pin';
+
 class RadarChannel {
   private readonly arrows: Phaser.GameObjects.Image[] = [];
 
-  constructor(scene: Phaser.Scene, texKey: string, color: number, maxArrows: number) {
-    RadarChannel.ensureTexture(scene, texKey, color);
+  constructor(scene: Phaser.Scene, texKey: string, color: number, shape: ArrowShape, maxArrows: number) {
+    RadarChannel.ensureTexture(scene, texKey, color, shape);
     const parts: Phaser.GameObjects.GameObject[] = [];
     for (let i = 0; i < maxArrows; i++) {
       const img = scene.add.image(0, 0, texKey)
@@ -55,23 +59,37 @@ class RadarChannel {
     }
   }
 
-  /** Bake the triangular arrow texture once, DPR-scaled (matches hudTheme). */
-  private static ensureTexture(scene: Phaser.Scene, texKey: string, color: number): void {
+  /** Bake the arrow texture once, DPR-scaled (matches hudTheme). 'dart' is the
+   *  notched threat arrow; 'pin' is a round body with a short pointer. */
+  private static ensureTexture(scene: Phaser.Scene, texKey: string, color: number, shape: ArrowShape): void {
     if (scene.textures.exists(texKey)) return;
     const dpr = getDprCap();
     const s = (n: number): number => n * dpr;
     const g = scene.make.graphics({ x: 0, y: 0 }, false);
-    // Arrow pointing +X (rotation 0), drawn in an 18×18 logical box × dpr.
+    // Points +X (rotation 0), drawn in an 18×18 logical box × dpr.
     g.fillStyle(color, 1);
     g.lineStyle(s(2), 0x000000, 0.9);  // dark outline for contrast over bright sky
-    g.beginPath();
-    g.moveTo(s(17), s(9));  // tip (right)
-    g.lineTo(s(3),  s(2));  // top-left
-    g.lineTo(s(7),  s(9));  // inner notch
-    g.lineTo(s(3),  s(16)); // bottom-left
-    g.closePath();
-    g.fillPath();
-    g.strokePath();
+    if (shape === 'dart') {
+      g.beginPath();
+      g.moveTo(s(17), s(9));  // tip (right)
+      g.lineTo(s(3),  s(2));  // top-left
+      g.lineTo(s(7),  s(9));  // inner notch
+      g.lineTo(s(3),  s(16)); // bottom-left
+      g.closePath();
+      g.fillPath();
+      g.strokePath();
+    } else {
+      // Pin: short triangular pointer on the right, round body on the left.
+      g.beginPath();
+      g.moveTo(s(17), s(9));
+      g.lineTo(s(9),  s(4));
+      g.lineTo(s(9),  s(14));
+      g.closePath();
+      g.fillPath();
+      g.strokePath();
+      g.fillCircle(s(7.5), s(9), s(5.5));
+      g.strokeCircle(s(7.5), s(9), s(5.5));
+    }
     g.generateTexture(texKey, Math.ceil(s(ARROW_BOX)), Math.ceil(s(ARROW_BOX)));
     g.destroy();
   }
@@ -93,8 +111,8 @@ export class EnemyRadar {
 
   constructor(scene: Phaser.Scene, rangePx: number) {
     this.rangePx = rangePx;
-    this.enemyChannel  = new RadarChannel(scene, ENEMY_ARROW_KEY,  ENEMY_ARROW_COLOR,  ENEMY_RADAR_MAX_ARROWS);
-    this.pickupChannel = new RadarChannel(scene, PICKUP_ARROW_KEY, PICKUP_ARROW_COLOR, ENEMY_RADAR_MAX_ARROWS);
+    this.enemyChannel  = new RadarChannel(scene, ENEMY_ARROW_KEY,  ENEMY_ARROW_COLOR,  'dart', ENEMY_RADAR_MAX_ARROWS);
+    this.pickupChannel = new RadarChannel(scene, PICKUP_ARROW_KEY, PICKUP_ARROW_COLOR, 'pin',  ENEMY_RADAR_MAX_ARROWS);
   }
 
   /**

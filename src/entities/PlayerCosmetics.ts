@@ -10,6 +10,7 @@ import { rainbowColorAt, type ResolvedCosmetics } from '../systems/cosmeticsLogi
 import type { AttachmentRig } from './cosmeticRigs/types';
 import { createAttachmentRig } from './cosmeticRigs/createAttachmentRig';
 import { trailEmitterConfig } from './cosmeticRigs/trailEmitter';
+import { isReducedMotion } from '../systems/accessibility';
 
 /** Trail emits only while actually moving. */
 const TRAIL_MIN_SPEED = 60;
@@ -151,9 +152,12 @@ export class PlayerCosmetics {
       this.skinGlaze.setVisible(this.sprite.visible);
     }
     if (this.emitter) {
+      // Trails are a heavy particle stream: suppressed under "Reduce flashing &
+      // motion". Read per frame so toggling it from the pause menu applies at once.
       const speed = Math.hypot(body.velocity.x, body.velocity.y);
-      if (speed > TRAIL_MIN_SPEED && !this.emitter.emitting) this.emitter.start();
-      else if (speed <= TRAIL_MIN_SPEED && this.emitter.emitting) this.emitter.stop();
+      const wantTrail = speed > TRAIL_MIN_SPEED && !isReducedMotion();
+      if (wantTrail && !this.emitter.emitting) this.emitter.start();
+      else if (!wantTrail && this.emitter.emitting) this.emitter.stop();
     }
   }
 }

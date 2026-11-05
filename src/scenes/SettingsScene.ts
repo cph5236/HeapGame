@@ -8,6 +8,7 @@ import { privacyRow, PRIVACY_ROW_STYLE } from '../ui/privacyRow';
 import { AdClient } from '../systems/ads/AdClient';
 import { getLogger } from '../logging';
 import { mountableControlMode, startupControlOverride } from '../systems/tiltAvailability';
+import { getReducedMotionChoice, setReducedMotionChoice, type ReducedMotionChoice } from '../systems/accessibility';
 import {
   getVerboseLogging, setVerboseLogging,
   setControlMode, getEffectiveControlMode, setSessionControlMode,
@@ -253,26 +254,46 @@ export class SettingsScene extends Phaser.Scene {
     // watchdog has run.
     let mode = getEffectiveControlMode();
     let side = getJoystickSide();
+    let motion = getReducedMotionChoice();
 
-    const modeLabel = this.add.text(cx - 130, top + 20, 'Control Mode', { fontSize: '14px', color: '#aaaacc' })
+    // Accessibility first, so it is never below the fold of a long hint.
+    // Auto follows the OS prefers-reduced-motion setting; On/Off override it.
+    const motionLabel = this.add.text(cx - 130, top + 16, 'Reduce Flashing', { fontSize: '14px', color: '#aaaacc' })
       .setOrigin(0, 0.5).setScrollFactor(0).setDepth(D_CONTENT);
-    const tiltOpt = this.add.text(cx + 16, top + 20, 'Tilt', {
+    const motionOpts = ([['auto', 'Auto', 36], ['on', 'On', 92], ['off', 'Off', 138]] as const)
+      .map(([choice, text, dx]) => {
+        const t = this.add.text(cx + dx, top + 16, text, {
+          fontSize: '15px', color: '#888888', backgroundColor: '#1a1a2e', padding: { x: 8, y: 4 },
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(D_CONTENT).setInteractive({ useHandCursor: true });
+        return { choice: choice as ReducedMotionChoice, t };
+      });
+    const paintMotion = () => motionOpts.forEach(o => setToggleStyle(o.t, o.choice === motion));
+    paintMotion();
+    motionOpts.forEach(o => o.t.on('pointerup', () => {
+      motion = o.choice;
+      setReducedMotionChoice(o.choice);
+      paintMotion();
+    }));
+
+    const modeLabel = this.add.text(cx - 130, top + 56, 'Control Mode', { fontSize: '14px', color: '#aaaacc' })
+      .setOrigin(0, 0.5).setScrollFactor(0).setDepth(D_CONTENT);
+    const tiltOpt = this.add.text(cx + 16, top + 56, 'Tilt', {
       fontSize: '15px', color: '#ffffff', fontStyle: 'bold', backgroundColor: '#2244aa', padding: { x: 10, y: 4 },
     }).setOrigin(0.5).setScrollFactor(0).setDepth(D_CONTENT).setInteractive({ useHandCursor: true });
-    const joyOpt = this.add.text(cx + 96, top + 20, 'Joystick', {
+    const joyOpt = this.add.text(cx + 96, top + 56, 'Joystick', {
       fontSize: '15px', color: '#888888', backgroundColor: '#1a1a2e', padding: { x: 10, y: 4 },
     }).setOrigin(0.5).setScrollFactor(0).setDepth(D_CONTENT).setInteractive({ useHandCursor: true });
 
-    const sideLabel = this.add.text(cx - 130, top + 64, 'Joystick Side', { fontSize: '14px', color: '#aaaacc' })
+    const sideLabel = this.add.text(cx - 130, top + 96, 'Joystick Side', { fontSize: '14px', color: '#aaaacc' })
       .setOrigin(0, 0.5).setScrollFactor(0).setDepth(D_CONTENT);
-    const leftOpt = this.add.text(cx + 16, top + 64, 'Left', {
+    const leftOpt = this.add.text(cx + 16, top + 96, 'Left', {
       fontSize: '15px', color: '#ffffff', fontStyle: 'bold', backgroundColor: '#2244aa', padding: { x: 10, y: 4 },
     }).setOrigin(0.5).setScrollFactor(0).setDepth(D_CONTENT).setInteractive({ useHandCursor: true });
-    const rightOpt = this.add.text(cx + 96, top + 64, 'Right', {
+    const rightOpt = this.add.text(cx + 96, top + 96, 'Right', {
       fontSize: '15px', color: '#888888', backgroundColor: '#1a1a2e', padding: { x: 10, y: 4 },
     }).setOrigin(0.5).setScrollFactor(0).setDepth(D_CONTENT).setInteractive({ useHandCursor: true });
 
-    const hint = this.add.text(cx, top + 108, controlHelpLines(im.isMobile, mode).join('\n'), {
+    const hint = this.add.text(cx, top + 132, controlHelpLines(im.isMobile, mode).join('\n'), {
       fontSize: '13px', color: '#d8dcf2', align: 'left', lineSpacing: 3,
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(D_CONTENT);
 
@@ -318,8 +339,8 @@ export class SettingsScene extends Phaser.Scene {
     leftOpt.on('pointerup',  () => { if (mode !== 'joystick') return; side = 'left';  setJoystickSide('left');  paintSide(); });
     rightOpt.on('pointerup', () => { if (mode !== 'joystick') return; side = 'right'; setJoystickSide('right'); paintSide(); });
 
-    this.repaintControls = () => { paintMode(); paintSide(); };
-    this.controlsItems = [modeLabel, tiltOpt, joyOpt, sideLabel, leftOpt, rightOpt, hint];
+    this.repaintControls = () => { paintMotion(); paintMode(); paintSide(); };
+    this.controlsItems = [motionLabel, ...motionOpts.map(o => o.t), modeLabel, tiltOpt, joyOpt, sideLabel, leftOpt, rightOpt, hint];
   }
 
   private repaintControls: () => void = () => {};

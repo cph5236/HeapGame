@@ -53,7 +53,7 @@
         --line:   #33333f;
         --text:   #c8c8d2;
         --bright: #e8e8ef;
-        --muted:  #7a7a88;
+        --muted:  #9595a3;  /* 5.9:1 on --bg: AA for small text */
         --amber:  #f5a02a;
         --mint:   #6ee7a0;
 
@@ -206,6 +206,14 @@
         color: #14141a;
       }
 
+      footer a { color: inherit; text-underline-offset: 3px; }
+      footer a:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+
+      @media (prefers-reduced-motion: reduce) {
+        .door, .door__cta { transition: none; }
+        .door:hover, .door:focus-visible { transform: none; }
+      }
+
       footer {
         margin: 20px auto 0;
         padding: 0 20px 18px;
@@ -284,7 +292,7 @@
       <polyline fill="none" stroke="#3a3a48" stroke-width="2" stroke-linejoin="round" points="0,205 20,197 40,190 60,156 80,185 100,165 120,175 140,166 160,130 180,156 200,143 220,142 240,134 260,104 280,126 300,126 320,130 340,118 360,100 380,121 400,108 420,107 440,102 460,83 480,114 500,97 520,105 540,103 560,84 580,98 600,104 620,103 640,116 660,92 680,114 700,119 720,116 740,125 760,116 780,133 800,132 820,131 840,140 860,120 880,142 900,150 920,147 940,149 960,142 980,170 1000,158 1020,170 1040,170 1060,157 1080,185 1100,190 1120,191 1140,199 1160,174 1180,191 1200,204" />
     </svg>
 
-    <footer>Made by Hanlin Software.</footer>
+    <footer>Made by Hanlin Software. · <a href="https://heapgame.com/accessibility">Accessibility</a></footer>
     <script>
       // Carry the referral marker through to the game. Shares point at
       // /play?ref=run, but this door is a static link to heapgame.com/, so

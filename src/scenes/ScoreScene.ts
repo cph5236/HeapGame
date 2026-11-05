@@ -36,6 +36,7 @@ import { getPlayConsoleId, LEADERBOARD_HIGH_SCORE_ID } from '../data/achievement
 import { markRunEnded } from '../systems/dailyRunGate';
 import { notifyRunFinished } from '../web/hostEvents';
 import { buildShareMessage, shareRun, type ShareOutcome } from '../systems/shareRun';
+import { isReducedMotion, announce } from '../systems/accessibility';
 
 
 /** Top-N entries shown as podium boxes (the avatar-showcase spots). */
@@ -247,12 +248,18 @@ export class ScoreScene extends Phaser.Scene {
 
     this.createBackground();
     this.createStarField();
-    if (!this.isFailure) this.createConfetti();
+    if (!this.isFailure && !isReducedMotion()) this.createConfetti();
     if (this.isFailure)  this.createFailureGlow();
 
     this.createTitle();
     this.createScoreDisplay();
     if (this.isNewHighScore) this.createHighScoreBadge();
+    // The canvas is opaque to screen readers; say the outcome out loud too.
+    announce(
+      `${this.isFailure ? 'Heap failure — run over' : 'Heap successful'}. ` +
+      `Score ${this.score.toLocaleString()}` +
+      `${this.isNewHighScore ? ', a new high score' : ''}.`,
+    );
     this.createShareButton();
     this._coinsPanelBottom = this.createCoinsPanel(result.rows, result.finalCoins, balance);
     const leaderboardBottom = this.createLeaderboardPanel(this._coinsPanelBottom);

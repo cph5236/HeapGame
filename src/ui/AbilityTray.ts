@@ -3,6 +3,7 @@ import { Player } from '../entities/Player';
 import { HUD_THEME, makePanel, makeCloudIcon, makeWallJumpIcon, makeDashChevrons } from './hudTheme';
 import { staminaSegments, dashBarFillFraction } from './hudLogic';
 import { HUD_INSET, HUD_TRAY_PAD, MAX_STAMINA_CAP } from '../constants';
+import { isReducedMotion, MIN_FLICKER_INTERVAL_MS } from '../systems/accessibility';
 
 export class AbilityTray {
   readonly objects: Phaser.GameObjects.GameObject[] = [];
@@ -139,18 +140,23 @@ export class AbilityTray {
   };
 
   /** Brief pulse on the stamina segments — the whole feedback cue for running
-   *  dry, since there's no sound for it. Re-triggering while already flashing
-   *  restarts the pulse rather than stacking tweens. */
+   *  dry, since there's no sound for it. A trigger while a pulse is still
+   *  playing is ignored rather than restarting it: restarting would let input
+   *  mashing drive the blink at the input rate, past the WCAG 2.3.1 limit. */
   private flashStamina(): void {
-    this.staminaFlashTween?.stop();
+    if (this.staminaFlashTween?.isPlaying()) return;
     const targets = [...this.segBacks, ...this.segFills];
     for (const t of targets) t.setAlpha(1);
+    // One blink, each half MIN_FLICKER_INTERVAL_MS; with re-triggers ignored
+    // until it ends, that caps it at 2.5 flashes/s (WCAG 2.3.1). Reduced motion
+    // gets a shallower dip.
+    const reduced = isReducedMotion();
     this.staminaFlashTween = this.scene.tweens.add({
       targets,
-      alpha: 0.15,
-      duration: 70,
+      alpha: reduced ? 0.5 : 0.15,
+      duration: MIN_FLICKER_INTERVAL_MS,
       yoyo: true,
-      repeat: 1,
+      repeat: 0,
       ease: 'Sine.easeInOut',
       onComplete: () => { for (const t of targets) t.setAlpha(1); },
     });

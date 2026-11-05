@@ -33,6 +33,7 @@ import { dailyIconState, shouldAutoShowPopup, formatCountdown, type DailyIconSta
 import { openDailyDropOverlay } from '../ui/DailyDropOverlay';
 import { localDateKey } from '../../shared/dailyDrop';
 import type { DailyStatusResponse } from '../../shared/dailyTypes';
+import { isReducedMotion } from '../systems/accessibility';
 
 /**
  * Make a DOM overlay own every input event that happens inside it.
@@ -1467,7 +1468,8 @@ export class MenuScene extends Phaser.Scene {
         fontSize: '12px', color: '#1a0f00', fontStyle: 'bold',
       }).setOrigin(0.5);
       icon.add([badge, bang]);
-      this.tweens.add({
+      // The "!" badge carries the meaning; the wiggle is decoration.
+      if (!isReducedMotion()) this.tweens.add({
         targets: icon, angle: { from: -4, to: 4 }, duration: 130,
         yoyo: true, repeat: -1, repeatDelay: 1600,
       });

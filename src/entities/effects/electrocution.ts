@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { isReducedMotion, MIN_FLICKER_INTERVAL_MS } from '../../systems/accessibility';
 
 const ARC_COLOR = 0xffe23a;
 const REDRAW_MS = 60; // how often to re-randomize the arcs
@@ -6,6 +7,12 @@ const REDRAW_MS = 60; // how often to re-randomize the arcs
 /**
  * Procedural electrocution overlay: a few randomized zap polylines around the
  * target plus a white/yellow tint flicker, for durationMs. Self-cleaning.
+ *
+ * Photosensitivity (WCAG 2.3.1): the arcs are thin lines over a sprite-sized
+ * area, so their jitter is motion rather than a large-area flash. The
+ * whole-sprite tint swap IS a brightness change, so it never toggles faster
+ * than MIN_FLICKER_INTERVAL_MS (≤ 2.5 flashes/s). With reduced motion on,
+ * nothing animates: the arcs are drawn once and held, and the tint is steady.
  */
 export function playElectrocutionEffect(
   scene: Phaser.Scene,
@@ -14,10 +21,23 @@ export function playElectrocutionEffect(
 ): void {
   const g = scene.add.graphics().setDepth((target.depth ?? 0) + 1);
 
+  // Arcs are drawn around the graphics' own origin and the graphics object is
+  // moved onto the target every frame, so they stay on the player through the
+  // stun knockback even when reduced motion holds them unchanged.
+  const follow = (): void => { g.setPosition(target.x, target.y); };
+  follow();
+  scene.events.on(Phaser.Scenes.Events.UPDATE, follow);
+  // A scene shutdown mid-effect clears the timers below without firing them,
+  // and Systems.shutdown does not remove event listeners — but it does destroy
+  // the display list, so tie the unsubscribe to the graphics' own destruction.
+  g.once(Phaser.GameObjects.Events.DESTROY, () => {
+    scene.events.off(Phaser.Scenes.Events.UPDATE, follow);
+  });
+
   const draw = (): void => {
     g.clear();
-    const cx = target.x;
-    const cy = target.y;
+    const cx = 0;
+    const cy = 0;
     const r = Math.max(target.displayWidth, target.displayHeight) * 0.6;
     g.lineStyle(2, ARC_COLOR, 0.9);
     for (let a = 0; a < 4; a++) {
@@ -38,21 +58,29 @@ export function playElectrocutionEffect(
     }
   };
 
+  const reduced = isReducedMotion();
   draw();
-  let flip = false;
-  const redraw = scene.time.addEvent({
+  target.setTint(ARC_COLOR);
+
+  const redraw = reduced ? null : scene.time.addEvent({
     delay: REDRAW_MS,
     loop: true,
+    callback: draw,
+  });
+
+  let flip = false;
+  const flicker = reduced ? null : scene.time.addEvent({
+    delay: MIN_FLICKER_INTERVAL_MS,
+    loop: true,
     callback: () => {
-      draw();
       flip = !flip;
-      if (flip) target.setTint(0xffffff);
-      else target.setTint(ARC_COLOR);
+      target.setTint(flip ? 0xffffff : ARC_COLOR);
     },
   });
 
   scene.time.delayedCall(durationMs, () => {
-    redraw.remove();
+    redraw?.remove();
+    flicker?.remove();
     g.destroy();
     target.clearTint();
   });

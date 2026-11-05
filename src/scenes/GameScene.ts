@@ -71,6 +71,7 @@ import { buildRunScore } from '../systems/buildRunScore';
 import { ENEMY_DEFS, DEFAULT_ENEMY_PARAMS } from '../data/enemyDefs';
 import type { HeapParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
+import { shakeCamera, flashCamera } from '../systems/accessibility';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -105,6 +106,12 @@ export class GameScene extends Phaser.Scene {
   private trashWallManager!: TrashWallManager;
   private _lastScore = -1;
   private _playerDead = false;
+  /** Set when a pause has been requested and not yet resumed. ScenePlugin's
+   *  launch/pause are queued until the next game step, and the loop is
+   *  suspended while the tab is hidden, so a burst of auto-pause triggers
+   *  (visibilitychange + blur + focusin) would otherwise each see this scene
+   *  still running and open the pause menu once apiece. */
+  private _pauseRequested = false;
   private _heapId = '';
   private _holdElapsed = 0;
   private _liveZoneBottomY: number | null = null;
@@ -157,6 +164,7 @@ export class GameScene extends Phaser.Scene {
     this._runKills     = {};
     this._runStartTime = null;
     this._playerDead   = false;
+    this._pauseRequested = false;
     this._reached100m    = false;
     this._reached1000m   = false;
     this._reachedStomp10 = false;
@@ -887,7 +895,7 @@ export class GameScene extends Phaser.Scene {
     AudioManager.play('enemy-kill'); // reuse existing zap-ish cue; swap later if a dedicated SFX is added
     this.player.stun(STUN_MS, { x: dir * 280, y: -180 });
     playElectrocutionEffect(this, this.player.sprite, STUN_MS);
-    this.cameras.main.shake(180, 0.008);
+    shakeCamera(this.cameras.main, 180, 0.008);
 
     // Invincibility must cover the full stun (not just PLAYER_INVINCIBLE_MS=400),
     // otherwise the clamp can re-stun the player on the same lunge before control
@@ -981,7 +989,7 @@ export class GameScene extends Phaser.Scene {
 
   /** One-shot visual cue when a Revive triggers. */
   private triggerReviveCue(): void {
-    this.cameras.main.flash(300, 120, 40, 70);
+    flashCamera(this.cameras.main, 300, 120, 40, 70);
     const txt = this.add.text(logicalWidth(this) / 2, logicalHeight(this) / 2 - 40, 'REVIVED!', {
       fontSize: '40px', color: '#ff6688', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 6,
@@ -997,8 +1005,17 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private openPauseMenu(): void {
+  /** Public so the web shell can auto-pause the run (tab hidden, focus lost). */
+  openPauseMenu(): void {
     if (this.scene.isActive('PauseScene')) return; // guard against double-open
+    // Once the run is ending (death or summit outro, or the success path still
+    // awaiting the server) ScoreScene is on its way. That last wait is a network
+    // promise the scene pause can't hold, so a pause menu opened now would end
+    // up stacked under the score screen with a Resume that revives a finished run.
+    if (this._playerDead || this.blockPlaced) return;
+    if (this._pauseRequested) return;
+    this._pauseRequested = true;
+    this.events.once(Phaser.Scenes.Events.RESUME, () => { this._pauseRequested = false; });
     this.scene.launch('PauseScene', {
       gameSceneKey: this.scene.key,
     });

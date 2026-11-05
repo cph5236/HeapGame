@@ -70,6 +70,7 @@ import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import type { HeapParams } from '../../shared/heapTypes';
 import { HeapClient } from '../systems/HeapClient';
 import type { EnemyKind } from '../entities/Enemy';
+import { shakeCamera } from '../systems/accessibility';
 
 function makeColBounds(): [number, number][] {
   const p = INFINITE_EDGE_PAD;
@@ -113,6 +114,12 @@ export class InfiniteGameScene extends Phaser.Scene {
   private _runSession = new RunSession();
   private _runKills:     Partial<Record<EnemyKind, number>> = {};
   private _playerDead = false;
+  /** Set when a pause has been requested and not yet resumed. ScenePlugin's
+   *  launch/pause are queued until the next game step, and the loop is
+   *  suspended while the tab is hidden, so a burst of auto-pause triggers
+   *  (visibilitychange + blur + focusin) would otherwise each see this scene
+   *  still running and open the pause menu once apiece. */
+  private _pauseRequested = false;
   private colBounds:        [number, number][] = [];
   private colSeeds:         number[] = [];
   private spawnedBands:     Set<number>[] = [];
@@ -152,6 +159,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     this._runStartTime = null;
     this._runSession.start(getEffectivePlayerId(), INFINITE_HEAP_ID);
     this._playerDead   = false;
+    this._pauseRequested = false;
     this.invincible    = false;
     this.generators    = [];
     this.layerGenerators = [];
@@ -472,8 +480,15 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.loadingOverlay = undefined;
   }
 
-  private openPauseMenu(): void {
+  /** Public so the web shell can auto-pause the run (tab hidden, focus lost). */
+  openPauseMenu(): void {
     if (this.scene.isActive('PauseScene')) return;
+    // Run over: ScoreScene is on its way (see GameScene.openPauseMenu). Pausing
+    // during the preload phase is deliberately still allowed.
+    if (this._playerDead) return;
+    if (this._pauseRequested) return;
+    this._pauseRequested = true;
+    this.events.once(Phaser.Scenes.Events.RESUME, () => { this._pauseRequested = false; });
     this.scene.launch('PauseScene', {
       gameSceneKey: this.scene.key,
     });
@@ -786,7 +801,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     AudioManager.play('enemy-kill');
     this.player.stun(STUN_MS, { x: dir * 280, y: -180 });
     playElectrocutionEffect(this, this.player.sprite, STUN_MS);
-    this.cameras.main.shake(180, 0.008);
+    shakeCamera(this.cameras.main, 180, 0.008);
 
     // Invincibility must cover the full stun (not just PLAYER_INVINCIBLE_MS=400),
     // otherwise the clamp can re-stun the player on the same lunge before control

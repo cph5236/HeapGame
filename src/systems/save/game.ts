@@ -63,6 +63,10 @@ export interface GameSave {
   movementRefundAmount?:  number;
   /** Ids of one-time announcements this player has dismissed. */
   seenAnnouncements?:     string[];
+  /** "Reduce flashing & motion". Undefined means "follow the OS
+   *  prefers-reduced-motion setting"; an explicit boolean is the player's
+   *  override. Device-local, like the sound prefs: local wins on merge. */
+  reduceMotion?:          boolean;
 }
 
 function remapPlacedY(placed: Record<string, PlacedItemSave[]>, oldHeight: number, newHeight: number): Record<string, PlacedItemSave[]> {
@@ -375,6 +379,8 @@ function freshGame(): GameSave {
     // wall jump or dive, so there is nothing to explain to them — and this
     // must NOT set movementRefundApplied (see reconcileMovementRefund below).
     seenAnnouncements: [MOVEMENT_ANNOUNCEMENT_ID],
+    // Unset = follow the OS prefers-reduced-motion setting.
+    reduceMotion: undefined,
   };
 }
 
@@ -403,6 +409,7 @@ function migrateGame(parsed: any, version: number): GameSave {
       movementRefundApplied: parsed.movementRefundApplied,
       movementRefundAmount:  parsed.movementRefundAmount,
       seenAnnouncements:     parsed.seenAnnouncements,
+      reduceMotion:          typeof parsed.reduceMotion === 'boolean' ? parsed.reduceMotion : undefined,
     };
   }
 
@@ -487,6 +494,7 @@ function migrateGame(parsed: any, version: number): GameSave {
     movementRefundApplied: parsed.movementRefundApplied,
     movementRefundAmount:  parsed.movementRefundAmount,
     seenAnnouncements:     parsed.seenAnnouncements,
+    reduceMotion:          typeof parsed.reduceMotion === 'boolean' ? parsed.reduceMotion : undefined,
   };
 }
 
@@ -581,6 +589,11 @@ function mergeGame(local: RawSave, cloud: RawSave): GameSave {
     seenAnnouncements: [...new Set([
       ...(local.seenAnnouncements ?? []), ...(cloud.seenAnnouncements ?? []),
     ])],
+    // Accessibility pref is per-device, like the OS setting it overrides: never
+    // take it from the cloud. Unset here means "follow THIS device's OS", and
+    // inheriting another device's explicit Off would silently override an OS
+    // that asks for reduced motion.
+    reduceMotion: local.reduceMotion,
   };
 }
 
@@ -667,6 +680,14 @@ export function reconcileMovementRefund(): number {
 
 export function getMovementRefundAmount(): number {
   return load().movementRefundAmount ?? 0;
+}
+
+/** The player's explicit "Reduce flashing & motion" choice, or undefined to
+ *  follow the OS. Read through `isReducedMotion()` in systems/accessibility. */
+export function getReduceMotionPref(): boolean | undefined { return load().reduceMotion; }
+export function setReduceMotionPref(value: boolean | undefined): void {
+  const data = load();
+  persist({ ...data, reduceMotion: value });
 }
 
 export function hasSeenAnnouncement(id: string): boolean {

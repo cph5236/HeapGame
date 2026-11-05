@@ -21,6 +21,8 @@ import { InputManager } from './systems/InputManager';
 import { getDprCap, applyCameraZoom } from './systems/displayMetrics';
 import { startupControlOverride } from './systems/tiltAvailability';
 import { setSessionControlMode, clearAutoControlOverride } from './systems/SaveData';
+import { installGameAccessibility } from './web/gameA11y';
+import { Capacitor } from '@capacitor/core';
 
 // HiDPI text crispening. The physical canvas (css × DPRcap backing store) is
 // paired with camera zoom = DPRcap so logical content fills the physical pixels.
@@ -92,6 +94,17 @@ const config: Phaser.Types.Core.GameConfig = {
   parent: 'game',
 };
 
+// index.html leaves pinch-zoom on for the web (WCAG 1.4.4: the HTML around
+// the game must be zoomable). The Android app has no HTML around the game —
+// the WebView is the game — so zoom there only risks an accidental pinch on a
+// safe-area strip rescaling the fixed layout. Lock it on native builds only.
+try {
+  if (Capacitor.isNativePlatform()) {
+    document.querySelector('meta[name="viewport"]')?.setAttribute('content',
+      'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover');
+  }
+} catch { /* Capacitor bridge absent: plain web, keep zoom */ }
+
 const inputManager = InputManager.getInstance();
 
 // iOS 13+ withholds device-orientation until a user gesture grants it, so tilt
@@ -118,6 +131,8 @@ if (startupMode) {
 
 const game = new Phaser.Game(config);
 installAudioFocusGuard();
+// Canvas name/focus, focus-gated keyboard and auto-pause — see web/gameA11y.ts.
+installGameAccessibility(game);
 
 // Let InputManager map touch coords (page space) into game space so it can
 // hit-test on-screen button zones and swallow those taps (no accidental jump).
