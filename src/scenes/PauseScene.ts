@@ -71,7 +71,7 @@ export class PauseScene extends Phaser.Scene {
       this.menuParts.push(btn, lbl);
     });
 
-    announce('Game paused. Press Escape or P to resume.');
+    announce('Game paused. Choose Resume, or press Escape or P, to continue.');
 
     // Esc / P resume the game (toggle off).
     this.input.keyboard?.on('keydown-ESC', () => this.resumeGame());

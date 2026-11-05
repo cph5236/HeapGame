@@ -21,10 +21,17 @@ export function playElectrocutionEffect(
 ): void {
   const g = scene.add.graphics().setDepth((target.depth ?? 0) + 1);
 
+  // Arcs are drawn around the graphics' own origin and the graphics object is
+  // moved onto the target every frame, so they stay on the player through the
+  // stun knockback even when reduced motion holds them unchanged.
+  const follow = (): void => { g.setPosition(target.x, target.y); };
+  follow();
+  scene.events.on(Phaser.Scenes.Events.UPDATE, follow);
+
   const draw = (): void => {
     g.clear();
-    const cx = target.x;
-    const cy = target.y;
+    const cx = 0;
+    const cy = 0;
     const r = Math.max(target.displayWidth, target.displayHeight) * 0.6;
     g.lineStyle(2, ARC_COLOR, 0.9);
     for (let a = 0; a < 4; a++) {
@@ -66,6 +73,7 @@ export function playElectrocutionEffect(
   });
 
   scene.time.delayedCall(durationMs, () => {
+    scene.events.off(Phaser.Scenes.Events.UPDATE, follow);
     redraw?.remove();
     flicker?.remove();
     g.destroy();

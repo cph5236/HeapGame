@@ -13,7 +13,7 @@ import { applyYouStats } from './heapSelectStats';
 import { getLockState } from './heapLockLogic';
 import { heapAtRow, isActiveRow } from './heapSelectRows';
 import { SAVE_MERGED_EVENT } from '../systems/bootSequence';
-import { shakeCamera } from '../systems/accessibility';
+import { shakeCamera, announce } from '../systems/accessibility';
 
 const ROW_H = 102;
 /** The Tutorial row is a compact banner, not a full heap card — it has no
@@ -362,7 +362,10 @@ export class HeapSelectScene extends Phaser.Scene {
   private select(heap: HeapSummary): void {
     const lock = getLockState(heap, this.sorted, this.beatenIds);
     if (lock.locked) {
+      // The shake is skipped under reduced motion; the row's persistent
+      // "🔒 Beat … to unlock" label is the visual cue, and this the spoken one.
       shakeCamera(this.cameras.main, 120, 0.004);  // denial feedback
+      announce(`Locked. Beat ${lock.prereqName} to unlock.`);
       return;
     }
     if (this.starting) return;  // double-start guard (replaces the old `once`)

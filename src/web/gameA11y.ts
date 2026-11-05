@@ -32,6 +32,27 @@ function isPausableRun(scene: unknown): scene is PausableRun {
  * at any other element — a link, button, checkbox or text field on the page or
  * in an HTML overlay — belong to that element.
  */
+/** Keys that open/close the pause menu. They mean nothing to links or buttons,
+ *  so they still reach the game from any non-editable focus target — otherwise
+ *  a run auto-paused by Tabbing onto a link could not be resumed with the very
+ *  keys the pause announcement names. */
+const PAUSE_KEYS = new Set(['Escape', 'p', 'P']);
+
+/** True for text fields, where every key (including P) belongs to the field. */
+export function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as { tagName?: string; isContentEditable?: boolean } | null;
+  if (!el) return false;
+  const tag = el.tagName?.toUpperCase();
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
+}
+
+/** Whether a keydown should be handed to Phaser: game targets always, plus the
+ *  pause keys from anywhere that isn't a text field. */
+export function shouldGameHandleKey(key: string, target: EventTarget | null, canvas: Element | null): boolean {
+  if (isGameKeyTarget(target, canvas)) return true;
+  return PAUSE_KEYS.has(key) && !isEditableTarget(target);
+}
+
 export function isGameKeyTarget(target: EventTarget | null, canvas: Element | null): boolean {
   if (target === null || target === canvas) return true;
   if (typeof document === 'undefined') return true;
@@ -84,7 +105,7 @@ export function installGameAccessibility(game: Phaser.Game): void {
     const keyboard = game.input.keyboard;
     if (keyboard) {
       window.addEventListener('keydown', (e) => {
-        keyboard.enabled = isGameKeyTarget(e.target, canvas);
+        keyboard.enabled = shouldGameHandleKey(e.key, e.target, canvas);
       }, true);
       // Always let key-ups through, so a key held while focus moved away is
       // released in the game rather than sticking down.

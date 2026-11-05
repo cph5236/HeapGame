@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { isGameKeyTarget, pauseActiveRun } from '../gameA11y';
+import { isGameKeyTarget, pauseActiveRun, shouldGameHandleKey } from '../gameA11y';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -70,5 +70,26 @@ describe('index.html accessibility hooks', () => {
 
   it('links the accessibility statement', () => {
     expect(page).toContain('https://heapgame.com/accessibility');
+  });
+});
+
+describe('shouldGameHandleKey', () => {
+  const canvas = { tag: 'canvas' } as unknown as Element;
+  const link  = { tagName: 'A' } as unknown as EventTarget;
+  const input = { tagName: 'INPUT' } as unknown as EventTarget;
+
+  it('lets Escape and P resume from a focused link', () => {
+    expect(shouldGameHandleKey('Escape', link, canvas)).toBe(true);
+    expect(shouldGameHandleKey('p', link, canvas)).toBe(true);
+  });
+
+  it('keeps other keys away from the game while a link is focused', () => {
+    expect(shouldGameHandleKey(' ', link, canvas)).toBe(false);
+    expect(shouldGameHandleKey('ArrowLeft', link, canvas)).toBe(false);
+  });
+
+  it('never steals P (or Escape) from a text field', () => {
+    expect(shouldGameHandleKey('p', input, canvas)).toBe(false);
+    expect(shouldGameHandleKey('Escape', input, canvas)).toBe(false);
   });
 });
