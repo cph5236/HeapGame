@@ -117,8 +117,11 @@
       }
       /* Keyboard focus ring for the game. Drawn inset: #game is edge-to-edge on
          phones, so an outside ring would be clipped by the viewport. Pointer
-         focus does not match :focus-visible, so taps never show it. */
-      canvas:focus-visible {
+         focus does not match :focus-visible, so taps never show it. The
+         data-focus-ring gate (web/gameA11y.ts) also drops it once the player
+         presses a game key — otherwise any hotkey after a click turns the
+         ring on for good. */
+      canvas[data-focus-ring]:focus-visible {
         outline: 3px solid var(--accent);
         outline-offset: -3px;
       }

@@ -62,6 +62,24 @@ export function isGameKeyTarget(target: EventTarget | null, canvas: Element | nu
     || (typeof window !== 'undefined' && target === window);
 }
 
+/** Keys that move focus rather than play the game. Pressing one of these
+ *  while the canvas is focused keeps its focus ring; any other key means the
+ *  player is now playing, so the ring is dropped. */
+const FOCUS_NAV_KEYS = new Set(['Tab', 'Shift']);
+
+/** Whether a keydown on the focused canvas should hide its focus ring. */
+export function keyClearsFocusRing(key: string): boolean {
+  return !FOCUS_NAV_KEYS.has(key);
+}
+
+/** Attribute that turns the canvas focus ring on (see index.html). Browsers
+ *  make an element :focus-visible after ANY keypress while it is focused, so
+ *  pressing a menu hotkey after clicking the game would otherwise draw the
+ *  ring around the whole screen and leave it there. Setting this attribute
+ *  ourselves limits the ring to what it is for: showing that keyboard
+ *  navigation (Tab, the skip link) has put focus on the game. */
+export const FOCUS_RING_ATTR = 'data-focus-ring';
+
 /** Open the pause menu on whichever gameplay scene is currently running.
  *  Paused/stopped scenes are not returned by getScenes(true), so a run that is
  *  already paused, or over (its scene paused under ScoreScene), is left alone. */
@@ -94,8 +112,28 @@ export function installGameAccessibility(game: Phaser.Game): void {
     // Clicking or tapping the game focuses it, so the focus ring and the key
     // gate below agree with where the player is actually playing. Pointer focus
     // does not match :focus-visible, so no outline appears for mouse/touch.
+    // focus() here is programmatic, and Chrome counts the canvas as
+    // :focus-visible after it (Phaser swallows the native mouse focus), so
+    // the focus handler below is told this one came from a pointer.
+    let pointerFocusing = false;
     canvas.addEventListener('pointerdown', () => {
-      if (document.activeElement !== canvas) canvas.focus({ preventScroll: true });
+      canvas.removeAttribute(FOCUS_RING_ATTR);
+      if (document.activeElement === canvas) return;
+      pointerFocusing = true;
+      try { canvas.focus({ preventScroll: true }); } finally { pointerFocusing = false; }
+    });
+
+    // Focus ring: on when focus arrives the way a keyboard user moves it (the
+    // browser's own :focus-visible heuristic at the moment of focus), off once
+    // they start playing or focus leaves. See FOCUS_RING_ATTR.
+    canvas.addEventListener('focus', () => {
+      let keyboardFocus = false;
+      if (!pointerFocusing) try { keyboardFocus = canvas.matches(':focus-visible'); } catch { /* old engines */ }
+      canvas.toggleAttribute(FOCUS_RING_ATTR, keyboardFocus);
+    });
+    canvas.addEventListener('blur', () => canvas.removeAttribute(FOCUS_RING_ATTR));
+    canvas.addEventListener('keydown', (e) => {
+      if (keyClearsFocusRing(e.key)) canvas.removeAttribute(FOCUS_RING_ATTR);
     });
 
     // Capture phase on window runs before Phaser's own (bubble-phase) window
@@ -125,6 +163,7 @@ export function installGameAccessibility(game: Phaser.Game): void {
       a.addEventListener('click', (e) => {
         e.preventDefault();
         canvas.focus();
+        canvas.setAttribute(FOCUS_RING_ATTR, ''); // keyboard-reached, even if the engine disagrees
       });
     });
   };

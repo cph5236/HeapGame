@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { isGameKeyTarget, pauseActiveRun, shouldGameHandleKey } from '../gameA11y';
+import { isGameKeyTarget, pauseActiveRun, shouldGameHandleKey, keyClearsFocusRing, FOCUS_RING_ATTR } from '../gameA11y';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -68,6 +68,13 @@ describe('index.html accessibility hooks', () => {
     expect(viewport).not.toMatch(/maximum-scale/);
   });
 
+  it('gates the canvas focus ring on the data-focus-ring attribute', () => {
+    // A bare canvas:focus-visible rule turns on after any keypress on a
+    // clicked canvas and stays — it outlined the whole menu for good.
+    expect(page).toContain(`canvas[${FOCUS_RING_ATTR}]:focus-visible`);
+    expect(page).not.toMatch(/^\s*canvas:focus-visible/m);
+  });
+
   it('links the accessibility statement', () => {
     expect(page).toContain('https://heapgame.com/accessibility');
   });
@@ -91,5 +98,16 @@ describe('shouldGameHandleKey', () => {
   it('never steals P (or Escape) from a text field', () => {
     expect(shouldGameHandleKey('p', input, canvas)).toBe(false);
     expect(shouldGameHandleKey('Escape', input, canvas)).toBe(false);
+  });
+});
+
+describe('keyClearsFocusRing', () => {
+  it('keeps the ring for focus-navigation keys', () => {
+    expect(keyClearsFocusRing('Tab')).toBe(false);
+    expect(keyClearsFocusRing('Shift')).toBe(false);
+  });
+
+  it('drops the ring for game keys', () => {
+    for (const k of [' ', 'u', 'ArrowLeft', 'Escape', 'Enter']) expect(keyClearsFocusRing(k)).toBe(true);
   });
 });
