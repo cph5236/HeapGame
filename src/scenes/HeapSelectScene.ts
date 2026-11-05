@@ -13,6 +13,7 @@ import { applyYouStats } from './heapSelectStats';
 import { getLockState } from './heapLockLogic';
 import { heapAtRow, isActiveRow } from './heapSelectRows';
 import { SAVE_MERGED_EVENT } from '../systems/bootSequence';
+import { shakeCamera } from '../systems/accessibility';
 
 const ROW_H = 102;
 /** The Tutorial row is a compact banner, not a full heap card — it has no
@@ -361,7 +362,7 @@ export class HeapSelectScene extends Phaser.Scene {
   private select(heap: HeapSummary): void {
     const lock = getLockState(heap, this.sorted, this.beatenIds);
     if (lock.locked) {
-      this.cameras.main.shake(120, 0.004);  // denial feedback
+      shakeCamera(this.cameras.main, 120, 0.004);  // denial feedback
       return;
     }
     if (this.starting) return;  // double-start guard (replaces the old `once`)

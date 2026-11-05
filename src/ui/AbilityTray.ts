@@ -3,6 +3,7 @@ import { Player } from '../entities/Player';
 import { HUD_THEME, makePanel, makeCloudIcon, makeWallJumpIcon, makeDashChevrons } from './hudTheme';
 import { staminaSegments, dashBarFillFraction } from './hudLogic';
 import { HUD_INSET, HUD_TRAY_PAD, MAX_STAMINA_CAP } from '../constants';
+import { isReducedMotion } from '../systems/accessibility';
 
 export class AbilityTray {
   readonly objects: Phaser.GameObjects.GameObject[] = [];
@@ -145,12 +146,14 @@ export class AbilityTray {
     this.staminaFlashTween?.stop();
     const targets = [...this.segBacks, ...this.segFills];
     for (const t of targets) t.setAlpha(1);
+    // Reduced motion: one slow, shallow dip instead of a double blink.
+    const reduced = isReducedMotion();
     this.staminaFlashTween = this.scene.tweens.add({
       targets,
-      alpha: 0.15,
-      duration: 70,
+      alpha: reduced ? 0.5 : 0.15,
+      duration: reduced ? 250 : 70,
       yoyo: true,
-      repeat: 1,
+      repeat: reduced ? 0 : 1,
       ease: 'Sine.easeInOut',
       onComplete: () => { for (const t of targets) t.setAlpha(1); },
     });

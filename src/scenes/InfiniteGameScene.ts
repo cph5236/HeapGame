@@ -70,6 +70,7 @@ import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
 import type { HeapParams } from '../../shared/heapTypes';
 import { HeapClient } from '../systems/HeapClient';
 import type { EnemyKind } from '../entities/Enemy';
+import { shakeCamera } from '../systems/accessibility';
 
 function makeColBounds(): [number, number][] {
   const p = INFINITE_EDGE_PAD;
@@ -472,7 +473,8 @@ export class InfiniteGameScene extends Phaser.Scene {
     this.loadingOverlay = undefined;
   }
 
-  private openPauseMenu(): void {
+  /** Public so the web shell can auto-pause the run (tab hidden, focus lost). */
+  openPauseMenu(): void {
     if (this.scene.isActive('PauseScene')) return;
     this.scene.launch('PauseScene', {
       gameSceneKey: this.scene.key,
@@ -786,7 +788,7 @@ export class InfiniteGameScene extends Phaser.Scene {
     AudioManager.play('enemy-kill');
     this.player.stun(STUN_MS, { x: dir * 280, y: -180 });
     playElectrocutionEffect(this, this.player.sprite, STUN_MS);
-    this.cameras.main.shake(180, 0.008);
+    shakeCamera(this.cameras.main, 180, 0.008);
 
     // Invincibility must cover the full stun (not just PLAYER_INVINCIBLE_MS=400),
     // otherwise the clamp can re-stun the player on the same lunge before control

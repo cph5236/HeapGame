@@ -71,6 +71,7 @@ import { buildRunScore } from '../systems/buildRunScore';
 import { ENEMY_DEFS, DEFAULT_ENEMY_PARAMS } from '../data/enemyDefs';
 import type { HeapParams } from '../../shared/heapTypes';
 import { DEFAULT_HEAP_PARAMS } from '../../shared/heapTypes';
+import { shakeCamera, flashCamera } from '../systems/accessibility';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -887,7 +888,7 @@ export class GameScene extends Phaser.Scene {
     AudioManager.play('enemy-kill'); // reuse existing zap-ish cue; swap later if a dedicated SFX is added
     this.player.stun(STUN_MS, { x: dir * 280, y: -180 });
     playElectrocutionEffect(this, this.player.sprite, STUN_MS);
-    this.cameras.main.shake(180, 0.008);
+    shakeCamera(this.cameras.main, 180, 0.008);
 
     // Invincibility must cover the full stun (not just PLAYER_INVINCIBLE_MS=400),
     // otherwise the clamp can re-stun the player on the same lunge before control
@@ -981,7 +982,7 @@ export class GameScene extends Phaser.Scene {
 
   /** One-shot visual cue when a Revive triggers. */
   private triggerReviveCue(): void {
-    this.cameras.main.flash(300, 120, 40, 70);
+    flashCamera(this.cameras.main, 300, 120, 40, 70);
     const txt = this.add.text(logicalWidth(this) / 2, logicalHeight(this) / 2 - 40, 'REVIVED!', {
       fontSize: '40px', color: '#ff6688', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 6,
@@ -997,7 +998,8 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private openPauseMenu(): void {
+  /** Public so the web shell can auto-pause the run (tab hidden, focus lost). */
+  openPauseMenu(): void {
     if (this.scene.isActive('PauseScene')) return; // guard against double-open
     this.scene.launch('PauseScene', {
       gameSceneKey: this.scene.key,

@@ -63,6 +63,10 @@ export interface GameSave {
   movementRefundAmount?:  number;
   /** Ids of one-time announcements this player has dismissed. */
   seenAnnouncements?:     string[];
+  /** "Reduce flashing & motion". Undefined means "follow the OS
+   *  prefers-reduced-motion setting"; an explicit boolean is the player's
+   *  override. Device-local, like the sound prefs: local wins on merge. */
+  reduceMotion?:          boolean;
 }
 
 function remapPlacedY(placed: Record<string, PlacedItemSave[]>, oldHeight: number, newHeight: number): Record<string, PlacedItemSave[]> {
@@ -403,6 +407,7 @@ function migrateGame(parsed: any, version: number): GameSave {
       movementRefundApplied: parsed.movementRefundApplied,
       movementRefundAmount:  parsed.movementRefundAmount,
       seenAnnouncements:     parsed.seenAnnouncements,
+      reduceMotion:          parsed.reduceMotion,
     };
   }
 
@@ -487,6 +492,7 @@ function migrateGame(parsed: any, version: number): GameSave {
     movementRefundApplied: parsed.movementRefundApplied,
     movementRefundAmount:  parsed.movementRefundAmount,
     seenAnnouncements:     parsed.seenAnnouncements,
+    reduceMotion:          parsed.reduceMotion,
   };
 }
 
@@ -581,6 +587,9 @@ function mergeGame(local: RawSave, cloud: RawSave): GameSave {
     seenAnnouncements: [...new Set([
       ...(local.seenAnnouncements ?? []), ...(cloud.seenAnnouncements ?? []),
     ])],
+    // Accessibility pref is per-device (the OS setting it overrides is too):
+    // keep local, fall back to cloud only on a fresh install.
+    reduceMotion: local.reduceMotion ?? cloud.reduceMotion,
   };
 }
 
@@ -667,6 +676,14 @@ export function reconcileMovementRefund(): number {
 
 export function getMovementRefundAmount(): number {
   return load().movementRefundAmount ?? 0;
+}
+
+/** The player's explicit "Reduce flashing & motion" choice, or undefined to
+ *  follow the OS. Read through `isReducedMotion()` in systems/accessibility. */
+export function getReduceMotionPref(): boolean | undefined { return load().reduceMotion; }
+export function setReduceMotionPref(value: boolean | undefined): void {
+  const data = load();
+  persist({ ...data, reduceMotion: value });
 }
 
 export function hasSeenAnnouncement(id: string): boolean {

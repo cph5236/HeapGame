@@ -3,6 +3,7 @@ import { setupUiCamera, logicalWidth, logicalHeight } from '../systems/displayMe
 import { InputManager } from '../systems/InputManager';
 import { pauseSettingsData, type ControlHost } from './pauseSettings';
 import { markRunEnded } from '../systems/dailyRunGate';
+import { announce } from '../systems/accessibility';
 
 export interface PauseSceneData {
   /** Scene key of the paused game scene to resume/stop. */
@@ -69,6 +70,8 @@ export class PauseScene extends Phaser.Scene {
       this.menuParts.push(btn, lbl);
     });
 
+    announce('Game paused. Press Escape or P to resume.');
+
     // Esc / P resume the game (toggle off).
     this.input.keyboard?.on('keydown-ESC', () => this.resumeGame());
     this.input.keyboard?.on('keydown-P',   () => this.resumeGame());
@@ -130,6 +133,7 @@ export class PauseScene extends Phaser.Scene {
     im.clearBufferedActions(); // drop the dismiss tap so it can't fire a jump on resume
     this.scene.resume(this.gameSceneKey);
     this.scene.stop();
+    announce('Game resumed.');
   }
 
   private exitToMenu(): void {

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1a1a1a" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <title>Accessibility — Heap</title>
+    <meta name="description" content="How Heap approaches accessibility: our WCAG 2.1 AA goal for the site, the accommodations in the game, known limitations and how to reach us." />
+    <!-- Served as /accessibility by Cloudflare Pages (same pattern as play.html). -->
+    <link rel="canonical" href="https://heapgame.com/accessibility" />
+
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      /* Same tokens as index.html and play.html. */
+      :root {
+        --bg:     #1a1a1a;
+        --panel:  #20202a;
+        --line:   #33333f;
+        --text:   #c8c8d2;
+        --bright: #e8e8ef;
+        --muted:  #9595a3;
+        --amber:  #f5a02a;
+        --mint:   #6ee7a0;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+                "Liberation Mono", monospace;
+      }
+
+      html { -webkit-text-size-adjust: 100%; }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 1rem;
+        line-height: 1.65;
+      }
+
+      .skip-link {
+        position: absolute;
+        left: 8px;
+        top: 8px;
+        padding: 8px 12px;
+        background: var(--panel);
+        color: var(--amber);
+        border: 2px solid var(--amber);
+        transform: translateY(-200%);
+      }
+      .skip-link:focus { transform: none; }
+
+      header, main, footer {
+        width: 100%;
+        max-width: 720px;
+        margin: 0 auto;
+        padding-left: 20px;
+        padding-right: 20px;
+      }
+      header { padding-top: 28px; }
+      header nav ul { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+
+      main { padding-top: 28px; padding-bottom: 32px; }
+
+      h1 {
+        font-size: clamp(1.6rem, 6vw, 2.2rem);
+        color: var(--bright);
+        line-height: 1.2;
+        margin-bottom: 8px;
+      }
+      h2 {
+        font-size: 0.8125rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--amber);
+        margin: 34px 0 10px;
+      }
+      p, ul { margin-bottom: 14px; }
+      main ul { padding-left: 1.4em; }
+      li { margin-bottom: 6px; }
+      strong { color: var(--bright); }
+      kbd {
+        font-family: inherit;
+        padding: 0 5px;
+        border: 1px solid var(--muted);
+        border-radius: 3px;
+        color: var(--bright);
+        white-space: nowrap;
+      }
+      .updated { color: var(--muted); font-size: 0.875rem; }
+
+      a { color: var(--mint); text-underline-offset: 3px; }
+      a:hover { color: var(--bright); }
+      a:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+
+      footer {
+        padding-bottom: 28px;
+        border-top: 1px solid var(--line);
+        padding-top: 16px;
+        color: var(--muted);
+        font-size: 0.8125rem;
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header>
+      <nav aria-label="Site">
+        <ul>
+          <li><a href="https://heapgame.com/">Play Heap</a></li>
+          <li><a href="https://heapgame.com/play">Play links</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main id="main">
+      <h1>Accessibility</h1>
+      <p class="updated">Last reviewed: November 2026</p>
+
+      <p>
+        Heap is a free game made by a small team. We want as many people as
+        possible to be able to use this site and play the game, and we treat
+        accessibility problems as bugs.
+      </p>
+
+      <h2>Our goal</h2>
+      <p>
+        We aim for the website and its menus around the game to conform to the
+        <a href="https://www.w3.org/TR/WCAG21/">Web Content Accessibility Guidelines (WCAG) 2.1</a>
+        at level AA.
+      </p>
+      <p>
+        The game itself is a real-time, visual platformer. Under WCAG, content
+        whose purpose is a specific sensory experience is only required to
+        offer a descriptive text alternative, and the game canvas has one. We
+        do not claim that real-time play works with a screen reader. We do
+        provide the accommodations below.
+      </p>
+
+      <h2>In the game</h2>
+      <ul>
+        <li>
+          <strong>Keyboard play.</strong> Move with the arrow keys or
+          <kbd>A</kbd>/<kbd>D</kbd>, jump with <kbd>↑</kbd> or <kbd>W</kbd>,
+          dash with <kbd>Shift</kbd>, dive with <kbd>↓</kbd> or <kbd>S</kbd>,
+          place with <kbd>Space</kbd> and grab with <kbd>E</kbd>.
+          On touch screens you can choose tilt or an on-screen joystick, on
+          either side.
+        </li>
+        <li>
+          <strong>No keyboard trap.</strong> <kbd>Tab</kbd> and
+          <kbd>Shift</kbd>+<kbd>Tab</kbd> always move focus out of the game, and
+          the game never captures keys while you are using a link or control on
+          the page.
+        </li>
+        <li>
+          <strong>Pause.</strong> <kbd>Esc</kbd> or <kbd>P</kbd> pauses a run.
+          The game also pauses itself when you switch tabs, when the window
+          loses focus, or when you move focus out of the game.
+        </li>
+        <li>
+          <strong>Reduce flashing &amp; motion.</strong> Nothing in the game
+          flashes more than three times per second. The
+          <em>Reduce Flashing</em> setting (Settings → Controls) also turns off
+          screen shake, full-screen flashes, confetti and particle trails, and
+          slows remaining effects. It is on automatically if your device asks
+          for reduced motion, and you can override it either way.
+        </li>
+        <li>
+          <strong>Not colour alone.</strong> Off-screen markers use a different
+          shape as well as a different colour for enemies (a notched arrow) and
+          salvage (a round pin).
+        </li>
+        <li>
+          <strong>Announcements.</strong> Pausing, resuming and the result of a
+          run are announced to screen readers.
+        </li>
+        <li>
+          <strong>Separate volume controls.</strong> Music, player, enemy and
+          environment sounds each have their own volume setting.
+        </li>
+      </ul>
+
+      <h2>Known limitations</h2>
+      <ul>
+        <li>
+          The game's menus (main menu, settings, pause, store, results) are
+          drawn inside the game canvas, so a screen reader cannot read or
+          operate them, and some cannot be reached with the keyboard alone. We
+          plan to move them to standard HTML controls.
+        </li>
+        <li>
+          Controls cannot yet be remapped, and there is no separate text-size
+          setting inside the game. Browser zoom enlarges the page around the
+          game.
+        </li>
+        <li>
+          On narrow screens the "How it works" panels beside the game are hidden
+          to make room for it; the same summary is available to assistive
+          technology through the game's description.
+        </li>
+      </ul>
+
+      <h2>Tell us about a problem</h2>
+      <p>
+        If something on this site or in the game is hard or impossible for you
+        to use, please tell us — what you were trying to do, and the device,
+        browser and any assistive technology you use. Email
+        <a href="mailto:HanlinsoftwareSWS@gmail.com">HanlinsoftwareSWS@gmail.com</a>,
+        or use <em>Feedback</em> in the game's main menu. We aim to reply within
+        a week.
+      </p>
+      <p>
+        This site has no accessibility overlay widgets. Fixes are made in the
+        site and game themselves.
+      </p>
+    </main>
+
+    <footer>
+      <p>Made by Hanlin Software.</p>
+    </footer>
+  </body>
+</html>

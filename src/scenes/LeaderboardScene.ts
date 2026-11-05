@@ -4,6 +4,7 @@ import { ScoreClient } from '../systems/ScoreClient';
 import type { LeaderboardEntry } from '../../shared/scoreTypes';
 import { composeAvatar } from '../ui/avatar';
 import { leaderboardRowSlots, rowContentY, LB_ENLARGED_ROW_H, LB_AVATAR_SCALE, type LeaderboardRowSlot } from './scoreLayout';
+import { isReducedMotion } from '../systems/accessibility';
 
 const PAGE_LIMIT     = 50;
 const ROW_H          = 28;
@@ -284,7 +285,9 @@ export class LeaderboardScene extends Phaser.Scene {
       alpha:    { from: 1, to: 0.3 },
       duration: 180,
       yoyo:     true,
-      repeat:   2,
+      // 3 blinks at ~2.8/s stays under the WCAG 2.3.1 limit; reduced motion
+      // gets a single blink.
+      repeat:   isReducedMotion() ? 0 : 2,
     });
   }
 

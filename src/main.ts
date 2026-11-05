@@ -21,6 +21,7 @@ import { InputManager } from './systems/InputManager';
 import { getDprCap, applyCameraZoom } from './systems/displayMetrics';
 import { startupControlOverride } from './systems/tiltAvailability';
 import { setSessionControlMode, clearAutoControlOverride } from './systems/SaveData';
+import { installGameAccessibility } from './web/gameA11y';
 
 // HiDPI text crispening. The physical canvas (css × DPRcap backing store) is
 // paired with camera zoom = DPRcap so logical content fills the physical pixels.
@@ -118,6 +119,8 @@ if (startupMode) {
 
 const game = new Phaser.Game(config);
 installAudioFocusGuard();
+// Canvas name/focus, focus-gated keyboard and auto-pause — see web/gameA11y.ts.
+installGameAccessibility(game);
 
 // Let InputManager map touch coords (page space) into game space so it can
 // hit-test on-screen button zones and swallow those taps (no accidental jump).

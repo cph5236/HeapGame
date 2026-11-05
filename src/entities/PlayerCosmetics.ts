@@ -10,6 +10,7 @@ import { rainbowColorAt, type ResolvedCosmetics } from '../systems/cosmeticsLogi
 import type { AttachmentRig } from './cosmeticRigs/types';
 import { createAttachmentRig } from './cosmeticRigs/createAttachmentRig';
 import { trailEmitterConfig } from './cosmeticRigs/trailEmitter';
+import { isReducedMotion } from '../systems/accessibility';
 
 /** Trail emits only while actually moving. */
 const TRAIL_MIN_SPEED = 60;
@@ -62,7 +63,9 @@ export class PlayerCosmetics {
     if (resolved.hat)  this.hatRig  = createAttachmentRig(scene, resolved.hat);
     if (resolved.face) this.faceRig = createAttachmentRig(scene, resolved.face);
 
-    if (resolved.trail) {
+    // Trails are a heavy, always-on particle stream: dropped under "Reduce
+    // flashing & motion". Everything below already tolerates a null emitter.
+    if (resolved.trail && !isReducedMotion()) {
       this.emitter = scene.add.particles(0, 0, resolved.trail.textureKey, {
         ...trailEmitterConfig(resolved.trail, () => this.rainbowMs),
         emitting: false,
