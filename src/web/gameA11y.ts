@@ -62,23 +62,42 @@ export function isGameKeyTarget(target: EventTarget | null, canvas: Element | nu
     || (typeof window !== 'undefined' && target === window);
 }
 
-/** Keys that move focus rather than play the game. Pressing one of these
- *  while the canvas is focused keeps its focus ring; any other key means the
- *  player is now playing, so the ring is dropped. */
-const FOCUS_NAV_KEYS = new Set(['Tab', 'Shift']);
-
-/** Whether a keydown on the focused canvas should hide its focus ring. */
-export function keyClearsFocusRing(key: string): boolean {
-  return !FOCUS_NAV_KEYS.has(key);
-}
-
-/** Attribute that turns the canvas focus ring on (see index.html). Browsers
- *  make an element :focus-visible after ANY keypress while it is focused, so
- *  pressing a menu hotkey after clicking the game would otherwise draw the
- *  ring around the whole screen and leave it there. Setting this attribute
- *  ourselves limits the ring to what it is for: showing that keyboard
- *  navigation (Tab, the skip link) has put focus on the game. */
+/** Attribute that turns the canvas focus ring on (see index.html). The ring
+ *  is driven by this attribute alone, not by :focus-visible: browsers make an
+ *  element :focus-visible after ANY keypress while it is focused (and Chrome
+ *  also after the programmatic focus() a click or a pause-resume does), so a
+ *  :focus-visible ring outlined the whole game after a click + hotkey and
+ *  never left. The ring is for one thing: showing that keyboard navigation
+ *  (Tab, the skip link) has put focus on the game. */
 export const FOCUS_RING_ATTR = 'data-focus-ring';
+
+/** Keys that don't count as "playing": pure modifiers, which neither move
+ *  focus nor drive the game, so they leave the navigation state as it is. */
+const NEUTRAL_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph', 'Fn', 'OS']);
+
+/**
+ * Whether the player's last input was keyboard navigation, i.e. whether the
+ * canvas should show its focus ring when (or while) it has focus. Tab sets
+ * it; any pointer press or any game key clears it; modifiers leave it alone.
+ * Pure, so the rules are testable without a DOM — installGameAccessibility
+ * just feeds it events and mirrors `navigating` onto FOCUS_RING_ATTR.
+ */
+export class FocusRingTracker {
+  navigating = false;
+
+  /** Returns true when the ring should be hidden now (a game key). */
+  keyDown(key: string): boolean {
+    if (key === 'Tab') { this.navigating = true; return false; }
+    if (NEUTRAL_KEYS.has(key)) return false;
+    this.navigating = false;
+    return true;
+  }
+
+  pointerDown(): void { this.navigating = false; }
+
+  /** Focus reached the game by a keyboard route that isn't Tab (the skip link). */
+  keyboardFocus(): void { this.navigating = true; }
+}
 
 /** Open the pause menu on whichever gameplay scene is currently running.
  *  Paused/stopped scenes are not returned by getScenes(true), so a run that is
@@ -109,32 +128,25 @@ export function installGameAccessibility(game: Phaser.Game): void {
     canvas.setAttribute('aria-describedby', DESCRIPTION_ID);
     canvas.tabIndex = 0;
 
-    // Clicking or tapping the game focuses it, so the focus ring and the key
-    // gate below agree with where the player is actually playing. Pointer focus
-    // does not match :focus-visible, so no outline appears for mouse/touch.
-    // focus() here is programmatic, and Chrome counts the canvas as
-    // :focus-visible after it (Phaser swallows the native mouse focus), so
-    // the focus handler below is told this one came from a pointer.
-    let pointerFocusing = false;
+    // Clicking or tapping the game focuses it, so the key gate below agrees
+    // with where the player is actually playing.
     canvas.addEventListener('pointerdown', () => {
-      canvas.removeAttribute(FOCUS_RING_ATTR);
-      if (document.activeElement === canvas) return;
-      pointerFocusing = true;
-      try { canvas.focus({ preventScroll: true }); } finally { pointerFocusing = false; }
+      if (document.activeElement !== canvas) canvas.focus({ preventScroll: true });
     });
 
-    // Focus ring: on when focus arrives the way a keyboard user moves it (the
-    // browser's own :focus-visible heuristic at the moment of focus), off once
-    // they start playing or focus leaves. See FOCUS_RING_ATTR.
-    canvas.addEventListener('focus', () => {
-      let keyboardFocus = false;
-      if (!pointerFocusing) try { keyboardFocus = canvas.matches(':focus-visible'); } catch { /* old engines */ }
-      canvas.toggleAttribute(FOCUS_RING_ATTR, keyboardFocus);
-    });
-    canvas.addEventListener('blur', () => canvas.removeAttribute(FOCUS_RING_ATTR));
-    canvas.addEventListener('keydown', (e) => {
-      if (keyClearsFocusRing(e.key)) canvas.removeAttribute(FOCUS_RING_ATTR);
-    });
+    // Focus ring — see FOCUS_RING_ATTR / FocusRingTracker. Tracked on window
+    // (capture) so Tab presses on page links before reaching the canvas count,
+    // and a pointer press anywhere ends keyboard navigation. The focus handler
+    // reads the tracker, so a programmatic refocus (pause resume via Esc/P)
+    // stays ringless, and a keyboard user's ring returns with window focus.
+    const ring = new FocusRingTracker();
+    const setRing = (on: boolean): void => { canvas.toggleAttribute(FOCUS_RING_ATTR, on); };
+    window.addEventListener('pointerdown', () => { ring.pointerDown(); setRing(false); }, true);
+    window.addEventListener('keydown', (e) => {
+      if (ring.keyDown(e.key)) setRing(false);
+    }, true);
+    canvas.addEventListener('focus', () => setRing(ring.navigating));
+    canvas.addEventListener('blur', () => setRing(false));
 
     // Capture phase on window runs before Phaser's own (bubble-phase) window
     // listener, so the decision is made before Phaser can preventDefault().
@@ -162,8 +174,8 @@ export function installGameAccessibility(game: Phaser.Game): void {
     document.querySelectorAll<HTMLAnchorElement>('a[data-skip-to-game]').forEach(a => {
       a.addEventListener('click', (e) => {
         e.preventDefault();
+        ring.keyboardFocus(); // also when activated by click or a screen reader
         canvas.focus();
-        canvas.setAttribute(FOCUS_RING_ATTR, ''); // keyboard-reached, even if the engine disagrees
       });
     });
   };
