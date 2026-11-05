@@ -409,7 +409,7 @@ function migrateGame(parsed: any, version: number): GameSave {
       movementRefundApplied: parsed.movementRefundApplied,
       movementRefundAmount:  parsed.movementRefundAmount,
       seenAnnouncements:     parsed.seenAnnouncements,
-      reduceMotion:          parsed.reduceMotion,
+      reduceMotion:          typeof parsed.reduceMotion === 'boolean' ? parsed.reduceMotion : undefined,
     };
   }
 
@@ -494,7 +494,7 @@ function migrateGame(parsed: any, version: number): GameSave {
     movementRefundApplied: parsed.movementRefundApplied,
     movementRefundAmount:  parsed.movementRefundAmount,
     seenAnnouncements:     parsed.seenAnnouncements,
-    reduceMotion:          parsed.reduceMotion,
+    reduceMotion:          typeof parsed.reduceMotion === 'boolean' ? parsed.reduceMotion : undefined,
   };
 }
 

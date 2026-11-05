@@ -25,13 +25,6 @@ function isPausableRun(scene: unknown): scene is PausableRun {
   return typeof (scene as Partial<PausableRun> | null)?.openPauseMenu === 'function';
 }
 
-/**
- * Whether a keyboard event with this target should drive the game. Keys typed
- * while the canvas, the page body, or nothing in particular is focused belong
- * to the game (players should not have to click the canvas first). Keys aimed
- * at any other element — a link, button, checkbox or text field on the page or
- * in an HTML overlay — belong to that element.
- */
 /** Keys that open/close the pause menu. They mean nothing to links or buttons,
  *  so they still reach the game from any non-editable focus target — otherwise
  *  a run auto-paused by Tabbing onto a link could not be resumed with the very
@@ -53,6 +46,13 @@ export function shouldGameHandleKey(key: string, target: EventTarget | null, can
   return PAUSE_KEYS.has(key) && !isEditableTarget(target);
 }
 
+/**
+ * Whether a keyboard event with this target should drive the game. Keys typed
+ * while the canvas, the page body, or nothing in particular is focused belong
+ * to the game (players should not have to click the canvas first). Keys aimed
+ * at any other element — a link, button, checkbox or text field on the page or
+ * in an HTML overlay — belong to that element.
+ */
 export function isGameKeyTarget(target: EventTarget | null, canvas: Element | null): boolean {
   if (target === null || target === canvas) return true;
   if (typeof document === 'undefined') return true;

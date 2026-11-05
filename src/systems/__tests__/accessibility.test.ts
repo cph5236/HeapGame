@@ -85,3 +85,11 @@ describe('flicker limit', () => {
     expect(1000 / (2 * MIN_FLICKER_INTERVAL_MS)).toBeLessThanOrEqual(3);
   });
 });
+
+describe('reduceMotion migration', () => {
+  it('drops a non-boolean value from a corrupt save', () => {
+    store[SAVE_KEY] = JSON.stringify({ ...load(), reduceMotion: 'false' });
+    resetCacheForTests();
+    expect(getReduceMotionPref()).toBeUndefined();
+  });
+});

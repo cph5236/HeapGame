@@ -140,14 +140,15 @@ export class AbilityTray {
   };
 
   /** Brief pulse on the stamina segments — the whole feedback cue for running
-   *  dry, since there's no sound for it. Re-triggering while already flashing
-   *  restarts the pulse rather than stacking tweens. */
+   *  dry, since there's no sound for it. A trigger while a pulse is still
+   *  playing is ignored rather than restarting it: restarting would let input
+   *  mashing drive the blink at the input rate, past the WCAG 2.3.1 limit. */
   private flashStamina(): void {
-    this.staminaFlashTween?.stop();
+    if (this.staminaFlashTween?.isPlaying()) return;
     const targets = [...this.segBacks, ...this.segFills];
     for (const t of targets) t.setAlpha(1);
-    // One blink per trigger, each half at least MIN_FLICKER_INTERVAL_MS, so even
-    // rapid re-triggers stay at ≤ 2.5 flashes/s (WCAG 2.3.1). Reduced motion
+    // One blink, each half MIN_FLICKER_INTERVAL_MS; with re-triggers ignored
+    // until it ends, that caps it at 2.5 flashes/s (WCAG 2.3.1). Reduced motion
     // gets a shallower dip.
     const reduced = isReducedMotion();
     this.staminaFlashTween = this.scene.tweens.add({

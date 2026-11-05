@@ -27,6 +27,12 @@ export function playElectrocutionEffect(
   const follow = (): void => { g.setPosition(target.x, target.y); };
   follow();
   scene.events.on(Phaser.Scenes.Events.UPDATE, follow);
+  // A scene shutdown mid-effect clears the timers below without firing them,
+  // and Systems.shutdown does not remove event listeners — but it does destroy
+  // the display list, so tie the unsubscribe to the graphics' own destruction.
+  g.once(Phaser.GameObjects.Events.DESTROY, () => {
+    scene.events.off(Phaser.Scenes.Events.UPDATE, follow);
+  });
 
   const draw = (): void => {
     g.clear();
@@ -73,7 +79,6 @@ export function playElectrocutionEffect(
   });
 
   scene.time.delayedCall(durationMs, () => {
-    scene.events.off(Phaser.Scenes.Events.UPDATE, follow);
     redraw?.remove();
     flicker?.remove();
     g.destroy();
