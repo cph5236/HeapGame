@@ -64,7 +64,10 @@ export function openFeedbackOverlay(opts: FeedbackOverlayOpts): void {
   textarea.placeholder = 'What happened? What would you change?';
   textarea.style.cssText = [
     'width:100%', 'box-sizing:border-box', 'background:#060612',
-    'border:1px solid #335', 'border-radius:8px', 'color:#fff', 'font-size:14px',
+    'border:1px solid #335', 'border-radius:8px', 'color:#fff',
+    // 16px minimum: iOS Safari auto-zooms into smaller fields, and with pinch-zoom
+    // no longer locked (WCAG 1.4.4) it would stay zoomed after the overlay closes.
+    'font-size:16px',
     'font-family:monospace', 'padding:10px', 'outline:none', 'resize:vertical',
     'margin-bottom:6px',
   ].join(';');
